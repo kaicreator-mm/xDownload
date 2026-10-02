@@ -1,49 +1,49 @@
 # xDownload
 
-xDownload is an intelligent download tool whose internal implementation thesis is a **Download Domain Harness**.
+xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision pinned in `.dev-standard/VERSION`.
 
-The user-facing goal is to make it easier to **discover, select, acquire, validate, and organize** network resources the user can access. xDownload is not designed as a general-purpose crawler or as a fully autonomous AI agent.
-
-Its current product strategy is:
-
-- **Template-first** for the common, bounded download patterns;
-- **Human-in-the-loop when useful**, rather than treating user confirmation as failure;
-- **LLM-on-gap** for template adaptation and limited semantic ambiguity;
-- crawler-like observation/navigation only for an explicit target Collection with a provable or user-declared membership relationship.
-
-## Current product baseline
-
-- [Documentation index](docs/README.md)
-- [Current PRD v0.3 Review Candidate](docs/product/PRD-v0.3-review-candidate.md)
-- [v0.2 Fresh Independent Adversarial Review](docs/reviews/2026-10-02-v0.2-fresh-independent-adversarial-review.md)
-- [Previous PRD v0.2 Draft](docs/product/PRD-v0.2-draft.md)
-- [Previous PRD v0.1 Draft](docs/product/PRD-v0.1-draft.md)
-- [Discussion record](docs/DISCUSSION_RECORD_2026-10-01.md)
-
-## Current product direction
+## Current ADS lifecycle state
 
 ```text
-Single resource acquisition
+Stage 0 Intake/Baseline: checkpointed
+Stage 1 Product/Scope: ACTIVE
+Formal L1 Product Evidence: COMPLETE
+Current PRD/Scope candidate: PRD v0.4.1
+Product Freeze: NO
+Architecture Freeze: NO
+L2: NOT ELIGIBLE
+Task DAG: NOT STARTED
+Implementation: NOT STARTED
+```
+
+The current PRD document revision is separate from the initial product release target. The current candidate targets `xDownload v0.1.0`.
+
+## Current Stage 1 documents
+
+- [Documentation index](docs/README.md)
+- [Formal L1 Product Evidence](docs/product/L1_PRODUCT_EVIDENCE.md)
+- [Current PRD v0.4.1 Review Candidate](docs/product/PRD-v0.4.1-review-candidate.md)
+- [v0.3 Fresh Independent Review](docs/reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md)
+- [v0.4 Claude Fresh Independent Review](docs/reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md)
+
+## Current product thesis under review
+
+```text
+Reliable targeted resource acquisition
 +
-Current-page smart discovery
+Explicit bounded collections
 +
-Explicit bounded collection acquisition
+Human-assisted ambiguity resolution when necessary
 +
-AUTO / ASSISTED / MANUAL_SELECTION
+Template-first deterministic execution
 +
-Template-first execution
+Independent validation
 +
 Bounded AI fallback
 ```
 
-Collection admission requires an identifiable target, a membership relationship, understandable scope, a hard stop, and no arbitrary discovery frontier. Boundedness alone is not sufficient to make a task an xDownload Collection task.
+xDownload is not a general crawler and is not an AI-first downloader. Ordinary supported downloads must remain usable when the model is unavailable.
 
-## Current status
+## Next ADS action
 
-- PRD v0.3 Review Candidate: **GENERATED**
-- Product Freeze: **NO**
-- Architecture Freeze: **NO**
-- L2 eligibility: **NO**
-- Next stage: Fresh Independent Product Re-Review of the exact v0.3 SHA against the v0.2 review findings and C01–C22 counterexamples.
-
-The repository is intended to evolve as a monorepo once implementation begins; the module layout in product documents remains a product-boundary hypothesis until L2 Architecture Freeze.
+Run a Fresh Independent Product/Scope Review against the exact current v0.4.1 subject. Only a PASS with no blocking Product findings may proceed to the Stage 1 Product/Scope Freeze checkpoint. L2 starts only after that checkpoint.
