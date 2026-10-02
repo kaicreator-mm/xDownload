@@ -27,6 +27,11 @@ Requirements:
 - browser policy must permit unpacked test-extension installation;
 - native messaging must be enabled for the test profile.
 
+Platform notes:
+
+- Linux: native host manifests are staged under an XDG-style `NativeMessagingHosts` directory and shell wrappers launch the Python broker.
+- Windows: the runner registers hosts via `HKCU\Software\Google\Chrome\NativeMessagingHosts\<name>` (deleted again after the run) and compiles a tiny C# launcher exe with the in-box `csc.exe`, because Chrome launches native hosts with `CreateProcess` and refuses `.bat`/`.cmd` wrappers. Chrome 154 also no longer honors `--load-extension`; the Windows path installs the fixture through DevTools `Extensions.loadUnpacked` over `--remote-debugging-port`, using a stdlib WebSocket client without an `Origin` header and falling back to the profile's `DevToolsActivePort` file.
+
 The runner uses CDP `Extensions.loadUnpacked` instead of the removed/deprecated `--load-extension` path on modern Chromium-family builds. If the host has an enterprise `ExtensionInstallBlocklist` that rejects unpacked extensions, the run must be reported `BLOCKED`; do not weaken the extension or Native Messaging assertions.
 
 ## Secret handling

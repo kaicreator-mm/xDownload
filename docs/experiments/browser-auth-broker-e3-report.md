@@ -11,7 +11,8 @@
 - Research branch: `research_v0.1.0-browser-auth-broker`
 - Final research HEAD: recorded in the terminal closeout on Issue #8; no research-branch mutation is permitted after the final exact-HEAD rerun.
 - Evidence Strength: `E3`
-- Executed environment: Linux `6.18.44` x86_64, Chromium `144.0.7559.96`, Python `3.13.5`, Xvfb-backed real Chromium process.
+- Executed environment (first tuple): Linux `6.18.44` x86_64, Chromium `144.0.7559.96`, Python `3.13.5`, Xvfb-backed real Chromium process.
+- Executed environment (second tuple): Windows `11` (`10.0.26200`) x86_64, Google Chrome `154.0.8037.58`, Python `3.14.7`, real desktop session (no display shim); final closeout records the exact final HEAD rerun.
 
 ## Hypothesis
 
@@ -20,6 +21,42 @@ If a real supported reference browser extension communicates with a real native 
 ## Result
 
 `PASS`
+
+## Second Executed Environment — Windows 11 + Google Chrome 154 (E3)
+
+The same fixture was executed on a second, independent real desktop host to widen the proven tuple beyond Chromium/Linux. No scenario semantics, extension code, broker code, or server behavior were changed; only the runner gained a Windows execution path (`os.name == "nt"`) plus research-only host-registration material.
+
+Environment identity:
+
+- Platform: `Windows-11-10.0.26200-SP0` x86_64, real interactive desktop (no Xvfb equivalent used);
+- Browser: Google Chrome `154.0.8037.58` (`C:\Program Files\Google\Chrome\Application\chrome.exe`);
+- Python: `3.14.7`;
+- Extension ID: `pfmdeelofnfcfabikilcoichkfclmgoj` (pinned via manifest key, identical to the Linux run);
+- Native host: `com.kaicreator.xdownload.auth_demo`;
+- Browser sender origin: `chrome-extension://pfmdeelofnfcfabikilcoichkfclmgoj/`;
+- Command: `python tests/architecture-browser-auth/run_e3_demo.py`.
+
+Windows-specific real-environment mechanics recorded for reproducibility:
+
+- Chrome 154 no longer honors the removed `--load-extension` path; the runner installs the unpacked fixture through DevTools `Extensions.loadUnpacked` over `--remote-debugging-port`, connecting with a stdlib WebSocket client that omits the `Origin` header (Chrome rejects foreign `Origin` handshakes) and falls back to the profile's `DevToolsActivePort` file for the actual bound port.
+- Native Messaging host registration uses the documented Windows mechanism: a manifest JSON plus an `HKCU\Software\Google\Chrome\NativeMessagingHosts\<name>` registry value. Keys created by the runner are deleted again at run end.
+- Chrome on Windows launches native hosts with `CreateProcess`, which refuses `.bat`/`.cmd` wrappers; the runner compiles a tiny C# launcher exe (in-box `csc.exe`, .NET Framework 4.x) that forwards stdio to the Python broker and injects the evidence environment variables. A `.bat` probe host was empirically rejected on this Chrome build.
+- The host had no enterprise extension policy (`ExtensionInstallBlocklist` absent); two pre-existing third-party `HKCU\...\Google\Chrome\Extensions` registrations were observed and left untouched. They do not interfere with the fixture.
+
+Second-tuple scenario matrix (all eight scenarios executed by the same extension/background.js flow):
+
+| Scenario | Actual | Status |
+|---|---|---|
+| S1 authenticated handoff | real browser session → real Native Messaging broker → HTTP `200`; digest `94c22cd46d42c6167639aaeaf8e1215b69b8fa51f3f4490c8642f4234960afff` | PASS |
+| S2 observation boundary | real `webRequest` captured relevant + irrelevant metadata with tab/frame/request/origin provenance | PASS |
+| S3 cross-origin misuse | `scope_mismatch`, `network_attempted=false`, cross-origin forged requests `0` | PASS |
+| S4 content-script boundary | oversized unexpected schema rejected as `message_too_large` before privileged/native action | PASS |
+| S5 native allow-list | Chrome rejected mismatched `allowed_origins`: `Access to the specified native messaging host is forbidden.`; denied host not launched | PASS |
+| S6 secret propagation | Core/durable/log/Recipe/model raw-secret flags all `false`; artifact scan hits `0` | PASS |
+| S7 session expiry | same opaque auth ref; bound resource returned HTTP `401`, `status=auth_required`; no scope widening | PASS |
+| S8 partition/context | real partition-aware cookie lookup succeeded for correct context, wrong context absent; correct capability binding accepted, wrong partition rejected | PASS |
+
+Representative second-run observables: `tab_id=487716060`, `frame_id=0`, `observed_request_id=4`, `authorization_context_ref=authctx_d70cb5e18686fb9fefd52b6d`, native messages before finalize `10` (payload sizes `343,324,447,198,197,335,358,351,351,324`), server counters: resource requests `3`, authorized `2`, unauthorized `1`, cross-origin forged `0`. The controlled sentinel secret was not printed or persisted; the run-local origin port, tab ID, and capability ref are intentionally not architecture constants.
 
 ## Expected vs Actual
 
@@ -112,7 +149,7 @@ S7 invalidated the controlled session after capability creation. The subsequent 
 ## What was NOT proven
 
 - Firefox or Safari behavior;
-- Windows or macOS native-host registration/packaging;
+- macOS native-host registration/packaging (Windows registration is now proven for the tested Chrome 154 tuple; packaging/distribution remains unproven);
 - extension-store installation, signing, update, or review;
 - arbitrary third-party authenticated sites;
 - production credential vault implementation;
@@ -134,9 +171,11 @@ S7 invalidated the controlled session after capability creation. The subsequent 
 
 ### ADAPT
 
-- Automated modern-Chromium research setup should use DevTools `Extensions.loadUnpacked` (or another supported test installation mechanism), not assume `--load-extension` remains available.
+- Automated modern-Chromium research setup should use DevTools `Extensions.loadUnpacked` (or another supported test installation mechanism), not assume `--load-extension` remains available (it is gone on Chrome 154).
 - Real test environments must explicitly record enterprise extension policy because host policy can block unpacked research fixtures before xDownload code executes.
 - Partition context should be an explicit optional field of the authorization-capability binding where the browser exposes partition-aware state.
+- Windows native hosts must be real executables (a small compiled launcher); `.bat`/`.cmd` wrappers are refused by `CreateProcess`, and registration is per-user registry plus manifest, not an XDG-style directory.
+- DevTools automation on Windows should discover the actual bound port via the profile's `DevToolsActivePort` file and must not send a foreign `Origin` header on the WebSocket handshake.
 
 ### DROP
 

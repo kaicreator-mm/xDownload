@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import hashlib
 import http.server
 import json
@@ -7,7 +8,9 @@ import platform
 import secrets
 import select
 import shutil
+import socket
 import socketserver
+import struct
 import subprocess
 import sys
 import tempfile
@@ -15,6 +18,7 @@ import threading
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import urlopen
 
 EXPECTED_EXTENSION_ID = "pfmdeelofnfcfabikilcoichkfclmgoj"
 HOST_NAME = "com.kaicreator.xdownload.auth_demo"
@@ -252,6 +256,243 @@ class CdpPipe:
             except OSError: pass
 
 
+class CdpWebSocket:
+    """Minimal stdlib WebSocket client for Chrome DevTools on Windows hosts.
+
+    Chrome rejects WebSocket handshakes carrying a foreign Origin header, so this
+    client simply omits the Origin header instead of requiring
+    --remote-allow-origins. Only what the E3 harness needs: text frames, ping
+    replies, fragmented payloads.
+    """
+
+    def __init__(self, url, timeout=15):
+        assert url.startswith("ws://")
+        authority, _, resource = url[5:].partition("/")
+        host, _, port = authority.partition(":")
+        self.sock = socket.create_connection((host, int(port)), timeout=timeout)
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        request = (
+            f"GET /{resource} HTTP/1.1\r\n"
+            f"Host: {authority}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        self.sock.sendall(request.encode("ascii"))
+        buffer = b""
+        while b"\r\n\r\n" not in buffer:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise RuntimeError("ws_handshake_eof")
+            buffer += chunk
+        header, _, remainder = buffer.partition(b"\r\n\r\n")
+        status = header.split(b"\r\n", 1)[0]
+        if b"101" not in status:
+            raise RuntimeError(f"ws_handshake_rejected:{status.decode('latin-1', 'replace')}")
+        self.buffer = remainder
+        self.next_id = 0
+
+    def _fill(self):
+        chunk = self.sock.recv(65536)
+        if not chunk:
+            raise RuntimeError("ws_eof")
+        self.buffer += chunk
+
+    def _send_frame(self, opcode, payload):
+        header = bytes([0x80 | opcode])
+        size = len(payload)
+        if size < 126:
+            header += bytes([0x80 | size])
+        elif size < 65536:
+            header += bytes([0x80 | 126]) + struct.pack(">H", size)
+        else:
+            header += bytes([0x80 | 127]) + struct.pack(">Q", size)
+        mask = os.urandom(4)
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        self.sock.sendall(header + mask + masked)
+
+    def _read_message(self):
+        parts = []
+        while True:
+            while len(self.buffer) < 2:
+                self._fill()
+            first, second = self.buffer[0], self.buffer[1]
+            opcode = first & 0x0F
+            size = second & 0x7F
+            index = 2
+            if size == 126:
+                while len(self.buffer) < 4:
+                    self._fill()
+                size = struct.unpack(">H", self.buffer[2:4])[0]
+                index = 4
+            elif size == 127:
+                while len(self.buffer) < 10:
+                    self._fill()
+                size = struct.unpack(">Q", self.buffer[2:10])[0]
+                index = 10
+            while len(self.buffer) < index + size:
+                self._fill()
+            payload = self.buffer[index:index + size]
+            self.buffer = self.buffer[index + size:]
+            if opcode == 0x9:
+                self._send_frame(0xA, payload)
+                continue
+            if opcode == 0x8:
+                raise RuntimeError("ws_closed_by_peer")
+            if opcode in (0x0, 0x1, 0x2):
+                parts.append(payload)
+                if first & 0x80:
+                    return b"".join(parts)
+
+    def call(self, method, params=None, timeout=15):
+        self.next_id += 1
+        request_id = self.next_id
+        payload = json.dumps({"id": request_id, "method": method, "params": params or {}}).encode("utf-8")
+        self._send_frame(0x1, payload)
+        self.sock.settimeout(timeout)
+        while True:
+            message = json.loads(self._read_message().decode("utf-8"))
+            if message.get("id") == request_id:
+                return message
+
+    def close(self):
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+def find_chrome_windows():
+    if os.environ.get("XD_CHROME_BIN"):
+        candidate = Path(os.environ["XD_CHROME_BIN"])
+        if candidate.exists():
+            return str(candidate)
+        return None
+    roots = [
+        os.environ.get("PROGRAMFILES"),
+        os.environ.get("PROGRAMFILES(X86)"),
+        os.environ.get("LOCALAPPDATA"),
+    ]
+    for root in roots:
+        if not root:
+            continue
+        candidate = Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe"
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("chrome.exe")
+
+
+def chrome_version_windows():
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon")
+        version, _ = winreg.QueryValueEx(key, "version")
+        winreg.CloseKey(key)
+        return f"Google Chrome {version}"
+    except Exception:
+        return "Google Chrome (version unread from registry)"
+
+
+def find_csc():
+    windir = os.environ.get("WINDIR", r"C:\Windows")
+    for sub in (r"Microsoft.NET\Framework64\v4.0.30319", r"Microsoft.NET\Framework\v4.0.30319"):
+        candidate = Path(windir) / sub / "csc.exe"
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("csc.exe")
+
+
+def compile_native_launcher(csc, work, python_exe, script, env_pairs, marker=None):
+    """Compile a tiny native launcher exe.
+
+    Chrome on Windows launches the native host with CreateProcess, which refuses
+    .bat/.cmd wrappers; the launcher forwards stdio to the Python broker and
+    injects the evidence environment variables.
+    """
+    def cs_string(value):
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
+    env_lines = "".join(
+        f'    psi.EnvironmentVariables["{name}"] = "{cs_string(value)}";\n'
+        for name, value in env_pairs
+    )
+    marker_line = ""
+    if marker is not None:
+        marker_line = f'    System.IO.File.WriteAllText("{cs_string(marker)}", "denied host launched");\n'
+    source = (
+        "using System;\n"
+        "using System.Diagnostics;\n"
+        "class XdNativeLauncher {\n"
+        "  static int Main(string[] args) {\n"
+        f"{marker_line}"
+        "    ProcessStartInfo psi = new ProcessStartInfo();\n"
+        f'    psi.FileName = "{cs_string(python_exe)}";\n'
+        "    psi.UseShellExecute = false;\n"
+        f"{env_lines}"
+        f'    string quoted = "\\"{cs_string(script)}\\"";\n'
+        "    foreach (string a in args) { quoted += \" \\\"\" + a + \"\\\"\"; }\n"
+        "    psi.Arguments = quoted;\n"
+        "    Process p = Process.Start(psi);\n"
+        "    p.WaitForExit();\n"
+        "    return p.ExitCode;\n"
+        "  }\n"
+        "}\n"
+    )
+    cs_path = work / ("XdNativeLauncherDenied.cs" if marker is not None else "XdNativeLauncher.cs")
+    cs_path.write_text(source, encoding="utf-8")
+    exe_path = work / ("XdNativeLauncherDenied.exe" if marker is not None else "XdNativeLauncher.exe")
+    result = subprocess.run(
+        [csc, "/nologo", "/target:exe", f"/out:{exe_path}", str(cs_path)],
+        capture_output=True, text=True, timeout=180,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"csc_failed:{result.stderr.strip()[:300]}")
+    return exe_path
+
+
+def register_native_host(name, manifest_path):
+    import winreg
+    reg_path = rf"Software\Google\Chrome\NativeMessagingHosts\{name}"
+    existed = False
+    try:
+        winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path).Close()
+        existed = True
+    except OSError:
+        pass
+    key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, reg_path, 0, winreg.KEY_SET_VALUE)
+    winreg.SetValueEx(key, None, 0, winreg.REG_SZ, str(manifest_path))
+    winreg.CloseKey(key)
+    return reg_path if not existed else None
+
+
+def unregister_native_host(reg_path):
+    if not reg_path:
+        return
+    import winreg
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, reg_path)
+    except OSError:
+        pass
+
+
+def start_controlled_server():
+    state = DemoState()
+    server = ReusableHTTPServer(("127.0.0.1", 0), Handler)
+    server.state = state
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    return state, server, thread, port, f"http://127.0.0.1:{port}/login", f"http://127.0.0.1:{port}/warmup"
+
+
+def stop_controlled_server(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=2)
+
+
 def evaluate(native, state, denied_launched, external_secret_hits):
     e = native.get("extension_evidence", {})
     b = native.get("broker", {})
@@ -285,6 +526,12 @@ def main():
     here = Path(__file__).resolve().parent
     extension_dir = here / "extension"
     native_host = here / "native_host.py"
+    if os.name == "nt":
+        return main_windows(here, extension_dir, native_host)
+    return main_posix(here, extension_dir, native_host)
+
+
+def main_posix(here, extension_dir, native_host):
     chromium = "/usr/lib/chromium/chromium" if Path("/usr/lib/chromium/chromium").exists() else (shutil.which("chromium") or shutil.which("google-chrome") or shutil.which("google-chrome-stable"))
     if not chromium:
         print(json.dumps({"result": "BLOCKED", "reason": "reference_browser_not_found"}))
@@ -314,14 +561,7 @@ def main():
     write_native_manifest(profile_host_dir / f"{HOST_NAME}.json", HOST_NAME, normal_wrapper, EXPECTED_EXTENSION_ID)
     write_native_manifest(profile_host_dir / f"{DENIED_HOST_NAME}.json", DENIED_HOST_NAME, denied_wrapper, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
-    state = DemoState()
-    server = ReusableHTTPServer(("127.0.0.1", 0), Handler)
-    server.state = state
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    port = server.server_address[1]
-    login_url = f"http://127.0.0.1:{port}/login"
-    warmup_url = f"http://127.0.0.1:{port}/warmup"
+    state, server, thread, port, login_url, warmup_url = start_controlled_server()
 
     xvfb = shutil.which("Xvfb")
     if not xvfb:
@@ -405,8 +645,7 @@ def main():
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait(timeout=5)
-    server.shutdown()
-    server.server_close()
+    stop_controlled_server(server, thread)
     if xvfb_proc.poll() is None:
         xvfb_proc.terminate()
         try:
@@ -415,9 +654,7 @@ def main():
             xvfb_proc.kill()
             xvfb_proc.wait(timeout=3)
     xvfb_handle.close()
-    thread.join(timeout=2)
     server_log.write_text(json.dumps({"counters": state.counters, "events": state.events}, indent=2), encoding="utf-8")
-
     if not evidence_path.exists():
         print(json.dumps({
             "result": "BLOCKED",
@@ -429,21 +666,35 @@ def main():
             "browser_log": str(browser_log),
         }, indent=2))
         return 2
+    environment = {
+        "platform": platform.platform(),
+        "python": sys.version.split()[0],
+        "browser": chromium_version(chromium),
+        "browser_binary": chromium,
+        "display": display,
+    }
+    exit_code, _ = report_result(work, state, evidence_path, browser_log, server_log, denied_marker.exists(), environment, started)
+    return exit_code
 
+
+def report_result(work, state, evidence_path, browser_log, server_log, denied_launched, environment, started):
+    server_log.write_text(json.dumps({"counters": state.counters, "events": state.events}, indent=2), encoding="utf-8")
+    if not evidence_path.exists():
+        print(json.dumps({
+            "result": "BLOCKED",
+            "reason": "native_evidence_not_produced",
+            "workdir": str(work),
+            "browser_log": str(browser_log),
+        }, indent=2))
+        return 2, None
     native = json.loads(evidence_path.read_text(encoding="utf-8"))
     secret_hits = scan_secret([evidence_path, browser_log, server_log], state.secret)
-    scenarios = evaluate(native, state, denied_marker.exists(), secret_hits)
+    scenarios = evaluate(native, state, denied_launched, secret_hits)
     result = "PASS" if all(scenarios.values()) else "FAIL"
     combined = {
         "result": result,
         "evidence_strength": "E3",
-        "environment": {
-            "platform": platform.platform(),
-            "python": sys.version.split()[0],
-            "browser": chromium_version(chromium),
-            "browser_binary": chromium,
-            "display": display,
-        },
+        "environment": environment,
         "identity": {
             "extension_id": native.get("extension_evidence", {}).get("extension_id"),
             "expected_extension_id": EXPECTED_EXTENSION_ID,
@@ -488,7 +739,173 @@ def main():
     combined_path = work / "e3-result.json"
     combined_path.write_text(json.dumps(combined, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(combined, indent=2, sort_keys=True))
-    return 0 if result == "PASS" else 1
+    return (0 if result == "PASS" else 1), combined
+
+
+def main_windows(here, extension_dir, native_host):
+    chrome = find_chrome_windows()
+    if not chrome:
+        print(json.dumps({"result": "BLOCKED", "reason": "reference_browser_not_found"}))
+        return 2
+    csc = find_csc()
+    if not csc:
+        print(json.dumps({"result": "BLOCKED", "reason": "csc_not_found_for_native_launcher"}))
+        return 2
+
+    work = Path(tempfile.mkdtemp(prefix="xdownload-e3-"))
+    profile = work / "profile"
+    evidence_path = work / "native-evidence.json"
+    browser_log = work / "chrome.log"
+    server_log = work / "server-events.json"
+    denied_marker = work / "denied-host-launched"
+    profile.mkdir(parents=True, exist_ok=True)
+
+    launcher = compile_native_launcher(
+        csc, work, sys.executable, str(native_host),
+        [("XD_EVIDENCE_PATH", str(evidence_path)), ("XD_DENIED_MARKER", str(denied_marker))],
+    )
+    denied_launcher = compile_native_launcher(
+        csc, work, sys.executable, str(native_host),
+        [("XD_EVIDENCE_PATH", str(evidence_path)), ("XD_DENIED_MARKER", str(denied_marker))],
+        marker=str(denied_marker),
+    )
+    manifest_dir = work / "native-manifests"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    write_native_manifest(manifest_dir / f"{HOST_NAME}.json", HOST_NAME, launcher, EXPECTED_EXTENSION_ID)
+    write_native_manifest(manifest_dir / f"{DENIED_HOST_NAME}.json", DENIED_HOST_NAME, denied_launcher, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+
+    state, server, thread, port, login_url, warmup_url = start_controlled_server()
+
+    reg_paths = []
+    cdp_error = None
+    extension_load = None
+    proc = None
+    started = time.time()
+    try:
+        reg_paths.append(register_native_host(HOST_NAME, manifest_dir / f"{HOST_NAME}.json"))
+        reg_paths.append(register_native_host(DENIED_HOST_NAME, manifest_dir / f"{DENIED_HOST_NAME}.json"))
+
+        debug_port = _free_tcp_port()
+        cmd = [
+            chrome,
+            f"--user-data-dir={profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-sync",
+            f"--remote-debugging-port={debug_port}",
+            "--enable-unsafe-extension-debugging",
+            "--window-size=1200,800",
+            "about:blank",
+        ]
+        with browser_log.open("wb") as log:
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=log)
+            try:
+                version_reply, wait_state = _wait_for_browser(debug_port, profile, proc)
+                if version_reply is None:
+                    cdp_error = f"debug_port_unreachable:{wait_state}"
+                else:
+                    ws = CdpWebSocket(version_reply["webSocketDebuggerUrl"], timeout=15)
+                    try:
+                        ws.call("Browser.getVersion", timeout=10)
+                        extension_load = ws.call("Extensions.loadUnpacked", {"path": str(extension_dir)}, timeout=15)
+                        if "error" in extension_load:
+                            cdp_error = extension_load["error"].get("message", "extension_load_failed")
+                        else:
+                            loaded_id = extension_load.get("result", {}).get("id")
+                            if loaded_id != EXPECTED_EXTENSION_ID:
+                                cdp_error = f"extension_id_mismatch:{loaded_id}"
+                            else:
+                                warmup_reply = ws.call("Target.createTarget", {"url": warmup_url}, timeout=10)
+                                if "error" in warmup_reply:
+                                    cdp_error = warmup_reply["error"].get("message", "warmup_target_create_failed")
+                                else:
+                                    time.sleep(1.0)
+                                    target_reply = ws.call("Target.createTarget", {"url": login_url}, timeout=10)
+                                    if "error" in target_reply:
+                                        cdp_error = target_reply["error"].get("message", "target_create_failed")
+                        deadline = time.time() + (60 if cdp_error is None else 2)
+                        while time.time() < deadline and not evidence_path.exists():
+                            if proc.poll() is not None:
+                                break
+                            time.sleep(0.2)
+                        if evidence_path.exists():
+                            time.sleep(0.5)
+                    finally:
+                        ws.close()
+            except Exception as exc:
+                cdp_error = f"cdp_error:{type(exc).__name__}:{exc}"
+    finally:
+        for reg_path in reg_paths:
+            unregister_native_host(reg_path)
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+    stop_controlled_server(server, thread)
+
+    if not evidence_path.exists():
+        print(json.dumps({
+            "result": "BLOCKED",
+            "reason": "native_evidence_not_produced",
+            "browser_exit": proc.returncode if proc else None,
+            "cdp_error": cdp_error,
+            "extension_load": extension_load,
+            "workdir": str(work),
+            "browser_log": str(browser_log),
+        }, indent=2))
+        return 2
+    environment = {
+        "platform": platform.platform(),
+        "python": sys.version.split()[0],
+        "browser": chrome_version_windows(),
+        "browser_binary": chrome,
+        "display": "real-desktop-win32",
+    }
+    exit_code, _ = report_result(work, state, evidence_path, browser_log, server_log, denied_marker.exists(), environment, started)
+    return exit_code
+
+
+def _free_tcp_port():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    return port
+
+
+def _wait_for_browser(debug_port, profile, proc, timeout=20):
+    """Wait until Chrome's DevTools endpoint answers; also discover the actual
+    port from the profile's DevToolsActivePort file in case Chrome bound a
+    different one. Returns (version_dict_or_None, diagnostic_state)."""
+    active_port_file = Path(profile) / "DevToolsActivePort"
+    last_error = None
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        rc = proc.poll()
+        if rc is not None:
+            return None, f"browser_exited_early:{rc}"
+        ports = [debug_port]
+        try:
+            ports.insert(0, int(active_port_file.read_text(encoding="utf-8").split()[0]))
+        except Exception:
+            pass
+        for port in ports:
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/json/version", timeout=2) as response:
+                    return json.loads(response.read().decode("utf-8")), "connected"
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}:{port}:{exc}"
+        time.sleep(0.3)
+    return None, f"timeout_last_error:{last_error}"
 
 
 if __name__ == "__main__":
