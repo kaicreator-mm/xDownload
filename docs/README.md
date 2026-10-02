@@ -10,13 +10,14 @@ xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision
 - Formal L1 Product Evidence: **COMPLETE / checkpointed** — [`product/L1_PRODUCT_EVIDENCE.md`](product/L1_PRODUCT_EVIDENCE.md)
 - Stage 1 Freeze record: [`planning/STAGE1_PRODUCT_SCOPE_FREEZE.md`](planning/STAGE1_PRODUCT_SCOPE_FREEZE.md)
 - Product release target: `v0.1.0`
-- Stage 2 L2 Architecture Evidence: **CANDIDATE / READY_FOR_ARCH_REREVIEW / NOT FROZEN** — [`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md)
+- Stage 2 L2 Architecture Evidence: **FROZEN** — [`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md)
+- Stage 2 Architecture Freeze record: [`planning/STAGE2_ARCHITECTURE_FREEZE.md`](planning/STAGE2_ARCHITECTURE_FREEZE.md)
 - Architecture UNKNOWN disposition: **0 unresolved material UNKNOWNs**
-- Research Demo #7: **PASS evidence consumed** — terminal `5953990637`, final research HEAD `4adbe7c587920383a654e020de757e2de657c312`
-- Research Demo #8: **PASS evidence consumed** — terminal `5954331493`, final research HEAD `b5fbbe1ef22414cacfede5fdb9d1aac1f858e5cb`
-- Architecture Review #10: **NEEDS_REVISION** — sole blocker `AR-F01`; bounded L2 repair completed and awaits fresh independent Re-Review
-- Architecture Freeze: **NO**
-- Task DAG: **NOT STARTED**
+- Research Demo #7: **PASS evidence consumed** — terminal `5953990637`, exact consumed HEAD `4adbe7c587920383a654e020de757e2de657c312`
+- Research Demo #8: **PASS evidence consumed** — terminal `5954331493`, exact consumed Linux HEAD `b5fbbe1ef22414cacfede5fdb9d1aac1f858e5cb`, tree `486fb32577ac89f41276614611a7ef582ab68a15`; later Windows tuple is additive provenance only
+- Architecture Re-Review #12: **PASS / Freeze Eligible YES** — terminal `5956402251`, `AR-F01=CLOSED`
+- Architecture Freeze: **FROZEN**
+- Task DAG: **ELIGIBLE / NOT STARTED**
 - Implementation: **NOT STARTED**
 
 The PRD document revision is not the product release version. The current integration/checkpoint branch is `version/v0.1.0`.
@@ -27,11 +28,11 @@ The Frozen Product/Scope preserves the product thesis and rules defined by the r
 
 Downstream Architecture or implementation work may not mutate those Product semantics for convenience. Product Review PASS is assurance evidence only; it is not executable Validation, Architecture Freeze, Version Closure or Release PASS.
 
-## Stage 2 L2 Architecture Evidence
+## Frozen Stage 2 L2 Architecture
 
-[`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md) is the current **candidate / READY_FOR_ARCH_REREVIEW / NOT FROZEN** L2 artifact.
+[`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md) is the exact **FROZEN** L2 artifact bound by [`planning/STAGE2_ARCHITECTURE_FREEZE.md`](planning/STAGE2_ARCHITECTURE_FREEZE.md).
 
-Current evidence disposition:
+Frozen evidence disposition:
 
 ```text
 MATERIAL_CONCERNS_TRACKED=9
@@ -41,24 +42,27 @@ EXECUTABLE_DEMO_REQUIRED=0
 BLOCKED_UNKNOWNS=0
 ARCHITECTURE_CONTRADICTIONS=0
 CURRENT_UNRESOLVED_ARCHITECTURE_UNKNOWNS=0
+AR_F01=CLOSED
 ```
 
-Candidate architecture still centers on one local authoritative Core Control Runtime shared by thin Desktop/CLI/Browser adapters, typed Evidence and canonical result projection, declarative bounded Recipe execution, protocol-specific acquisition adapters, and a local persistence/artifact boundary. These remain Architecture candidate decisions rather than Frozen facts.
+The Frozen architecture centers on one local authoritative Core Control Runtime shared by thin Desktop/CLI/Browser adapters, typed Evidence and canonical result projection, declarative bounded Recipe execution, protocol-specific acquisition adapters, and a local persistence/artifact boundary.
 
-The successor L2 consumes the exact executable Research Demo evidence instead of leaving U2/U3 as Demo-required:
+The Frozen L2 consumes exact executable Research Demo evidence narrowly:
 
-- **Issue #7 / U2** — PASS: real SQLite + filesystem + separate-process SIGKILL/restart + two-client concurrency supports stable snapshot/budget/effect/artifact truth for the tested Linux process-death/reopen tuple. Host power-loss durability remains NOT proven. Its cancel-vs-auto-recovery precedence item was explicitly `ADAPT`, not universally proven.
-- **Issue #8 / U3** — PASS: real Chromium 144 MV3 extension + `webRequest` + browser cookie/partition context + real Native Messaging host + scoped local auth broker supports opaque auth-reference/provenance binding and tested secret containment on Linux. Firefox/Safari, Windows/macOS registration/packaging, store distribution and production credential-vault behavior remain NOT proven.
+- **Issue #7 / U2** — PASS: real SQLite + filesystem + separate-process SIGKILL/restart + two-client concurrency supports stable snapshot/budget/effect/artifact truth for the tested Linux process-death/reopen tuple. Host power-loss durability remains NOT proven. Its cancel-vs-auto-recovery precedence item was explicitly `ADAPT`, not universally proven by the Demo.
+- **Issue #8 / U3** — PASS: the exact consumed Chromium/Linux evidence at `b5fbbe1...` / tree `486fb325...` supports the scoped browser/auth seam. The later Windows/Chrome evidence at `f04092e...` is additive provenance and does not replace the consumed Linux authority.
 
-The bounded `AR-F01` repair now defines one Core-owned cancellation-vs-recovery/validation/acceptance/finalization precedence: durable cancellation before durable acceptance blocks automatic later acceptance; durable acceptance before cancellation is not retroactively revoked; bounded reconciliation may establish truth; only explicit retry/resume may reopen processing on the same frozen lineage and remaining budgets. Frozen Product semantics were not changed.
+The repaired L2 defines one Core-owned cancellation-vs-recovery/validation/acceptance/finalization precedence: durable cancellation before durable acceptance blocks automatic later acceptance; durable acceptance before cancellation is not retroactively revoked; bounded reconciliation may establish truth; only explicit retry/resume may reopen processing on the same frozen lineage and remaining budgets. Frozen Product semantics were not changed.
 
 Research fixtures remain isolated research evidence and were not merged wholesale into the version branch.
 
+Architecture Review PASS and this Freeze are planning/assurance checkpoints only. They do not prove production Validation, packaging/install/update readiness, Release Qualification, or Release PASS.
+
 ## Next lifecycle action
 
-The next action is a **fresh independent Architecture Re-Review** on the exact current L2 candidate, specifically verifying `AR-F01` closure.
+The next separately authorized action is **ADS Stage 2.4 Task DAG definition**.
 
-Only after a current exact-subject Architecture Re-Review and a separately authorized Architecture Freeze decision may the project generate a Task DAG. No Task DAG or production implementation is authorized by the current bounded repair.
+Task DAG generation/materialization has **not** started, and implementation remains **NOT STARTED**. Downstream work may not alter Frozen Architecture Facts/Decisions except through the formal ADS Architecture Amendment / newly discovered material UNKNOWN process.
 
 ## Durable Product/Review history
 
@@ -69,3 +73,4 @@ Only after a current exact-subject Architecture Re-Review and a separately autho
 - [`product/PRD-v0.4.2-review-candidate.md`](product/PRD-v0.4.2-review-candidate.md)
 - [`planning/STAGE1_PRODUCT_SCOPE_FREEZE.md`](planning/STAGE1_PRODUCT_SCOPE_FREEZE.md)
 - [`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md)
+- [`planning/STAGE2_ARCHITECTURE_FREEZE.md`](planning/STAGE2_ARCHITECTURE_FREEZE.md)

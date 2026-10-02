@@ -8,16 +8,16 @@
 
 ## Structure Profile
 
-- Repository profile: `other — planning-stage product repository; implementation structure not yet Architecture Frozen`
-- Main modules: `docs/` only at current Stage 0/1 checkpoint
+- Repository profile: `other — planning-stage product repository; Architecture Frozen, Task DAG not yet defined`
+- Main modules: `docs/` only at current Stage 2 Architecture Freeze checkpoint
 - Intentional deviations from `PROJECT_STRUCTURE.md`:
-  - `Implementation layout is not yet established because L2 Architecture has not started.`
+  - `Implementation layout is not yet established because Task DAG definition/materialization and implementation have not started.`
 
 ## Integration / GitHub Execution Profile
 
 - Integration mode: `version-branch`
 - Version integration branch pattern: `version/vX.Y.Z`
-- Current integration/checkpoint branch: `version/v0.1.0` (`Product/Scope FROZEN`; L2 eligible but not started)
+- Current integration/checkpoint branch: `version/v0.1.0` (`Product/Scope FROZEN`; `Architecture FROZEN`; Task DAG eligible but not started)
 - Prior Stage 1 planning/evidence branch: `docs/product-baseline-2026-10-01`
 - Issue-based execution DAG: `enabled after Frozen Task DAG is materialized`
 - Task Issue template/profile: `canonical pinned-standard task issue contract`
@@ -70,9 +70,9 @@ For Stage 1 Product Freeze of the initial xDownload product definition, independ
 
 Current planning-stage state:
 
-- Linux validation: `NOT_RUN — implementation/runtime not established before L2`
-- Windows validation: `NOT_RUN — implementation/runtime not established before L2`
-- macOS validation: `NOT_RUN — target platform matrix not Product/Architecture Frozen`
+- Linux validation: `NOT_RUN — implementation/runtime not established before Task DAG/implementation`
+- Windows validation: `NOT_RUN — implementation/runtime not established before Task DAG/implementation`
+- macOS validation: `NOT_RUN — concrete production platform validation tuple not yet established`
 - Other real environment/device: `NOT_RUN — not yet defined`
 
 Exact platform/runtime validation tuples will be defined by Frozen PRD/Architecture and downstream Task authority.
@@ -81,7 +81,7 @@ Exact platform/runtime validation tuples will be defined by Frozen PRD/Architect
 
 - CI profile: `disabled`
 - Disabled reason: `planning-stage repository; no implementation/toolchain exists yet`
-- Exact-SHA clean-validation fallback: `NOT_RUN — implementation validation is not yet applicable to current Stage 0/1 planning artifacts; formal document Review remains exact-subject bound`
+- Exact-SHA clean-validation fallback: `NOT_RUN — implementation validation is not yet applicable to current planning artifacts; formal document Review remains exact-subject bound`
 
 CI profile MUST be revisited before implementation tasks begin.
 
@@ -115,7 +115,7 @@ CI profile MUST be revisited before implementation tasks begin.
 
 ## Runtime / Platform Requirements
 
-- Supported OS/platform: `NOT_FROZEN — Architecture decision pending`
+- Supported OS/platform: `NOT_FROZEN — concrete production platform matrix remains downstream of the Frozen architecture boundaries`
 - Required runtime/toolchain versions: `NOT_FROZEN`
 - Required services: `NOT_FROZEN`
 - Required SDK/device: `NOT_FROZEN`
@@ -129,13 +129,15 @@ CI profile MUST be revisited before implementation tasks begin.
 - No Task DAG freeze before L2 Architecture Freeze.
 - No implementation dispatch before Frozen Task DAG materialization and task Review Policy assignment.
 - xDownload remains subject to its Frozen PRD product/security boundaries once Product Freeze occurs.
+- Frozen Architecture Facts/Decisions may change only through the formal ADS Architecture Amendment / newly discovered material UNKNOWN process.
 
 ## Required Release Gates
 
-Current Stage 0/1 does not define release gates beyond standard truthfulness. Release gates MUST be derived later from Frozen PRD / Frozen Architecture / Task authority / pinned standard; historical review notes do not create release gates by themselves.
+Current Stage 2 planning state does not claim release readiness. Release gates MUST be derived later from Frozen PRD / Frozen Architecture / Task authority / pinned standard; historical review notes do not create release gates by themselves.
 
 ## Ownership / Sensitive Areas
 
 - Product/Scope docs → Stage 1 Product authority; required independent review before Product Freeze.
+- Frozen Architecture → Stage 2 Architecture authority; changes require the formal amendment/new-material-UNKNOWN path.
 - Security/credential/browser-session boundaries → required independent review once implementation concerns exist.
 - Public contracts/schema/migration/data integrity → required independent review when applicable.
