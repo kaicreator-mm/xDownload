@@ -1,0 +1,176 @@
+{
+  "ads": "94cad2b0487e8a552c66d6bcd1cba36b7779383d",
+  "baseline": "44fd0fc7287b45735f069263c87486e6585fd7ae",
+  "environment": {
+    "filesystem": "overlayfs; fsync=volatile; proves process-death/reopen only, not host power loss",
+    "kernel": "Linux 6.18.44 x86_64",
+    "python": "3.13.5",
+    "sqlite": "3.46.1",
+    "utc": "2026-10-02T13:50:22Z"
+  },
+  "fixture": {
+    "artifact_digest": "f7d2387a8c103e5dcd80da42141156061b33e73d462f811256e1133219fd8b07",
+    "contract_id": "contract-e3-001",
+    "snapshot_digest": "5b6057ea887124721be73f4a0ac661b371a94fe7122aefb48b54b1cc84af7c4a",
+    "snapshot_id": "snapshot-e3-001",
+    "target_id": "target-e3-001"
+  },
+  "issue": 7,
+  "result": "PASS",
+  "scenarios": {
+    "S1": {
+      "accepted_count": 1,
+      "budgets": {
+        "DiscoveryBudget": [3, 0, 1, 2],
+        "GlobalSafetyBudget": [4, 0, 1, 3],
+        "TransferBudget": [2, 0, 1, 1]
+      },
+      "effect_count": 1,
+      "kill_markers": [],
+      "pids": [1384, 1398],
+      "recovery": "REOPEN_VERIFIED",
+      "sqlite_integrity": "ok",
+      "staging_count": 0,
+      "status": "ACCEPTED",
+      "terminal": "SUCCESS"
+    },
+    "S2": {
+      "accepted_count": 1,
+      "budgets": {
+        "DiscoveryBudget": [3, 0, 1, 2],
+        "GlobalSafetyBudget": [4, 0, 1, 3],
+        "TransferBudget": [2, 0, 1, 1]
+      },
+      "client_pids": [1423, 1424],
+      "created_flags": [false, true],
+      "effect_count": 1,
+      "kill_markers": [],
+      "lineages": ["lineage:target-e3-001", "lineage:target-e3-001"],
+      "pids": [1412],
+      "recovery": "NORMAL",
+      "sqlite_integrity": "ok",
+      "staging_count": 0,
+      "status": "ACCEPTED",
+      "terminal": "SUCCESS"
+    },
+    "S3": {
+      "accepted_count": 1,
+      "budgets": {
+        "DiscoveryBudget": [3, 0, 1, 2],
+        "GlobalSafetyBudget": [4, 0, 1, 3],
+        "TransferBudget": [2, 0, 1, 1]
+      },
+      "effect_count": 1,
+      "kill_markers": ["HARD_KILL:after_reservation_before_dispatch"],
+      "pids": [1448, 1460],
+      "recovery": "NORMAL",
+      "sqlite_integrity": "ok",
+      "staging_count": 0,
+      "status": "ACCEPTED",
+      "terminal": "SUCCESS"
+    },
+    "S4": {
+      "accepted_count": 1,
+      "budgets": {
+        "DiscoveryBudget": [3, 0, 1, 2],
+        "GlobalSafetyBudget": [4, 0, 1, 3],
+        "TransferBudget": [2, 0, 1, 1]
+      },
+      "effect_count": 1,
+      "kill_markers": ["HARD_KILL:after_partial_stage"],
+      "pids": [1474, 1486],
+      "recovery": "NORMAL",
+      "sqlite_integrity": "ok",
+      "staging_count": 0,
+      "status": "ACCEPTED",
+      "terminal": "SUCCESS"
+    },
+    "S5": {
+      "accepted_count": 1,
+      "budgets": {
+        "DiscoveryBudget": [3, 0, 1, 2],
+        "GlobalSafetyBudget": [4, 0, 1, 3],
+        "TransferBudget": [2, 0, 1, 1]
+      },
+      "effect_count": 1,
+      "kill_markers": ["HARD_KILL:after_complete_stage_before_accept"],
+      "pids": [1500, 1512],
+      "recovery": "NORMAL",
+      "sqlite_integrity": "ok",
+      "staging_count": 0,
+      "status": "ACCEPTED",
+      "terminal": "SUCCESS"
+    },
+    "S6": {
+      "db_first": {
+        "accepted_count": 1,
+        "budgets": {
+          "DiscoveryBudget": [3, 0, 1, 2],
+          "GlobalSafetyBudget": [4, 0, 1, 3],
+          "TransferBudget": [2, 0, 1, 1]
+        },
+        "effect_count": 1,
+        "kill_markers": ["HARD_KILL:after_db_accept_before_fs_finalize"],
+        "pids": [1552, 1564],
+        "recovery": "RECOVERED_DB_FIRST",
+        "sqlite_integrity": "ok",
+        "staging_count": 0,
+        "status": "ACCEPTED",
+        "terminal": "SUCCESS"
+      },
+      "fs_first": {
+        "accepted_count": 1,
+        "budgets": {
+          "DiscoveryBudget": [3, 0, 1, 2],
+          "GlobalSafetyBudget": [4, 0, 1, 3],
+          "TransferBudget": [2, 0, 1, 1]
+        },
+        "effect_count": 1,
+        "kill_markers": ["HARD_KILL:after_fs_finalize_before_db_accept"],
+        "pids": [1526, 1538],
+        "recovery": "RECOVERED_FS_FIRST",
+        "sqlite_integrity": "ok",
+        "staging_count": 0,
+        "status": "ACCEPTED",
+        "terminal": "SUCCESS"
+      }
+    },
+    "S7": {
+      "accepted_count": 1,
+      "budgets": {
+        "DiscoveryBudget": [3, 0, 1, 2],
+        "GlobalSafetyBudget": [4, 0, 1, 3],
+        "TransferBudget": [2, 0, 1, 1]
+      },
+      "cancel_count": 1,
+      "cancelled_status": "CANCELLED",
+      "effect_count": 1,
+      "kill_markers": ["HARD_KILL:after_partial_stage"],
+      "pids": [1578, 1590, 1605, 1620],
+      "recovery": "REOPEN_VERIFIED",
+      "sqlite_integrity": "ok",
+      "staging_count": 0,
+      "status": "ACCEPTED",
+      "terminal": "SUCCESS"
+    },
+    "S8": {
+      "accepted_count": 0,
+      "budgets": {
+        "DiscoveryBudget": [3, 0, 1, 2],
+        "GlobalSafetyBudget": [4, 0, 1, 3],
+        "TransferBudget": [2, 0, 1, 1]
+      },
+      "effect_count": 1,
+      "failure_reason": "expected=f7d2387a8c103e5dcd80da42141156061b33e73d462f811256e1133219fd8b07;actual=00283f10b3d8394d1f8efede36a214984f4da9464a0f5e125edf40ef465f1c69",
+      "kill_markers": ["HARD_KILL:after_complete_stage_before_accept"],
+      "pids": [1639, 1651],
+      "recovery": "DIGEST_MISMATCH",
+      "sqlite_integrity": "ok",
+      "staging_count": 1,
+      "status": "FAILED_INTEGRITY",
+      "terminal": "FAILED"
+    }
+  },
+  "schema": "xdownload/e3-durability-evidence-v1",
+  "tested_head": "5ed0cb63f30103786c8de7a74a265ed0378173a2"
+}
