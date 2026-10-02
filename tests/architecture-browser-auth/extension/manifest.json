@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "xDownload Architecture Browser Auth E3 Demo",
+  "version": "0.1.0",
+  "description": "Research-only E3 fixture for browser observation and scoped auth broker.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApSk2dGSit2MQQQzwY6XoRqC/Ju7vjPZ7vrL1U7KRn7JAOZAsvy8Cc/jl9F9QIv068cHwaEWCUCE8ySK8jKjlCsGOaUN29t7kgnfA8t3eEF42YsXiVnqiqAuLn4Rn8+4xeTjho/He1TL7rH2PKuc8zmLdFYu8Z90q20eCoZ8WLA8xh8EVFhQHBqtO8ebsWvdrTiYaKfm4WJvgdALrCQasMAKggKusFjXD+OToJ84/3CfMZ31Vsqe+bm0Enx7qfH57qFhBE/3jz8v8MU8wC8E3tRGnv3itpOIg8lsH31NMkLhb4KHgB97l2fWojsmuHdgWjDXr7u/0opQbIC9kj3qFdQIDAQAB",
+  "permissions": ["nativeMessaging", "cookies", "webRequest", "tabs"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://127.0.0.1/*",
+    "https://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
