@@ -4,41 +4,52 @@ xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision
 
 ## ADS lifecycle state
 
-- Stage 0 Intake/Baseline: ACTIVE / checkpointed in [`planning/STAGE0_INTAKE.md`](planning/STAGE0_INTAKE.md)
+- Stage 0 Intake/Baseline: checkpointed in [`planning/STAGE0_INTAKE.md`](planning/STAGE0_INTAKE.md)
 - Stage 1 Product/Scope: ACTIVE
 - Formal L1 Product Evidence: COMPLETE / checkpointed
+- Current PRD/Scope candidate: `PRD-v0.4.1-review-candidate.md`
 - Product Freeze: NO
 - Architecture Freeze: NO
 - L2 eligibility: NO
 - Task DAG: NOT STARTED
 - Implementation: NOT STARTED
 
-The PRD document version is not the product release version and is not itself a lifecycle state.
+The PRD document revision is not the product release version. The initial product release target selected by the current candidate is `xDownload v0.1.0`.
 
 ## Current Stage 1 evidence
 
-- [`product/L1_PRODUCT_EVIDENCE.md`](product/L1_PRODUCT_EVIDENCE.md) — formal ADS L1 Product Evidence using the pinned `prompts/L1_PRODUCT_EVIDENCE.md` structure. Recommendation: **PROCEED WITH NARROWING + REFRAME**.
-  - Basic transport, browser sniffing and AI/MCP control are already represented by strong existing products.
-  - xDownload's product thesis should focus on targeted resource acquisition, explicit bounded collections, Human-in-the-loop when necessary, validation, Template-first execution and bounded AI-on-gap.
-  - Product value, AI increment, local knowledge compounding and shared knowledge remain separate unproven hypotheses/gates.
+- [`product/L1_PRODUCT_EVIDENCE.md`](product/L1_PRODUCT_EVIDENCE.md) — formal ADS L1 Product Evidence. Recommendation: **PROCEED WITH NARROWING + REFRAME**.
+  - Basic transport, browser sniffing and AI/MCP control already exist in strong products.
+  - xDownload focuses on targeted resource acquisition, explicit bounded collections, Human-in-the-loop when necessary, validation, Template-first execution and bounded AI-on-gap.
+  - Product value, AI increment, local knowledge compounding and shared knowledge remain separate hypotheses/gates.
   - Economic benefit remains `NOT_MEASURED`.
 
-## Current product subject
+## Current Product/Scope review subject
 
-- [`product/PRD-v0.4-review-candidate.md`](product/PRD-v0.4-review-candidate.md) — latest committed PRD candidate currently reviewed as `NEEDS_REVISION`.
-- [`reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md) — durable independent review evidence bound to exact reviewed HEAD `a349b06cfb28c6d33a97241349a76ddb97b7d95b`; verdict `NEEDS_REVISION`, `PRODUCT_FREEZE_ELIGIBLE = NO`.
+- [`product/PRD-v0.4.1-review-candidate.md`](product/PRD-v0.4.1-review-candidate.md) — current complete, self-contained ADS Stage 1 Product/Scope Review Candidate.
+  - supersedes v0.3/v0.4 as the current PRD subject;
+  - initial product release target: `v0.1.0`;
+  - includes complete AcquisitionContract, Collection admission, Scope Grammar, SelectionSnapshot, Budget domains and precedence, multi-dimensional Result Model, CoverageTarget, typed Evidence/User Confirmation, UI/CLI contracts, concrete S1–S6 release support slices, Product Gates, C01–C34, Critical Journeys, release blockers and finding closure matrices.
 
-## Stage 1 required next artifacts
+## Durable review evidence
 
-Per the pinned ADS Development Workflow, xDownload must complete before Product Freeze:
+- [`reviews/2026-10-02-v0.2-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.2-fresh-independent-adversarial-review.md)
+- [`reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md)
+- [`reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md)
 
-1. formal current L1 Product Evidence — **COMPLETE**;
-2. a successor PRD/Scope candidate incorporating the L1 evidence and durable review closure;
-3. explicit problem, user behavior/business rules, scope/non-goals, release blockers, required gates and acceptance criteria;
-4. current exact-subject independent adversarial Product Review PASS, required by project override;
-5. Product/Scope Freeze checkpoint on the selected initial product version branch.
+The latest completed review is v0.4 at exact HEAD `a349b06cfb28c6d33a97241349a76ddb97b7d95b`, verdict `NEEDS_REVISION`, `PRODUCT_FREEZE_ELIGIBLE = NO`. v0.4.1 is the successor subject and has not yet been independently reviewed.
 
-No L2 Architecture work starts before that Freeze checkpoint.
+## Stage 1 required next actions
+
+Per the pinned ADS Development Workflow:
+
+1. Formal L1 Product Evidence — **COMPLETE**.
+2. Successor PRD/Scope candidate — **COMPLETE: v0.4.1 Review Candidate**.
+3. Fresh Independent Product/Scope Review on the current exact v0.4.1 subject — **NOT RUN**.
+4. If and only if the required review returns PASS with no blocking Product findings, create the Stage 1 Product/Scope Freeze checkpoint for release target `v0.1.0`.
+5. Only after that checkpoint, begin L2 Architecture Evidence.
+
+No L2 Architecture work starts before Product/Scope Freeze.
 
 ## Review/provenance history
 
@@ -49,9 +60,11 @@ No L2 Architecture work starts before that Freeze checkpoint.
 - [`product/PRD-v0.2-draft.md`](product/PRD-v0.2-draft.md)
 - [`reviews/2026-10-02-v0.2-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.2-fresh-independent-adversarial-review.md)
 - [`product/PRD-v0.3-review-candidate.md`](product/PRD-v0.3-review-candidate.md)
+- [`reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md)
 - [`product/PRD-v0.4-review-candidate.md`](product/PRD-v0.4-review-candidate.md)
 - [`reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md)
 - [`product/L1_PRODUCT_EVIDENCE.md`](product/L1_PRODUCT_EVIDENCE.md)
+- [`product/PRD-v0.4.1-review-candidate.md`](product/PRD-v0.4.1-review-candidate.md)
 
 ## Current product hierarchy under review
 
@@ -69,4 +82,4 @@ Independent validation
 Bounded AI fallback
 ```
 
-This is product content under Stage 1 review, not Frozen authority yet.
+This is Stage 1 product content under review, not Frozen authority yet.
