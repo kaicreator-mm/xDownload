@@ -1,6 +1,6 @@
 # xDownload — L2 Architecture Evidence
 
-Status: `STAGE 2 CANDIDATE / READY_FOR_ARCH_REVIEW / NOT FROZEN`
+Status: `STAGE 2 CANDIDATE / READY_FOR_ARCH_REREVIEW / NOT FROZEN`
 
 Product release target: `v0.1.0`  
 Successor research date: `2026-10-02`  
@@ -26,7 +26,15 @@ Research Demo authority consumed by this successor:
 - Issue #7 terminal comment `5953990637`, result `PASS`, final research HEAD `4adbe7c587920383a654e020de757e2de657c312`, exact executable harness `5ed0cb63f30103786c8de7a74a265ed0378173a2`
 - Issue #8 terminal comment `5954331493`, result `PASS`, final research HEAD `b5fbbe1ef22414cacfede5fdb9d1aac1f858e5cb`, final tree `486fb32577ac89f41276614611a7ef582ab68a15`
 
-Before this successor mutation, `version/v0.1.0`, `research_v0.1.0-durable-ledger-recovery`, and `research_v0.1.0-browser-auth-broker` were re-read and remained exactly at the identities above. No research branch was merged into the version branch.
+Bounded repair authority:
+
+- Fresh Independent Architecture Review Issue #10 terminal comment `5955027193`
+- review result `NEEDS_REVISION`; Architecture Freeze eligible `NO`
+- sole blocker `AR-F01`, severity `P1`, class `L2_CONTRACT_REPAIR`
+- no new Research Demo required and no Frozen Product contradiction identified
+- this revision repairs only cancellation-vs-recovery / acceptance precedence and directly necessary cross-references; the 9-concern evidence-disposition accounting is unchanged
+
+Before the original successor mutation, `version/v0.1.0`, `research_v0.1.0-durable-ledger-recovery`, and `research_v0.1.0-browser-auth-broker` were re-read and remained exactly at the identities above. Before this bounded repair, `version/v0.1.0` was re-read at `03f42c870281d6e9317317db47a2076b318d4894` / tree `1f1c8f37b86af2b867b1c26479a521c3090e4e07`, matching Issue #11's required starting baseline. No research branch was merged into the version branch.
 
 This artifact is **Architecture Evidence plus an evidence-supported candidate architecture**. It is not Architecture Freeze, Task DAG, implementation, executable production Validation, Release Qualification, or Release PASS. Frozen Product semantics are unchanged.
 
@@ -56,6 +64,7 @@ Claims in this document use distinct certainty levels:
 5. Issue #8 supplies real E3 evidence for the candidate browser observation/scoped-auth seam on one tested Chromium/Linux tuple.
 6. No Research Demo result contradicts the Frozen Product contract. No new material Architecture UNKNOWN was discovered by consuming those results.
 7. The candidate architecture must continue to preserve the authoritative `AcquisitionContract`, immutable confirmed scope and `SelectionSnapshot`, non-replenishing lifecycle budgets, truthful multidimensional terminal result, bounded collection boundary, browser/session security boundary, S1–S6 support slices, and crash/retry no-drift semantics.
+8. Issue #10 found one bounded L2 ambiguity (`AR-F01`): automatic recovery could otherwise race a durable user cancellation and permit opposite acceptance outcomes from identical durable facts. This revision resolves that ambiguity normatively without changing Frozen Product semantics or claiming new executable proof.
 
 ---
 
@@ -111,9 +120,9 @@ S1–S6 include direct HTTP/file, browser handoff, direct media, HLS VOD, curren
 
 ## D9 — Crash/restart/retry truth
 
-Restart/retry cannot reset budgets, drift snapshot membership, duplicate accepted effects, or rewrite uncertain/failed work into success.
+Restart/retry cannot reset budgets, drift snapshot membership, duplicate accepted effects, or rewrite uncertain/failed work into success. A durable cancellation must also have a deterministic precedence boundary against automatic reconciliation/acceptance.
 
-**Implication:** durable effect lineage plus explicit database/filesystem reconciliation are architecture-level concerns.
+**Implication:** durable effect lineage, explicit control-transition order and database/filesystem reconciliation are architecture-level concerns.
 
 ## D10 — Local product surfaces without unsupported platform promises
 
@@ -146,6 +155,7 @@ Candidate invariants for later L2 Freeze consideration:
 17. **Protocol normalization:** direct HTTP, HLS/media and browser-mediated adapters emit canonical effect/evidence/validation records and do not invent their own success semantics.
 18. **Accepted artifacts require validation:** transfer alone does not make an artifact accepted.
 19. **Replaceable platform implementation:** shell/framework/IPC/client/media tooling remain behind stable ports until specific evidence requires freezing a choice.
+20. **Cancellation acceptance cutoff:** for a frozen target/effect lineage, if durable `USER_CANCELLED` authority is committed before durable acceptance, automatic recovery/reconciliation MUST NOT later create acceptance for already-staged, already-completed, validated, materialized, or otherwise externally successful-but-unaccepted bytes. Reconciliation may establish truthful facts and preserve/quarantine/clean up bytes, but only a later explicit retry/resume control transition may reopen acceptance processing on the same frozen Contract/Snapshot/target/effect lineage and remaining budgets. If durable acceptance was committed before cancellation, cancellation cannot retroactively revoke that accepted identity; bounded reconciliation may still establish required materialization/finalization truth for the already-accepted effect.
 
 ---
 
@@ -189,6 +199,8 @@ Evidence-supported conclusion:
 - deterministic recovery classifications and digest/provenance reconciliation are required architecture behavior.
 
 Evidence limit: the execution filesystem reported `fsync=volatile`; this proves **process-death/reopen**, not host power-loss/kernel panic/storage-controller durability. That limitation remains an explicit architecture risk and does not become an unresolved blocker because Frozen Product currently requires truthful crash/restart/retry semantics without a separately frozen host-power-loss guarantee.
+
+Issue #7 deliberately deferred automatic reconciliation in S7 so durable cancellation could win before an explicit retry, and its closeout listed cancellation precedence as `ADAPT`. It therefore supports stable lineage/non-replenishing-budget/restart mechanics but does **not** itself prove a universal cancellation precedence rule. The cancellation cutoff in this revision is a normative L2 decision consistent with that evidence, not a newly claimed executable proof.
 
 ### U3 — browser observation / scoped auth boundary
 
@@ -453,16 +465,19 @@ Per-surface status derivation remains rejected.
 
 Candidate scheduling rules:
 
-- Core is the only authoritative scheduler and budget writer;
+- Core is the only authoritative scheduler, cancellation-order and budget writer;
 - clients use idempotent command/request identities;
 - scheduler creates durable work/effect IDs;
 - generated actions reserve/consume budget through authoritative transitions;
-- cancellation is durable, not just an in-memory signal;
+- cancellation is a durable ordered control transition, not just an in-memory signal;
+- once durable cancellation is authoritative for a still-unaccepted lineage, it suppresses all **new** discovery/transfer/retry dispatch and automatic acceptance, while permitting bounded reconciliation required to determine truthful pre-existing durable/external facts;
+- post-cancel reconciliation may inspect DB/filesystem/effect state and may run non-expansive validation over already-present bytes when needed for classification, but such validation cannot override the cancellation acceptance cutoff;
 - duplicate submit does not silently create another acquisition;
-- retry/restart reuse the same target/effect lineage and remaining budgets;
-- browser reattachment changes observation/session availability, not frozen contract/snapshot identity.
+- explicit retry/resume after cancellation is a new authorized control transition on the same frozen Contract/SelectionSnapshot/target/effect lineage; it inherits remaining budgets, cannot create a duplicate accepted effect, and may reuse already-staged bytes only after ordinary identity/provenance/validation rules succeed;
+- browser reattachment changes observation/session availability, not frozen contract/snapshot identity;
+- Desktop UI, CLI and Browser-triggered cancellation all submit to the same Core transition and therefore cannot obtain different precedence semantics.
 
-Research Demo #7 supplies positive evidence for duplicate-client convergence and tested restart/cancel/retry windows; it does not prove high-load or multi-host concurrency.
+Research Demo #7 supplies positive evidence for duplicate-client convergence and tested restart/cancel/retry windows; it does not prove high-load or multi-host concurrency and does not itself define the universal cancellation precedence now made normative by this L2 repair.
 
 ## 6.9 Platform / packaging constraints
 
@@ -582,6 +597,7 @@ These are proposed later Architecture Freeze decisions, not Frozen facts now:
 - **ADR-010** — recoverable at-least-once external effects plus idempotent acceptance/reconciliation; no exactly-once claim.
 - **ADR-011** — stable target identity is separate from mutable locator and authorization context.
 - **ADR-012** — concrete Desktop/runtime/IPC/platform matrix remains replaceable until a later authorized decision.
+- **ADR-013** — durable cancellation has a single Core-owned acceptance cutoff: cancel-before-accept blocks automatic later acceptance; accept-before-cancel is not retroactively revoked; bounded reconciliation may establish truth on either side of the cutoff; explicit retry/resume alone may reopen processing on the same frozen lineage and remaining budgets.
 
 ---
 
@@ -593,6 +609,7 @@ These are proposed later Architecture Freeze decisions, not Frozen facts now:
 | SelectionSnapshot | Core | confirmation/discovery evidence | immutable after confirmation |
 | requested/confirmed/selected identities | Core | discovery/Recipe/browser evidence | identity correspondence, never count-only |
 | budgets | Core Scheduler/Budget Ledger | all effect dispatchers | transactional reservation/consumption; no private writer |
+| cancellation/retry control order | Core Scheduler/authoritative store | Desktop/CLI/Browser commands; recovery reads | durable total order against acceptance; no surface-local precedence |
 | browser observations | Evidence Ledger | privileged extension | append/provenance-bound; not direct authority |
 | raw session secrets | Browser/Broker secret zone | scoped broker/transfer path only | no ordinary Core persistence/LLM/Recipe/log export |
 | AuthorizationContextRef | Core metadata | broker issues/validates | opaque; exact origin/target/contract/snapshot/provenance binding; optional partition context; expiring/revocable |
@@ -616,9 +633,72 @@ Core principles:
 - uncertain effects are reconciled, not silently marked success or blindly duplicated;
 - retry uses the same logical target/effect lineage and remaining budgets;
 - target/scope semantic change requires a successor contract/snapshot;
-- recovery records must distinguish DB state from filesystem staging/materialization/finalization.
+- recovery records must distinguish DB state from filesystem staging/materialization/finalization;
+- cancellation, acceptance and explicit retry/resume are durable Core-owned transitions with one deterministic order; adapter arrival time or process restart cannot redefine that order.
 
 Candidate recovery classes may include `NOT_DISPATCHED`, `IN_FLIGHT_UNKNOWN`, `PARTIAL_RECOVERABLE`, `SUCCEEDED_UNACCEPTED`, explicit filesystem-first/DB-first reconciliation, `ACCEPTED`, and explicit terminal failure equivalents. Exact production names remain a downstream contract detail; the semantic distinctions are the architecture requirement.
+
+## 11.1 Normative cancellation / reconciliation / acceptance precedence — AR-F01 repair
+
+For each frozen selected target/effect lineage, the Core authoritative store establishes a durable order among:
+
+```text
+dispatch intent / dispatch observed
+external bytes partial or complete
+validation state
+filesystem staging/materialization/finalization
+acceptance
+USER_CANCELLED
+explicit retry/resume
+```
+
+The normative cutoff is **durable acceptance**:
+
+1. **Cancellation committed before durable acceptance:** the lineage becomes cancellation-authoritative for automatic work. No restart, discovery of staged/finalized bytes, validation PASS, external-effect completion, filesystem materialization, or reconciliation classification may create a new accepted artifact while that cancellation remains authoritative.
+2. **Acceptance committed before cancellation:** the accepted identity remains accepted. Cancellation does not retroactively revoke it. Recovery may perform bounded idempotent reconciliation needed to establish whether the already-accepted artifact is actually materialized/finalized; if required bytes cannot be established, the Product result still cannot claim success merely from DB acceptance.
+3. **Reconciliation is allowed after cancellation, but not promotion:** Core may read authoritative DB state, inspect already-present filesystem state, reconcile whether an external effect may have occurred, compute digest/provenance, and run local/non-expansive validation necessary to classify truth. These actions cannot cross the acceptance cutoff or start new acquisition/discovery work.
+4. **New dispatch is suppressed:** while durable cancellation is authoritative, Core MUST NOT start a new network/media/discovery transfer, retry external effect, add a member/target, refresh scope, or allocate fresh lifecycle budget for that lineage.
+5. **Unaccepted bytes after cancellation:** bytes that are staged, complete, validated, materialized or finalized but lack pre-cancel durable acceptance remain **unaccepted**. They may be retained as staged/quarantined/recovery evidence or become cleanup-eligible according to later implementation policy; they MUST NOT be silently exposed as an accepted Product artifact.
+6. **Explicit retry/resume is distinct from automatic recovery:** a later explicit retry/resume command may supersede the cancellation stop for execution while preserving the same Frozen `AcquisitionContract`, `SelectionSnapshot`, selected target identity and effect lineage. It inherits the remaining Discovery/Transfer/GlobalSafety budgets, cannot replenish them, and cannot create a duplicate accepted effect. If already-present bytes still satisfy identity/provenance/validation requirements, retry/resume may reuse them without forcing a second external effect.
+7. **Single authority across surfaces:** Desktop UI, CLI and Browser-triggered cancellation all resolve through the same Core transition. No surface may locally choose “recovery wins” or “cancel wins”.
+
+### Required counterexample normalization
+
+Given:
+
+> Core dispatched an acquisition; bytes are fully staged; process dies before validation/acceptance; while Core is down, cancellation becomes durably authoritative; on restart, valid staged bytes are discovered.
+
+Required architecture outcome:
+
+- restart reconciliation may inspect the staged artifact, bind it to the existing frozen target/effect lineage, compute digest/provenance and, if useful for truthful classification, perform local validation;
+- because durable cancellation precedes durable acceptance, automatic acceptance is forbidden;
+- the staged bytes remain unaccepted/quarantined-or-cleanup-eligible evidence, not a silently successful artifact;
+- if no selected target had already been accepted, current projection is `SelectionAcquisitionStatus = CANCELLED` and `StopReason = USER_CANCELLED`; the request cannot be projected `COMPLETE` solely because valid bytes happen to exist;
+- only a later explicit retry/resume may reopen processing on the same lineage and remaining budgets; if it reuses the valid staged bytes, no duplicate external effect is required or permitted merely because the process restarted.
+
+This removes the Issue #10 counterexample where identical durable facts could legally yield either `COMPLETE` or `CANCELLED` through implementation choice.
+
+### Cancel timing matrix
+
+| Durable facts when cancellation becomes authoritative | Allowed recovery/reconciliation | Acceptance/result consequence |
+|---|---|---|
+| Cancel before dispatch | Record cancellation; release/reconcile any reservation according to durable dispatch facts; no external dispatch | No artifact may be accepted from that cancelled execution; with no prior selected fulfillment, `SelectionAcquisitionStatus=CANCELLED`, `StopReason=USER_CANCELLED` |
+| Cancel after dispatch but before bytes complete | Determine whether the effect started/partially staged; preserve evidence; no automatic new/resume dispatch | Partial/staged bytes remain unaccepted; zero prior accepted selected targets → `CANCELLED`; explicit retry/resume may continue same lineage within remaining budgets |
+| Cancel after bytes complete but before validation | Inspect/digest/classify existing bytes; local validation may run only as bounded reconciliation | Validation PASS cannot override cancellation; bytes remain unaccepted unless a later explicit retry/resume reopens processing |
+| Cancel after validation but before durable acceptance | Preserve validation/evidence if still valid; no automatic acceptance | Validated bytes remain unaccepted; current cancelled projection applies until explicit retry/resume |
+| Cancel after durable acceptance | Preserve accepted identity; reconcile materialization/finalization if necessary; suppress only still-unaccepted/new work | Accepted target stays accepted. Overall `SelectionAcquisitionStatus` is `COMPLETE` if every identity in frozen `S` is already accepted, otherwise `PARTIAL` when some but not all are accepted and cancellation stops the remainder; `StopReason=USER_CANCELLED` only when cancellation actually causes the remaining lifecycle to stop |
+| Cancel arrives after the entire Acquisition is already terminal | No mutation of terminal Product truth; command may be recorded/rejected as late | Existing terminal result remains unchanged; no retroactive `USER_CANCELLED` rewrite |
+| Explicit retry/resume after cancellation | Reuse same Contract/Snapshot/target/effect lineage, reconcile existing bytes, dispatch only if needed and budget allows | May progress again under ordinary validation/acceptance rules; no new target identity, no budget reset, no duplicate accepted effect |
+
+### Product status projection for cancellation cases
+
+The Frozen Product dimensions remain independent. Cancellation sets `StopReason = USER_CANCELLED` **only when cancellation is the reason remaining work stopped**. Projection is deterministic from canonical facts:
+
+- `SelectionAcquisitionStatus = CANCELLED` when cancellation stops the frozen selected set before any selected target is durably accepted.
+- `SelectionAcquisitionStatus = PARTIAL` when one or more, but fewer than all, identities in frozen `S` were durably accepted before the cancellation cutoff.
+- `SelectionAcquisitionStatus = COMPLETE` remains valid when every identity in frozen `S` was already durably accepted before cancellation; cancellation cannot downgrade completed selected acquisition.
+- `RequestFulfillmentStatus = COMPLETE` is permitted only if the original immutable requested scope was already fully fulfilled under Frozen Product rules. Otherwise cancellation yields `PARTIAL` when some requested fulfillment was durably achieved, `UNSATISFIED` when none was achieved and the request is known not fulfilled, or retains `UNKNOWN` only when the Frozen Product evidence model genuinely cannot determine requested-scope fulfillment. Cancellation itself does not fabricate `COMPLETE` or erase existing fulfillment truth.
+- `TargetResolutionStatus` and `CoverageStatus` continue to project from their own Frozen Product evidence. Cancellation does not erase already-proven resolution/coverage and does not upgrade unknown/truncated coverage.
 
 ### Crash after budget reservation, before dispatch
 
@@ -626,23 +706,23 @@ Recovery reconciles reservation against durable dispatch/effect state. Restart c
 
 ### Crash with staged/partial bytes
 
-Staged bytes are not accepted output. Recovery validates target/effect identity and safe-resume conditions; otherwise it restarts within remaining budget. #7 showed partial staging did not become silent success.
+Staged bytes are not accepted output. Recovery validates target/effect identity and safe-resume conditions; otherwise it restarts within remaining budget when no cancellation cutoff forbids automatic dispatch. #7 showed partial staging did not become silent success.
 
 ### Crash after bytes succeed, before accepted record
 
-Reconcile via effect ID + artifact digest/provenance; do not infer success from filename/file existence alone and do not blindly duplicate accepted effects.
+Reconcile via effect ID + artifact digest/provenance; do not infer success from filename/file existence alone and do not blindly duplicate accepted effects. If durable cancellation became authoritative before acceptance, reconciliation may classify/validate the bytes but cannot accept them automatically.
 
 ### Crash around DB/filesystem finalization ordering
 
-Both DB-first and filesystem-first windows require deterministic reconciliation. #7 observed `RECOVERED_DB_FIRST` and `RECOVERED_FS_FIRST` paths converging without duplicate effect/artifact identity.
+Both DB-first and filesystem-first windows require deterministic reconciliation. #7 observed `RECOVERED_DB_FIRST` and `RECOVERED_FS_FIRST` paths converging without duplicate effect/artifact identity. If acceptance was durably committed before cancellation, bounded finalization/materialization reconciliation may continue; if cancellation was committed first and acceptance is absent, filesystem presence does not authorize acceptance.
 
 ### Concurrent UI/CLI-style clients
 
-Core serializes/validates authoritative transitions. Duplicate requests use idempotency/revision rules. #7 showed two independent duplicate clients converging to one lineage/effect/artifact for the tested tuple.
+Core serializes/validates authoritative transitions. Duplicate requests use idempotency/revision rules. #7 showed two independent duplicate clients converging to one lineage/effect/artifact for the tested tuple. The same authoritative transition order applies to Desktop, CLI and Browser cancellation commands.
 
 ### Cancellation / retry
 
-Cancellation is durable and prevents new dispatch where applicable. Retry does not create a new frozen target/effect lineage or replenish lifecycle budgets. #7 exercised cancellation/retry across restart for its reference protocol.
+Cancellation is durable, suppresses new dispatch and automatic acceptance while authoritative, and survives restart. A later explicit retry/resume may reopen processing only on the same frozen target/effect lineage with remaining budgets and no duplicate accepted effect. #7 exercised one such cancellation/retry sequence with deliberate deferred recovery; this L2 supplies the normative precedence that the Demo intentionally left as `ADAPT`.
 
 ### Durability limit
 
@@ -700,10 +780,11 @@ validation ids
 artifact staging/materialization/acceptance state
 artifact id/digest
 recovery classification
+control transition sequence/revision (cancel / accept / retry-resume)
 terminal result explanation
 ```
 
-Required observable fact classes include contract/snapshot lifecycle, scope decision, discovery provenance, membership/selection claims, browser observations, auth-context acquire/expire/reject without secret payload, budget mutations/exhaustion, effect dispatch/retry/cancel/reconcile, DB/filesystem recovery classification, transfer validators, semantic/media/coverage validation, Recipe match/fallback, AI proposal accept/reject reason, artifact staging/materialization/acceptance, and final result projection.
+Required observable fact classes include contract/snapshot lifecycle, scope decision, discovery provenance, membership/selection claims, browser observations, auth-context acquire/expire/reject without secret payload, budget mutations/exhaustion, effect dispatch/retry/cancel/reconcile, durable cancellation-vs-acceptance ordering, explicit retry/resume reopening, DB/filesystem recovery classification, transfer validators, semantic/media/coverage validation, Recipe match/fallback, AI proposal accept/reject reason, artifact staging/materialization/acceptance, and final result projection.
 
 Logs are diagnostic; canonical durable state/evidence remains authority.
 
@@ -713,13 +794,13 @@ Logs are diagnostic; canonical durable state/evidence remains authority.
 
 This is architecture sequencing guidance only, **not a Task DAG and not implementation authorization**:
 
-1. Dispatch a **fresh independent Architecture Review** against the exact post-successor L2 subject.
-2. If Review requests changes, repair only the bounded architecture artifact and obtain a fresh exact-subject review as required.
+1. Dispatch a **fresh independent Architecture Re-Review** against the exact post-repair L2 subject, specifically verifying `AR-F01` closure without Product mutation.
+2. If Re-Review requests changes, repair only the bounded architecture artifact and obtain a fresh exact-subject review as required.
 3. Only after sufficient evidence and required review may a separate Architecture Freeze decision be performed.
 4. Only after Architecture Freeze may a Task DAG be generated/materialized.
 5. Downstream implementation can then bootstrap versioned Product-domain contracts/types and counterexample fixtures.
 6. Implement pure deterministic result/coverage/domain rules before adapter-specific behavior.
-7. Implement persistence/effect ledger and scheduler according to the #7-promoted invariants, while choosing the actual production runtime/tooling separately.
+7. Implement persistence/effect ledger and scheduler according to the #7-promoted invariants plus the frozen cancellation/acceptance ordering, while choosing the actual production runtime/tooling separately.
 8. Establish adapter-neutral local command/query seam and CLI.
 9. Add direct HTTP acquisition/validation.
 10. Implement the browser/native seam according to #8-promoted invariants, with platform-specific packaging decisions made downstream.
@@ -769,7 +850,7 @@ Neither Research Demo found a Frozen Product contradiction. The candidate mechan
 - Evidence Strength: `E3`
 - tested tuple: Linux `6.18.44` x86_64 / Python `3.13.5` / SQLite `3.46.1` / real local SQLite+filesystem / separate process `SIGKILL`+restart / two independent clients
 - narrow proof: process-death/reopen recovery, stable snapshot/budgets/effect lineage/accepted artifact identity, explicit DB/filesystem reconciliation
-- mandatory limitation: not host power-loss durability, not Windows/macOS, not production schema/migrations/performance/release readiness
+- mandatory limitation: not host power-loss durability, not Windows/macOS, not production schema/migrations/performance/release readiness; cancellation precedence was explicitly an `ADAPT` item rather than a universally proven rule
 
 ## Research Demo #8 — browser observation + scoped auth broker
 
@@ -795,12 +876,12 @@ No Task DAG is generated or Frozen by this section. These are only later decompo
 | Candidate lane | Stable input | Ownership/write-set concept | Real serial dependency | Convergence |
 |---|---|---|---|---|
 | Contract/result semantics | Frozen Product + Frozen L2 schemas | canonical domain/evidence/result contracts | first foundation | shared contracts |
-| Persistence/recovery | Frozen contracts + #7-promoted invariants | store/migrations/effect ledger/recovery | contract foundation | Core integration |
+| Persistence/recovery | Frozen contracts + #7-promoted invariants + cancellation cutoff | store/migrations/effect ledger/recovery/reconciliation | contract foundation; shared cancellation state machine with scheduler | Core integration |
 | Direct HTTP | acquisition/evidence ports | HTTP transfer + transfer validation | stable ports | Core integration |
 | Browser/auth | browser/auth ports + #8-promoted invariants | extension/native broker/auth adapter | stable contracts | browser integration |
 | Recipe/discovery | capability schema | matcher/interpreter/bounded discovery | stable contracts | collection integration |
 | HLS/media | acquisition/validation ports | HLS/media adapter/validators | stable ports | media integration |
-| Scheduler/budgets | contracts + #7 recovery semantics | scheduling/budget/cancel | contract foundation | Core integration |
+| Scheduler/budgets | contracts + #7 recovery semantics + cancellation cutoff | scheduling/budget/cancel/retry control order | contract foundation; shared cancellation state machine with recovery | Core integration |
 | CLI | command/query contract | CLI adapter only | minimal Core port | early end-to-end |
 | Desktop | command/query/result contract | presentation only | stable UI-facing contracts | UX integration |
 | AI | Recipe capability contract | redaction/provider/proposal validation | deterministic Recipe runtime | optional integration |
@@ -811,13 +892,13 @@ Candidate serial spine:
 
 ```text
 Frozen L2 contracts
-→ authoritative persistence/recovery + scheduler semantics
+→ authoritative persistence/recovery + scheduler/cancellation semantics
 → integrated Core Runtime
 → protocol/surface convergence
 → platform packaging and real-host validation
 ```
 
-Safe adapter/validation lanes may run in parallel only after shared contracts they consume are Frozen. Multiple lanes must not concurrently redefine the same contract/result/evidence semantics.
+Safe adapter/validation lanes may run in parallel only after shared contracts they consume are Frozen. Persistence/recovery and scheduler/budgets must consume one shared cancellation-vs-acceptance state-machine contract and must not independently redefine precedence. Multiple lanes must not concurrently redefine the same contract/result/evidence semantics.
 
 ---
 
@@ -833,10 +914,11 @@ Safe adapter/validation lanes may run in parallel only after shared contracts th
 | Chrome Native Messaging / `webRequest` / cookies / messaging / permissions official documentation | static primary platform evidence | carried from initial L2 research | browser observation, native host, permission/trust primitives; insufficient alone for end-to-end xDownload auth seam |
 | RFC 9110 | primary protocol standard | HTTP resume/retry | Range / `If-Range` identity rules |
 | RFC 8216 | primary protocol standard | HLS | playlist/segment/rendition structure |
-| Issue #7 terminal `5953990637`, final HEAD `4adbe7c587920383a654e020de757e2de657c312`, tested harness `5ed0cb63f30103786c8de7a74a265ed0378173a2` | project-local exact-SHA E3 executable evidence | current and rechecked before mutation | U2 process-death/reopen durability/idempotency/reconciliation |
+| Issue #7 terminal `5953990637`, final HEAD `4adbe7c587920383a654e020de757e2de657c312`, tested harness `5ed0cb63f30103786c8de7a74a265ed0378173a2` | project-local exact-SHA E3 executable evidence | current and rechecked before mutation | U2 process-death/reopen durability/idempotency/reconciliation; stable cancellation/retry lineage and budgets, but universal precedence remained `ADAPT` |
+| Issue #10 terminal `5955027193` | fresh independent Architecture Review authority | exact L2 predecessor `03f42c870281d6e9317317db47a2076b318d4894` | identifies `AR-F01` as the sole P1 L2 contract blocker and requires deterministic cancellation/recovery precedence; no new Demo required |
 | Issue #8 terminal `5954331493`, final HEAD `b5fbbe1ef22414cacfede5fdb9d1aac1f858e5cb`, tree `486fb32577ac89f41276614611a7ef582ab68a15` | project-local exact-SHA E3 executable evidence | current and rechecked before mutation | U3 real Chromium/native broker least-authority seam |
 
-The executable evidence is intentionally not generalized beyond its tested tuples.
+The executable evidence is intentionally not generalized beyond its tested tuples. The `AR-F01` rule is a normative architecture decision constrained by Frozen Product semantics and existing evidence, not an executable-evidence overclaim.
 
 ---
 
@@ -858,6 +940,7 @@ This L2 successor does **not** prove:
 - any model/provider's Recipe-adaptation reliability;
 - throughput, scale, high-load concurrency or distributed/multi-host behavior;
 - full production security hardening or penetration resistance;
+- universal cancellation precedence as an independently executable-tested Product implementation; this repair defines the candidate L2 rule for later implementation/Validation rather than claiming #7 proved it;
 - Product G0/G1/G2/G3 PASS, Critical Journey PASS, Hidden Validation, packaging Validation or Release Qualification;
 - Architecture Freeze;
 - Task DAG generation/readiness;
@@ -867,25 +950,31 @@ This L2 successor does **not** prove:
 
 # 21. Review-readiness checks
 
-Before marking this successor ready for review, the following were checked:
+Before marking this bounded repair ready for re-review, the following were checked:
 
 1. Architecture Facts/Decisions remain traceable to Frozen Product plus static evidence or exact Research Demo evidence.
 2. #7 limitations explicitly preserve the distinction between process-death/reopen and host power-loss durability.
 3. #8 limitations explicitly preserve cross-browser, cross-OS, store-distribution and production-vault gaps.
-4. U2/U3 are no longer labelled `EXECUTABLE_DEMO_REQUIRED`; they are recorded as resolved by executable evidence.
+4. U2/U3 remain recorded as resolved by executable evidence; no new Research Demo requirement was invented.
 5. The candidate remains `NOT FROZEN`.
 6. No Task DAG was generated.
 7. No production framework/runtime/IPC choice was added from the research harnesses.
 8. No research branch was merged or copied wholesale into `version/v0.1.0`.
 9. Frozen Product semantics were not modified.
-10. No new material Architecture UNKNOWN or Architecture Contradiction was found.
+10. The 9 concern dispositions and zero unresolved material UNKNOWN accounting were not changed.
+11. `AR-F01` now has one Core-owned cancellation-vs-recovery/validation/acceptance/finalization order, one normalized counterexample outcome, explicit same-lineage retry/resume semantics, and deterministic Product-status projection rules.
+12. No self-review, Architecture Freeze, Task DAG, implementation or executable production Validation was performed by this repair.
 
 ---
 
-# 22. Stage 2 Successor Disposition
+# 22. Stage 2 Bounded Repair Disposition
 
 ```text
-ADS_STAGE2_L2_EVIDENCE_SUCCESSOR_RESULT=READY_FOR_ARCH_REVIEW
+ADS_STAGE2_L2_REPAIR_RESULT=READY_FOR_REREVIEW
+SOURCE_REVIEW_ISSUE=10
+SOURCE_REVIEW_COMMENT=5955027193
+BLOCKER=AR-F01
+AR_F01_STATUS=CLOSED_CANDIDATE
 MATERIAL_CONCERNS_TRACKED=9
 STATIC_EVIDENCE_SUFFICIENT=7
 EXECUTABLE_EVIDENCE_SUFFICIENT=2
@@ -900,4 +989,4 @@ PRODUCT_SEMANTICS_MUTATED=NO
 SELF_REVIEW=NO
 ```
 
-Next Stage 2 action is a **fresh independent Architecture Review** on the exact resulting L2 subject. This Builder session stops before self-review, Architecture Freeze, Task DAG generation or production implementation.
+Next Stage 2 action is a **fresh independent Architecture Re-Review** on the exact resulting L2 subject. This Builder session stops before self-review, Architecture Freeze, Task DAG generation or production implementation.
