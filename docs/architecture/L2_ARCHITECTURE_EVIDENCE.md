@@ -2,11 +2,10 @@
 
 Status: `STAGE 2 CANDIDATE / NOT FROZEN`
 
-Product release target: `v0.1.0`
-
-Research date: `2026-10-02`
-
-Starting version-branch baseline: `version/v0.1.0@1dca2687eac1e93a119736652007ce2e02720df6`
+Product release target: `v0.1.0`  
+Research date: `2026-10-02`  
+Starting baseline: `version/v0.1.0@1dca2687eac1e93a119736652007ce2e02720df6`  
+Initial L2 candidate checkpoint used to dispatch Research Demos: `44fd0fc7287b45735f069263c87486e6585fd7ae`
 
 Frozen Product/Scope authority:
 
@@ -22,285 +21,275 @@ ADS authority:
 - `standards/DEVELOPMENT_WORKFLOW.md` Stage 2
 - `standards/ARCHITECTURE_RESEARCH_DEMO_STANDARD.md`
 
-This document is **Architecture Evidence and a candidate architecture only**. It is not Architecture Freeze, Task DAG, implementation, executable Validation, Release Qualification, or Release PASS. Frozen Product semantics are unchanged.
+This artifact is **Architecture Evidence plus a candidate architecture**. It is not Architecture Freeze, Task DAG, implementation, executable Validation, Release Qualification, or Release PASS. Frozen Product semantics are unchanged.
 
 ---
 
-## 1. Certainty vocabulary
+## 1. Evidence vocabulary
 
-This document separates the following claim types:
+Claims in this document use distinct certainty levels:
 
-- **Frozen Product Fact** — authority comes from the Frozen Stage 1 PRD/Scope and cannot be changed here.
-- **Architecture Evidence** — externally or repository-evidenced fact relevant to architecture.
-- **Architecture Candidate Decision** — recommended design subject to independent review, required Research Demo evidence, and later Architecture Freeze.
-- **Architecture UNKNOWN** — a material fact not yet sufficiently established.
-- **Inference** — reasoned consequence of Product Facts + Architecture Evidence; not independently proven runtime behavior.
-- **Future implementation detail** — intentionally not selected at L2 candidate level because it does not need to be an Architecture Fact yet.
+- **Frozen Product Fact** — authority comes from the Frozen Stage 1 Product/Scope and cannot be changed here.
+- **Architecture Evidence** — repository, protocol, platform, official-source, or mature implementation evidence relevant to an architectural choice.
+- **Architecture Candidate Decision** — recommended design that remains subject to required Demo evidence, independent Architecture Review, and a later separate Freeze decision.
+- **Architecture UNKNOWN** — material architecture fact not yet sufficiently established.
+- **Inference** — reasoned consequence of Product Facts and evidence, not independently proven runtime behavior.
+- **Future implementation detail** — intentionally not frozen because current Product/Architecture evidence does not require selecting it yet.
 
 ---
 
 # 2. Current-state findings
 
-1. The repository is currently **planning/docs only**. At the Stage 2 starting tree there is no production runtime, package manifest, application module tree, persistence implementation, browser extension, downloader engine, media pipeline, CLI implementation, CI/toolchain, or executable architecture test harness.
-2. `.dev-standard/PROJECT_OVERRIDES.md` explicitly records the structure profile as planning-stage and states that implementation layout/toolchain/platform requirements are not Frozen.
-3. Stage 1 is Product/Scope `FROZEN`; Architecture Freeze is `NO`; Task DAG and implementation are `NOT STARTED`.
-4. Therefore there is **no existing implementation architecture to preserve or pretend is proven**. Migration is a bootstrap from durable Product contracts into a new implementation structure.
-5. The architecture must be derived from the Frozen semantics, especially the authoritative `AcquisitionContract`, immutable `requested_scope`, immutable `SelectionSnapshot`, lifecycle budgets, multi-dimensional result model, browser/session security boundary, S1–S6 support slices, and truthful crash/retry behavior.
+1. The repository is currently **planning/docs only**. At the Stage 2 starting tree there is no production runtime, application/package structure, persistence implementation, browser extension, downloader engine, media pipeline, CLI implementation, executable architecture harness, or established implementation toolchain.
+2. `.dev-standard/PROJECT_OVERRIDES.md` explicitly records a planning-stage structure and says implementation layout/platform/toolchain are not Frozen.
+3. Stage 1 Product/Scope is `FROZEN`; Architecture Freeze is `NO`; Task DAG and implementation are `NOT STARTED`.
+4. Therefore there is no existing implementation architecture to preserve or falsely treat as proven. Stage 2 is a bootstrap from Frozen Product semantics.
+5. Architecture must preserve the authoritative `AcquisitionContract`, immutable confirmed scope and `SelectionSnapshot`, lifecycle budgets, multidimensional terminal result truth, bounded collection boundary, browser/session security boundary, S1–S6 support slices, and crash/retry no-drift semantics.
 
 ---
 
-# 3. Architecture drivers
+# 3. Architecture Drivers
 
-## D1 — One authoritative Product semantics across three surfaces
+## D1 — One authoritative contract/result semantics across Desktop, Browser and CLI
 
-**Frozen Product Fact:** Desktop UI, Browser Integration and CLI MUST project the same `AcquisitionContract` and final status semantics.
+**Frozen Product Fact:** all three surfaces project the same `AcquisitionContract` and final status semantics.
 
-Architecture consequence: adapters cannot independently implement contract mutation, budget accounting, target membership, coverage, or terminal-result rules.
+**Architecture implication:** adapters cannot independently mutate authoritative scope, membership, budget, coverage, or terminal state.
 
-## D2 — Immutable scope and no-drift retry/resume
+## D2 — Immutable scope and snapshot identity
 
-**Frozen Product Fact:** confirmed `requested_scope` and `continuation_scope` do not silently change; retry/resume reuses the same `SelectionSnapshot`; changed membership or authorization that changes permissible acquisition creates a successor identity.
+Confirmed `requested_scope` / `continuation_scope` cannot silently change; retry/resume uses the same snapshot; re-enumeration or material authorization/scope change requires a successor contract/snapshot.
 
-Architecture consequence: contract/snapshot identity must be durable and must be separated from volatile execution locators such as redirect/CDN/signed URLs.
+**Implication:** stable target/member identity must be separated from volatile locators such as redirects, CDN URLs and expiring signed URLs.
 
-## D3 — Lifecycle budgets are authoritative state
+## D3 — Lifecycle budget truth
 
-**Frozen Product Fact:** `DiscoveryBudget`, `TransferBudget`, and `GlobalSafetyBudget` are lifecycle-scoped and are not replenished by restart/retry/repair.
+`DiscoveryBudget`, `TransferBudget`, and `GlobalSafetyBudget` are lifecycle-scoped and cannot be replenished by restart/retry/repair.
 
-Architecture consequence: budget reservation/consumption must be owned by one transactional authority rather than recomputed from UI state or per-worker local counters.
+**Implication:** reservation/consumption needs one durable authority, not per-surface or per-worker private counters.
 
-## D4 — Truthful multidimensional result semantics
+## D4 — Multidimensional terminal truth
 
-**Frozen Product Fact:** a single `success` field is forbidden. `RequestFulfillmentStatus`, `TargetResolutionStatus`, `SelectionAcquisitionStatus`, `CoverageStatus`, `StopReason`, and `ValidationSummary` have independent meanings.
+A single `success` flag is forbidden. Request fulfillment, target resolution, selected acquisition, coverage, stop reason and validation remain distinct.
 
-Architecture consequence: terminal state is derived centrally from canonical state/evidence. UI/CLI may render it but must not invent it.
+**Implication:** terminal projection belongs in one deterministic Core domain component.
 
-## D5 — Bounded collection discovery, never crawler frontier
+## D5 — Explicit bounded discovery; no crawler frontier
 
-**Frozen Product Fact:** collection admission requires identifiable collection/membership, understandable scope, bounded continuation edges, and a hard stop; arbitrary recursive/frontier crawling is out of product scope.
+Collection membership/navigation must remain traceable to the confirmed contract and bounded continuation semantics.
 
-Architecture consequence: discovery/navigation must be capability constrained and contract traceable. General-purpose unrestricted crawler APIs are not part of the core capability surface.
+**Implication:** no general recursive crawler API in the privileged Core capability surface.
 
-## D6 — Deterministic/template-first; AI is bounded fallback
+## D6 — Deterministic/template-first; bounded AI fallback
 
-**Frozen Product Fact:** deterministic direct path and known Recipe precede AI; model unavailability must not block ordinary supported paths.
+Model unavailability cannot block ordinary deterministic/template-supported work.
 
-Architecture consequence: LLM integration is an adapter behind deterministic validation/guardrails, not an executor with direct authority over scope, secrets, shell, filesystem, or unrestricted navigation.
+**Implication:** AI is a proposal adapter behind schema/policy/scope validation, never the source of authority.
 
-## D7 — Browser observation plus local authorization/session boundary
+## D7 — Browser observation plus local authorization boundary
 
-**Frozen Product Fact:** Browser Integration observes current page/network/player context and may supply local authorization context, while raw credentials should remain in local broker/browser context where possible and must not become ordinary model input.
+The browser may provide page/network/player context and local authorization while raw credentials/tokens remain local where possible and do not become ordinary LLM/Recipe state.
 
-Architecture consequence: browser content/page data is untrusted input; secret material and observation metadata require separate handling paths and provenance.
+**Implication:** observation metadata and sensitive credential material use separate trust paths.
 
-## D8 — Protocol/media diversity inside one Product contract
+## D8 — Multiple protocol/media execution modes under one Product contract
 
-**Frozen Product Fact:** S1–S6 include direct HTTP/file, browser handoff, direct media, HLS VOD, current-page collection, and explicit playlist/gallery collection.
+S1–S6 include direct HTTP/file, browser handoff, direct media, HLS VOD, current-page collection and explicit playlist/gallery collection.
 
-Architecture consequence: one canonical task/result model can be shared, but protocol/media execution requires specialized adapters and validation strategies.
+**Implication:** share lifecycle/result contracts, but use protocol/media-specific execution and validation adapters.
 
-## D9 — Crash/restart/durability truth
+## D9 — Crash/restart/retry truth
 
-**Frozen Product Fact:** retry/restart cannot reset budgets, change snapshot membership, duplicate accepted effects, or convert failure to success.
+Restart/retry cannot reset budgets, drift snapshot membership, duplicate accepted effects, or rewrite an uncertain failure into success.
 
-Architecture consequence: durable intent/state transitions and external side effects require explicit idempotency/recovery semantics.
+**Implication:** durable effect identity and explicit reconciliation semantics are architecture-level concerns.
 
-## D10 — Local-first packaging without invented platform commitments
+## D10 — Local product surfaces without unsupported platform promises
 
-**Frozen Product Fact:** Desktop UI, Browser Integration and CLI are required product surfaces; exact OS/browser/toolchain matrix is not Frozen.
+Desktop, Browser Integration and CLI are required surfaces; exact OS/browser/runtime/framework matrix is not Frozen Product authority.
 
-Architecture consequence: freeze stable internal contracts and local trust boundaries, but avoid freezing Electron/Tauri/.NET/Rust/Node/Python, specific OS IPC, or a browser-vendor matrix without later authority/evidence.
-
----
-
-# 4. Architecture invariants
-
-The following are candidate invariants derived directly from Frozen Product semantics and should become ADR/L2 Freeze candidates after required evidence closes:
-
-1. **Canonical contract ownership:** only the Core Control Runtime may create/transition authoritative `AcquisitionContract`, `SelectionSnapshot`, budget ledger, canonical target/member identities, and terminal result state.
-2. **Surface projection only:** Desktop, CLI and Browser adapters submit commands / observations and consume projections; they do not directly mutate authoritative lifecycle tables or derive independent terminal semantics.
-3. **Scope ≠ budget:** budget counters can stop work but never create, broaden, narrow, or reinterpret `requested_scope`.
-4. **Logical target ≠ locator:** stable target/member identity is distinct from mutable URL/redirect/CDN/signed locator material. A refreshed locator is acceptable only when provenance/evidence binds it to the same frozen target.
-5. **Evidence is typed and provenance-bound:** candidate discovery evidence, user claims, authorization facts, transfer evidence, validation evidence and coverage evidence retain source identity and scope.
-6. **Discovery cannot self-certify validation:** the same inference that proposes a target/membership claim cannot be the only validator of that semantic claim.
-7. **Single authoritative budget mutation path:** every generated discovery action, transfer action, retry and model call that consumes a declared budget is reserved/accounted by the authoritative runtime before or atomically with dispatch.
-8. **Idempotent effect identity:** external effects use stable operation/attempt/effect identifiers so restart/retry can distinguish already accepted work from work that must be retried.
-9. **Fail-closed browser boundary:** messages originating from page/content-script context are treated as untrusted; privileged actions require schema validation, contract binding and origin/tab/provenance checks.
-10. **Opaque auth reference:** canonical task state stores `AuthorizationContextRef`/capability identity and provenance, not reusable raw browser cookies/passwords/tokens as ordinary task payload.
-11. **Recipe capability confinement:** Recipe execution can invoke only a finite typed capability set. No arbitrary shell, unrestricted JS, arbitrary filesystem access, unrestricted cookie export, host scanning, or arbitrary recursive navigation.
-12. **AI cannot grant authority:** AI may propose candidate mappings/Recipe adaptations within predeclared bounds; deterministic guards validate them before any privileged action.
-13. **Protocol adapters normalize into one result model:** direct HTTP, HLS/media and browser-mediated acquisition emit canonical attempt/evidence/validation records; they do not invent per-adapter final-success semantics.
-14. **Accepted artifact requires validation:** an artifact is not committed to the accepted output set until required Transfer/Format/Media/Target validation for its slice passes.
-15. **Platform implementation is replaceable:** Desktop framework, IPC transport, HTTP client and media tool remain behind stable ports until evidence/packaging constraints require a specific choice.
+**Implication:** freeze ownership/contracts/trust boundaries first; keep framework, concrete IPC transport, packaging stack and platform matrix replaceable until supported by downstream evidence.
 
 ---
 
-# 5. Architecture UNKNOWNs and dispositions
+# 4. Architecture Invariants
 
-Material UNKNOWN count in this candidate: **9**.
+Candidate invariants for later L2 Freeze consideration:
 
-| ID | Material Architecture UNKNOWN | Why it matters | Disposition | Current conclusion |
+1. **Canonical authority:** only the Core Control Runtime creates/transitions authoritative Contract, Snapshot, budget ledger, target/member identities and terminal-result inputs.
+2. **Thin surfaces:** Desktop, CLI and Browser submit commands/observations and read projections; they do not own lifecycle truth.
+3. **Scope is not budget:** budget exhaustion may stop work but cannot define, broaden, narrow or reinterpret requested scope.
+4. **Logical target is not locator:** redirects/CDN/signed URLs may change only when evidence binds the locator to the same frozen logical target.
+5. **Typed evidence:** discovery, user claims, authorization, transfer, validation and coverage retain explicit claim subject, provenance and scope.
+6. **Discovery cannot self-certify:** discovery inference alone cannot validate the same semantic claim.
+7. **One budget mutation path:** generated discovery, transfer, retry and model actions consume budget through the authoritative ledger.
+8. **Stable effect identity:** commands/work/effects/attempts use durable IDs so retry/restart can reconcile instead of blindly replaying.
+9. **Fail-closed browser boundary:** page/content-script input is untrusted and cannot invoke privileged native/auth actions without schema + contract/origin/tab validation.
+10. **Opaque authorization references:** canonical task state stores secret-free auth context identity/provenance, not reusable raw credentials as ordinary state.
+11. **Recipe confinement:** Recipe execution uses a finite typed capability vocabulary; no arbitrary shell, unrestricted JS/filesystem/cookie export, host scanning or recursive navigation.
+12. **AI cannot grant authority:** AI can propose bounded structured adaptations; deterministic Core policy decides whether they are executable.
+13. **Protocol normalization:** direct HTTP, HLS/media and browser-mediated adapters emit canonical effect/evidence/validation records and do not invent their own success semantics.
+14. **Accepted artifacts require validation:** transfer alone does not make an artifact accepted.
+15. **Replaceable platform implementation:** shell/framework/IPC/client/media tooling remain behind stable ports until specific evidence requires freezing a choice.
+
+---
+
+# 5. Architecture UNKNOWNs and Dispositions
+
+Material UNKNOWNs: **9**.
+
+| ID | Material UNKNOWN | Architecture impact | Disposition | Candidate conclusion |
 |---|---|---|---|---|
-| U1 | How to prevent Desktop/CLI/Browser from creating divergent authority | Public contract, concurrency, status truth | `STATIC_EVIDENCE_SUFFICIENT` | One local authoritative Core Control Runtime with thin adapters is the candidate; shared-library-with-independent-writers is rejected. |
-| U2 | Can a local SQLite + filesystem design preserve snapshot/budget/idempotency truth across real process death, restart and concurrent UI+CLI submission? | Durability, data integrity, failure semantics | `EXECUTABLE_DEMO_REQUIRED` | SQLite is the preferred candidate store, but the **application-level crash windows** are not proven by SQLite documentation. Research Demo required. |
-| U3 | Can real browser integration provide observation + scoped session authorization through a local broker while limiting secret exposure and enforcing origin/contract binding? | Security/auth/public trust boundary | `EXECUTABLE_DEMO_REQUIRED` | Native messaging/WebExtension APIs make the seam plausible; real browser/host/session behavior is not sufficiently proven statically. Research Demo required. |
-| U4 | Can current browser extension APIs observe the network/page metadata needed by the architecture without relying on general blocking interception? | Browser boundary/capability design | `STATIC_EVIDENCE_SUFFICIENT` | Chrome MV3 retains normal `webRequest` observation; host permissions are explicit. Candidate uses observation, not unrestricted request rewriting. |
-| U5 | What semantics are safe for HTTP resume/retry, redirects and expiring URLs without target drift? | Correctness/retry semantics | `STATIC_EVIDENCE_SUFFICIENT` | Use validator-bound range resume (`If-Range`/strong identity where available); otherwise restart transfer. Redirect/locator refresh must remain provenance-bound to same target. |
-| U6 | Does HLS VOD require a protocol/media-specific execution/validation boundary rather than pretending it is a single file transfer? | S4 correctness, budgets, validation | `STATIC_EVIDENCE_SUFFICIENT` | Yes. HLS playlists enumerate media segments/renditions; specialized HLS/media adapter is required under the same canonical contract/result model. |
-| U7 | How can Recipe/AI adaptation remain useful without regaining arbitrary browser/shell authority? | Security, crawler boundary, deterministic fallback | `STATIC_EVIDENCE_SUFFICIENT` | Declarative Recipe schema + finite capability interpreter + deterministic validator; AI returns bounded proposals only. |
-| U8 | Where should Evidence, coverage and terminal result derivation live so UI/CLI cannot diverge? | Public semantics/truthfulness | `STATIC_EVIDENCE_SUFFICIENT` | Typed evidence ledger + central result projector in Core Runtime. Surface-specific status derivation is rejected. |
-| U9 | Must L2 freeze a particular desktop framework/runtime/IPC transport now? | Packaging/evolution | `STATIC_EVIDENCE_SUFFICIENT` | No. Product authority does not specify an OS/browser/toolchain matrix. Freeze the local authority/IPC/security contracts; choose concrete shell/runtime/IPC later behind those ports. |
+| U1 | How to prevent Desktop/CLI/Browser from becoming competing authorities | public contract, concurrency, result truth | `STATIC_EVIDENCE_SUFFICIENT` | Use one local authoritative Core Control Runtime with thin adapters. Shared libraries may hold pure domain logic, not multiple mutable authorities. |
+| U2 | Can SQLite + filesystem preserve snapshot/budget/idempotency truth across real process death/restart and concurrent clients? | durability, data integrity, failure semantics | `EXECUTABLE_DEMO_REQUIRED` | SQLite is the preferred local store candidate, but xDownload's cross-DB/filesystem crash windows are not statically proven. Research Demo **#7**. |
+| U3 | Can a real browser extension/native broker provide observation + scoped session authorization while limiting secret exposure and enforcing origin/contract binding? | security/auth/trust boundary | `EXECUTABLE_DEMO_REQUIRED` | WebExtension/native messaging APIs make the seam plausible, but the end-to-end real browser/session boundary must be executed. Research Demo **#8**. |
+| U4 | Can current extension APIs supply the observation path without general blocking interception? | browser capability design | `STATIC_EVIDENCE_SUFFICIENT` | Current Chrome MV3 docs retain ordinary `webRequest` observation with host permissions; candidate requires observation, not unrestricted blocking rewrite. |
+| U5 | What HTTP resume/retry rule avoids target drift? | correctness/retry | `STATIC_EVIDENCE_SUFFICIENT` | Resume only when representation identity is sufficiently validated; use `If-Range`/strong validator where available, otherwise restart safely. |
+| U6 | Does HLS VOD need a specialized media/protocol adapter? | S4 correctness/budgets/validation | `STATIC_EVIDENCE_SUFFICIENT` | Yes. HLS is playlist/segment/rendition structured and cannot be treated as one opaque file transfer. |
+| U7 | How can Recipe/AI adaptation stay bounded? | security/crawler boundary/deterministic fallback | `STATIC_EVIDENCE_SUFFICIENT` | Declarative Recipe schema + finite capability interpreter + deterministic validator; AI returns proposal data only. |
+| U8 | Where do Evidence, coverage and final status live? | public semantics/explainability | `STATIC_EVIDENCE_SUFFICIENT` | Typed Evidence Ledger + canonical Result Projector in Core. Per-surface status derivation is rejected. |
+| U9 | Must Stage 2 choose a concrete desktop framework/runtime/IPC now? | packaging/evolution | `STATIC_EVIDENCE_SUFFICIENT` | No. Freeze the local authority and communication/security contracts; leave concrete shell/runtime/IPC behind ports until downstream evidence. |
 
-`BLOCKED` material UNKNOWNs: **0**.
+Disposition counts:
 
-`ARCHITECTURE_CONTRADICTION`: **none found**. The Frozen Product contract appears architecturally achievable; required executable evidence concerns candidate mechanisms, not Product feasibility.
+```text
+MATERIAL_UNKNOWNS=9
+STATIC_EVIDENCE_SUFFICIENT=7
+EXECUTABLE_DEMO_REQUIRED=2
+BLOCKED_UNKNOWNS=0
+ARCHITECTURE_CONTRADICTIONS=0
+```
+
+No Architecture Contradiction is currently supported by evidence. The Frozen Product appears architecturally achievable; the remaining executable questions concern candidate implementation mechanisms.
 
 ---
 
-# 6. Candidate patterns and evidence
+# 6. Candidate Patterns + Evidence
 
 ## 6.1 Runtime / control-plane decomposition
 
-### Pattern A — UI-owned monolith
+### Alternative A — Desktop/UI-owned monolith
 
-Desktop UI process owns discovery, transfers, persistence and result derivation; CLI/browser call or duplicate parts of it.
+Benefits: lowest initial process/IPC complexity.
 
-- Advantage: simplest initial executable.
-- Failure mode: headless CLI and browser lifecycle become secondary; background downloads depend on UI lifecycle; duplicated status/budget semantics are likely.
-- Product conflict risk: one authoritative contract across all surfaces becomes fragile.
-- Disposition: **not recommended**.
+Failure modes: CLI and browser become secondary, background work depends on UI lifecycle, status/budget logic tends to duplicate, and a headless automation surface becomes awkward.
 
-### Pattern B — shared library embedded independently in Desktop and CLI, Browser writes shared state
+Disposition: **reject as authority topology**.
 
-- Advantage: code reuse without service lifecycle.
-- Failure mode: multiple writers, process/version drift, duplicate scheduling, lock contention, and browser cannot safely become a direct persistence peer.
-- Escape hatch: could work for read-only/shared pure domain libraries, but not as authority topology.
-- Disposition: **use only for pure libraries; reject as authority topology**.
+### Alternative B — shared library embedded in Desktop and CLI with direct shared-store writes
 
-### Pattern C — local authoritative Core Control Runtime + thin adapters
+Benefits: code reuse and fewer explicit service boundaries.
 
-Candidate topology:
+Failure modes: multiple writers, duplicate scheduling, process/version drift, lock contention and an unsafe path for Browser Integration to become a persistence peer.
+
+Disposition: pure domain libraries may be shared, but **reject independent mutable authorities**.
+
+### Alternative C — local authoritative Core Control Runtime + adapters
 
 ```text
 Desktop UI ─┐
 CLI ────────┼── Local Command/Query Port ──> Core Control Runtime
 Browser ─ Native Messaging/Broker ────────┘          │
-                                                     ├─ Contract/Snapshot/Result domain
-                                                     ├─ Scheduler + Budget Ledger
+                                                     ├─ Contract/Snapshot/Result
+                                                     ├─ Scheduler/Budget Ledger
                                                      ├─ Discovery/Recipe Runtime
                                                      ├─ Transfer adapters
-                                                     ├─ Validation/Media adapters
-                                                     ├─ Evidence/Provenance ledger
+                                                     ├─ Validation/media adapters
+                                                     ├─ Evidence/Provenance
                                                      └─ Persistence + Artifact Store
 ```
 
-- Advantages: one mutable authority; CLI and UI can coexist; browser host is not the lifetime owner of downloads; future API/MCP can become another adapter without changing core semantics.
-- Failure modes: service lifecycle/IPC versioning and local authentication must be engineered; a crashed authority can pause all work until restart.
-- Escape hatch: the Core can initially be launched on demand by Desktop/CLI while retaining the same port boundary; no requirement for a permanent daemon.
-- Disposition: **recommended candidate**.
+Benefits: one mutable authority, UI/CLI coexistence, browser lifecycle does not own transfers, and deferred REST/MCP/SDK can later become adapters without changing core Product semantics.
 
-Architecture Evidence:
+Failure modes/trade-offs: Core lifecycle, IPC versioning and local peer authentication add complexity; Core failure pauses work until restart.
 
-- Chrome Native Messaging launches/communicates with a registered native host over stdio and restricts allowed extension origins. The transport is explicitly for JSON-style extension/native app communication, making it suitable for control metadata rather than download bytes.
-- Mozilla Native Messaging similarly requires explicit `nativeMessaging` permission and an allow-listed extension ID, with stdio JSON messages. It cannot be called directly from content scripts; a background/privileged extension context mediates it.
-- These sources support a narrow Browser Adapter/Broker seam and support keeping browser lifecycle separate from the acquisition runtime.
+Escape hatch: Core may initially be launched on demand rather than as a permanent daemon while preserving the same logical port boundary.
 
-## 6.2 State ownership and durability
+Disposition: **recommended candidate**.
 
-### Candidate ownership
+Supporting platform evidence: Chrome and Mozilla Native Messaging provide explicit extension↔native-host seams with allow-listed extension identity and stdio message transport, supporting a narrow browser/native control boundary rather than using a content script as the acquisition runtime.
 
-Authoritative persistent state should include at least:
+## 6.2 State ownership / persistence
+
+Authoritative state candidate:
 
 ```text
-Contract
-ContractRevision / successor relation
+AcquisitionContract + successor relation
 SelectionSnapshot
-RequestedMember / ConfirmedMember / SelectedTarget identity
-AuthorizationContextRef metadata (not raw secret)
+requested / confirmed / selected identities
+AuthorizationContextRef metadata
 BudgetLedger + reservations/consumption
 WorkItem / Attempt / Effect identity
-Evidence records
-Validation records
-Artifact records + digests/provenance
-TerminalResult projection inputs
-Audit transition log
+Evidence + Validation records
+Artifact records + digest/provenance
+terminal projection inputs
+transition/audit facts
 ```
 
-Large downloaded bytes remain on the filesystem/artifact store, not in the transactional database. The database owns **identity and state**, while staged/final file paths and digests bind filesystem effects back to canonical records.
+Downloaded bytes belong in a filesystem artifact store; transactional metadata owns identity/state and binds files to durable effect/artifact records.
 
-### Persistence alternatives
+### JSON/files only
 
-**JSON/files only**
+Easy to bootstrap, but weak for atomic multi-record mutation and concurrent UI+CLI recovery. **Not recommended as authority store**.
 
-- Simple bootstrap.
-- Weak multi-record atomicity and difficult UI+CLI concurrent mutation/recovery.
-- Not recommended for authoritative lifecycle state.
+### SQLite + filesystem, Core-owned single writer
 
-**Embedded SQLite, single-host, single-writer control path**
+Official SQLite sources document transactional atomicity and same-host WAL behavior with concurrent readers and one writer. This fits a local-first product without introducing a server database.
 
-- Official SQLite documentation provides atomic transactions; WAL supports concurrent readers with a writer on one host, while still allowing only one writer at a time.
-- Fits local-first single-machine product and removes an external database service dependency.
-- `BEGIN IMMEDIATE`/bounded busy handling can make writer contention explicit rather than implicit.
-- WAL is a database state component and cannot be treated as an expendable temp file while open/recovering.
-- Candidate: **preferred**, with the Core Runtime serializing authoritative writes.
-- Limitation: SQLite guarantees database transaction properties, not xDownload's higher-level filesystem side-effect/idempotency protocol. That is U2 and requires Demo evidence.
+Trade-off: database atomicity does not prove xDownload's application-level filesystem/network effect recovery. Therefore SQLite remains **candidate / Demo-gated by #7**.
 
-**PostgreSQL/client-server database**
+### PostgreSQL/server database
 
-- Strong concurrency and future remote topology.
-- Adds installation/service/credential/upgrade burden not demanded by the current local product.
-- Escape hatch: state repository port and migration versioning should avoid making SQLite-specific SQL the public domain contract, allowing a future server mode to introduce another backend if Product scope changes.
-- Not recommended for v0.1.0 local-first baseline.
+Stronger server-oriented concurrency, but adds deployment/service/credential/upgrade burden not required by current Product scope. Preserve a state-repository boundary so a future remote/server Product version can adopt another backend without redefining domain contracts.
 
-### Candidate transaction rule
+Disposition for v0.1.0 candidate: **SQLite + filesystem, gated by #7**.
 
-All authoritative lifecycle mutations occur through Core Runtime commands. A command transaction records:
+## 6.3 Transaction/effect pattern
+
+A canonical Core command transaction records:
 
 1. command/idempotency identity;
-2. precondition/current revision;
+2. expected/current revision;
 3. budget reservation/consumption delta;
-4. state transition;
-5. outbox/effect intent where an external action must occur;
-6. provenance/audit event.
+4. domain state transition;
+5. durable effect/outbox intent where external work is required;
+6. provenance/audit fact.
 
-External network/file effects cannot be made atomically identical to a database commit. Therefore the architecture uses **recoverable at-least-once effect execution + idempotent acceptance**, not an unprovable exactly-once claim.
+Network/file effects cannot be made atomically identical to a database commit. Candidate semantics are therefore **recoverable at-least-once external execution + idempotent acceptance/reconciliation**, never an unproven exactly-once claim.
 
-## 6.3 Browser observation / authorization boundary
+## 6.4 Browser/auth boundary
 
 Trust zones:
 
 ```text
-Web page / content script      = untrusted input zone
-Extension privileged context   = browser capability zone
-Native messaging broker        = local secret/capability broker zone
-Core Control Runtime           = authoritative task zone
-AI provider                    = redacted/untrusted external reasoning dependency
+Page/content script          = untrusted input
+Privileged extension context = browser capability zone
+Native broker                = local secret/capability zone
+Core Control Runtime         = authoritative task zone
+External model               = redacted external reasoning dependency
 ```
 
-Candidate rules:
+Candidate controls:
 
-- page/content-script messages are schema-validated and cannot directly request arbitrary privileged operations;
-- extension privileges are minimum necessary and host-scoped/optional where feasible;
-- network observation uses browser APIs and records tab/frame/request provenance;
-- raw cookies/tokens/passwords are not durable Recipe data and are not ordinary Core/AI payload;
-- `AuthorizationContextRef` is an opaque reference to a live/local capability context;
-- when transfer requires browser session material, the Broker produces a scoped request capability or scoped ephemeral header/cookie material for the exact target/origin, never a whole-browser cookie dump;
-- authorization inability is reported truthfully (`AUTH_REQUIRED`/`AUTH_FAILED`) rather than widening permissions or silently changing requested scope;
-- sensitive material is redacted from logs/evidence; provenance records may store secret-free fingerprints/context IDs.
+- validate/schema-bound all page/content messages;
+- least host/API permissions and optional permissions where practical;
+- bind observation to tab/frame/origin/request provenance;
+- persist opaque `AuthorizationContextRef`, not raw reusable cookie/password/token data;
+- broker session material only for the exact authorized target/origin and task context;
+- redact secrets at logs/evidence/model/Recipe boundaries;
+- fail with `AUTH_REQUIRED` / `AUTH_FAILED` instead of widening authority.
 
-Official Chrome extension guidance explicitly treats content scripts as less trustworthy, recommends validating/sanitizing messages, and recommends limiting permissions. Chrome cookies access additionally requires the `cookies` permission plus matching host permissions, including partition-awareness. These facts support the boundary but do not prove real end-to-end session behavior; U3 remains Demo-required.
+Official Chrome messaging guidance treats content scripts as less trustworthy and recommends validation/sanitization; cookie access requires `cookies` plus matching host permissions and now includes partition-aware context. These support the boundary design but do not prove the real seam. **Issue #8 is required before Freeze**.
 
-## 6.4 Download / media execution boundary
-
-Recommended adapter model:
+## 6.5 Download / media execution boundary
 
 ```text
-Acquisition Executor Port
-├── DirectHttpAdapter        # S1/S2/S3 where direct single-resource transfer applies
+AcquisitionExecutor
+├── DirectHttpAdapter        # S1/S2/S3 where direct transfer applies
 ├── HlsVodAdapter            # S4
-└── future protocol adapters # deferred Product slices only when authorized
+└── future protocol adapters # only if future Product scope authorizes
 
-Validation Ports
+Validation
 ├── TransferValidator
 ├── FormatValidator
 ├── MediaValidator
@@ -309,38 +298,33 @@ Validation Ports
 └── CoverageValidator
 ```
 
-Collection discovery is not the transfer engine. It resolves/finalizes the frozen target set, then transfer adapters acquire those targets.
+Collection discovery resolves/finalizes the frozen target set; it is not the byte-transfer engine.
 
-### Direct HTTP resume/retry
+### HTTP resume/retry
 
-HTTP semantics provide byte ranges but servers may ignore `Range`. `If-Range` allows a client to resume only if a strong validator still matches the selected representation.
-
-Candidate rule:
+RFC 9110 permits servers to ignore Range and defines `If-Range` conditional resume behavior. Candidate rules:
 
 - preserve partial bytes only when representation identity is sufficiently validated;
-- use strong validators where available;
-- if server ignores range, validator changes, or target identity cannot be proven, restart rather than append incompatible bytes;
-- redirect/CDN and signed-locator changes are locator changes, not permission to replace target identity;
-- retry remains within the original effect/target identity and remaining Transfer/Global budgets.
+- use a strong validator where available;
+- if the validator changes, Range is ignored incompatibly, or identity cannot be proven, restart rather than append incompatible bytes;
+- redirect/CDN/signed-locator refresh is a locator change, not permission to replace logical target identity;
+- retry consumes remaining Transfer/Global budgets and remains in the same effect/target lineage.
 
 ### HLS VOD
 
-RFC 8216 defines playlists that enumerate media segments and may reference variants/renditions. This is not equivalent to one opaque file transfer.
+RFC 8216 models playlists that enumerate media segments/renditions, so S4 needs protocol-specific parsing, budgeting and validation.
 
-Candidate rule:
+Candidate rules:
 
-- parse/freeze selected manifest/rendition identity;
-- segment requests are transfer effects and consume `TransferBudget`;
-- validate playlist topology against supported S4 limits before download;
-- unsupported encryption/track/mux topology fails closed as Product requires;
-- media assembly/probe is behind an adapter (an FFmpeg-family tool is a viable implementation option, not Frozen Architecture here);
-- final accepted output requires manifest/segment/format/media/target validation as applicable.
+- bind the selected manifest/rendition identity;
+- segment requests count toward TransferBudget;
+- fail closed on unsupported encryption/track/mux topology per Frozen Product;
+- media assembly/probing stays behind an adapter (FFmpeg-family tooling is a viable implementation option, not Frozen here);
+- final acceptance requires applicable manifest/segment/format/media/target validation.
 
-FFmpeg's `libavformat` documentation demonstrates a mature protocol/media demux/mux boundary and supports treating media processing as a specialized adapter rather than embedding media semantics in UI or orchestration.
+## 6.6 Template / Recipe / AI boundary
 
-## 6.5 Template / Recipe / AI boundary
-
-Candidate Recipe structure:
+Candidate Recipe model:
 
 ```text
 RecipeDefinition
@@ -349,193 +333,142 @@ RecipeDefinition
 ├── matcher
 ├── parameter schema
 ├── allowed_capabilities[]
-├── extraction rules
-├── evidence rules
+├── extraction/evidence rules
 ├── validation requirements
 ├── failure conditions
 └── deterministic fallback
 ```
 
-Candidate execution:
+Execution:
 
 ```text
-contract + observation
+contract + observations
 → deterministic matcher
-→ Recipe capability plan
-→ policy/guard validation
-→ bounded capability execution
+→ capability plan
+→ policy/scope validation
+→ bounded execution
 → typed evidence
-→ validation
+→ independent validation
 ```
 
 AI fallback:
 
 ```text
-redacted knowledge gap
-+ bounded observations/candidates
-+ Recipe schema/capability vocabulary
-→ AI proposal
-→ schema + policy + scope validator
+redacted knowledge gap + bounded observations + Recipe schema
+→ structured AI proposal
+→ schema/policy/scope validator
 → deterministic capability execution OR reject/ask user
 ```
 
-AI never receives authority to mutate requested scope, emit arbitrary shell, choose arbitrary navigation, persist credentials, or mark validation/coverage complete. Model output is a proposal subject to deterministic checks.
+AI cannot mutate confirmed scope, emit arbitrary shell code, choose arbitrary navigation, persist secrets, or mark coverage/validation complete.
 
-## 6.6 Status / evidence model
+## 6.7 Status/evidence model
 
-Recommended ownership:
+Candidate Core ownership:
 
-- `EvidenceLedger`: immutable/append-oriented typed evidence records with provenance and claim scope.
-- `ValidationRecord`: validator result bound to artifact/target/member/snapshot identity.
-- `CoverageAccounting`: requested-reference accounting separate from authorization/access and selected/acquired subsets.
-- `ResultProjector`: one deterministic domain component computes the six Product result dimensions.
+- `EvidenceLedger` — append-oriented typed claims with provenance/scope;
+- `ValidationRecord` — validator output bound to artifact/target/member/snapshot;
+- `CoverageAccounting` — requested-scope accounting separated from authorization-accessible and selected/acquired subsets;
+- `ResultProjector` — deterministic projection of the six Frozen result dimensions.
 
-UI and CLI receive the same projection plus explanation facts. Browser integration does not produce terminal result truth.
+This allows, for example, selected acquisition to be `COMPLETE` while request fulfillment is `PARTIAL` and coverage is `TRUNCATED`, exactly as Frozen Product semantics require.
 
-This design makes Product counterexamples such as “all selected targets succeeded but collection enumeration is unfinished” representable without lying: `SelectionAcquisitionStatus=COMPLETE` can coexist with `RequestFulfillmentStatus=PARTIAL/UNKNOWN` and non-complete coverage.
+## 6.8 Concurrency / scheduling / budgets
 
-## 6.7 Concurrency / scheduling / budgets
+Candidate scheduling rules:
 
-Candidate scheduler model:
-
-- Core Runtime is the only authoritative scheduler and budget writer.
-- Desktop/CLI submit idempotent commands with client request IDs.
+- Core is the only authoritative scheduler and budget writer;
+- clients use idempotent command/request identities;
 - scheduler creates durable work/effect IDs;
-- worker concurrency is internal and bounded by per-task/global policies;
-- each active generated discovery/transfer/model action obtains an authoritative budget reservation before dispatch;
-- completion/retry releases or consumes reservation according to explicit policy;
-- cancellation is a durable state transition, not only an in-memory signal;
-- duplicate submit is deduplicated by command/contract identity rather than creating another acquisition silently;
-- browser reattachment changes observation/session availability but not contract/snapshot identity;
-- no separate process directly decrements budget counters in a private store.
+- generated actions reserve budget before dispatch or as part of the same authoritative transition;
+- completion/retry consumes/releases reservations deterministically;
+- cancellation is durable, not just an in-memory signal;
+- duplicate submit does not silently create another acquisition;
+- browser reattachment changes observation/session availability, not frozen contract/snapshot identity.
 
-Race classes requiring tests downstream:
+High-impact race/crash cases are delegated to Demo #7 rather than claimed from static design.
 
-- two clients submit same contract/command concurrently;
-- cancellation races effect dispatch/completion;
-- crash after budget reservation before effect dispatch;
-- crash after external effect succeeds before durable acceptance;
-- restart while partial HTTP/HLS artifact exists;
-- browser session expires during transfer;
-- collection observation changes while frozen snapshot remains active.
-
-U2 Research Demo must cover the high-impact crash/recovery subset before Architecture Freeze.
-
-## 6.8 Platform / packaging boundary
+## 6.9 Platform / packaging constraints
 
 Architecture-driving facts:
 
-- Browser Integration needs an installable extension plus a browser/native bridge or equivalent local handoff mechanism.
-- CLI must work without Desktop UI lifecycle.
-- long-running acquisition must not rely on a browser content script staying alive.
-- local authority and artifact store must survive process restart.
-- browser/native packaging needs platform-specific host registration/manifest installation.
+- Browser Integration needs an installable extension plus native/local handoff seam or equivalent;
+- CLI must not depend on Desktop UI lifetime;
+- long-running acquisition must not depend on a page/content script remaining alive;
+- authoritative state/artifacts must survive Core restart;
+- browser/native host registration is platform-specific and must be packaged eventually.
 
-Not yet proven / not frozen:
+Not currently Frozen/proven:
 
 - Windows/macOS/Linux release matrix;
 - Chromium/Firefox release matrix;
-- Desktop shell framework;
-- Core implementation language/runtime;
-- exact local IPC (named pipe, Unix domain socket, loopback transport, framework IPC);
-- installer/update mechanism;
-- whether Core runs permanently, starts on demand, or uses a hybrid lifecycle.
-
-The candidate therefore freezes **ports and ownership**, not vendor/framework choices. A future choice must satisfy the same trust, authority, restart and packaging invariants.
+- Desktop shell/framework;
+- Core language/runtime;
+- exact local IPC transport;
+- installer/updater mechanism;
+- permanent daemon vs on-demand Core lifecycle.
 
 ---
 
-# 7. Decision matrix
+# 7. Decision Matrix
 
-| Area | Alternative | Evidence / strengths | Failure modes / trade-offs | Rollback / escape hatch | Candidate |
+| Area | Alternative | Strength | Failure/trade-off | Escape hatch | Candidate |
 |---|---|---|---|---|---|
-| Authority topology | UI-owned monolith | low initial complexity | CLI/browser lifecycle coupling; divergent semantics | extract Core service later, expensive | NO |
-| Authority topology | shared library + multi-process direct state writes | code reuse | multi-writer races; browser trust; version skew | restrict library to pure domain logic | PARTIAL ONLY |
-| Authority topology | local authoritative Core Runtime + thin adapters | one contract/status/budget authority; future API/MCP adapter path | IPC/lifecycle complexity | start on-demand; keep ports stable | **YES** |
-| Persistence | JSON/files | easy bootstrap | weak transactional multi-record state/recovery | migrate to DB | NO |
-| Persistence | SQLite + filesystem + single-writer Core | local, transactional, no external service; official WAL/atomicity evidence | app-level effect crash windows still unknown | repository abstraction; later backend migration | **YES, DEMO-GATED** |
-| Persistence | PostgreSQL | powerful server concurrency | deployment/service burden not required by local product | future remote/server backend | DEFER |
-| Browser auth | export whole cookie jar to Core/tool | easiest compatibility | excessive secret exposure, stale/partition context | none acceptable | NO |
-| Browser auth | scoped extension/native broker + opaque auth refs | least authority, origin binding, local-only secret handling | real browser/session behavior must be proven | fail `AUTH_REQUIRED`; browser-specific adapter | **YES, DEMO-GATED** |
-| Browser network | blocking interception as primary mechanism | broad control | MV3 restriction; unnecessary authority | observation-only APIs | NO |
-| Browser network | observation + explicit handoff | aligns with Product; available in MV3 | host permission/corpus coverage limits | Recipe/user confirmation | **YES** |
-| Transfer | one generic byte downloader for all slices | simple interface | HLS topology/segments/media validation do not fit | protocol adapters | NO |
-| Transfer | canonical executor + protocol adapters | shared lifecycle with correct protocol semantics | more adapter contracts | external tools behind adapter | **YES** |
-| Recipe | arbitrary JS/browser automation | flexible | crawler/security boundary escape | capability DSL | NO |
-| Recipe | declarative capability model | auditable, bounded, testable | requires schema/versioning | extend finite capabilities via ADR | **YES** |
-| AI | direct executor | fast prototyping | violates deterministic/security/status authority | convert output to proposal | NO |
-| AI | bounded proposal adapter | model optional; deterministic validation | may return more `UNKNOWN`/user action | add validated Recipes | **YES** |
-| Result truth | per-surface status derivation | local convenience | semantic divergence | central projector | NO |
-| Result truth | canonical evidence + result projector | one truth, explainable | requires careful schema evolution | versioned projection rules | **YES** |
+| Authority | UI monolith | simple start | CLI/browser coupling; divergent truth | extract Core later | NO |
+| Authority | independent embedded runtimes | code reuse | multi-writer races/version skew | pure shared libraries only | NO for mutable authority |
+| Authority | local authoritative Core + adapters | one contract/budget/result authority | IPC/lifecycle complexity | on-demand Core lifecycle | **YES** |
+| Persistence | JSON/files | simple | weak atomic multi-record recovery | migrate later | NO |
+| Persistence | SQLite + filesystem | local, transactional, no external service | app effect crash windows | backend abstraction | **YES, #7-gated** |
+| Persistence | PostgreSQL | server concurrency | unnecessary service burden | future remote mode | DEFER |
+| Browser auth | whole-cookie export | broad compatibility | excessive secret exposure/staleness | none acceptable | NO |
+| Browser auth | scoped native broker + opaque ref | least authority/provenance | must prove real seam | fail auth + browser-specific adapter | **YES, #8-gated** |
+| Browser network | blocking interception first | broad control | excessive authority/MV3 restrictions | observe + explicit handoff | NO |
+| Browser network | observation + explicit handoff | matches Product | host permission/corpus limits | Recipe/user confirmation | **YES** |
+| Transfer | one generic byte engine | simple | HLS/media topology mismatch | protocol adapters | NO |
+| Transfer | canonical executor + adapters | common lifecycle + correct protocol semantics | more contracts | external tool behind adapter | **YES** |
+| Recipe | arbitrary JS/automation | flexible | crawler/security escape | capability DSL | NO |
+| Recipe | declarative finite capabilities | auditable/testable | schema/versioning work | controlled ADR capability extension | **YES** |
+| AI | direct executor | fast prototype | violates authority/security | proposal-only | NO |
+| AI | bounded proposal adapter | optional/model-offline safe | more UNKNOWN/user-action outcomes | promote validated Recipes | **YES** |
+| Result | per-surface derivation | convenient locally | semantic divergence | central projector | NO |
+| Result | evidence + central projector | one truth/explainability | careful schema evolution | versioned projections | **YES** |
 
 ---
 
-# 8. Recommended architecture candidate
+# 8. Recommended Architecture Candidate
 
-## 8.1 Logical components
+Logical responsibility map:
 
 ```text
 apps/
-  desktop/                 # future shell; presentation adapter only
+  desktop/                 # presentation adapter
   cli/                     # command/query adapter
   browser-extension/       # observation + explicit handoff
-  native-browser-broker/   # narrow local browser/native trust bridge
+  native-browser-broker/   # narrow browser/native trust bridge
 
 core/
-  contract-domain/         # AcquisitionContract, snapshots, identities
-  result-domain/           # statuses, stop reasons, legal combinations
+  contract-domain/         # contract/snapshot/identity
+  result-domain/           # statuses/stop/legal combinations
   evidence-domain/         # typed evidence/provenance
-  scheduler/               # durable work/effect lifecycle + budgets
+  scheduler/               # work/effect lifecycle + budgets
   discovery/               # bounded discovery orchestration
-  recipe-runtime/          # declarative capability interpreter
-  ai-adapter/              # bounded proposal interface
-  acquisition-runtime/     # selected-target execution orchestration
-  validation/              # target/transfer/format/media/membership/coverage
+  recipe-runtime/          # declarative capabilities
+  ai-adapter/              # bounded proposals only
+  acquisition-runtime/     # selected-target execution
+  validation/              # transfer/format/media/target/membership/coverage
 
 adapters/
-  persistence-sqlite/      # candidate; gated by U2 Demo
+  persistence-sqlite/      # candidate, #7-gated
   artifact-filesystem/
   http-direct/
   hls-media/
-  browser-auth/
-  model-provider/          # provider-specific, optional
-
-contracts/
-  local-command-query/
-  recipe-schema/
-  evidence-schema/
-  persistence-migrations/
+  browser-auth/            # candidate, #8-gated
+  model-provider/
 ```
 
-This is a responsibility map, not an instruction to create empty modules mechanically. Exact repository layout/language remains future implementation detail until Architecture Freeze/Task definition.
+This is a responsibility map, **not an implementation scaffold instruction**. No empty modules are authorized by this document.
 
-## 8.2 Command/query ownership
-
-External adapters use a versioned local command/query contract such as:
-
-```text
-Commands:
-  ProposeAcquisition
-  ConfirmContract
-  ConfirmSelection
-  SubmitObservation
-  StartAcquisition
-  Pause / Resume
-  Cancel
-  RetryFailed
-  AcceptTargetChange -> successor contract path only
-
-Queries/subscriptions:
-  GetContract
-  GetSnapshot
-  GetProgress
-  GetResultProjection
-  GetEvidenceExplanation
-```
-
-The browser does not receive a generic “run arbitrary action” command. Privileged browser operations use typed capability requests bound to contract/snapshot/tab/origin provenance.
-
-## 8.3 Durable state machine shape
+External surfaces use a versioned local command/query contract. Representative semantics include proposing/confirming acquisitions, submitting observations, start/pause/resume/cancel/retry, and reading contract/snapshot/progress/result/evidence explanations. Exact wire format/transport remains future implementation detail.
 
 Candidate lifecycle:
 
@@ -550,205 +483,174 @@ DRAFT_INTENT
 → TERMINAL
 ```
 
-The Product's six terminal result dimensions remain the output contract; internal workflow state does not replace them.
-
-Retries/restarts re-enter from durable state/effect records without changing contract/snapshot identity or resetting budgets.
-
-## 8.4 Artifact commit protocol candidate
-
-For each selected target:
-
-1. durable effect/reservation identity created;
-2. bytes written to task/member staging path;
-3. transfer evidence and validators recorded;
-4. required format/media/target validation runs;
-5. accepted artifact digest/metadata recorded;
-6. staged artifact promoted to final logical output using a recoverable file protocol;
-7. durable accepted-artifact record and result projection updated.
-
-Cross-resource exactly-once filesystem+DB atomicity is **not claimed**. Restart reconciliation uses effect IDs, stage/final path state, digests and accepted-artifact records. U2 Demo must prove the minimum crash windows needed to adopt this candidate.
+Internal workflow state never replaces the Frozen six-dimensional terminal Product result.
 
 ---
 
-# 9. Key ADR candidates
+# 9. Key ADR Candidates / Invariants
 
-These are proposed ADR topics for later Architecture Freeze; they are not yet Frozen decisions.
+These are proposed later Architecture Freeze decisions, not Frozen facts now:
 
-- **ADR-001:** Local authoritative Core Control Runtime; surfaces are adapters.
-- **ADR-002:** Contract/Snapshot/Result schema owned by pure domain layer and versioned independently of UI.
-- **ADR-003:** SQLite as local authoritative metadata/state store, with serialized writer ownership; adoption gated by Research Demo U2.
-- **ADR-004:** Filesystem artifact store separated from transactional metadata; recoverable staging/finalization protocol.
-- **ADR-005:** Browser extension + native broker trust boundary with opaque `AuthorizationContextRef`; adoption gated by Research Demo U3.
-- **ADR-006:** Protocol adapter architecture: direct HTTP and HLS/media are separate execution adapters under one acquisition port.
-- **ADR-007:** Declarative Recipe capability interpreter; no arbitrary script/shell/navigation capability.
-- **ADR-008:** AI is a bounded proposal adapter; deterministic policy/validation remains authoritative.
-- **ADR-009:** Typed Evidence Ledger + canonical Result Projector own terminal truth.
-- **ADR-010:** At-least-once recoverable external effects + idempotent acceptance; no exactly-once claim.
-- **ADR-011:** Stable target identity separated from mutable access locator/authorization context.
-- **ADR-012:** Exact Desktop framework/runtime/IPC and release platform matrix remain replaceable implementation choices until specific evidence/authority requires freezing them.
+- **ADR-001** — one local authoritative Core Control Runtime; all Product surfaces are adapters.
+- **ADR-002** — Contract/Snapshot/Result schema is Core-owned and versioned independently of UI.
+- **ADR-003** — SQLite local metadata/state store with serialized authoritative writer; adoption gated by Demo #7.
+- **ADR-004** — filesystem artifact store separated from transactional metadata with recoverable staging/finalization.
+- **ADR-005** — Browser extension + native broker + opaque auth reference; adoption gated by Demo #8.
+- **ADR-006** — Direct HTTP and HLS/media are distinct execution adapters behind one acquisition port.
+- **ADR-007** — declarative Recipe capability interpreter; arbitrary scripting/navigation is not a Recipe capability.
+- **ADR-008** — AI is proposal-only and cannot grant authority.
+- **ADR-009** — typed Evidence Ledger and Result Projector own terminal truth.
+- **ADR-010** — recoverable at-least-once external effects plus idempotent acceptance; no exactly-once claim.
+- **ADR-011** — stable target identity is separate from mutable locator and authorization context.
+- **ADR-012** — concrete Desktop/runtime/IPC/platform matrix remains replaceable until a later authorized decision.
 
 ---
 
-# 10. Data ownership / trust boundaries / synchronization model
+# 10. Data Ownership / Trust Boundaries / Synchronization
 
-| Data / authority | Canonical owner | Readers/producers | Synchronization rule |
+| Data/authority | Canonical owner | Producers/readers | Synchronization rule |
 |---|---|---|---|
-| AcquisitionContract | Core Contract Domain + authoritative store | Desktop/CLI submit intent; Browser may supply observations | optimistic revision/idempotency check; successor identity for semantic change |
-| SelectionSnapshot | Core Contract Domain | UI confirmation; discovery supplies evidence | immutable after confirmation |
-| Requested/confirmed/selected identities | Core Contract Domain | Discovery/Recipe/Browser evidence | identity-based, never count-only |
-| Budgets | Core Scheduler/Budget Ledger | all effect dispatchers consume via Core | transactional reservation/consumption; no private counters |
-| Browser observations | Evidence Ledger | extension privileged context | append/provenance-bound; never direct authority mutation |
-| Raw session secrets | Browser/Broker ephemeral secret zone | only scoped transfer/broker path | no ordinary persistence/AI/log export |
-| AuthorizationContextRef | Core metadata | Browser/Broker issues/validates | opaque, revocable/expiring, provenance-bound |
-| Transfer progress | Acquisition Runtime + store | protocol adapters | durable checkpoints only where safe; partial bytes separately staged |
-| Evidence | Evidence Ledger | discovery, transfer, validators, user confirmation | append-oriented with claim subject/source |
-| Final statuses | Result Projector | all surfaces | derived from canonical state/evidence only |
-| Artifact bytes | Filesystem artifact store | transfer/validation | staged then accepted; digest/provenance bind to DB identity |
-| Recipes | versioned Recipe store | matcher/AI proposal/promotion flow | schema validation + applicability/failure metadata; no embedded credentials |
+| AcquisitionContract | Core Contract Domain + authoritative store | UI/CLI submit intent; Browser supplies observations | revision/idempotency checks; successor identity for semantic change |
+| SelectionSnapshot | Core | confirmation/discovery evidence | immutable after confirmation |
+| requested/confirmed/selected identities | Core | discovery/Recipe/browser evidence | identity correspondence, never count-only |
+| budgets | Core Scheduler/Budget Ledger | all effect dispatchers | transactional reservation/consumption; no private writer |
+| browser observations | Evidence Ledger | privileged extension | append/provenance-bound; not direct authority |
+| raw session secrets | Browser/Broker ephemeral zone | scoped broker/transfer path only | no ordinary persistence/LLM/Recipe/log export |
+| AuthorizationContextRef | Core metadata | broker issues/validates | opaque, scoped, expiring/revocable, provenance-bound |
+| transfer progress | Acquisition Runtime + store | protocol adapters | durable checkpoints only when recovery-safe |
+| Evidence | Evidence Ledger | discovery/transfer/validators/user claims | append-oriented typed claim records |
+| terminal statuses | Result Projector | all surfaces read | derived only from canonical state/evidence |
+| artifact bytes | Filesystem store | transfer/validation | staged then accepted; digest/provenance binds to DB identity |
+| Recipes | versioned Recipe store | matcher/adaptation/promotion | schema/applicability/failure validation; no embedded credentials |
 
-Local adapters may cache read projections but caches are non-authoritative and disposable.
-
----
-
-# 11. Failure, restart, retry, idempotency and consistency semantics
-
-## 11.1 Core principles
-
-- database commit success does not imply external network/file effect success;
-- external effect success observed before crash does not imply durable acceptance;
-- restart reconciliation must classify each effect as `NOT_DISPATCHED`, `IN_FLIGHT_UNKNOWN`, `PARTIAL_RECOVERABLE`, `SUCCEEDED_UNACCEPTED`, `ACCEPTED`, or terminal failure equivalent;
-- uncertain effects are not silently counted twice or marked complete;
-- retry reuses the same target/effect lineage and remaining lifecycle budgets;
-- successor contract/snapshot is required for semantic target/scope change.
-
-## 11.2 Network failure
-
-Transient network failure may retry within policy/budgets. Retry does not change target identity. Signed/expiring locator refresh must prove same target; otherwise `TARGET_CHANGED`/`AUTH_REQUIRED`/failure path applies.
-
-## 11.3 Crash after budget reservation before dispatch
-
-On recovery, reconcile reservation with effect dispatch marker. A reservation may be released/reused only according to deterministic ledger rules; restart cannot mint a fresh budget.
-
-## 11.4 Crash after bytes written before acceptance
-
-Partial/staged artifact remains non-accepted. Recovery validates effect identity, target validators, current staged bytes/digest and safe resume conditions. Otherwise restart download within remaining budget.
-
-## 11.5 Crash after external success before durable accepted record
-
-Reconcile staging/final artifact via stable effect ID + digest/provenance. Do not blindly re-download and do not assume success solely from file existence/name.
-
-## 11.6 Concurrent clients
-
-Desktop and CLI may issue commands concurrently; authoritative state transitions are serialized/validated at Core. Duplicate client requests use idempotency keys/revision checks. Browser observations are append evidence and cannot override a frozen snapshot.
-
-## 11.7 Cancellation
-
-Cancellation writes durable intent and stops new dispatch. Already in-flight effects are reconciled truthfully; cancellation cannot rewrite a completed/validated artifact into a different target or create vacuous success.
+Read caches are disposable and never become authority.
 
 ---
 
-# 12. Security / auth / secret boundary
+# 11. Failure / Restart / Retry / Idempotency / Consistency Semantics
 
-Threat-relevant seams requiring independent review later:
+Core principles:
 
-1. page/content-script → extension privileged context;
+- a database commit does not prove an external network/file effect succeeded;
+- external success observed before crash does not prove durable acceptance;
+- uncertain effects are reconciled, not silently marked success or blindly duplicated;
+- retry uses the same logical target/effect lineage and remaining budgets;
+- target/scope semantic change requires a successor contract/snapshot.
+
+Candidate recovery classes include `NOT_DISPATCHED`, `IN_FLIGHT_UNKNOWN`, `PARTIAL_RECOVERABLE`, `SUCCEEDED_UNACCEPTED`, `ACCEPTED`, and explicit terminal failure equivalents.
+
+### Crash after budget reservation, before dispatch
+
+Recovery reconciles reservation against durable dispatch/effect state. Restart cannot mint a fresh budget.
+
+### Crash with staged/partial bytes
+
+Staged bytes are not accepted output. Recovery validates target/effect identity and safe-resume conditions; otherwise it restarts within remaining budget.
+
+### Crash after bytes succeed, before accepted record
+
+Reconcile via effect ID + artifact digest/provenance; do not infer success from filename/file existence alone and do not blindly duplicate accepted effects.
+
+### Concurrent UI/CLI clients
+
+Core serializes/validates authoritative transitions. Duplicate requests use idempotency/revision rules. Browser observations cannot mutate a frozen snapshot.
+
+### Cancellation
+
+Cancellation is durable and prevents new dispatch where applicable. In-flight work is reconciled truthfully; cancellation does not create vacuous success.
+
+These application-level rules are candidate semantics until Demo #7 supplies the required E3 evidence.
+
+---
+
+# 12. Security / Auth / Secret Boundary
+
+Security-sensitive seams requiring later independent review include:
+
+1. page/content script → privileged extension context;
 2. extension → native messaging broker;
 3. broker → Core/transfer adapter;
 4. Core → external model provider;
 5. Recipe → capability interpreter;
 6. local IPC client → Core authority;
-7. logs/evidence → persistent storage.
+7. logs/evidence → durable storage.
 
 Candidate controls:
 
-- explicit schema and size bounds for all browser/native/IPC messages;
-- allow-listed extension identity/native host registration;
-- least host/API permissions and optional permissions where feasible;
-- tab/frame/origin/request provenance for browser observations;
-- per-command contract/snapshot binding for privileged actions;
-- secret redaction at logging boundary;
-- no raw secret in Recipe, model prompt, reusable Knowledge, or generic Evidence payload;
-- sensitive auth material held in-memory/local broker when possible and discarded on expiry/task completion;
-- local IPC must authenticate same-install/same-user peer sufficiently to prevent arbitrary local web content from submitting privileged commands;
-- Recipe capability interpreter denies unknown capabilities and arbitrary URLs/frontier navigation by default;
-- AI output is data, never executable code/authority.
+- schema/size bounds on browser/native/IPC messages;
+- allow-listed extension/native-host identity;
+- least host/API permissions;
+- tab/frame/origin/request provenance;
+- contract/snapshot binding for privileged action;
+- secret redaction before persistence/logging/model/Recipe paths;
+- in-memory/local-broker handling of raw auth material where possible;
+- local IPC peer authorization suitable for same-install/same-user operation;
+- deny unknown Recipe capabilities and arbitrary crawler-like navigation;
+- treat AI output as untrusted data, never executable authority.
 
-U3 Demo is required before adopting the browser auth bridge as Frozen Architecture.
+Demo #8 is required before freezing the browser authorization seam.
 
 ---
 
-# 13. Observability / provenance model
+# 13. Observability / Provenance Model
 
-Every meaningful state/effect should expose a durable correlation chain:
+A meaningful acquisition should be explainable through a durable correlation chain such as:
 
 ```text
 contract_id
 snapshot_id
 requested_member_id / selected_target_id
-effect_id + attempt_id
-recipe_id/version? / browser observation id?
+effect_id / attempt_id
+recipe_id/version or browser observation id
 authorization_context_ref (secret-free)
-budget reservation/consumption record
+budget reservation/consumption
 evidence ids
 validation ids
 artifact id/digest
 terminal result explanation
 ```
 
-Recommended event classes:
+Required observable fact classes include contract/snapshot lifecycle, scope decision, discovery provenance, membership/selection claims, browser observations, auth-context acquire/expire/reject without secret payload, budget mutations/exhaustion, effect dispatch/retry/cancel/reconcile, transfer validators, semantic/media/coverage validation, Recipe match/fallback, AI proposal accept/reject reason, artifact staging/acceptance, and final result projection.
 
-- contract/snapshot lifecycle;
-- scope/continuation decision;
-- discovery candidate + provenance;
-- membership/selection claim;
-- browser observation provenance;
-- auth-context acquire/expire/reject without secret payload;
-- budget reserve/consume/release/exhaust;
-- effect dispatch/retry/cancel/reconcile;
-- transfer validator data (status/range/length/validator);
-- format/media/target/membership/coverage validation;
-- Recipe match/failure/fallback;
-- AI proposal accepted/rejected reason;
-- artifact staged/validated/accepted/reconciled;
-- final result projection and explanation.
-
-Logs alone are not authority. Canonical evidence/state records must be queryable for UI/CLI explanation and later Validation.
+Logs are diagnostic; canonical durable state/evidence remains authority.
 
 ---
 
-# 14. Migration / bootstrap plan from docs-only repository
+# 14. Migration / Bootstrap Plan from Docs-only Repository
 
-No production code exists, so migration is staged bootstrap rather than refactor.
+This is an architecture migration sequence, **not a Task DAG**:
 
-1. **Freeze-after-evidence only:** complete Research Demos U2/U3 and independent Architecture Review before L2 Freeze.
-2. **Contract-first bootstrap:** create versioned Product-domain schemas/types for AcquisitionContract, SelectionSnapshot, identities, budgets, Evidence and result dimensions with Product counterexamples as contract fixtures.
-3. **Core pure domain:** implement deterministic status/result/coverage rules independent of UI/network/database.
-4. **Persistence + scheduler foundation:** implement selected authoritative store/effect ledger and recovery semantics using Research Demo conclusions.
-5. **Local command/query seam:** expose adapter-neutral command/query port; add CLI first as a low-UI proof of shared authority.
-6. **Direct acquisition slice:** S1 direct HTTP + validation + retry/resume semantics.
-7. **Browser seam:** implement extension/native broker according to U3 evidence; add S2 and browser observation paths.
-8. **Media/HLS adapter:** S3/S4 with specialized media validation.
-9. **Collection discovery + Recipe runtime:** S5/S6 bounded membership/continuation with capability enforcement.
-10. **Desktop shell:** consume the same command/query/result contracts; UI remains non-authoritative.
-11. **Bounded AI adapter:** add only after deterministic/template path and Recipe validation boundary are executable; model-offline behavior must remain intact.
-12. **Packaging/platform qualification:** choose and validate concrete supported platform matrix, installer/browser registration and real-host behavior downstream; do not backfill untested platform claims into L2.
+1. Execute Research Demos #7 and #8 independently and feed PASS/FAIL/BLOCKED evidence back into L2.
+2. Perform fresh independent Architecture Review on the current post-demo L2 candidate.
+3. Only after required evidence/review permits, execute a separate Architecture Freeze decision.
+4. Bootstrap versioned Product-domain contracts/types and counterexample fixtures.
+5. Implement pure deterministic result/coverage/domain rules.
+6. Implement persistence/effect ledger and scheduler according to #7 evidence.
+7. Establish adapter-neutral local command/query seam and CLI.
+8. Add S1 direct HTTP acquisition/validation.
+9. Implement browser/native seam according to #8 evidence, then S2/browser observations.
+10. Add S3/S4 media/HLS adapter/validation.
+11. Add S5/S6 bounded discovery + declarative Recipe runtime.
+12. Add Desktop shell as a non-authoritative adapter.
+13. Add bounded AI only after deterministic/Recipe path is executable and model-offline behavior is preserved.
+14. Select/qualify concrete platform/browser packaging downstream without inventing untested support claims.
 
-This order is a migration/architecture dependency outline, **not a Task DAG**.
+Steps 4–14 are future implementation guidance only and are not authorized by Issue #6.
 
 ---
 
-# 15. Architecture risks / open questions
+# 15. Architecture Risks / Open Questions
 
-- **R-A1 — crash window correctness:** DB + filesystem + network effects cannot be one atomic transaction. U2 must establish a recoverable protocol before Freeze.
-- **R-A2 — browser auth leakage:** exporting a whole browser cookie jar would violate least-authority intent. U3 must prove a scoped broker path.
-- **R-A3 — browser API differences:** Chrome/Firefox native-host manifest and extension behavior differ. The architecture must keep vendor-specific registration/adapters outside Core.
-- **R-A4 — signed/short-lived locators:** locator refresh can accidentally become target substitution; evidence binding must be explicit.
-- **R-A5 — HLS topology breadth:** Frozen S4 is intentionally basic; adapter must fail closed for unsupported encryption/multitrack/mux cases rather than expanding scope.
-- **R-A6 — Recipe language creep:** adding arbitrary script/DOM execution would recreate a general web agent/crawler boundary. Capability additions require explicit security/architecture review.
-- **R-A7 — evidence growth:** append-oriented provenance may grow quickly for segments/collections. Implementations may aggregate low-level events, but must retain enough identity/evidence for Product truth and audit.
-- **R-A8 — SQLite busy/checkpoint behavior:** long readers or direct multi-process writes can degrade operation. Candidate avoids this by single-writer Core and short read transactions; U2 must test realistic contention/restart.
-- **R-A9 — local IPC abuse:** browser/native/CLI adapters are privileged local clients. Concrete transport must include peer authorization and input bounds.
-- **R-A10 — platform promise gap:** release platform/browser matrix remains outside current Product Freeze. Downstream planning must not claim cross-platform support until explicitly selected and validated.
+- **A1 — DB/filesystem crash windows:** must be resolved by #7 before adopting the persistence/recovery candidate.
+- **A2 — browser auth leakage:** whole-cookie export is too broad for the candidate trust model; #8 must prove a scoped reference-browser seam.
+- **A3 — cross-browser differences:** native-host manifest/registration and extension APIs differ; vendor-specific details stay outside Core.
+- **A4 — expiring/signed locators:** refresh can become accidental target substitution; provenance binding must be explicit.
+- **A5 — HLS topology breadth:** S4 is basic; unsupported encryption/multitrack/mux topology must fail closed.
+- **A6 — Recipe language creep:** arbitrary script/DOM automation could recreate a general web agent/crawler and requires architecture/security reconsideration.
+- **A7 — evidence volume:** low-level segment/transfer events may need safe aggregation without losing identity/provenance needed for truth.
+- **A8 — SQLite contention/checkpoint behavior:** single-writer Core and short reads are the candidate mitigation; #7 should exercise relevant real contention/restart cases.
+- **A9 — local IPC abuse:** concrete IPC must authenticate/authorize local peers and apply strict input bounds.
+- **A10 — platform promise gap:** no OS/browser matrix may be claimed until selected and validated downstream.
 
 ---
 
@@ -756,56 +658,66 @@ This order is a migration/architecture dependency outline, **not a Task DAG**.
 
 **NONE identified.**
 
-No evidence currently indicates that Frozen Product requirements are mutually contradictory or unachievable. The two executable UNKNOWNs concern how to implement durability and browser authorization safely; their failure should change the candidate architecture, not reopen Product scope unless a future Demo establishes a genuine Product contradiction.
+No current evidence shows the Frozen Product requirements are mutually contradictory or unachievable. A future Demo FAIL should alter the candidate architecture first; only evidence that the Product contract itself is contradictory may trigger the ADS Product-reopen path.
 
 ---
 
-# 17. Research Demo disposition
+# 17. Required Research Demo Evidence
 
-Two dedicated Research Demo Issues are required by ADS because the UNKNOWNs affect durability/security/failure semantics and static evidence is insufficient.
+The ADS Demo rule is triggered for exactly two material UNKNOWNs because each can change durability/security/failure semantics and static evidence is insufficient.
 
-At this initial candidate checkpoint the Issue numbers are `PENDING_CREATION`; they will be inserted after dedicated Issues are created against this architecture-evidence baseline.
+## Research Demo #7 — durable ledger + filesystem crash/restart/idempotency
 
-## RD-U2 — Durable ledger + filesystem crash/restart/idempotency
+Issue: `kaicreator-mm/xDownload#7`  
+Dispatch baseline: `version/v0.1.0@44fd0fc7287b45735f069263c87486e6585fd7ae`  
+Evidence Strength: **E3**  
+Planned research branch: `research_v0.1.0-durable-ledger-recovery`
 
-Required Evidence Strength: **E3**.
+Falsifiable hypothesis summary:
 
-Hypothesis summary:
+> With real SQLite, real filesystem staging/finalization, two independent local clients and real process termination/restart, the candidate authoritative ledger can recover the specified crash windows without changing the frozen snapshot, replenishing/double-consuming lifecycle budgets, duplicating accepted artifact/effect identity, or silently converting uncertain work to success.
 
-> With a real local SQLite store, real filesystem staging/finalization, two independent local clients and real process termination/restart, the candidate single-writer ledger can recover every tested crash window without silently changing `SelectionSnapshot`, replenishing/duplicating lifecycle budgets, or accepting more than one artifact/effect for the same frozen target identity.
+Real Under Test includes SQLite, filesystem and OS process death/restart. Unrelated network/model dependencies may be deterministic fakes. Positive, concurrent-duplicate, crash-before-dispatch, staged-partial, success-before-acceptance, finalization, retry/cancel and integrity-negative scenarios are specified in Issue #7.
 
-Must test real SQLite, real OS process death/restart and real filesystem. Network/model can be deterministic local fakes because network/provider behavior is not the UNKNOWN.
+**This L2 Builder does not execute #7.**
 
-## RD-U3 — Browser observation/auth broker least-authority seam
+## Research Demo #8 — browser observation + scoped auth broker
 
-Required Evidence Strength: **E3**.
+Issue: `kaicreator-mm/xDownload#8`  
+Dispatch baseline: `version/v0.1.0@44fd0fc7287b45735f069263c87486e6585fd7ae`  
+Evidence Strength: **E3**  
+Planned research branch: `research_v0.1.0-browser-auth-broker`
 
-Hypothesis summary:
+Falsifiable hypothesis summary:
 
-> With a real supported reference browser extension, real native messaging host and controlled authenticated origin, xDownload can bind current-page/network observations and a scoped authorization capability to the intended tab/origin/contract, successfully acquire an authorized test resource, reject unbound/cross-origin misuse, and keep raw session secret values out of Core durable state, logs, Recipe data and model-facing payloads.
+> With a real reference browser extension, real native messaging host and controlled authenticated origin, xDownload can bind page/network observations and a scoped authorization capability to the intended tab/origin/contract, acquire the authorized resource, reject unbound/cross-origin misuse, and keep raw session secrets out of Core durable state, logs, Recipe data and model-facing payloads.
 
-Must use a real browser extension/native host/session; controlled web origin may be a deterministic local test server. This Demo proves a reference-browser seam, not a complete browser/OS support matrix.
+Real Under Test includes a real browser extension/session/native-host seam. Controlled local web origin/Core/model sinks may be deterministic. Positive auth handoff, observation, cross-origin misuse, malformed page input, host allow-list failure, secret non-propagation, session expiry and partition/context boundary scenarios are specified in Issue #8.
+
+**This L2 Builder does not execute #8.**
+
+A Demo PASS proves only its stated hypothesis and tested tuple. It does not prove multi-platform support, release readiness, arbitrary websites, scale/performance or broader security properties.
 
 ---
 
-# 18. Task DAG lane hints — candidate only, no DAG generated
+# 18. Task DAG Lane Hints — Candidate Only
 
-These hints describe maximum-safe-parallelism boundaries **after** L2 Freeze. They are not Task DAG authority.
+No Task DAG is generated or Frozen by this section. These are only later decomposition hints after L2 Freeze.
 
-| Candidate lane | Stable inputs needed | Ownership / likely write set | Real serial dependencies | Convergence point |
+| Candidate lane | Stable input | Ownership/write-set concept | Real serial dependency | Convergence |
 |---|---|---|---|---|
-| L-A Contract & result semantics | Frozen PRD + Frozen L2 schemas | canonical contracts/result/evidence types + contract fixtures | first foundation | shared domain package/contracts |
-| L-B Persistence/recovery | Frozen schemas + RD-U2 result | store/migrations/effect ledger/recovery | depends on L-A and Demo U2 | Core Runtime integration |
-| L-C Direct HTTP acquisition | Frozen acquisition/evidence ports | direct HTTP adapter + transfer validation | depends on L-A ports; can parallel B if persistence port is stable | Core Runtime integration |
-| L-D Browser bridge/auth | Frozen browser/auth ports + RD-U3 result | extension/native broker/browser adapter | depends on L-A and Demo U3; independent of media implementation | browser integration convergence |
-| L-E Recipe/discovery runtime | Frozen capability schema | matcher/interpreter/bounded discovery | depends on L-A capability/contracts | collection integration |
-| L-F HLS/media | Frozen acquisition/validation ports | HLS/media adapter/validators | depends on L-A ports; can parallel C/D/E | media integration |
-| L-G Scheduler/budgets | Frozen contracts + recovery model | scheduler/budget ledger/cancellation | depends on L-A; recovery mechanics converge with B | Core Runtime integration |
-| L-H CLI adapter | local command/query contract | CLI only | after minimal command/query port | early end-to-end integration |
-| L-I Desktop UI | local command/query/result contracts | Desktop presentation | can start after contracts stable; should not block core | UX integration |
-| L-J AI adapter | Recipe capability contract + deterministic runtime | provider adapter/redaction/proposal validation | after E is stable; does not block ordinary paths | optional AI integration |
-| L-K Validation corpora/harness | Frozen Product counterexamples + Frozen L2 | contract/integration/CJ fixtures | can begin alongside implementation once interfaces frozen | version validation |
-| L-L Packaging/platform | selected implementation/toolchain | installer/native-host registration/platform packaging | after concrete runtime/shell exists | release candidate |
+| Contract/result semantics | Frozen Product + Frozen L2 schemas | canonical domain/evidence/result contracts | first foundation | shared contracts |
+| Persistence/recovery | Frozen contracts + #7 result | store/migrations/effect ledger/recovery | contract foundation + Demo #7 | Core integration |
+| Direct HTTP | acquisition/evidence ports | HTTP transfer + transfer validation | stable ports | Core integration |
+| Browser/auth | browser/auth ports + #8 result | extension/native broker/auth adapter | stable contracts + Demo #8 | browser integration |
+| Recipe/discovery | capability schema | matcher/interpreter/bounded discovery | stable contracts | collection integration |
+| HLS/media | acquisition/validation ports | HLS/media adapter/validators | stable ports | media integration |
+| Scheduler/budgets | contracts + #7 recovery semantics | scheduling/budget/cancel | contract foundation + recovery semantics | Core integration |
+| CLI | command/query contract | CLI adapter only | minimal Core port | early end-to-end |
+| Desktop | command/query/result contract | presentation only | stable UI-facing contracts | UX integration |
+| AI | Recipe capability contract | redaction/provider/proposal validation | deterministic Recipe runtime | optional integration |
+| Validation harness | Frozen Product counterexamples + Frozen L2 | fixtures/contract/CJ harness | contracts stable | version validation |
+| Packaging/platform | selected runtime/shell | installer/native host/platform packaging | concrete implementation exists | release candidate |
 
 Candidate serial spine:
 
@@ -813,74 +725,81 @@ Candidate serial spine:
 Frozen L2 contracts
 → authoritative persistence/recovery + scheduler semantics
 → integrated Core Runtime
-→ surface/protocol convergence
-→ platform packaging/real-host validation
+→ protocol/surface convergence
+→ platform packaging and real-host validation
 ```
 
-Safe parallelism exists around adapters and validators once shared contracts are stable. Do not create pseudo-parallel lanes that concurrently redefine the same contract/result/evidence schemas.
+Safe adapter/validation lanes may run in parallel only after the shared contracts they consume are Frozen. Multiple lanes must not concurrently redefine the same contract/result/evidence semantics.
 
 ---
 
-# 19. Evidence table
+# 19. Evidence Table
 
-Research date/access date unless otherwise stated: `2026-10-02`.
+Research/access date for current external sources: `2026-10-02`, unless a protocol version/date is stated.
 
-| Source | Type / authority | Date/version relevance | Claim supported |
+| Source | Type / authority | Relevance | Claim supported |
 |---|---|---|---|
-| Frozen PRD `docs/product/PRD-v0.4.2-review-candidate.md@65be7aae...` | Frozen Product authority | 2026-10-02 | authoritative contract/snapshot/budget/result/security/S1–S6 semantics |
-| Stage 1 Freeze `docs/planning/STAGE1_PRODUCT_SCOPE_FREEZE.md` | project lifecycle authority | `version/v0.1.0` baseline | Product frozen; Architecture not frozen |
-| ADS `prompts/L2_ARCHITECTURE_EVIDENCE.md@94cad2b...` | pinned process authority | v4.0.0 | L2 requirements, UNKNOWN disposition, lane hints |
-| ADS `standards/ARCHITECTURE_RESEARCH_DEMO_STANDARD.md@94cad2b...` | pinned process authority | v4.0.0 | Demo trigger, E1/E2/E3, real boundary/failure evidence |
-| SQLite — Write-Ahead Logging: https://www.sqlite.org/wal.html | official primary docs | current page; WAL available since SQLite 3.7.0 | same-host WAL; readers/writer concurrency; one writer; checkpoints; WAL persistent-state considerations |
-| SQLite — Transactions: https://www.sqlite.org/lang_transaction.html | official primary docs | current page | multiple readers but one simultaneous writer; `SQLITE_BUSY`; transaction semantics |
-| SQLite — Atomic Commit: https://www.sqlite.org/atomiccommit.html | official primary docs | current page | atomic DB transaction/crash robustness, while not proving xDownload filesystem/effect protocol |
-| Chrome — Native Messaging: https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging | official browser docs | current MV3-era docs | registered native host, allow-listed extension origin, stdio messaging; narrow browser/native seam |
-| Chrome — webRequest API: https://developer.chrome.com/docs/extensions/reference/api/webRequest | official browser docs | current MV3-era docs | normal request observation remains available; blocking permission restricted; host permissions required |
-| Chrome — cookies API: https://developer.chrome.com/docs/extensions/reference/api/cookies | official browser docs | current; includes partitioned cookies | cookie access requires `cookies` + host permissions; partition context matters |
-| Chrome — extension messaging security: https://developer.chrome.com/docs/extensions/develop/concepts/messaging | official browser docs | current | content scripts are less trustworthy; validate/sanitize and limit privileged actions |
-| Chrome — permissions: https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions | official browser docs | current | optional/host permissions and least-permission rationale |
-| Mozilla MDN — Native messaging: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_messaging | official WebExtension platform docs | current | explicit `nativeMessaging`, allowed extension IDs, background-mediated native messaging, cross-browser differences |
-| RFC 9110 — HTTP Semantics: https://www.rfc-editor.org/rfc/rfc9110.html | IETF/RFC primary standard | RFC 9110 (2022) | Range may be ignored; `If-Range` validator semantics; safe resume requires representation validation |
-| RFC 8216 — HTTP Live Streaming: https://www.rfc-editor.org/rfc/rfc8216 | IETF/RFC primary standard | RFC 8216 (2017) | playlist/segment/rendition model supporting protocol-specific HLS boundary |
-| FFmpeg Formats Documentation: https://ffmpeg.org/ffmpeg-formats.html | mature primary project docs | current docs | mature demux/mux/media adapter pattern; media processing has format-specific options/validation concerns |
-| yt-dlp FAQ: https://github.com/yt-dlp/yt-dlp/wiki/FAQ | mature open-source implementation evidence | current repository wiki | browser-cookie acquisition is operationally possible but cookie export can expose broad sensitive state; supports scoped broker preference rather than whole-cookie persistence |
+| Frozen PRD `docs/product/PRD-v0.4.2-review-candidate.md@65be7aae...` | Frozen Product authority | 2026-10-02 | Contract/snapshot/budget/result/security/S1–S6 semantics |
+| `docs/planning/STAGE1_PRODUCT_SCOPE_FREEZE.md` | project lifecycle authority | v0.1.0 Stage 1 checkpoint | Product frozen; Architecture not frozen |
+| ADS `prompts/L2_ARCHITECTURE_EVIDENCE.md@94cad2b...` | pinned process authority | v4.0.0 | L2 content, UNKNOWN disposition, lane hints |
+| ADS `standards/ARCHITECTURE_RESEARCH_DEMO_STANDARD.md@94cad2b...` | pinned process authority | v4.0.0 | Demo trigger, E1/E2/E3, real-boundary/failure evidence rules |
+| https://www.sqlite.org/wal.html | SQLite official docs | current | same-host WAL, reader/writer concurrency, single writer, checkpoint/WAL state |
+| https://www.sqlite.org/lang_transaction.html | SQLite official docs | current | transaction/writer semantics and `SQLITE_BUSY` behavior |
+| https://www.sqlite.org/atomiccommit.html | SQLite official docs | current | DB atomicity/crash robustness; does not prove xDownload filesystem/effect protocol |
+| https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging | Chrome official docs | current MV3-era | native host, allow-listed origins, stdio messaging boundary |
+| https://developer.chrome.com/docs/extensions/reference/api/webRequest | Chrome official docs | current MV3-era | ordinary request observation remains available; host permission requirements |
+| https://developer.chrome.com/docs/extensions/reference/api/cookies | Chrome official docs | current | cookie + host permission requirements; partition-aware cookie context |
+| https://developer.chrome.com/docs/extensions/develop/concepts/messaging | Chrome official docs | current | content-script trust warning; validate/sanitize and limit privileged actions |
+| https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions | Chrome official docs | current | least/optional/host permissions |
+| https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_messaging | Mozilla/MDN platform docs | current | explicit nativeMessaging permission, allowed extension IDs, background mediation, cross-browser differences |
+| https://www.rfc-editor.org/rfc/rfc9110.html | IETF primary standard | RFC 9110 (2022) | Range may be ignored; validator/`If-Range` semantics for safe resume |
+| https://www.rfc-editor.org/rfc/rfc8216 | IETF primary standard | RFC 8216 (2017) | HLS playlist/segment/rendition model |
+| https://ffmpeg.org/ffmpeg-formats.html | mature primary project docs | current | mature specialized format/demux/mux boundary supporting media adapter separation |
+| https://github.com/yt-dlp/yt-dlp/wiki/FAQ | mature OSS implementation evidence | current | browser-cookie workflows are operationally possible; broad cookie export motivates scoped secret handling rather than durable whole-cookie state |
+| xDownload Issue #7 | project-local executable evidence contract | created from L2 checkpoint `44fd0fc...` | U2 E3 durability/recovery evidence to be produced separately |
+| xDownload Issue #8 | project-local executable evidence contract | created from L2 checkpoint `44fd0fc...` | U3 E3 browser/auth seam evidence to be produced separately |
 
-No source above is treated as proof that xDownload's own crash/auth design works. That distinction is why U2 and U3 require executable Research Demos.
-
----
-
-# 20. What is NOT proven
-
-This Stage 2 candidate does **not** prove:
-
-- any production code exists;
-- SQLite + filesystem recovery satisfies xDownload's application-level idempotency/budget invariants — U2 Demo pending;
-- browser authorization/session handoff satisfies the least-authority design in a real browser — U3 Demo pending;
-- a specific Desktop framework, runtime/language, IPC transport, installer, updater, or package format is suitable;
-- Windows, macOS, Linux, Chromium, Firefox or any specific matrix is supported/release-ready;
-- HLS works for arbitrary encryption, DRM, separate A/V, multi-audio/subtitle or complex topology outside Frozen S4;
-- HTTP resume works when origin/CDN lacks compatible Range/validator behavior;
-- any model/provider produces reliable Recipe adaptations;
-- any specific concurrency/performance/throughput target;
-- security hardening, penetration resistance or secret-store implementation beyond the candidate boundary;
-- Product G0/G1/G2/G3 gates, Critical Journeys, Hidden Validation, package validation or Release Qualification;
-- Architecture Freeze or Task DAG readiness.
+Static sources are not treated as proof that xDownload's own recovery/auth implementation works; that distinction is exactly why #7 and #8 exist.
 
 ---
 
-# 21. Stage 2 candidate disposition
+# 20. What Is NOT Proven
 
-Current disposition: **`DEMO_REQUIRED`**.
+This L2 candidate does **not** prove:
 
-Reason:
+- that any production implementation exists;
+- that SQLite + filesystem recovery satisfies xDownload's application-level invariants — #7 remains unexecuted;
+- that browser authorization/session handoff satisfies the candidate least-authority boundary in a real browser — #8 remains unexecuted;
+- that a specific Desktop framework, language/runtime, IPC transport, installer or updater is suitable;
+- any Windows/macOS/Linux or Chromium/Firefox release matrix;
+- arbitrary HLS encryption/DRM/separate A/V/multi-audio/subtitle topology outside Frozen S4;
+- HTTP resume where origin/CDN behavior lacks compatible validators/ranges;
+- any model/provider's Recipe-adaptation reliability;
+- any throughput, scale or performance target;
+- full security hardening or penetration resistance;
+- Product G0/G1/G2/G3 PASS, Critical Journey PASS, Hidden Validation, packaging Validation or Release Qualification;
+- Architecture Freeze;
+- Task DAG readiness;
+- implementation readiness.
 
-- material UNKNOWNs identified: `9`;
-- `STATIC_EVIDENCE_SUFFICIENT`: `7`;
-- `EXECUTABLE_DEMO_REQUIRED`: `2`;
-- `BLOCKED`: `0`;
-- `ARCHITECTURE_CONTRADICTION`: `0`;
-- required Research Demo Issues: `PENDING_CREATION` at this initial checkpoint.
+---
 
-After the two Demo Issues are created, this document must be updated only to bind their Issue numbers/baseline references. The Demos themselves are separate tasks and MUST NOT be executed in this L2 Builder session.
+# 21. Stage 2 Candidate Disposition
 
-Architecture Freeze remains `NO`. Task DAG and implementation remain `NOT STARTED`.
+```text
+ADS_STAGE2_L2_EVIDENCE_RESULT=DEMO_REQUIRED
+MATERIAL_UNKNOWNS=9
+STATIC_EVIDENCE_SUFFICIENT=7
+EXECUTABLE_DEMO_REQUIRED=2
+BLOCKED_UNKNOWNS=0
+ARCHITECTURE_CONTRADICTIONS=0
+RESEARCH_DEMO_ISSUES=7,8
+PRODUCT_SCOPE_FREEZE=FROZEN
+ARCHITECTURE_FREEZE=NO
+TASK_DAG_STARTED=NO
+IMPLEMENTATION_STARTED=NO
+PRODUCT_SEMANTICS_MUTATED=NO
+VALIDATION_CLAIMED=NO
+```
+
+Next Stage 2 work is separate execution of Research Demo Issues #7 and #8. Their results must be incorporated into a successor/current L2 candidate, followed by a **fresh independent Architecture Review** before any separately authorized Architecture Freeze decision.
