@@ -17,8 +17,11 @@ xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision
 - Research Demo #8: **PASS evidence consumed** — terminal `5954331493`, exact consumed Linux HEAD `b5fbbe1ef22414cacfede5fdb9d1aac1f858e5cb`, tree `486fb32577ac89f41276614611a7ef582ab68a15`; later Windows tuple is additive provenance only
 - Architecture Re-Review #12: **PASS / Freeze Eligible YES** — terminal `5956402251`, `AR-F01=CLOSED`
 - Architecture Freeze: **FROZEN**
-- Task DAG: **ELIGIBLE / NOT STARTED**
+- Stage 2.4 Task DAG: **CANDIDATE / NOT FROZEN / READY FOR FRESH INDEPENDENT REVIEW** — [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md)
+- Task Pack index: [`implementation/v0.1.0/TASK_PACKS.json`](implementation/v0.1.0/TASK_PACKS.json)
+- Task Issues / native Issue Dependencies: **NOT MATERIALIZED**
 - Implementation: **NOT STARTED**
+- Executable production Validation: **NOT CLAIMED**
 
 The PRD document revision is not the product release version. The current integration/checkpoint branch is `version/v0.1.0`.
 
@@ -58,11 +61,17 @@ Research fixtures remain isolated research evidence and were not merged wholesal
 
 Architecture Review PASS and this Freeze are planning/assurance checkpoints only. They do not prove production Validation, packaging/install/update readiness, Release Qualification, or Release PASS.
 
+## Stage 2.4 Task DAG candidate
+
+The v0.1.0 planning candidate is durable at [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md) with per-task durable authority indexed by [`implementation/v0.1.0/TASK_PACKS.json`](implementation/v0.1.0/TASK_PACKS.json).
+
+This planning checkpoint is **NOT FROZEN**. No Task Issues, native Issue Dependencies, implementation branches or JIT Execution Packs have been materialized, and implementation has not started. The candidate itself is `review:required` and must receive a separate Fresh Independent Task DAG Review before any Freeze/materialization step.
+
+After a future Task DAG Freeze and Stage 2.5 materialization, GitHub Task Issues + native Issue Dependencies become the canonical live execution DAG; the frozen planning document remains planning/history only.
+
 ## Next lifecycle action
 
-The next separately authorized action is **ADS Stage 2.4 Task DAG definition**.
-
-Task DAG generation/materialization has **not** started, and implementation remains **NOT STARTED**. Downstream work may not alter Frozen Architecture Facts/Decisions except through the formal ADS Architecture Amendment / newly discovered material UNKNOWN process.
+The next separately authorized action is a **Fresh Independent Task DAG Review** of the exact Stage 2.4 candidate. Task DAG Freeze, Stage 2.5 materialization and implementation remain downstream and have not been started.
 
 ## Durable Product/Review history
 
@@ -74,3 +83,5 @@ Task DAG generation/materialization has **not** started, and implementation rema
 - [`planning/STAGE1_PRODUCT_SCOPE_FREEZE.md`](planning/STAGE1_PRODUCT_SCOPE_FREEZE.md)
 - [`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md)
 - [`planning/STAGE2_ARCHITECTURE_FREEZE.md`](planning/STAGE2_ARCHITECTURE_FREEZE.md)
+- [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md)
+- [`implementation/v0.1.0/TASK_PACKS.json`](implementation/v0.1.0/TASK_PACKS.json)
