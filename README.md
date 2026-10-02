@@ -5,10 +5,11 @@ xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision
 ## Current ADS lifecycle state
 
 ```text
-Stage 0 Intake/Baseline: checkpointed
+Stage 0 Intake/Baseline: CHECKPOINTED
 Stage 1 Product/Scope: ACTIVE
 Formal L1 Product Evidence: COMPLETE
 Current PRD/Scope candidate: PRD v0.4.1
+Initial product release target: v0.1.0
 Product Freeze: NO
 Architecture Freeze: NO
 L2: NOT ELIGIBLE
@@ -16,7 +17,7 @@ Task DAG: NOT STARTED
 Implementation: NOT STARTED
 ```
 
-The current PRD document revision is separate from the initial product release target. The current candidate targets `xDownload v0.1.0`.
+The PRD document revision is separate from the product release target.
 
 ## Current Stage 1 documents
 
@@ -46,4 +47,4 @@ xDownload is not a general crawler and is not an AI-first downloader. Ordinary s
 
 ## Next ADS action
 
-Run a Fresh Independent Product/Scope Review against the exact current v0.4.1 subject. Only a PASS with no blocking Product findings may proceed to the Stage 1 Product/Scope Freeze checkpoint. L2 starts only after that checkpoint.
+Run a Fresh Independent Product/Scope Review against the exact current v0.4.1 subject. Only a PASS with no blocking Product findings may proceed to the Stage 1 Product/Scope Freeze checkpoint for `v0.1.0`. L2 starts only after that checkpoint.
