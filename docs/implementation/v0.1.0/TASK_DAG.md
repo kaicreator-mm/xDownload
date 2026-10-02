@@ -129,11 +129,11 @@ All implementation Task Packs use the intended merge target `version/v0.1.0`; br
 - **T021** ← `T019` — exact-candidate real-browser/security Validation requires the stabilized integrated subject.
 - **T022** ← `T019` — Critical Journeys/G0/G1 must run on the stabilized exact product candidate.
 - **T023** ← `T019` — package/platform qualification must bind the same exact candidate and actual package artifacts.
-- **T024** ← `T020,T021,T022,T023` — Candidate Freeze requires all mandatory visible gates on one exact SHA.
-- **T025** ← `T024` — Hidden Validation executes only after Candidate Freeze.
-- **T026** ← `T025` — Version Closure checks visible Validation/CJ + Hidden + production platform/build evidence.
-- **T027** ← `T026` — Release Qualification is downstream release authority and cannot precede Closure.
-- **T028** ← `T027` — mainline release-baseline integration is allowed only after exact-candidate Release Qualification PASS.
+- **T024** ← `T020,T021,T022,T023` — Candidate Freeze requires all mandatory visible gates on one exact SHA/tree/ref and a complete freeze record.
+- **T025** ← `T024` — Hidden Validation executes only after Candidate Freeze and binds the immutable frozen candidate plus private pack/environment/validator identity.
+- **T026** ← `T025` — Version Closure owns the pinned closure checklist and reconciles visible/hidden/platform/currentness/GitHub-state evidence.
+- **T027** ← `T026` — Release Qualification is downstream release authority and emits exactly `READY|CONDITIONAL|BLOCKED|FAIL`, distinct from Closure or generic Gate PASS.
+- **T028** ← `T027` — mainline release-baseline integration is allowed only after canonical Release Qualification `READY`.
 
 ## Coverage mapping
 
@@ -149,7 +149,7 @@ All implementation Task Packs use the intended merge target `version/v0.1.0`; br
 - S1–S6, C01–C34, Critical Journeys and G0/G1 protocol: T003 + T022.
 - Real crash/restart/data integrity and browser/security validation: T020 + T021.
 - Packaging/platform qualification without inventing broad OS/browser support: T018 + T023.
-- Candidate Freeze, Hidden Validation, Version Closure, Release Qualification and release baseline: T024–T028.
+- Candidate Freeze complete identity/currentness, Hidden pack identity, pinned Version Closure checklist, canonical Release Qualification verdict and READY-only repository integration: T024–T028.
 
 ## Maximum safe parallelism
 
@@ -161,9 +161,9 @@ After T019, T020–T023 may run in parallel on the **same immutable exact candid
 
 ## Validation ownership model
 
-Task-owned Validation proves only the exact task candidate concern. Version-level visible Validation is owned by T020–T023 on the exact T019 candidate. T024 may freeze only when all required visible gates bind the same candidate. Hidden Validation is T025. Version Closure is T026. Release Qualification is T027. Therefore:
+Task-owned Validation proves only the exact task candidate concern. Version-level visible Validation is owned by T020–T023 on the exact T019 candidate. T024 may freeze only when all required visible gates bind the same candidate and the complete freeze identity is recorded. T025 owns Hidden Validation and its private pack/environment/validator evidence binding. T026 owns the pinned Version Closure checklist. T027 owns the canonical Release Qualification verdict `READY|CONDITIONAL|BLOCKED|FAIL`. T028 repository integration is admissible only after T027 `READY`. Therefore:
 
-`Task/PR PASS != Candidate Freeze PASS != Version Closure PASS != Release Qualification PASS`.
+`Task/PR PASS != Candidate Freeze != Version Closure result != Release Qualification verdict != Repository Integration`.
 
 Research Demo #7/#8 remain Architecture Evidence/reference material only; production tasks must produce their own applicable validation.
 
