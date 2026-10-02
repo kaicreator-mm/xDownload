@@ -78,6 +78,7 @@ def clean_restart_and_state(root):
 def hardkill_submit(root, crash_point, **extra):
     r=Runtime(root); pid1=r.start();
     req={"op":"submit","client_request_id":"req-1","crash_point":crash_point}; req.update(extra)
+    # Runtime kills itself; client sees EOF or reset.
     try: r.request(req,allow_eof=True)
     except (ConnectionResetError, BrokenPipeError): pass
     r.wait_killed()
@@ -128,11 +129,13 @@ def s7(base):
     try: r.request({"op":"submit","client_request_id":"req-submit","crash_point":"after_partial_stage"},allow_eof=True)
     except ConnectionResetError: pass
     r.wait_killed()
+    # Reopen the real DB/filesystem but deliberately defer automatic reconciliation so cancellation can win durably.
     r2=Runtime(root); p2=r2.start(defer_recovery=True)
     active=r2.request({"op":"status"})
     assert active["acquisition"]["status"]=="STAGED_PARTIAL", active
     cancel=r2.request({"op":"cancel","client_request_id":"req-cancel"}); assert cancel["lineage_id"]=="lineage:target-e3-001"
     r2.stop()
+    # Fresh restart must preserve cancellation and must not replenish budget or create a second effect.
     r3=Runtime(root); p3=r3.start(); cancelled=r3.request({"op":"status"})
     assert cancelled["acquisition"]["status"]=="CANCELLED", cancelled
     assert cancelled["external_effect_execution_count"]==1
