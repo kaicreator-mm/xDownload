@@ -17,7 +17,8 @@
 
 - Integration mode: `version-branch`
 - Version integration branch pattern: `version/vX.Y.Z`
-- Current Stage 1 working branch: `docs/product-baseline-2026-10-01` (temporary planning/evidence branch; not an implementation integration branch)
+- Current integration/checkpoint branch: `version/v0.1.0` (`Product/Scope FROZEN`; L2 eligible but not started)
+- Prior Stage 1 planning/evidence branch: `docs/product-baseline-2026-10-01`
 - Issue-based execution DAG: `enabled after Frozen Task DAG is materialized`
 - Task Issue template/profile: `canonical pinned-standard task issue contract`
 - Stacked PR policy: `allowed only for a real unmerged code-baseline dependency`
@@ -114,7 +115,7 @@ CI profile MUST be revisited before implementation tasks begin.
 
 ## Runtime / Platform Requirements
 
-- Supported OS/platform: `NOT_FROZEN — Product/Architecture decision pending`
+- Supported OS/platform: `NOT_FROZEN — Architecture decision pending`
 - Required runtime/toolchain versions: `NOT_FROZEN`
 - Required services: `NOT_FROZEN`
 - Required SDK/device: `NOT_FROZEN`
