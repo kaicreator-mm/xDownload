@@ -10,10 +10,11 @@ xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision
 - Formal L1 Product Evidence: **COMPLETE / checkpointed** — [`product/L1_PRODUCT_EVIDENCE.md`](product/L1_PRODUCT_EVIDENCE.md)
 - Stage 1 Freeze record: [`planning/STAGE1_PRODUCT_SCOPE_FREEZE.md`](planning/STAGE1_PRODUCT_SCOPE_FREEZE.md)
 - Product release target: `v0.1.0`
-- Stage 2 L2 Architecture Evidence: **CANDIDATE / READY_FOR_ARCH_REVIEW / NOT FROZEN** — [`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md)
+- Stage 2 L2 Architecture Evidence: **CANDIDATE / READY_FOR_ARCH_REREVIEW / NOT FROZEN** — [`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md)
 - Architecture UNKNOWN disposition: **0 unresolved material UNKNOWNs**
 - Research Demo #7: **PASS evidence consumed** — terminal `5953990637`, final research HEAD `4adbe7c587920383a654e020de757e2de657c312`
 - Research Demo #8: **PASS evidence consumed** — terminal `5954331493`, final research HEAD `b5fbbe1ef22414cacfede5fdb9d1aac1f858e5cb`
+- Architecture Review #10: **NEEDS_REVISION** — sole blocker `AR-F01`; bounded L2 repair completed and awaits fresh independent Re-Review
 - Architecture Freeze: **NO**
 - Task DAG: **NOT STARTED**
 - Implementation: **NOT STARTED**
@@ -28,7 +29,7 @@ Downstream Architecture or implementation work may not mutate those Product sema
 
 ## Stage 2 L2 Architecture Evidence
 
-[`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md) is the current **candidate / READY_FOR_ARCH_REVIEW / NOT FROZEN** L2 artifact.
+[`architecture/L2_ARCHITECTURE_EVIDENCE.md`](architecture/L2_ARCHITECTURE_EVIDENCE.md) is the current **candidate / READY_FOR_ARCH_REREVIEW / NOT FROZEN** L2 artifact.
 
 Current evidence disposition:
 
@@ -44,18 +45,20 @@ CURRENT_UNRESOLVED_ARCHITECTURE_UNKNOWNS=0
 
 Candidate architecture still centers on one local authoritative Core Control Runtime shared by thin Desktop/CLI/Browser adapters, typed Evidence and canonical result projection, declarative bounded Recipe execution, protocol-specific acquisition adapters, and a local persistence/artifact boundary. These remain Architecture candidate decisions rather than Frozen facts.
 
-The successor L2 now consumes the exact executable Research Demo evidence instead of leaving U2/U3 as Demo-required:
+The successor L2 consumes the exact executable Research Demo evidence instead of leaving U2/U3 as Demo-required:
 
-- **Issue #7 / U2** — PASS: real SQLite + filesystem + separate-process SIGKILL/restart + two-client concurrency supports stable snapshot/budget/effect/artifact truth for the tested Linux process-death/reopen tuple. Host power-loss durability remains NOT proven.
+- **Issue #7 / U2** — PASS: real SQLite + filesystem + separate-process SIGKILL/restart + two-client concurrency supports stable snapshot/budget/effect/artifact truth for the tested Linux process-death/reopen tuple. Host power-loss durability remains NOT proven. Its cancel-vs-auto-recovery precedence item was explicitly `ADAPT`, not universally proven.
 - **Issue #8 / U3** — PASS: real Chromium 144 MV3 extension + `webRequest` + browser cookie/partition context + real Native Messaging host + scoped local auth broker supports opaque auth-reference/provenance binding and tested secret containment on Linux. Firefox/Safari, Windows/macOS registration/packaging, store distribution and production credential-vault behavior remain NOT proven.
+
+The bounded `AR-F01` repair now defines one Core-owned cancellation-vs-recovery/validation/acceptance/finalization precedence: durable cancellation before durable acceptance blocks automatic later acceptance; durable acceptance before cancellation is not retroactively revoked; bounded reconciliation may establish truth; only explicit retry/resume may reopen processing on the same frozen lineage and remaining budgets. Frozen Product semantics were not changed.
 
 Research fixtures remain isolated research evidence and were not merged wholesale into the version branch.
 
 ## Next lifecycle action
 
-The next action is a **fresh independent Architecture Review** on the exact current L2 candidate.
+The next action is a **fresh independent Architecture Re-Review** on the exact current L2 candidate, specifically verifying `AR-F01` closure.
 
-Only after a current exact-subject Architecture Review and a separately authorized Architecture Freeze decision may the project generate a Task DAG. No Task DAG or production implementation is authorized by the current successor.
+Only after a current exact-subject Architecture Re-Review and a separately authorized Architecture Freeze decision may the project generate a Task DAG. No Task DAG or production implementation is authorized by the current bounded repair.
 
 ## Durable Product/Review history
 
