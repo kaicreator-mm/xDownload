@@ -7,14 +7,14 @@ xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision
 - Stage 0 Intake/Baseline: checkpointed in [`planning/STAGE0_INTAKE.md`](planning/STAGE0_INTAKE.md)
 - Stage 1 Product/Scope: ACTIVE
 - Formal L1 Product Evidence: COMPLETE / checkpointed
-- Current PRD/Scope candidate: `PRD-v0.4.1-review-candidate.md`
+- Current PRD/Scope candidate: `PRD-v0.4.2-review-candidate.md`
 - Product Freeze: NO
 - Architecture Freeze: NO
 - L2 eligibility: NO
 - Task DAG: NOT STARTED
 - Implementation: NOT STARTED
 
-The PRD document revision is not the product release version. The initial product release target selected by the current candidate is `xDownload v0.1.0`.
+The PRD document revision is not the product release version. The initial product release target remains `xDownload v0.1.0`.
 
 ## Current Stage 1 evidence
 
@@ -26,28 +26,34 @@ The PRD document revision is not the product release version. The initial produc
 
 ## Current Product/Scope review subject
 
-- [`product/PRD-v0.4.1-review-candidate.md`](product/PRD-v0.4.1-review-candidate.md) — current complete, self-contained ADS Stage 1 Product/Scope Review Candidate.
-  - supersedes v0.3/v0.4 as the current PRD subject;
+- [`product/PRD-v0.4.2-review-candidate.md`](product/PRD-v0.4.2-review-candidate.md) — current complete, self-contained ADS Stage 1 Product/Scope Review Candidate.
+  - supersedes v0.4.1 only as the current review subject; historical artifacts remain unchanged;
   - initial product release target: `v0.1.0`;
-  - includes complete AcquisitionContract, Collection admission, Scope Grammar, SelectionSnapshot, Budget domains and precedence, multi-dimensional Result Model, CoverageTarget, typed Evidence/User Confirmation, UI/CLI contracts, concrete S1–S6 release support slices, Product Gates, C01–C34, Critical Journeys, release blockers and finding closure matrices.
+  - preserves the L1 thesis: targeted resource acquisition + explicit bounded collection + Human-in-the-loop + independent validation + Template-first + bounded AI-on-gap;
+  - repairs Issue #2/#3 R01 by freezing `current_page` membership/continuation semantics, default `continuation_scope=NONE`, successor contract/snapshot on later scope expansion, and truthful unexhausted-continuation result behavior;
+  - repairs R02 by keeping confirmed `requested_scope` immutable, separating requested / authorization-accessible / selected / acquired sets, separating parent/requested/access accounting, and freezing the canonical 18-requested / 16-accessible tuple;
+  - repairs R03 by requiring a deterministic pre-registered `G0BaselinePlan` before Phase B and invalidating confirmation when baseline selection/comparison rules change after exposure;
+  - retains AcquisitionContract, Collection admission, Scope Grammar, SelectionSnapshot, Budget domains/precedence, multi-dimensional Result Model, typed Evidence/User Confirmation, UI/CLI contracts, S1–S6 required support slices, G0–G4 protocols, C01–C34, Critical Journeys, release blockers and finding closure matrices.
 
 ## Durable review evidence
 
 - [`reviews/2026-10-02-v0.2-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.2-fresh-independent-adversarial-review.md)
 - [`reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md)
 - [`reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md)
+- Issue #2 terminal review comment `5950568942` — Fresh Independent Product/Scope Review of v0.4.1, result `NEEDS_REVISION`, Product Freeze eligibility `NO`; minimum blocking set R01–R03.
 
-The latest completed review is v0.4 at exact HEAD `a349b06cfb28c6d33a97241349a76ddb97b7d95b`, verdict `NEEDS_REVISION`, `PRODUCT_FREEZE_ELIGIBLE = NO`. v0.4.1 is the successor subject and has not yet been independently reviewed.
+v0.4.2 is the successor Product/Scope subject created to repair exactly R01–R03. It has **not** been independently reviewed and does not perform Product Freeze.
 
 ## Stage 1 required next actions
 
 Per the pinned ADS Development Workflow:
 
 1. Formal L1 Product Evidence — **COMPLETE**.
-2. Successor PRD/Scope candidate — **COMPLETE: v0.4.1 Review Candidate**.
-3. Fresh Independent Product/Scope Review on the current exact v0.4.1 subject — **NOT RUN**.
-4. If and only if the required review returns PASS with no blocking Product findings, create the Stage 1 Product/Scope Freeze checkpoint for release target `v0.1.0`.
-5. Only after that checkpoint, begin L2 Architecture Evidence.
+2. v0.4.1 Fresh Independent Review — **COMPLETE / NEEDS_REVISION**.
+3. R01–R03 successor Product/Scope repair — **COMPLETE AS BUILDER CANDIDATE: v0.4.2**.
+4. Fresh Independent Product/Scope Review on the exact current v0.4.2 subject — **NOT RUN**.
+5. If and only if that fresh review returns PASS with no blocking Product findings, separately create the Stage 1 Product/Scope Freeze checkpoint for release target `v0.1.0`.
+6. Only after Product/Scope Freeze, begin L2 Architecture Evidence.
 
 No L2 Architecture work starts before Product/Scope Freeze.
 
@@ -65,6 +71,7 @@ No L2 Architecture work starts before Product/Scope Freeze.
 - [`reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md`](reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md)
 - [`product/L1_PRODUCT_EVIDENCE.md`](product/L1_PRODUCT_EVIDENCE.md)
 - [`product/PRD-v0.4.1-review-candidate.md`](product/PRD-v0.4.1-review-candidate.md)
+- [`product/PRD-v0.4.2-review-candidate.md`](product/PRD-v0.4.2-review-candidate.md)
 
 ## Current product hierarchy under review
 
