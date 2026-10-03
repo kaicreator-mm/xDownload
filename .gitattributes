@@ -1,0 +1,4 @@
+# Normalize all text files to LF in every working tree so the read-only
+# `pnpm format:check` gate (Prettier endOfLine: lf) behaves identically on
+# every host. Binary assets must opt out explicitly.
+* text=auto eol=lf
