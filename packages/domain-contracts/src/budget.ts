@@ -222,6 +222,12 @@ export function decodeLifecycleBudget(value: unknown): DomainValidationResult<Li
   return ok(deepFreeze(budget));
 }
 
+/**
+ * Decode the complete budget profile (PRD §15). The three slot keys are
+ * authoritative and every decoded slot's `domain` discriminant must
+ * correspond to its slot: a mismatched or contradictory discriminant fails
+ * closed and is never silently recast or overwritten.
+ */
 export function decodeBudgetProfile(value: unknown): DomainValidationResult<BudgetProfile> {
   const diagnostics: ValidationDiagnostic[] = [];
   const record = unwrap(asRecord(value, 'budgetProfile'), diagnostics);
@@ -244,8 +250,38 @@ export function decodeBudgetProfile(value: unknown): DomainValidationResult<Budg
       );
     }
   }
-  const discovery = unwrap(decodeLifecycleBudget(record['discovery']), diagnostics);
-  const transfer = unwrap(decodeLifecycleBudget(record['transfer']), diagnostics);
+  let discovery: DiscoveryBudget | undefined;
+  const decodedDiscovery = unwrap(decodeLifecycleBudget(record['discovery']), diagnostics);
+  if (decodedDiscovery !== undefined) {
+    if (decodedDiscovery.domain === 'discovery') {
+      discovery = decodedDiscovery;
+    } else {
+      diagnostics.push(
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'budgetProfile.discovery.domain',
+          `budget slot 'discovery' requires the discovery domain; got declared domain '${decodedDiscovery.domain}'`,
+          'PRD-§15',
+        ),
+      );
+    }
+  }
+  let transfer: TransferBudget | undefined;
+  const decodedTransfer = unwrap(decodeLifecycleBudget(record['transfer']), diagnostics);
+  if (decodedTransfer !== undefined) {
+    if (decodedTransfer.domain === 'transfer') {
+      transfer = decodedTransfer;
+    } else {
+      diagnostics.push(
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'budgetProfile.transfer.domain',
+          `budget slot 'transfer' requires the transfer domain; got declared domain '${decodedTransfer.domain}'`,
+          'PRD-§15',
+        ),
+      );
+    }
+  }
   const globalSafetyRaw = record['globalSafety'];
   const globalSafetyRecord = unwrap(
     asRecord(globalSafetyRaw, 'budgetProfile.globalSafety'),
@@ -253,10 +289,22 @@ export function decodeBudgetProfile(value: unknown): DomainValidationResult<Budg
   );
   let globalSafety: GlobalSafetyBudget | undefined;
   if (globalSafetyRecord !== undefined) {
-    const decoded = decodeLifecycleBudget({ ...globalSafetyRecord, domain: 'global_safety' });
-    const budget = unwrap(decoded, diagnostics);
-    if (budget !== undefined && budget.domain === 'global_safety') {
-      globalSafety = budget;
+    const declaredDomain = globalSafetyRecord['domain'];
+    if (declaredDomain !== undefined && declaredDomain !== 'global_safety') {
+      diagnostics.push(
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'budgetProfile.globalSafety.domain',
+          `budget slot 'globalSafety' declared domain '${String(declaredDomain)}'; a contradictory domain discriminant is rejected, never silently overwritten`,
+          'PRD-§15',
+        ),
+      );
+    } else {
+      const decoded = decodeLifecycleBudget({ ...globalSafetyRecord, domain: 'global_safety' });
+      const budget = unwrap(decoded, diagnostics);
+      if (budget !== undefined && budget.domain === 'global_safety') {
+        globalSafety = budget;
+      }
     }
   }
   if (
@@ -277,13 +325,7 @@ export function decodeBudgetProfile(value: unknown): DomainValidationResult<Budg
           ],
     );
   }
-  return ok(
-    deepFreeze({
-      discovery: discovery as DiscoveryBudget,
-      transfer: transfer as TransferBudget,
-      globalSafety,
-    }),
-  );
+  return ok(deepFreeze({ discovery, transfer, globalSafety }));
 }
 
 /**

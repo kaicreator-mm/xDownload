@@ -14,6 +14,7 @@ import {
   sameScopeSnapshotBinding,
   scopeIdentityKey,
   validateSnapshotSemantics,
+  type SnapshotSuccessorReason,
 } from '../src/index.ts';
 import {
   confirmedCollectionContract,
@@ -107,6 +108,51 @@ describe('selection-snapshot: retry/resume keeps frozen authority', () => {
       ),
     );
     expectCode(assertSnapshotImmutable(original, candidate), 'MEMBERSHIP_DRIFT', 'C01/C11');
+  });
+
+  it('continuation and coverage drift under the same snapshot identity is rejected; a new identity may freeze new continuation (PRD-§12)', () => {
+    const original = confirmedSnapshot();
+    // expanded continuation under the same snapshot identity is silent mutation
+    const continuationDrift = decodeOk(
+      decodeSelectionSnapshot(
+        rawSnapshot({ continuationScope: { kind: 'DECLARED_BATCH_COUNT', count: 2 } }),
+      ),
+    );
+    expect(continuationDrift.snapshotId).toBe(original.snapshotId);
+    expectCode(
+      assertSnapshotImmutable(original, continuationDrift),
+      'SNAPSHOT_MUTATION',
+      'PRD-§12',
+    );
+    // coverage target drift under the same identity is mutation as well
+    const coverageDrift = decodeOk(
+      decodeSelectionSnapshot(
+        rawSnapshot({ coverageTarget: { ...original.coverageTarget, snapshotVersion: 2 } }),
+      ),
+    );
+    expectCode(assertSnapshotImmutable(original, coverageDrift), 'SNAPSHOT_MUTATION', 'PRD-§17');
+    // a genuinely new snapshot identity may freeze different continuation authority
+    const successor = decodeOk(
+      decodeSelectionSnapshot(
+        rawSnapshot({
+          snapshotId: 'snapshot-continuation-002',
+          supersedesSnapshotId: 'snapshot-001',
+          continuationScope: { kind: 'DECLARED_BATCH_COUNT', count: 2 },
+        }),
+      ),
+    );
+    expect(decodeOk(assertSnapshotImmutable(original, successor))).toBeUndefined();
+  });
+
+  it('successor derivation fails closed on an unknown successor justification (PRD-§12)', () => {
+    const original = confirmedSnapshot();
+    expectCode(
+      deriveSuccessorSnapshot(original, 'SILENT_REPLACEMENT' as SnapshotSuccessorReason, {
+        newSnapshotId: decodeOk(makeSnapshotId('snapshot-unknown-reason-001')),
+      }),
+      'UNKNOWN_ENUM_VALUE',
+      'PRD-§12',
+    );
   });
 });
 

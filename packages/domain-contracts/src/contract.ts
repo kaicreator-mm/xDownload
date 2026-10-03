@@ -43,6 +43,7 @@ import {
   decodeContinuationScope,
   decodeMembershipBasisRef,
   decodeRequestedScope,
+  sameContinuationIdentity,
   sameScopeIdentity,
   validateScopeContinuationPair,
   type ContinuationScope,
@@ -543,7 +544,7 @@ export function assertContractTransition(
         ),
       );
     }
-    if (!continuationEquals(previous.continuationScope, next.continuationScope)) {
+    if (!sameContinuationIdentity(previous.continuationScope, next.continuationScope)) {
       diagnostics.push(
         diagnostic(
           'SCOPE_MUTATION',
@@ -579,19 +580,6 @@ export function assertContractTransition(
     ]);
   }
   return ok(undefined);
-}
-
-function continuationEquals(a: ContinuationScope, b: ContinuationScope): boolean {
-  if (a.kind !== b.kind) {
-    return false;
-  }
-  if (a.kind === 'DECLARED_BATCH_COUNT' && b.kind === 'DECLARED_BATCH_COUNT') {
-    return a.count === b.count;
-  }
-  if (a.kind === 'DECLARED_PAGE_RANGE' && b.kind === 'DECLARED_PAGE_RANGE') {
-    return a.fromPage === b.fromPage && a.toPage === b.toPage;
-  }
-  return true;
 }
 
 /**
@@ -645,7 +633,7 @@ export function deriveSuccessorContract(
     !sameScopeIdentity(patch.requestedScope, previous.requestedScope);
   const continuationChanged =
     patch.continuationScope !== undefined &&
-    !continuationEquals(patch.continuationScope, previous.continuationScope);
+    !sameContinuationIdentity(patch.continuationScope, previous.continuationScope);
   const authChanged =
     patch.authorizationContextRef !== undefined &&
     patch.authorizationContextRef !== previous.authorizationContextRef;

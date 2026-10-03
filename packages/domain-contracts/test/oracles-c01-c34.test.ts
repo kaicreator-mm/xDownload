@@ -80,7 +80,9 @@ function collectionResult(
     },
     ...ctx,
   };
-  void validateTerminalResult(result, base);
+  // the positive baseline is part of every oracle block: the legal tuple must
+  // itself validate before the forbidden projection is asserted against it
+  expect(decodeOk(validateTerminalResult(result, base))).toBeUndefined();
 }
 
 const evidence = (fields: Record<string, unknown>): EvidenceRecord => ({

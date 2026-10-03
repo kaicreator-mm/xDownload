@@ -54,6 +54,51 @@ describe('budgets: three distinct lifecycle domains', () => {
     expect(profile.transfer.domain).toBe('transfer');
     expect(profile.globalSafety.domain).toBe('global_safety');
   });
+
+  it('fails closed on slot/domain discriminant mismatch inside a budget profile (PRD-§15)', () => {
+    // a transfer-typed budget in the discovery slot is never recast as a DiscoveryBudget
+    expectCode(
+      decodeBudgetProfile({
+        discovery: { domain: 'transfer', maxBytes: 1 },
+        transfer: { domain: 'transfer', maxBytes: 10 },
+        globalSafety: { domain: 'global_safety', maxActiveElapsedMs: 100 },
+      }),
+      'MALFORMED_REQUIRED_FIELD',
+      'PRD-§15',
+    );
+    // a discovery-typed budget in the transfer slot is rejected as well
+    expectCode(
+      decodeBudgetProfile({
+        discovery: { domain: 'discovery', maxGeneratedRequests: 1 },
+        transfer: { domain: 'discovery' },
+        globalSafety: { domain: 'global_safety' },
+      }),
+      'MALFORMED_REQUIRED_FIELD',
+      'PRD-§15',
+    );
+    // a contradictory declared domain in the globalSafety slot is rejected,
+    // never silently overwritten to global_safety
+    expectCode(
+      decodeBudgetProfile({
+        discovery: { domain: 'discovery' },
+        transfer: { domain: 'transfer' },
+        globalSafety: { domain: 'transfer', maxBytes: 1 },
+      }),
+      'MALFORMED_REQUIRED_FIELD',
+      'PRD-§15',
+    );
+    // matching discriminants decode with each slot's declared domain left truthful
+    const profile = decodeOk(
+      decodeBudgetProfile({
+        discovery: { domain: 'discovery', maxGeneratedRequests: 1 },
+        transfer: { domain: 'transfer', maxBytes: 10 },
+        globalSafety: { domain: 'global_safety', maxActiveElapsedMs: 100 },
+      }),
+    );
+    expect(profile.discovery.domain).toBe('discovery');
+    expect(profile.transfer.domain).toBe('transfer');
+    expect(profile.globalSafety.domain).toBe('global_safety');
+  });
 });
 
 describe('budgets: retry/restart inherits remaining budget, never replenishes (C13)', () => {

@@ -525,6 +525,25 @@ export function sameScopeIdentity(a: RequestedScope, b: RequestedScope): boolean
   }
 }
 
+/**
+ * Identity-level continuation equality (PRD §8/§12): same kind and the same
+ * explicit bounds. Continuation is part of requested-scope semantics and is
+ * frozen with it, so a different kind or bound is different continuation
+ * authority, never the same continuation under another spelling.
+ */
+export function sameContinuationIdentity(a: ContinuationScope, b: ContinuationScope): boolean {
+  if (a.kind !== b.kind) {
+    return false;
+  }
+  if (a.kind === 'DECLARED_BATCH_COUNT' && b.kind === 'DECLARED_BATCH_COUNT') {
+    return a.count === b.count;
+  }
+  if (a.kind === 'DECLARED_PAGE_RANGE' && b.kind === 'DECLARED_PAGE_RANGE') {
+    return a.fromPage === b.fromPage && a.toPage === b.toPage;
+  }
+  return true;
+}
+
 function identitySetsEqual(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) {
     return false;

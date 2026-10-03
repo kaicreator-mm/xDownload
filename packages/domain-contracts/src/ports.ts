@@ -21,6 +21,7 @@ import {
   validateSnapshotSemantics,
   type SelectionSnapshot,
 } from './snapshot.ts';
+import { sameContinuationIdentity } from './scope.ts';
 import {
   decodeTerminalResult,
   validateTerminalResult,
@@ -101,6 +102,20 @@ export function createDomainGateway(): DomainGateway {
             'SCOPE_MUTATION',
             'snapshot.requestedScope',
             'snapshot requested scope must bind the confirmed contract requested scope',
+            'PRD-§12',
+          ),
+        ]);
+      }
+      // continuation_scope is frozen inside the snapshot (PRD §12) and must
+      // bind the confirmed contract's continuation: an expanded or otherwise
+      // different continuation authority can never confirm against this
+      // contract — it requires a successor contract and successor snapshot.
+      if (!sameContinuationIdentity(snapshot.value.continuationScope, contract.continuationScope)) {
+        return fail([
+          diagnostic(
+            'SCOPE_MUTATION',
+            'snapshot.continuationScope',
+            'snapshot continuation scope must bind the confirmed contract continuation scope; expanded continuation requires a successor contract and snapshot',
             'PRD-§12',
           ),
         ]);

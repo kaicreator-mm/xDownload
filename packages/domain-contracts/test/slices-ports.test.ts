@@ -88,6 +88,30 @@ describe('adapter-facing gateway port', () => {
       requestedScope: pageRangeScope('collection/playlist-001', 1, 2),
     };
     expectCode(gateway.confirmSnapshot(rawSnapshot(), otherScopeContract), 'SCOPE_MUTATION');
+    // continuation binding mismatch: an expanded continuationScope can never
+    // confirm against this NONE-continuation contract — expansion requires a
+    // successor contract AND successor snapshot (PRD-§12)
+    expectCode(
+      gateway.confirmSnapshot(
+        rawSnapshot({ continuationScope: { kind: 'DECLARED_BATCH_COUNT', count: 3 } }),
+        contract,
+      ),
+      'SCOPE_MUTATION',
+    );
+    // matching continuation binds: a snapshot freezing the contract's own
+    // expanded continuation confirms against that successor contract
+    const successorContract = decodeOk(
+      decodeAcquisitionContract(
+        rawCollectionContract({ continuationScope: { kind: 'DECLARED_BATCH_COUNT', count: 3 } }),
+      ),
+    );
+    const expandedSnapshot = decodeOk(
+      gateway.confirmSnapshot(
+        rawSnapshot({ continuationScope: { kind: 'DECLARED_BATCH_COUNT', count: 3 } }),
+        successorContract,
+      ),
+    );
+    expect(expandedSnapshot.continuationScope).toEqual({ kind: 'DECLARED_BATCH_COUNT', count: 3 });
   });
 
   it('appends evidence only after decode validation', () => {

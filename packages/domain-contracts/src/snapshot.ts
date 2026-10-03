@@ -48,6 +48,7 @@ import type { ConfirmationType } from './evidence.ts';
 import {
   decodeContinuationScope,
   decodeRequestedScope,
+  sameContinuationIdentity,
   sameScopeIdentity,
   type ContinuationScope,
   type RequestedScope,
@@ -106,6 +107,13 @@ export type SnapshotSuccessorReason =
   | 'PROFILE_CHANGED'
   | 'MEMBERSHIP_REENUMERATION_REQUIRED'
   | 'CONTINUATION_EXPANSION';
+
+const SNAPSHOT_SUCCESSOR_REASONS: readonly SnapshotSuccessorReason[] = [
+  'COLLECTION_CHANGED',
+  'PROFILE_CHANGED',
+  'MEMBERSHIP_REENUMERATION_REQUIRED',
+  'CONTINUATION_EXPANSION',
+];
 
 const SNAPSHOT_KEYS: readonly string[] = [
   'schemaIdentity',
@@ -623,9 +631,11 @@ export function sameScopeSnapshotBinding(
 
 /**
  * Immutability rule (PRD §12, counterexample C11): under the same snapshot
- * identity the frozen scope, continuation and member identity sets must be
- * exactly preserved. Count equality with different identities is drift, not
- * equality (counterexample C01).
+ * identity the frozen scope, continuation, coverage target and member
+ * identity sets must be exactly preserved — continuation_scope is frozen
+ * inside the snapshot and any drift requires successor snapshot identity.
+ * Count equality with different identities is drift, not equality
+ * (counterexample C01).
  */
 export function assertSnapshotImmutable(
   original: SelectionSnapshot,
@@ -644,6 +654,26 @@ export function assertSnapshotImmutable(
       ),
     );
   }
+  if (!sameContinuationIdentity(original.continuationScope, candidate.continuationScope)) {
+    diagnostics.push(
+      diagnostic(
+        'SNAPSHOT_MUTATION',
+        'snapshot.continuationScope',
+        'continuation scope mutated under the same snapshot identity; expansion requires a successor snapshot identity',
+        'PRD-§12',
+      ),
+    );
+  }
+  if (!coverageTargetEquals(original.coverageTarget, candidate.coverageTarget)) {
+    diagnostics.push(
+      diagnostic(
+        'SNAPSHOT_MUTATION',
+        'snapshot.coverageTarget',
+        'coverage target mutated under the same snapshot identity',
+        'PRD-§17',
+      ),
+    );
+  }
   if (!identitySetEquals(original.selectedMemberIds, candidate.selectedMemberIds)) {
     diagnostics.push(
       diagnostic(
@@ -655,6 +685,15 @@ export function assertSnapshotImmutable(
     );
   }
   return diagnostics.length === 0 ? ok(undefined) : fail(diagnostics);
+}
+
+function coverageTargetEquals(a: CoverageTarget, b: CoverageTarget): boolean {
+  return (
+    a.collectionIdentity === b.collectionIdentity &&
+    a.scopeKind === b.scopeKind &&
+    a.scopeIdentityKey === b.scopeIdentityKey &&
+    a.snapshotVersion === b.snapshotVersion
+  );
 }
 
 /**
@@ -693,11 +732,14 @@ export function planRetryOfFailedMembers(
 /**
  * Derive a successor snapshot for a legitimate semantic change; the original
  * stays immutable historical authority and the successor links back
- * (PRD §12, counterexample C11).
+ * (PRD §12, counterexample C11). The justification is fail-closed: only the
+ * known successor reasons are accepted, and the successor keeps the frozen
+ * continuation of the original — expanded continuation authority is bound at
+ * confirmation against its successor contract.
  */
 export function deriveSuccessorSnapshot(
   original: SelectionSnapshot,
-  _reason: SnapshotSuccessorReason,
+  reason: SnapshotSuccessorReason,
   next: {
     readonly newSnapshotId: SnapshotId;
     readonly requestedMemberBasis?: MemberBasis;
@@ -705,6 +747,16 @@ export function deriveSuccessorSnapshot(
     readonly selectionClaims?: readonly SelectionClaim[];
   },
 ): DomainValidationResult<SelectionSnapshot> {
+  if (!SNAPSHOT_SUCCESSOR_REASONS.includes(reason)) {
+    return fail([
+      diagnostic(
+        'UNKNOWN_ENUM_VALUE',
+        'snapshot.successorReason',
+        `unknown successor reason '${String(reason)}'; a successor snapshot requires an explicit legitimate semantic-change justification`,
+        'PRD-§12',
+      ),
+    ]);
+  }
   if (next.newSnapshotId === original.snapshotId) {
     return fail([
       diagnostic(
