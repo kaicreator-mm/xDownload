@@ -1,0 +1,133 @@
+task_id: T001
+base_sha: 40bc80abc16012a42cb396a1aa3b6a6752daf061
+principle: fail_closed_no_false_pass
+failures:
+  - id: T001-FM-01
+    trigger: dependency_registry_or_network_unavailable
+    affected_gate: bootstrap
+    required_behavior:
+      - preserve_original_error
+      - report_exact_command_and_environment
+      - classify_as_BLOCKED_or_NOT_RUN_when_external_truth_is_unavailable
+      - do_not_claim_bootstrap_or_validation_PASS
+    forbidden_behavior:
+      - deleting_lockfile_to_make_install_succeed
+      - silently_switching_registry_or_dependency_source_without_reviewable_change
+
+  - id: T001-FM-02
+    trigger: lockfile_missing_or_inconsistent_with_manifest
+    affected_gate: bootstrap
+    required_behavior:
+      - pnpm_install_frozen_lockfile_must_fail
+      - Builder_repairs_manifest_lockfile_consistently_as_reviewable_T001_change
+      - rerun_clean_bootstrap
+    forbidden_behavior:
+      - CI_using_nonfrozen_install_to_mask_drift
+
+  - id: T001-FM-03
+    trigger: selected_Node_or_pnpm_version_unavailable_on_host
+    affected_gate: bootstrap
+    required_behavior:
+      - record_OS_arch_runtime_tuple
+      - distinguish_host_capability_from_repository_defect
+      - use_state_blocked_or_explicit_NOT_RUN_when_no_authorized_compatible_host_exists
+    forbidden_behavior:
+      - broad_platform_support_claim
+      - unrecorded_version_substitution
+
+  - id: T001-FM-04
+    trigger: format_lint_typecheck_or_unit_gate_fails
+    affected_gate: local_quality_gate
+    required_behavior:
+      - pnpm_ci_verify_returns_nonzero
+      - retain_failing_subgate_output
+      - repair_only_within_T001_owned_toolchain_or_smoke_scope
+    forbidden_behavior:
+      - disabling_required_gate
+      - continue_on_error_for_required_gate
+      - converting_failure_to_warning
+
+  - id: T001-FM-05
+    trigger: CI_service_runner_or_workflow_execution_unavailable
+    affected_gate: ci_execution
+    required_behavior:
+      - report_CI_truth_as_BLOCKED_or_NOT_RUN
+      - retain_local_gate_results_separately
+      - do_not_equate_local_success_with_CI_success
+    forbidden_behavior:
+      - fabricate_workflow_PASS
+      - mark_T001_validation_complete_without_required_CI_truth
+
+  - id: T001-FM-06
+    trigger: workflow_cancelled_timed_out_or_skipped
+    affected_gate: ci_execution
+    required_behavior:
+      - record_workflow_conclusion
+      - treat_required_gate_as_not_satisfied
+      - rerun_only_on_same_candidate_or_record_new_candidate_identity
+    forbidden_behavior:
+      - infer_PASS_from_previous_SHA
+
+  - id: T001-FM-07
+    trigger: checked_out_SHA_does_not_match_requested_candidate_SHA
+    affected_gate: exact_candidate_identity
+    required_behavior:
+      - fail_evidence_binding
+      - discard_run_as_authoritative_validation_evidence
+      - rerun_on_exact_candidate
+    forbidden_behavior:
+      - transplant_result_between_SHAs
+
+  - id: T001-FM-08
+    trigger: cache_hit_or_restore_changes_observable_gate_behavior
+    affected_gate: reproducibility
+    required_behavior:
+      - reproduce_with_cache_miss_or_cache_disabled
+      - fix_cache_key_or_setup
+      - keep_clean_bootstrap_as_authority
+    forbidden_behavior:
+      - require_warm_cache_for_success
+
+  - id: T001-FM-09
+    trigger: implementation_requires_Product_or_Frozen_L2_change
+    affected_gate: authority
+    escalation: ARCHITECTURE_CONTRADICTION
+    required_behavior:
+      - stop_affected_work
+      - publish_concrete_contradiction
+      - route_to_formal_authority_amendment
+    forbidden_behavior:
+      - weakening_frozen_semantics
+      - making_architecture_decision_under_F2
+
+  - id: T001-FM-10
+    trigger: frozen_T001_Task_Pack_is_incomplete_or_self_contradictory
+    affected_gate: task_authority
+    escalation: TASK_PACK_DEFECT
+    required_behavior:
+      - stop_affected_work
+      - identify_exact_defect
+      - request_Task_Pack_successor_or_amendment
+    forbidden_behavior:
+      - silently_expanding_task_scope
+
+  - id: T001-FM-11
+    trigger: Execution_Pack_base_branch_inventory_or_command_contract_is_wrong_or_materially_stale
+    affected_gate: execution_pack
+    escalation: EXECUTION_PACK_INVALID
+    required_behavior:
+      - stop_before_unbounded_source_mutation
+      - record_actual_base_and_conflict
+      - regenerate_or_explicitly_rebind_pack_under_ADS
+    forbidden_behavior:
+      - silently_rewriting_MANIFEST_base_sha
+      - continuing_on_unknown_material_drift
+
+  - id: T001-FM-12
+    trigger: .agent_execution_content_enters_shipped_package
+    affected_gate: package_exclusion
+    required_behavior:
+      - treat_as_packaging_gate_defect
+      - add_or_fix_exclusion_without_removing_durable_repository_evidence
+    forbidden_behavior:
+      - deleting_execution_evidence_to_fix_packaging

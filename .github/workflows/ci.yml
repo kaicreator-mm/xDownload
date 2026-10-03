@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches:
+      - version/v0.1.0
+
+jobs:
+  ci-verify:
+    name: pnpm ci:verify (exact candidate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          # pull_request: the PR head SHA (never GitHub's merge ref);
+          # push: the pushed exact SHA.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Record candidate identity
+        run: |
+          echo "candidate HEAD: $(git rev-parse HEAD)"
+
+      - name: Install pinned pnpm (from packageManager field)
+        uses: pnpm/action-setup@v4
+
+      - name: Install pinned Node (from .nvmrc)
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          # Explicitly disable automatic package-manager caching: every run
+          # installs fresh from the registry (cache miss by construction).
+          package-manager-cache: false
+
+      - name: Report toolchain identity
+        run: |
+          echo "git HEAD:    $(git rev-parse HEAD)"
+          echo "node:        $(node --version)"
+          echo "pnpm:        $(pnpm --version)"
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Run aggregate gate
+        run: pnpm ci:verify

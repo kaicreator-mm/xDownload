@@ -1,0 +1,12 @@
+{
+  "name": "@xdownload/toolchain-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xdownload/toolchain-smoke-core": "workspace:*"
+  }
+}
