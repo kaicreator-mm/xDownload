@@ -17,9 +17,13 @@ xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision
 - Research Demo #8: **PASS evidence consumed** — terminal `5954331493`, exact consumed Linux HEAD `b5fbbe1ef22414cacfede5fdb9d1aac1f858e5cb`, tree `486fb32577ac89f41276614611a7ef582ab68a15`; later Windows tuple is additive provenance only
 - Architecture Re-Review #12: **PASS / Freeze Eligible YES** — terminal `5956402251`, `AR-F01=CLOSED`
 - Architecture Freeze: **FROZEN**
-- Stage 2.4 Task DAG: **CANDIDATE / NOT FROZEN / READY FOR FRESH INDEPENDENT REVIEW** — [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md)
+- Stage 2.4 Task DAG: **FROZEN** — [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md)
+- Stage 2.4 Task DAG Freeze record: [`planning/STAGE2_TASK_DAG_FREEZE.md`](planning/STAGE2_TASK_DAG_FREEZE.md)
 - Task Pack index: [`implementation/v0.1.0/TASK_PACKS.json`](implementation/v0.1.0/TASK_PACKS.json)
+- Frozen Task count: **28 (`T001`–`T028`)**
 - Task Issues / native Issue Dependencies: **NOT MATERIALIZED**
+- Stage 2.5 Execution DAG Materialization: **ELIGIBLE / NOT STARTED**
+- JIT Execution Packs: **NOT GENERATED**
 - Implementation: **NOT STARTED**
 - Executable production Validation: **NOT CLAIMED**
 
@@ -61,17 +65,30 @@ Research fixtures remain isolated research evidence and were not merged wholesal
 
 Architecture Review PASS and this Freeze are planning/assurance checkpoints only. They do not prove production Validation, packaging/install/update readiness, Release Qualification, or Release PASS.
 
-## Stage 2.4 Task DAG candidate
+## Frozen Stage 2.4 Task DAG
 
-The v0.1.0 planning candidate is durable at [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md) with per-task durable authority indexed by [`implementation/v0.1.0/TASK_PACKS.json`](implementation/v0.1.0/TASK_PACKS.json).
+The v0.1.0 planning subject is frozen by [`planning/STAGE2_TASK_DAG_FREEZE.md`](planning/STAGE2_TASK_DAG_FREEZE.md) at reviewed source HEAD `f9a9c161482254deba9ca70c52a071aa1780615f` / tree `82f92c5a84fae600278598786aa0e736f66b73c6`.
 
-This planning checkpoint is **NOT FROZEN**. No Task Issues, native Issue Dependencies, implementation branches or JIT Execution Packs have been materialized, and implementation has not started. The candidate itself is `review:required` and must receive a separate Fresh Independent Task DAG Review before any Freeze/materialization step.
+Frozen planning artifacts:
 
-After a future Task DAG Freeze and Stage 2.5 materialization, GitHub Task Issues + native Issue Dependencies become the canonical live execution DAG; the frozen planning document remains planning/history only.
+- [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md) — reviewed blob `232e561c2b350a60085c6d13d6030b759295c7cf`
+- [`implementation/v0.1.0/TASK_PACKS.json`](implementation/v0.1.0/TASK_PACKS.json) — reviewed blob `586e765d7bf1777d7fadded9b0e78041acfd3666`
+- exactly 28 reviewed Task Packs, IDs `T001`–`T028`
+- Fresh Independent Re-Review authority: Issue #17 comment `5961803625`, PASS / Freeze Eligible YES, `TD-R01/TD-R02/TD-R03=CLOSED`
+
+The reviewed Task DAG, Task Pack index and all 28 Task Packs are preserved byte-for-byte by the Freeze Controller. Any embedded `CANDIDATE / NOT FROZEN` marker inside those reviewed artifacts is the pre-freeze state of the exact review subject; the separate Freeze record is the authoritative lifecycle overlay declaring those exact bytes **FROZEN**.
+
+The frozen DAG is acyclic. Its reviewed maximum logical width is 9, and T020–T023 form a reviewed four-lane exact-candidate Validation region; actual execution concurrency may be lower due to real resource limits. Review Policy, Validation ownership, L3 disposition, risk and executor routing are frozen planning authority. Any semantic change requires an explicit Task DAG amendment / successor review-and-freeze path rather than silent editing.
+
+No Task Issues, native Issue Dependencies, implementation branches or JIT Execution Packs have been materialized/generated, and implementation has not started. No executable Validation PASS, Candidate Freeze, Hidden Validation, Version Closure, Release Qualification or Release result is claimed by this Task DAG Freeze.
+
+Task/PR PASS remains distinct from Candidate Freeze, Hidden Validation, Version Closure and Release Qualification. T027 retains the canonical `READY|CONDITIONAL|BLOCKED|FAIL` Release Qualification verdict set, and T028 repository integration remains admissible only after canonical `READY`.
+
+After a separately dispatched Stage 2.5 materialization, GitHub Task Issues + native Issue Dependencies become the canonical live execution DAG; the frozen planning documents remain planning/history authority.
 
 ## Next lifecycle action
 
-The next separately authorized action is a **Fresh Independent Task DAG Review** of the exact Stage 2.4 candidate. Task DAG Freeze, Stage 2.5 materialization and implementation remain downstream and have not been started.
+The next separately authorized action is **ADS Stage 2.5 Execution DAG Materialization** from the Frozen 28-task planning checkpoint. Stage 2.5 has not been started here; Task Issues, native Issue Dependencies, L3/JIT Execution Packs, implementation and executable Validation remain downstream.
 
 ## Durable Product/Review history
 
@@ -85,3 +102,4 @@ The next separately authorized action is a **Fresh Independent Task DAG Review**
 - [`planning/STAGE2_ARCHITECTURE_FREEZE.md`](planning/STAGE2_ARCHITECTURE_FREEZE.md)
 - [`implementation/v0.1.0/TASK_DAG.md`](implementation/v0.1.0/TASK_DAG.md)
 - [`implementation/v0.1.0/TASK_PACKS.json`](implementation/v0.1.0/TASK_PACKS.json)
+- [`planning/STAGE2_TASK_DAG_FREEZE.md`](planning/STAGE2_TASK_DAG_FREEZE.md)
