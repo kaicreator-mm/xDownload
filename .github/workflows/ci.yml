@@ -15,6 +15,9 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # pull_request: the PR head SHA (never GitHub's merge ref);
+          # push: the pushed exact SHA.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Record candidate identity
         run: |
@@ -27,6 +30,9 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
+          # Explicitly disable automatic package-manager caching: every run
+          # installs fresh from the registry (cache miss by construction).
+          package-manager-cache: false
 
       - name: Report toolchain identity
         run: |

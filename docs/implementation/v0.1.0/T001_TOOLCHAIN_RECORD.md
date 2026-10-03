@@ -52,12 +52,13 @@ pnpm ci:verify
 `.github/workflows/ci.yml`:
 
 - triggers on every branch push and on pull requests targeting `version/v0.1.0`;
-- checks out the exact candidate and prints `git rev-parse HEAD`;
+- checks out the exact event candidate and prints `git rev-parse HEAD`: `pull_request` runs check out the PR head SHA (`github.event.pull_request.head.sha`), `push` runs check out the pushed SHA (`github.sha`) — the recorded HEAD is always the intended event candidate identity, never GitHub's merge ref;
 - installs pnpm from the repository `packageManager` field and Node from `.nvmrc` (both printed to the log);
+- explicitly disables `actions/setup-node@v5` automatic package-manager caching (`package-manager-cache: false`);
 - installs dependencies with `pnpm install --frozen-lockfile`;
 - runs `pnpm ci:verify` with no `continue-on-error` on any required step.
 
-No dependency cache is configured: every CI run exercises a cache-miss-equivalent clean install, so cache independence holds by construction. Adding a cache later must not change gate semantics.
+Package-manager caching is explicitly disabled: every CI run installs all packages fresh from the registry (cache miss by construction), so cache independence holds by construction. Adding a cache later must not change gate semantics.
 
 ## Known limitations / boundary statements
 
