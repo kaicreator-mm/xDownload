@@ -1,0 +1,17 @@
+# T001 scope: formatting gates cover only T001-owned bootstrap files.
+# Frozen planning/architecture authority documents are excluded so the
+# read-only `format:check` gate can never demand a rewrite of frozen bytes.
+node_modules/
+pnpm-lock.yaml
+coverage/
+dist/
+out/
+*.log
+
+# pre-existing authority / planning documents (not T001-owned)
+docs/
+.agent/
+.dev-standard/
+AGENTS.md
+CLAUDE.md
+README.md

@@ -48,3 +48,14 @@ xDownload is not a general crawler and is not an AI-first downloader. Ordinary s
 ## Next ADS action
 
 Run a Fresh Independent Product/Scope Review against the exact current v0.4.1 subject. Only a PASS with no blocking Product findings may proceed to the Stage 1 Product/Scope Freeze checkpoint for `v0.1.0`. L2 starts only after that checkpoint.
+
+## Development bootstrap (established by T001)
+
+The implementation workspace is a pnpm monorepo pinned to Node `24.21.0` and pnpm `12.8.1`:
+
+```text
+pnpm install --frozen-lockfile
+pnpm ci:verify
+```
+
+`pnpm ci:verify` aggregates `format:check`, `lint`, `typecheck` and `test:unit`. Exact toolchain identities, gate scope and known limitations: [T001 Toolchain Record](docs/implementation/v0.1.0/T001_TOOLCHAIN_RECORD.md).
