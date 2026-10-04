@@ -1,0 +1,174 @@
+task_id: T002
+base_sha: 72b04774592265953671f7203d5ca0687da5b033
+scope: canonical-domain-contracts-and-semantic-kernel
+validation_owner: T002-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+required_suites:
+  - id: schema-versioning
+    must_prove:
+      - canonical values carry an explicit supported schema/contract version
+      - known compatible versions decode deterministically
+      - unknown or incompatible versions fail closed rather than silently reinterpret fields
+      - migrations or successor versions never mutate historical contract/snapshot identity
+  - id: logical-identity-vs-locator
+    must_prove:
+      - stable logical target/member/effect identity is distinct from mutable locator data
+      - provenance-bound redirect/CDN/signed locator changes can retain logical identity
+      - unrelated locator substitution cannot silently replace the logical target
+  - id: immutable-requested-scope
+    must_prove:
+      - confirmed requested_scope is immutable
+      - continuation_scope is explicit and immutable after confirmation
+      - authorization context cannot silently shrink requested_scope
+      - budget values cannot create, enlarge, narrow or redefine scope
+  - id: selection-snapshot
+    must_prove:
+      - retry/resume retains snapshot identity and original selected member identities
+      - failed-item retry cannot add replacement/new members
+      - changed collection/profile/version requiring re-enumeration requires successor snapshot
+      - post-confirmation continuation expansion requires successor contract and snapshot
+  - id: budgets
+    must_prove:
+      - DiscoveryBudget TransferBudget and GlobalSafetyBudget are distinct domains
+      - retry/restart/repair inherit remaining budget rather than imply replenishment
+      - GlobalSafetyBudget can stop work without changing requested scope semantics
+  - id: result-legal-combinations
+    must_prove:
+      - terminal result is multidimensional rather than one success boolean
+      - forbidden status combinations are rejected
+      - empty selected set is not vacuous acquisition success
+      - direct single-resource coverage is NOT_APPLICABLE
+  - id: typed-evidence-validation
+    must_prove:
+      - material evidence includes claim type subject provenance scope and independence semantics
+      - discovery evidence cannot self-certify the same material claim without independent validation
+      - user selection/confirmation cannot waive transfer format or media validation requirements
+  - id: support-slices-s1-s6
+    must_prove:
+      - S1 through S6 are representable as canonical contract/type data without surface-specific truth
+      - slice representation does not implement browser transfer media persistence or UI behavior
+
+counterexample_oracles:
+  - id: C01
+    scenario: duplicate-replaces-missing-member-count-equal
+    t002_oracle: reject VERIFIED_COMPLETE from count equality; require identity correspondence
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t002_oracle: represent PARTIAL/PARTIAL/TRUNCATED and forbid COMPLETE from cap exhaustion
+  - id: C03
+    scenario: next-page-fails-missing-control-or-loop
+    t002_oracle: failure is not natural end; coverage remains UNKNOWN-or-TRUNCATED with truthful stop reason
+  - id: C04
+    scenario: finite-collection-valid-natural-end
+    t002_oracle: VERIFIED_COMPLETE requires independent identity/membership closure evidence
+  - id: C05
+    scenario: user-selects-five-before-confirmation-all-five-succeed
+    t002_oracle: exact COMPLETE/RESOLVED/COMPLETE/VERIFIED_COMPLETE/USER_SELECTION_COMPLETE tuple is legal for the selected requested scope only
+  - id: C06
+    scenario: first-1000-pages-under-domain-all-pdfs
+    t002_oracle: contract admission can represent rejection of arbitrary frontier; no collection contract may encode unrestricted crawl scope
+  - id: C07
+    scenario: member-needs-detail-page-or-cdn
+    t002_oracle: logical member identity remains stable while traceable locator/provenance chain changes
+  - id: C08
+    scenario: page-range-1-3-with-iframe-loadmore-detail-no-continuation
+    t002_oracle: requested range and continuation NONE are frozen; later load-more requires successor identity
+  - id: C09
+    scenario: original-vs-thumbnail-main-video-vs-ad
+    t002_oracle: technical file validity alone cannot satisfy Target/Quality claim without typed evidence or informed user claim
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-known-inaccessible
+    t002_oracle: exact PARTIAL/RESOLVED/COMPLETE/VERIFIED_COMPLETE/AUTH_REQUIRED tuple is legal while requested scope remains 18
+  - id: C11
+    scenario: collection-changes-after-preview
+    t002_oracle: snapshot mutation is forbidden; refresh requires successor snapshot
+  - id: C12
+    scenario: retry-failed-items
+    t002_oracle: retry domain is original failed member identities only; no replacement membership
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t002_oracle: canonical budget/effect identities support inherited remaining budget and duplicate-allocation rejection semantics
+  - id: C14
+    scenario: discovered-targets-succeed-enumeration-unfinished
+    t002_oracle: Selection may be COMPLETE while Request remains PARTIAL-or-UNKNOWN and Coverage is not VERIFIED_COMPLETE
+  - id: C15
+    scenario: unsupported-dash-separate-av-needs-mux
+    t002_oracle: result vocabulary supports UNSUPPORTED-or-FAILED without false complete/success projection
+  - id: C16
+    scenario: simple-task-forced-through-unnecessary-preview
+    t002_oracle: representation must not require collection-only scope/snapshot fields for direct single-resource contracts
+  - id: C17
+    scenario: batch-succeeds-pagination-untested
+    t002_oracle: capability/evidence identities can distinguish batch evidence from continuation/navigation evidence; no cross-claim promotion
+  - id: C18
+    scenario: same-bytes-two-chapters-or-same-name-different-content
+    t002_oracle: content/blob identity does not collapse logical member/source identity
+  - id: C19
+    scenario: ai-vs-non-ai-comparison
+    t002_oracle: evidence/validation records can preserve Tools/Auth/Budget/Context identity and independent truth source; no AI authority special-case
+  - id: C20
+    scenario: local-recipe-replay-on-changed-page-session-layout
+    t002_oracle: reusable knowledge/recipe references cannot overwrite current contract scope or target identity without current validation evidence
+  - id: C21
+    scenario: shared-knowledge-independent-user-account
+    t002_oracle: canonical contracts carry opaque authorization context references and forbid raw-secret authority in reusable contract data
+  - id: C22
+    scenario: insufficient-evidence
+    t002_oracle: validation/result vocabulary represents INSUFFICIENT_EVIDENCE-or-UNKNOWN without post-hoc success conversion
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t002_oracle: exact PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED tuple is representable and valid
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t002_oracle: exact UNSATISFIED/BLOCKED/NOT_STARTED/UNKNOWN/AUTH_REQUIRED-or-AUTH_FAILED tuple is representable and valid
+  - id: C25
+    scenario: parent-ten-pages-user-requests-1-3-all-succeed
+    t002_oracle: CoverageTarget binds requested pages 1-3; VERIFIED_COMPLETE does not imply parent completeness
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t002_oracle: confirmation can prove selection only; QUALITY claim remains independently unverified
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t002_oracle: confirmation cannot waive validation; SelectionAcquisition COMPLETE must be rejected
+  - id: C28
+    scenario: discovery-budget-exhausted-hls-target-needs-segments
+    t002_oracle: separate budget domains permit frozen-target transfer only while TransferBudget and GlobalSafetyBudget remain
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t002_oracle: provenance-bound locator transition can preserve logical target; unrelated redirect cannot
+  - id: C30
+    scenario: fifty-item-confirmations-vs-batch-selection
+    t002_oracle: contract/selection representation supports one batch/manual selection claim set rather than requiring per-item authority objects
+  - id: C31
+    scenario: prior-12-of-18-selection-reused-on-different-page
+    t002_oracle: task-local selection identity cannot become reusable membership authority without distinct validated knowledge provenance
+  - id: C32
+    scenario: gate-set-includes-failure-abandonment-unknown-out-of-scope
+    t002_oracle: evidence/result types preserve distinct non-success and exclusion classifications; no generic success collapse
+  - id: C33
+    scenario: phase-b-opened-then-protocol-or-baseline-changed
+    t002_oracle: experiment/baseline identity references can be immutable/versioned; changed identity cannot silently reinterpret prior evidence
+  - id: C34
+    scenario: ui-suggestion-used-as-ground-truth
+    t002_oracle: UI/discovery suggestion provenance cannot be typed as independent truth for the same claim
+
+negative_decode_cases:
+  - malformed-required-field
+  - unknown-authoritative-enum-value
+  - unsupported-schema-version
+  - incompatible-version-transition
+  - duplicate-logical-identity-with-conflicting-semantics
+  - membership-count-equal-identity-set-different
+  - continuation-added-after-confirmation-without-successor
+  - budget-used-as-scope
+  - auth-context-used-to-rewrite-requested-scope
+  - invalid-result-status-combination
+  - verified-complete-without-closure-evidence
+  - selected-complete-with-failed-required-validation
+  - raw-secret-field-in-canonical-public-contract
+
+completion_rule: >-
+  T002 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the C01-C34 contract-level oracle representation, and required negative cases are executable and pass.
+  This JIT Prep creates no PASS evidence.
