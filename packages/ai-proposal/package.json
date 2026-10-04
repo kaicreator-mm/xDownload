@@ -1,0 +1,14 @@
+{
+  "name": "@xdownload/ai-proposal",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xdownload/browser-observation": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*",
+    "@xdownload/discovery-recipe": "workspace:*"
+  }
+}
