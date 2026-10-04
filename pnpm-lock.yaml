@@ -235,6 +235,12 @@ importers:
 
   packages/domain-contracts: {}
 
+  packages/hls-vod-adapter:
+    dependencies:
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+
   packages/persistence-ledger:
     dependencies:
       '@xdownload/domain-contracts':
