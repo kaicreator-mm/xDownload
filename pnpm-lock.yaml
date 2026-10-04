@@ -200,6 +200,12 @@ importers:
         specifier: workspace:*
         version: link:../domain-contracts
 
+  packages/direct-acquisition:
+    dependencies:
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+
   packages/domain-contracts: {}
 
   packages/persistence-ledger:
