@@ -1,0 +1,113 @@
+task_id: T015
+base_sha: 4d40a2a1c389f6de4f3ce916c113fe4055f5e197
+scope: authoritative-core-runtime-integration-s1-s3-s4
+validation_owner: T015-concern-validation
+status: specification-only-not-run-by-jit-prep
+validation_scope_source: >-
+  Issue #34 body (frozen materialization of T015): "Focused Core integration,
+  process restart, duplicate command, cancellation cutoff, budgets,
+  transfer/media and projection tests." Mirrored into required_suites below;
+  version-level visible Validation remains owned by T020-T023 on the exact
+  T019 candidate.
+
+required_suites:
+  - id: focused-core-integration
+    must_prove:
+      - one composed runtime serves command→schedule→transfer/media→validate→persist→project end-to-end in-process for a direct single-resource acquisition (S1/S3)
+      - canonical vocabulary throughout is domain-contracts only; no glue-local status/evidence types
+      - the runtime exposes upstream package semantics verbatim (cutoff, budgets, legal result tuples) without glue-level outcome decisions
+      - exactly one authoritative ledger writer and one scheduler fact-log mutation path exist in the composed runtime
+  - id: process-restart
+    must_prove:
+      - killing and reopening the process re-derives state from durable truth only (persistence ledger + durable fact log + seam journal + artifact store)
+      - RecoveryService DB-first/FS-first classification composes with CoreScheduler reopen and seam journal replay
+      - restart inherits remaining budgets on the same frozen lineage; restart never implies budget replenishment
+      - restart never mutates contract/snapshot identity or selected membership (no re-enumeration, no successor event from restart)
+      - staged/partial artifact states survive reopen with truthful recovery classification (L2 §11 crash windows)
+  - id: duplicate-command
+    must_prove:
+      - re-submission of an already-accepted idempotent command is absorbed without creating a second effect lineage
+      - duplicate submit cannot bypass revision/idempotency gating at the seam
+      - concurrent duplicate submissions converge to one accepted lineage (single-writer integrity)
+  - id: cancellation-cutoff
+    must_prove:
+      - cancel-before-accept blocks automatic later acceptance on the same lineage (ADR-013 acceptance cutoff)
+      - accept-before-cancel is not retroactively revoked; bounded reconciliation establishes truth without reopening acceptance
+      - explicit retry/resume alone reopens processing on the same frozen lineage with remaining budgets
+      - projected cancellation statuses follow L2 §11.1 Product status projection (no fake success, no fake failure)
+  - id: budgets
+    must_prove:
+      - DiscoveryBudget, TransferBudget and GlobalSafetyBudget remain distinct domains through the composed runtime
+      - budget exhaustion stops work with truthful StopReason and never changes requested scope semantics
+      - exhaustion precedence (L2/PRD §15.4) holds when domains exhaust concurrently
+      - transfer adapters consume budget only through the canonical TransferBudgetLedgerPort path; no private ledger
+      - HLS segment acquisition respects canonical budget semantics end-to-end (frozen target transfer permitted while Transfer/GlobalSafety remain — C28 shape)
+  - id: transfer-and-media
+    must_prove:
+      - DirectHttpAdapter executes a full direct acquisition under runtime dispatch, with resume/retry honoring identity/locator separation (C29 shape)
+      - HLS VOD pipeline executes playlist→bind→plan→acquire→assemble→validate under runtime dispatch; unsupported topology fails closed
+      - the applicable validation chain (transfer/format/media/target) gates artifact acceptance; AcceptanceValidation flows from adapter validation results
+      - missing or corrupt artifact bytes are never accepted as success (DB-only acceptance without bytes is rejected/recovered truthfully)
+  - id: projection
+    must_prove:
+      - terminal results are produced only by the domain-contracts result-projector from canonical state/evidence
+      - projected status tuples honor frozen legal-combination rules (PRD §18) including negative tuples
+      - READ_PROJECTION through the seam returns the same truth as internal projection (no surface-local projection fork)
+      - multidimensional result (Request Fulfillment / Target Resolution / Selection Acquisition / Coverage / Stop Reason / Validation Summary) is preserved end-to-end; no single success boolean
+
+counterexample_oracles:
+  - id: C01
+    scenario: duplicate-replaces-missing-member-count-equal
+    t015_oracle: duplicate/idempotent command path cannot replace effect or member identity; count equality proves nothing
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t015_oracle: GlobalSafetyBudget exhaustion through the runtime stops work with truthful PARTIAL/TRUNCATED tuple and projected StopReason
+  - id: C12
+    scenario: retry-failed-items
+    t015_oracle: resume/retry through scheduler + recordFailedMembers domain is original failed member identities only; runtime restart adds no members
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t015_oracle: restart + concurrent clients through one seam converge; remaining budget inherited; duplicate allocation rejected
+  - id: C15
+    scenario: unsupported-dash-separate-av-needs-mux
+    t015_oracle: unsupported HLS/DASH topology fails closed through the runtime without false complete projection
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t015_oracle: DISCOVERY_BUDGET_EXHAUSTED stop reason projects the exact PARTIAL/PARTIAL/COMPLETE/TRUNCATED tuple shape (discovery loop itself is T016; budget/stop semantics are Core-owned now)
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t015_oracle: when an authorization-failed terminal is injected at the port, runtime projects UNSATISFIED/BLOCKED/NOT_STARTED/UNKNOWN tuple verbatim (real broker path is T016)
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t015_oracle: transfer/format/media validation failure blocks artifact acceptance; SelectionAcquisition COMPLETE cannot be projected
+  - id: C28
+    scenario: discovery-budget-exhausted-hls-target-needs-segments
+    t015_oracle: separate budget domains permit frozen-target HLS segment transfer while TransferBudget/GlobalSafetyBudget remain
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t015_oracle: provenance-bound locator transition during runtime-driven transfer preserves logical target identity
+  applicability_note: >-
+    Listed C-oracles are the subset whose Core-concern behavior is exercisable at
+    T015 with S1/S3/S4 adapters and port-level substitutes. The full C01-C34
+    sweep on journeys/journeys-plus remains owned by T020-T023 version Validation.
+    C03/C10/C11/C25/C30/C31 are collection/browser-workflow-shaped and first
+    executable at T016; T015 must not weaken their future semantics.
+
+negative_coverage:
+  - missing-artifact-bytes-at-acceptance (DB row without FS bytes; RecoveryService must classify, acceptance must not PASS)
+  - corrupt-artifact-digest-vs-provenance-record
+  - corrupt-or-malformed-fact-log-at-reopen (scheduler reopen fails closed; no partially-recovered authority)
+  - duplicate-submit-of-accepted-idempotency-key
+  - cancel-after-accept-and-accept-after-cancel-cutoff-matrix
+  - budget-exhausted-mid-dispatch (partial effects reconciled truthfully)
+  - transfer-failure-leaves-partial-bytes (resume decision, never silent success)
+  - unsupported-or-corrupt-hls-playlist (fail closed)
+  - malformed-seam-frame (typed seam rejection, no authority mutation)
+  - projected-invalid-status-combination (projector rejects forbidden tuples; glue must not normalize)
+
+completion_rule: >-
+  T015 concern Validation may PASS only on an exact implementation candidate
+  where all required suites, the listed applicable C-oracle mappings and the
+  negative coverage are executable and pass on the composed runtime. This JIT
+  Prep creates no PASS evidence. Concern evidence is not version Validation
+  (T020-T023) and not Candidate Freeze.

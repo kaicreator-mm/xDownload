@@ -242,6 +242,27 @@ importers:
         specifier: workspace:*
         version: link:../domain-contracts
 
+  packages/core-runtime:
+    dependencies:
+      '@xdownload/core-scheduler':
+        specifier: workspace:*
+        version: link:../core-scheduler
+      '@xdownload/core-seam':
+        specifier: workspace:*
+        version: link:../core-seam
+      '@xdownload/direct-acquisition':
+        specifier: workspace:*
+        version: link:../direct-acquisition
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+      '@xdownload/hls-vod-adapter':
+        specifier: workspace:*
+        version: link:../hls-vod-adapter
+      '@xdownload/persistence-ledger':
+        specifier: workspace:*
+        version: link:../persistence-ledger
+
   packages/core-scheduler:
     dependencies:
       '@xdownload/domain-contracts':
