@@ -1,0 +1,13 @@
+{
+  "name": "@xdownload/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xdownload/core-seam": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*"
+  }
+}
