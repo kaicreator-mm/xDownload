@@ -410,4 +410,219 @@ describe('negative_decode_cases: playlist decode', () => {
       ]);
     }
   });
+
+  it('malformed-manifest-required-field: orphan segment URI line without a preceding EXTINF fails closed (P1-1)', () => {
+    const bareUri = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:4',
+      '#EXT-X-TARGETDURATION:4',
+      'seg-orphan.ts',
+      '#EXT-X-ENDLIST',
+    ].join('\n');
+    const bareResult = decodeMediaPlaylist(bareUri, MEDIA_BASE);
+    expect(bareResult.ok).toBe(false);
+    if (!bareResult.ok) {
+      expect(bareResult.diagnostics[0]?.code).toBe('MISSING_REQUIRED_FIELD');
+      expect(bareResult.diagnostics[0]?.path).toBe('mediaPlaylist.EXTINF');
+      expect(bareResult.diagnostics[0]?.invariant).toBe('RFC8216');
+      expect(bareResult.diagnostics[0]?.message).toContain('without a preceding EXTINF');
+    }
+
+    // A malformed playlist is never decoded into a losslessly-shorter plan:
+    // the second URI line (no EXTINF of its own) must not be silently dropped.
+    const consecutiveUris = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:4',
+      '#EXT-X-TARGETDURATION:4',
+      '#EXTINF:4.0,',
+      'seg-0.ts',
+      'seg-1-orphan.ts',
+      '#EXT-X-ENDLIST',
+    ].join('\n');
+    const consecutiveResult = decodeMediaPlaylist(consecutiveUris, MEDIA_BASE);
+    expect(consecutiveResult.ok).toBe(false);
+    if (!consecutiveResult.ok) {
+      expect(
+        consecutiveResult.diagnostics.some(
+          (d) => d.code === 'MISSING_REQUIRED_FIELD' && d.message.includes('seg-1-orphan'),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('malformed-manifest-required-field: orphan variant URI line without a preceding EXT-X-STREAM-INF fails closed (P1-1)', () => {
+    const bareUri = ['#EXTM3U', '#EXT-X-VERSION:4', 'media-720p.m3u8'].join('\n');
+    const bareResult = decodeMasterPlaylist(bareUri, MASTER_URI);
+    expect(bareResult.ok).toBe(false);
+    if (!bareResult.ok) {
+      expect(bareResult.diagnostics[0]?.code).toBe('MISSING_REQUIRED_FIELD');
+      expect(bareResult.diagnostics[0]?.path).toBe('masterPlaylist.EXT-X-STREAM-INF');
+      expect(bareResult.diagnostics[0]?.invariant).toBe('RFC8216');
+      expect(bareResult.diagnostics[0]?.message).toContain('without a preceding EXT-X-STREAM-INF');
+    }
+
+    // Only the second URI line is orphaned; the decode must reject, never shorten.
+    const consecutiveUris = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:4',
+      '#EXT-X-STREAM-INF:BANDWIDTH=1500000',
+      'media-720p.m3u8',
+      'media-360p-orphan.m3u8',
+    ].join('\n');
+    const consecutiveResult = decodeMasterPlaylist(consecutiveUris, MASTER_URI);
+    expect(consecutiveResult.ok).toBe(false);
+    if (!consecutiveResult.ok) {
+      expect(
+        consecutiveResult.diagnostics.some((d) => d.message.includes('media-360p-orphan')),
+      ).toBe(true);
+    }
+  });
+
+  it('positive control: well-formed media and master playlists still decode with full segment/variant fidelity (P1-1)', () => {
+    const media = decodeMediaPlaylist(
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:4',
+        '#EXT-X-TARGETDURATION:4',
+        '#EXTINF:4.0,',
+        'seg-0.ts',
+        '#EXTINF:2.0,',
+        'seg-1.ts',
+        '#EXT-X-ENDLIST',
+      ].join('\n'),
+      MEDIA_BASE,
+    );
+    expect(media.ok).toBe(true);
+    if (media.ok) {
+      expect(media.value.segments).toHaveLength(2);
+      expect(media.value.segments[1]?.uri).toBe('https://cdn.example.com/vod/seg-1.ts');
+    }
+    const master = decodeMasterFixture();
+    expect(master.ok).toBe(true);
+    if (master.ok) {
+      expect(master.value.variants).toHaveLength(2);
+    }
+  });
+
+  it('malformed-manifest-required-field: conflicting duplicate EXT-X-PLAYLIST-TYPE fails closed (P2-1)', () => {
+    const build = (first: string, second: string): string =>
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:4',
+        '#EXT-X-TARGETDURATION:4',
+        `#EXT-X-PLAYLIST-TYPE:${first}`,
+        `#EXT-X-PLAYLIST-TYPE:${second}`,
+        '#EXTINF:4.0,',
+        'seg-0.ts',
+        '#EXT-X-ENDLIST',
+      ].join('\n');
+    const result = decodeMediaPlaylist(build('VOD', 'EVENT'), MEDIA_BASE);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(
+        result.diagnostics.some(
+          (d) =>
+            d.code === 'MALFORMED_REQUIRED_FIELD' &&
+            d.path === 'mediaPlaylist.EXT-X-PLAYLIST-TYPE' &&
+            d.message.includes('conflicting duplicate'),
+        ),
+      ).toBe(true);
+    }
+    // The reverse declaration order (EVENT after VOD) fails closed as well.
+    expect(decodeMediaPlaylist(build('EVENT', 'VOD'), MEDIA_BASE).ok).toBe(false);
+  });
+
+  it('malformed-manifest-required-field: conflicting duplicate EXT-X-MEDIA-SEQUENCE fails closed (P2-1)', () => {
+    const text = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:4',
+      '#EXT-X-TARGETDURATION:4',
+      '#EXT-X-MEDIA-SEQUENCE:0',
+      '#EXT-X-MEDIA-SEQUENCE:5',
+      '#EXTINF:4.0,',
+      'seg-0.ts',
+      '#EXT-X-ENDLIST',
+    ].join('\n');
+    const result = decodeMediaPlaylist(text, MEDIA_BASE);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(
+        result.diagnostics.some(
+          (d) =>
+            d.code === 'MALFORMED_REQUIRED_FIELD' &&
+            d.path === 'mediaPlaylist.EXT-X-MEDIA-SEQUENCE' &&
+            d.message.includes('conflicting duplicate'),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('malformed-manifest-required-field: malformed EXT-X-PROGRAM-DATE-TIME value fails closed (P2-2)', () => {
+    const build = (value: string): string =>
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:4',
+        '#EXT-X-TARGETDURATION:4',
+        `#EXT-X-PROGRAM-DATE-TIME:${value}`,
+        '#EXTINF:4.0,',
+        'seg-0.ts',
+        '#EXT-X-ENDLIST',
+      ].join('\n');
+    const notIso = decodeMediaPlaylist(build('yesterday-ish'), MEDIA_BASE);
+    expect(notIso.ok).toBe(false);
+    if (!notIso.ok) {
+      expect(notIso.diagnostics[0]?.code).toBe('MALFORMED_REQUIRED_FIELD');
+      expect(notIso.diagnostics[0]?.path).toBe('mediaPlaylist.EXT-X-PROGRAM-DATE-TIME');
+      expect(notIso.diagnostics[0]?.invariant).toBe('RFC8216');
+    }
+    // Structurally ISO-like but not a valid calendar date-time.
+    expect(decodeMediaPlaylist(build('2020-13-45T99:00:00Z'), MEDIA_BASE).ok).toBe(false);
+    expect(decodeMediaPlaylist(build('2020-02-31T00:00:00Z'), MEDIA_BASE).ok).toBe(false);
+    // Missing time zone is malformed per RFC 8216 §4.3.2.6.
+    expect(decodeMediaPlaylist(build('2020-02-19T14:54:23'), MEDIA_BASE).ok).toBe(false);
+  });
+
+  it('malformed-manifest-required-field: malformed EXT-X-DISCONTINUITY-SEQUENCE value fails closed (P2-2)', () => {
+    const build = (value: string): string =>
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:4',
+        '#EXT-X-TARGETDURATION:4',
+        `#EXT-X-DISCONTINUITY-SEQUENCE:${value}`,
+        '#EXTINF:4.0,',
+        'seg-0.ts',
+        '#EXT-X-ENDLIST',
+      ].join('\n');
+    const negative = decodeMediaPlaylist(build('-1'), MEDIA_BASE);
+    expect(negative.ok).toBe(false);
+    if (!negative.ok) {
+      expect(negative.diagnostics[0]?.code).toBe('MALFORMED_REQUIRED_FIELD');
+      expect(negative.diagnostics[0]?.path).toBe('mediaPlaylist.EXT-X-DISCONTINUITY-SEQUENCE');
+    }
+    expect(decodeMediaPlaylist(build('not-a-number'), MEDIA_BASE).ok).toBe(false);
+  });
+
+  it('positive control: well-formed whitelisted-but-ignored tags still decode and stay non-authoritative (P2-2)', () => {
+    const result = decodeMediaPlaylist(
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:4',
+        '#EXT-X-TARGETDURATION:4',
+        '#EXT-X-MEDIA-SEQUENCE:7',
+        '#EXT-X-DISCONTINUITY-SEQUENCE:2',
+        '#EXT-X-PLAYLIST-TYPE:VOD',
+        '#EXT-X-PROGRAM-DATE-TIME:2010-02-19T14:54:23.031+08:00',
+        '#EXTINF:4.0,',
+        'seg-0.ts',
+        '#EXT-X-ENDLIST',
+      ].join('\n'),
+      MEDIA_BASE,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.mediaSequence).toBe(7);
+      expect(result.value.playlistType).toBe('VOD');
+      expect(result.value.segments).toHaveLength(1);
+    }
+  });
 });

@@ -7,8 +7,17 @@
  * recognizes only the tag set a basic non-DRM VOD topology may contain and
  * fails closed on malformed required fields, unknown authoritative tags,
  * unknown attributes, duplicate segment/variant identities and unsupported
- * playlist versions. Unrecognized input is never reinterpreted into
- * "probably fine" transfer behavior.
+ * playlist versions. A segment/variant URI line without its required
+ * predecessor tag (EXTINF / EXT-X-STREAM-INF, RFC 8216 §4.3.2.1) is such a
+ * malformed required field and fails closed: a malformed playlist is never
+ * decoded into a losslessly-shorter plan. Unrecognized input is never
+ * reinterpreted into "probably fine" transfer behavior.
+ *
+ * Recorded ignore decision: #EXT-X-PROGRAM-DATE-TIME and
+ * #EXT-X-DISCONTINUITY-SEQUENCE are non-authoritative metadata for basic S4
+ * VOD. They are whitelisted and their value shape is validated (fail closed
+ * on malformed values), but their values are otherwise ignored — they never
+ * alter the decoded plan.
  *
  * F1 record: no runtime dependency is introduced; playlists are consumed as
  * text and decoded in-repo with this bounded parser.
@@ -131,6 +140,31 @@ function isInteger(raw: string): number | undefined {
   }
   const value = Number(raw);
   return Number.isSafeInteger(value) ? value : undefined;
+}
+
+const ISO_8601_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
+
+/** RFC 8216 §4.3.2.6 EXT-X-PROGRAM-DATE-TIME: an ISO 8601 date-time with time zone. */
+function isIso8601DateTime(value: string): boolean {
+  if (!ISO_8601_DATE_TIME.test(value)) {
+    return false;
+  }
+  // Bounded calendar validation (Date.parse tolerates rollovers such as Feb 31).
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const hour = Number(value.slice(11, 13));
+  const minute = Number(value.slice(14, 16));
+  const second = Number(value.slice(17, 19));
+  if (month < 1 || month > 12) {
+    return false;
+  }
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) {
+    return false;
+  }
+  // Second 60 admits ISO 8601 / RFC 3339 leap seconds.
+  return hour <= 23 && minute <= 59 && second <= 60;
 }
 
 function extractTagName(line: string): string | undefined {
@@ -382,6 +416,14 @@ export function decodeMasterPlaylist(
     }
     // URI line.
     if (pendingStreamInf === undefined) {
+      diagnostics.push(
+        diagnostic(
+          'MISSING_REQUIRED_FIELD',
+          'masterPlaylist.EXT-X-STREAM-INF',
+          `variant URI line '${line.trim()}' without a preceding EXT-X-STREAM-INF; the bounded decoder fails closed`,
+          'RFC8216',
+        ),
+      );
       continue;
     }
     const parsed = parseStreamInfAttributes(
@@ -487,6 +529,7 @@ export function decodeMediaPlaylist(
   const diagnostics: ValidationDiagnostic[] = [];
   let targetDuration: number | undefined;
   let mediaSequence = 0;
+  let mediaSequenceDeclared = false;
   let playlistType: 'VOD' | 'EVENT' | undefined;
   let closed = false;
   let hasInitializationSection = false;
@@ -533,8 +576,17 @@ export function decodeMediaPlaylist(
                 'EXT-X-MEDIA-SEQUENCE must be a non-negative integer',
               ),
             );
+          } else if (mediaSequenceDeclared && mediaSequence !== parsed) {
+            diagnostics.push(
+              diagnostic(
+                'MALFORMED_REQUIRED_FIELD',
+                'mediaPlaylist.EXT-X-MEDIA-SEQUENCE',
+                'conflicting duplicate EXT-X-MEDIA-SEQUENCE declarations',
+              ),
+            );
           } else {
             mediaSequence = parsed;
+            mediaSequenceDeclared = true;
           }
           break;
         }
@@ -548,9 +600,47 @@ export function decodeMediaPlaylist(
                 `unknown playlist type '${value}'`,
               ),
             );
+          } else if (playlistType !== undefined && playlistType !== value) {
+            diagnostics.push(
+              diagnostic(
+                'MALFORMED_REQUIRED_FIELD',
+                'mediaPlaylist.EXT-X-PLAYLIST-TYPE',
+                'conflicting duplicate EXT-X-PLAYLIST-TYPE declarations',
+              ),
+            );
           } else {
             playlistType = value;
           }
+          break;
+        }
+        case '#EXT-X-DISCONTINUITY-SEQUENCE': {
+          const parsed = isInteger(line.slice('#EXT-X-DISCONTINUITY-SEQUENCE:'.length).trim());
+          if (parsed === undefined || parsed < 0) {
+            diagnostics.push(
+              diagnostic(
+                'MALFORMED_REQUIRED_FIELD',
+                'mediaPlaylist.EXT-X-DISCONTINUITY-SEQUENCE',
+                'EXT-X-DISCONTINUITY-SEQUENCE must be a non-negative integer',
+                'RFC8216',
+              ),
+            );
+          }
+          // Non-authoritative metadata: value-validated, otherwise ignored.
+          break;
+        }
+        case '#EXT-X-PROGRAM-DATE-TIME': {
+          const value = line.slice('#EXT-X-PROGRAM-DATE-TIME:'.length).trim();
+          if (!isIso8601DateTime(value)) {
+            diagnostics.push(
+              diagnostic(
+                'MALFORMED_REQUIRED_FIELD',
+                'mediaPlaylist.EXT-X-PROGRAM-DATE-TIME',
+                `malformed EXT-X-PROGRAM-DATE-TIME value '${value}'; an ISO 8601 date-time with time zone is required`,
+                'RFC8216',
+              ),
+            );
+          }
+          // Non-authoritative metadata: value-validated, otherwise ignored.
           break;
         }
         case '#EXT-X-KEY': {
@@ -654,6 +744,15 @@ export function decodeMediaPlaylist(
     }
     // URI line.
     if (pending === undefined || pending.durationSeconds === undefined) {
+      diagnostics.push(
+        diagnostic(
+          'MISSING_REQUIRED_FIELD',
+          'mediaPlaylist.EXTINF',
+          `segment URI line '${line.trim()}' without a preceding EXTINF; the bounded decoder fails closed`,
+          'RFC8216',
+        ),
+      );
+      pending = undefined;
       continue;
     }
     const position = segments.length;
