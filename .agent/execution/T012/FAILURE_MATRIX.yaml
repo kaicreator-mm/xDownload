@@ -1,0 +1,121 @@
+task_id: T012
+base_sha: f5ac137f94438a591fd6781c5b758be6c375233a
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T012 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T012 would require violating Frozen L2 ownership, authority or trust boundaries (including ADR-008 proposal-only AI)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base, or T007 (#26, 8a87797ca21d9603fd8bd6be35dec1169f9ad97e) / T011 (#30, 35d322c4a9897ebd1f4ae2cb5fc1d267af68d3ec) completion identities are no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: proposal-authority-elevation
+    trigger: an accepted proposal would grant, enable or imply scope, navigation, authorization, secret or validation/coverage authority outside the deterministic Recipe/contract/confirmation paths
+    classification: PROPOSAL_POLICY_REJECTED
+    required_action:
+      - reject the proposal deterministically and name the violated invariant
+      - keep acceptance authority-free; route any actionable content through existing Recipe decode + policy + confirmation
+      - never admit a hidden authority path to keep a proposal alive
+    false_pass_forbidden: true
+
+  - id: provider-secret-leak
+    trigger: raw secret, cookie, token, password, signed URL or sentinel-bearing material reaches a provider request, proposal payload, log or durable state outside the broker/browser secret zone
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - fail closed and quarantine the path
+      - re-prove key-based and value-based (sentinel) containment before reuse
+      - escalate if Frozen Product/L2 semantics cannot be satisfied without secret exposure
+    false_pass_forbidden: true
+
+  - id: proposal-taken-as-independent-truth
+    trigger: model output is typed, stored or consumed as independent validation truth, DECISIVE evidence or coverage certification
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - keep proposal provenance at SUGGESTIVE/DISCOVERY_DERIVED
+      - require the ordinary deterministic evidence/validation paths for any truth claim
+      - never let proposal acceptance substitute for validation evidence
+    false_pass_forbidden: true
+
+  - id: model-failure-misrepresented
+    trigger: provider outage, timeout or malformed response is presented as success, silently skipped, or used to widen behavior beyond the deterministic path
+    classification: TRUTHFUL_DEGRADATION_VIOLATION
+    required_action:
+      - surface typed unavailability/unknown and fall back to deterministic path or ASK_USER/ABORT
+      - never rewrite failure categories into success (PRD §30)
+      - keep the no-model path complete and truthful
+    false_pass_forbidden: true
+
+  - id: oversized-or-malicious-proposal
+    trigger: proposal exceeds the declared bounded size limit or is crafted to exploit decode/policy (scope mutation, capability abuse, embedded secrets, self-certification, unknown-field smuggling)
+    classification: PROPOSAL_REJECTED
+    required_action:
+      - reject before authority-relevant evaluation where size-bounded
+      - reject deterministically with the violated rule identified
+      - keep the rejection corpus as durable negative fixtures
+    false_pass_forbidden: true
+
+  - id: model-required-for-deterministic-task
+    trigger: implementation makes the model a required dependency of a deterministic/template-supported ordinary task, or degrades deterministic paths when the model is absent
+    classification: MINIMUM_NECESSARY_INTELLIGENCE_VIOLATION
+    required_action:
+      - restore the deterministic/template path as complete and independent (PRD §5.1)
+      - treat the provider strictly as an optional proposal source
+      - prove parity with and without model (C19)
+    false_pass_forbidden: true
+
+  - id: incompatible-proposal-schema-version
+    trigger: proposal declares unsupported or semantically incompatible schema/Recipe version
+    classification: DOMAIN_SCHEMA_REJECTED
+    required_action:
+      - fail closed with typed version incompatibility
+      - preserve original bytes/value for diagnostics where safe
+      - never coerce into current semantics without an explicit supported migration
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/contract test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder proposes a runtime provider/SDK/validation dependency without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep choice within F1 and Frozen Architecture; a required provider SDK is never acceptable
+    false_pass_forbidden: true

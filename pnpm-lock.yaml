@@ -197,6 +197,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/browser-observation
 
+  packages/ai-proposal:
+    dependencies:
+      '@xdownload/browser-observation':
+        specifier: workspace:*
+        version: link:../browser-observation
+      '@xdownload/discovery-recipe':
+        specifier: workspace:*
+        version: link:../discovery-recipe
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+
   packages/browser-auth-broker:
     dependencies:
       '@xdownload/domain-contracts':
