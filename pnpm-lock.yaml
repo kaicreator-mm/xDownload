@@ -249,6 +249,12 @@ importers:
 
   packages/toolchain-smoke-core: {}
 
+  packages/version-validation:
+    dependencies:
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+
 packages:
 
   '@eslint-community/eslint-utils@4.10.1':
