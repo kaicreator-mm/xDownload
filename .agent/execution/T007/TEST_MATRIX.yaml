@@ -1,0 +1,214 @@
+task_id: T007
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: typed-evidence-validation-coverage-and-result-projection
+validation_owner: T007-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+# Sourced from Issue #26 Validation scope ("Exhaustive status/counterexample
+# projection tests; reject self-certification/count-only/empty-set false
+# success") and the Frozen Task Pack acceptance line (C01-C34 and
+# status-combination tests, empty-set handling, cancellation projection,
+# auth-limited 18/16 tuple, partial/truncated/unknown distinctions and
+# independent validator claim binding).
+
+required_suites:
+  - id: exhaustive-status-projection
+    must_prove:
+      - the ResultProjector derives all six Frozen dimensions (RequestFulfillment TargetResolution SelectionAcquisition Coverage StopReason ValidationSummary) from canonical ledger/validation/accounting facts
+      - identical canonical facts always yield an identical terminal result (determinism)
+      - every legal canonical combination of PRD §18.1-§18.7 shapes projects exactly as frozen
+      - no single success boolean exists anywhere in the projection output
+  - id: forbidden-combination-rejection
+    must_prove:
+      - every §18.8 forbidden combination is rejected deterministically with the violated rule identified
+      - TargetResolutionStatus=PARTIAL with requested-scope CoverageStatus=VERIFIED_COMPLETE for the same CoverageTarget rejects
+      - TargetResolutionStatus=EMPTY_UNKNOWN with RequestFulfillmentStatus=COMPLETE rejects
+      - direct single-resource results with collection coverage other than NOT_APPLICABLE reject
+  - id: empty-set-handling
+    must_prove:
+      - an independently verified empty requested collection projects the exact §18.5 tuple (COMPLETE/EMPTY_CONFIRMED/NOT_STARTED/VERIFIED_COMPLETE/NATURAL_COLLECTION_END)
+      - empty-but-not-proven-empty projects the exact §18.6 tuple (UNKNOWN/EMPTY_UNKNOWN/NOT_STARTED/UNKNOWN with truthful non-success stop reason)
+      - an empty selected set is never a vacuous SelectionAcquisitionStatus=COMPLETE
+  - id: cancellation-projection
+    must_prove:
+      - cancellation sets StopReason=USER_CANCELLED only when cancellation is the reason remaining work stopped
+      - SelectionAcquisitionStatus projects CANCELLED when cancellation stops the frozen selected set before any durable acceptance
+      - SelectionAcquisitionStatus projects PARTIAL when some but not all frozen S identities were durably accepted before the cutoff
+      - COMPLETE remains valid when every frozen S identity was already accepted; cancellation cannot downgrade it and cannot retroactively revoke accepted identities
+      - valid staged/validated bytes cannot auto-accept across the durable-cancellation cutoff and cannot fabricate RequestFulfillmentStatus=COMPLETE (L2 §11.1 counterexample normalization)
+      - cancellation does not erase proven resolution/coverage truth nor upgrade unknown/truncated coverage; late cancellation after terminal truth does not rewrite the terminal result
+  - id: auth-limited-18-16-tuple
+    must_prove:
+      - the exact §17.2 tuple (PARTIAL/RESOLVED/COMPLETE/VERIFIED_COMPLETE/AUTH_REQUIRED) projects when 2 of 18 requested members are known and independently classified as auth-inaccessible and all 16 accessible are acquired and validated
+      - required accounting counts (requested 18, accounted 18, accessible 16, inaccessible 2, selected 16, validated 16) are represented and the requested scope remains 18
+      - RequestFulfillmentStatus=COMPLETE is rejected while known requested members remain unfulfilled because of authorization
+      - when the inaccessible members are not independently accounted, TargetResolutionStatus and CoverageStatus degrade consistently (PARTIAL/UNKNOWN or TRUNCATED) and cannot be inferred complete from the accessible 16
+  - id: partial-truncated-unknown-distinctions
+    must_prove:
+      - safety-cap truncation projects PARTIAL/PARTIAL/TRUNCATED and never COMPLETE (C02)
+      - failed next page, missing next control or pagination loop is not projected as natural end; coverage stays UNKNOWN-or-TRUNCATED with a truthful stop reason (C03)
+      - all discovered targets succeeding while enumeration is unfinished keeps Request PARTIAL-or-UNKNOWN with Coverage never VERIFIED_COMPLETE (C14)
+      - discovery-budget truncation at page 3 projects PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED (C23)
+      - insufficient evidence projects INSUFFICIENT_EVIDENCE-or-UNKNOWN with no post-hoc conversion to success (C22)
+  - id: evidence-ledger-semantics
+    must_prove:
+      - the ledger is append-oriented; accepted evidence records cannot be rewritten reordered-as-rewrite or deleted; corrections are new records
+      - every accepted record carries claim type subject provenance independence scope and certainty class (PRD §20 fields)
+      - malformed unknown-schema or unknown-authoritative-enum records fail closed at ledger admission
+      - evidence queries by subject/type/scope return exactly the bound records without promoting scope
+  - id: independent-validator-claim-binding
+    must_prove:
+      - discovery-derived evidence can never be the sole validation oracle for the same semantic claim (L2 invariant 6, PRD §22)
+      - a ValidationRecord is bound to exact artifact/target/member/snapshot identity and validation layer; use against a non-matching subject/layer rejects
+      - user confirmation proves only the shown claim; QUALITY/original claims stay unverified without independent evidence (C26)
+      - confirmed candidates with truncated transfer or missing required tracks cannot yield SelectionAcquisitionStatus=COMPLETE — confirmation cannot waive Transfer/Format/Media validation (C27)
+      - UI/system suggestions cannot be typed as independent truth for the same claim (C34)
+  - id: count-only-false-success-rejection
+    must_prove:
+      - VERIFIED_COMPLETE is rejected when its only basis is count equality, max_items, page limit, timeout, budget exhaustion, failed next page, pagination loop or unproven "no more found" (PRD §19 insufficient classes)
+      - duplicate-replaces-missing with equal counts is never VERIFIED_COMPLETE; identity correspondence is required (C01)
+      - VERIFIED_COMPLETE requires one of the §19 sufficient bases with independent evidence
+      - known inaccessible members count as accounted coverage only with independently evidenced identities/authorization status, never as fulfilled/acquired
+  - id: coverage-accounting-three-views
+    must_prove:
+      - requested-scope coverage, accessible-subset accounting and parent-collection coverage remain distinct values
+      - AuthorizationContextRef never redefines requested scope nor shrinks the reference set for RequestFulfillmentStatus
+      - explicit 5-of-larger selection projects the exact C05 tuple for the selected requested scope with no parent-completeness implication
+      - pages 1-3 of a 10-page parent project VERIFIED_COMPLETE for the requested scope only; parent coverage stays separate (C25)
+  - id: read-projection-ownership
+    must_prove:
+      - surfaces receive thin read projections of the terminal result and never recompute or rewrite status
+      - per-surface status derivation is impossible/absent from the T007 public seam
+      - terminal results are immutable once projected within T007 semantics
+
+counterexample_oracles:
+  # C01-C34 are Product contract tests (PRD §35). T002 proved contract-level
+  # representability on this lineage; T007 must prove projection/behavior-level
+  # semantics: the ledger/validator/accounting/projector layer computes the
+  # required outcomes and rejects the false-success paths.
+  - id: C01
+    scenario: duplicate-replaces-missing-member-count-equal
+    t007_oracle: projector never emits VERIFIED_COMPLETE; accounting demands identity correspondence, not count equality
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t007_oracle: projected PARTIAL/PARTIAL/TRUNCATED with truthful stop reason; COMPLETE is unreachable from cap exhaustion
+  - id: C03
+    scenario: next-page-fails-missing-control-or-loop
+    t007_oracle: failure/loop is not natural end; projected coverage UNKNOWN-or-TRUNCATED with truthful StopReason
+  - id: C04
+    scenario: finite-collection-valid-natural-end
+    t007_oracle: VERIFIED_COMPLETE projects only with independent identity/membership closure evidence in the accounting
+  - id: C05
+    scenario: user-selects-five-before-confirmation-all-five-succeed
+    t007_oracle: projector emits exact COMPLETE/RESOLVED/COMPLETE/VERIFIED_COMPLETE/USER_SELECTION_COMPLETE for the selected requested scope only
+  - id: C06
+    scenario: first-1000-pages-under-domain-all-pdfs
+    t007_oracle: arbitrary-frontier requests are rejected upstream of accounting/projection; no coverage accounting exists for an unadmitted collection
+  - id: C07
+    scenario: member-needs-detail-page-or-cdn
+    t007_oracle: ledger retains provenance-bound locator chain; logical member identity stable through projection
+  - id: C08
+    scenario: page-range-1-3-with-iframe-loadmore-detail-no-continuation
+    t007_oracle: projector closes on requested pages 1-3 only (COMPLETE/RESOLVED/COMPLETE/VERIFIED_COMPLETE/USER_SCOPE_REACHED); later load-more requires successor identity before any new projection
+  - id: C09
+    scenario: original-vs-thumbnail-main-video-vs-ad
+    t007_oracle: projector emits no semantic PASS without typed independent Target/Quality evidence or an explicitly recorded informed user claim
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-known-inaccessible
+    t007_oracle: exact §17.2 PARTIAL/RESOLVED/COMPLETE/VERIFIED_COMPLETE/AUTH_REQUIRED tuple projects with 16/18 accounting and requested scope intact at 18
+  - id: C11
+    scenario: collection-changes-after-preview
+    t007_oracle: accounting against the changed collection without successor snapshot fails closed; refresh requires successor snapshot identity
+  - id: C12
+    scenario: retry-failed-items
+    t007_oracle: retry projection operates only on original failed member identities; no new/replacement member can appear in accounting
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t007_oracle: budget-stop facts project as budget stop reasons; no restart/retry path can project scope change or budget replenishment
+  - id: C14
+    scenario: discovered-targets-succeed-enumeration-unfinished
+    t007_oracle: Selection may project COMPLETE while Request projects PARTIAL-or-UNKNOWN and Coverage is never VERIFIED_COMPLETE
+  - id: C15
+    scenario: unsupported-dash-separate-av-needs-mux
+    t007_oracle: projector emits UNSUPPORTED-or-FAILED with no silent video-only success projection
+  - id: C16
+    scenario: simple-task-forced-through-unnecessary-preview
+    t007_oracle: direct single-resource projection requires no collection scope/snapshot accounting; coverage is NOT_APPLICABLE
+  - id: C17
+    scenario: batch-succeeds-pagination-untested
+    t007_oracle: projection credits only evidenced claims; untested continuation/navigation remains unproven in ValidationSummary
+  - id: C18
+    scenario: same-bytes-two-chapters-or-same-name-different-content
+    t007_oracle: accounting/projection preserve member/source identity mapping; content-identity equality never collapses distinct members
+  - id: C19
+    scenario: ai-vs-non-ai-comparison
+    t007_oracle: evidence records retain Tools/Auth/Budget/Context execution identity; projector applies identical independence rules to AI and non-AI evidence
+  - id: C20
+    scenario: local-recipe-replay-on-changed-page-session-layout
+    t007_oracle: reusable-knowledge evidence cannot satisfy current-scope claims without current validated binding
+  - id: C21
+    scenario: shared-knowledge-independent-user-account
+    t007_oracle: no raw credential/private data enters evidence/accounting records; cross-account claims fail closed
+  - id: C22
+    scenario: insufficient-evidence
+    t007_oracle: ValidationSummary/INSUFFICIENT_EVIDENCE projects without post-hoc threshold conversion to PASS
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t007_oracle: exact PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED tuple projects and validates
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t007_oracle: exact UNSATISFIED/BLOCKED/NOT_STARTED/UNKNOWN/AUTH_REQUIRED-or-AUTH_FAILED tuple projects per §16.5 stop-reason rule
+  - id: C25
+    scenario: parent-ten-pages-user-requests-1-3-all-succeed
+    t007_oracle: CoverageTarget binds pages 1-3; VERIFIED_COMPLETE projects for requested scope only; parent claim impossible
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t007_oracle: confirmation evidence proves selection only; QUALITY claim remains independently unverified in projection
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t007_oracle: ValidationRecord failures block SelectionAcquisitionStatus=COMPLETE regardless of confirmation
+  - id: C28
+    scenario: discovery-budget-exhausted-hls-target-needs-segments
+    t007_oracle: budget-domain facts project DISCOVERY_BUDGET_EXHAUSTED without blocking frozen-target transfer while Transfer/GlobalSafety budgets remain
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t007_oracle: provenance-bound locator transition evidence preserves logical target through projection; unrelated redirect evidence fails target validation
+  - id: C30
+    scenario: fifty-item-confirmations-vs-batch-selection
+    t007_oracle: batch/manual selection claims bind the whole selected set in the ledger; projection requires no per-item authority objects
+  - id: C31
+    scenario: prior-12-of-18-selection-reused-on-different-page
+    t007_oracle: task-local selection evidence cannot satisfy membership claims on another task without promoted validated knowledge provenance
+  - id: C32
+    scenario: gate-set-includes-failure-abandonment-unknown-out-of-scope
+    t007_oracle: projector preserves distinct FAILED/ABANDONED/UNKNOWN/OUT_OF_SCOPE classification; no generic success collapse
+  - id: C33
+    scenario: phase-b-opened-then-protocol-or-baseline-changed
+    t007_oracle: baseline/protocol identity change invalidates prior evidence binding; new independent run required before projection
+  - id: C34
+    scenario: ui-suggestion-used-as-ground-truth
+    t007_oracle: UI/discovery-suggestion provenance is typed DISCOVERY_DERIVED and is rejected as the sole oracle for the same claim
+
+negative_coverage:
+  - ledger-rewrite-or-delete-of-accepted-evidence
+  - corrupt-or-unknown-schema-record-admitted-to-ledger
+  - validation-record-bound-to-wrong-subject-or-layer
+  - cross-claim-promotion-without-explicit-relationship
+  - discovery-derived-evidence-as-sole-oracle
+  - confirmation-waiving-transfer-format-media-validation
+  - verified-complete-from-insufficient-coverage-basis
+  - verified-complete-from-count-equality-with-identity-drift
+  - empty-selected-set-vacuous-acquisition-success
+  - unproven-empty-projected-verified-empty
+  - auth-limited-request-projected-complete-from-accessible-subset
+  - inaccessible-members-counted-fulfilled-without-independent-evidence
+  - cancellation-cutoff-crossed-by-auto-acceptance-of-valid-bytes
+  - late-cancellation-rewriting-terminal-truth
+  - surface-local-status-recomputation
+  - authorization-context-shrinking-requested-scope-in-accounting
+  - post-terminal-mutation-of-projected-result
+
+completion_rule: >-
+  T007 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the C01-C34 projection/behavior-level oracles, and the negative coverage cases are executable and pass.
+  This JIT Prep creates no PASS evidence.
