@@ -1,0 +1,7 @@
+{
+  "name": "com.xdownload.broker",
+  "description": "xDownload local authorization broker (T010). Reachable only via Chromium Native Messaging; allowed_origins is the platform-enforced boundary and is never bypassed by any local IPC fallback.",
+  "path": "/usr/local/bin/xdownload-broker-host",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"]
+}
