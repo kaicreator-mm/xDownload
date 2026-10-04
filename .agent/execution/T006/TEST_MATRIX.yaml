@@ -1,0 +1,136 @@
+task_id: T006
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: scheduler-lifecycle-budgets-cancellation-retry
+validation_owner: T006-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+# Validation scope sourced verbatim from Frozen Task Pack Acceptance/Validation
+# ("cancel timing matrix, duplicate clients, budget exhaustion precedence,
+# crash-adjacent durable facts, no new dispatch after cancellation and explicit
+# resume without duplicate acceptance") and Issue #25 / TASK_PACKS.json
+# validation_scope ("State-machine/property tests for budgets, duplicate
+# clients, cancel timing matrix and retry/resume."). Concern-level only;
+# version-level visible Validation is owned by T020-T023 on the exact T019
+# candidate.
+
+required_suites:
+  - id: budget-exhaustion-precedence
+    must_prove:
+      - discovery exhaustion stops new discovery/navigation while already-frozen targets may continue transfer when transfer and global-safety budgets remain
+      - transfer exhaustion stops further acquisition bytes/segments and blocks any acquisition-completion claim
+      - global-safety exhaustion stops all generated work with highest precedence
+      - retry/restart/resume/repair inherit remaining budgets and never replenish any domain
+      - no budget limit creates, enlarges, narrows or reinterprets requested scope
+      - user pause time is excluded from active elapsed-time counters unless a specific global wall-clock limit says otherwise
+  - id: single-budget-mutation-path
+    must_prove:
+      - discovery, transfer, retry and model actions consume budget only through the one authoritative mutation path
+      - concurrent consumers (UI/CLI/restart-style duplicate clients) observe serialized, non-duplicating consumption
+      - a second private/per-worker/per-surface counter path is unrepresentable or rejected
+  - id: cancel-timing-matrix
+    must_prove:
+      - durable USER_CANCELLED committed before durable acceptance blocks any later automatic acceptance for already-staged/completed/validated/materialized or externally successful-but-unaccepted bytes
+      - durable acceptance committed before durable cancellation is not retroactively revoked
+      - the cutoff decision is a deterministic function of committed control-fact order for every interleaving in the matrix
+      - bounded reconciliation may establish truthful facts on either side of the cutoff without creating or revoking acceptance identity
+  - id: dispatch-suppression-after-cancellation
+    must_prove:
+      - once durable cancellation is authoritative for a still-unaccepted lineage, no new discovery/transfer/retry dispatch is emitted
+      - bounded reconciliation needed to determine truthful pre-existing durable/external facts remains permitted during suppression
+      - suppression persists across process death/reopen (a suppressed lineage does not resurrect by restart)
+  - id: duplicate-client-convergence
+    must_prove:
+      - two independent duplicate clients converge to one lineage, one effect and one accepted artifact
+      - duplicate submit does not silently create another acquisition
+      - concurrent duplicate cancel/accept submissions resolve to the same deterministic cutoff outcome as any serial ordering
+  - id: retry-resume-frozen-lineage
+    must_prove:
+      - explicit retry/resume operates only on the same frozen Contract/SelectionSnapshot/target/effect lineage
+      - retry cannot add or replace members/targets or expand scope (original targets only per CJ-06)
+      - retry inherits remaining budgets and never resets or replenishes them
+      - resume never creates a duplicate accepted effect for an already-accepted identity
+      - already-staged bytes are reusable only after ordinary identity/provenance/validation rules succeed
+      - reconciliation alone cannot reopen acceptance processing; only the explicit authorized retry/resume transition can
+  - id: effect-lineage-idempotency
+    must_prove:
+      - commands/work/effects/attempts carry durable identities that survive process death/reopen
+      - replayed attempts reconcile against existing effect identity instead of blindly re-executing into a duplicate accepted effect
+      - no exactly-once execution is claimed; at-least-once effects converge through idempotent acceptance
+  - id: crash-adjacent-durable-facts
+    must_prove:
+      - committed cancellation authority, acceptance and budget consumption survive process death/reopen and keep deciding the cutoff
+      - uncertain/failed work is never rewritten into success by restart, retry or reconciliation
+      - failure categories are not silently converted to success by retries (PRD section 30)
+
+counterexample_oracles:
+  # T006 scheduler-concern oracles (T006-O*); PRD corpus rows C13/C23/C28 are
+  # the frozen Product inputs they must remain consistent with.
+  - id: T006-O01
+    scenario: discovery-budget-exhausted-frozen-targets-transfer-budget-remains
+    t006_oracle: no new discovery/navigation dispatch; frozen-target transfer continues; result vocabulary stays budget-truthful (cf. C28)
+  - id: T006-O02
+    scenario: global-safety-cap-stops-all-work-mid-lineage
+    t006_oracle: all generated work stops with global-safety precedence; no later dispatch without explicit authorized transition; requested scope unchanged (cf. C23/C28)
+  - id: T006-O03
+    scenario: transfer-budget-exhausted-validated-bytes-staged-unaccepted
+    t006_oracle: no further acquisition bytes/segments; no acquisition-completion claim from staged bytes alone
+  - id: T006-O04
+    scenario: cancel-committed-before-accept-bytes-already-materialized
+    t006_oracle: cancellation cutoff blocks automatic later acceptance; bytes may be preserved/quarantined/cleaned by bounded reconciliation; no accepted identity appears
+  - id: T006-O05
+    scenario: accept-committed-then-cancel-arrives
+    t006_oracle: accepted identity is not retroactively revoked; bounded reconciliation may still establish materialization/finalization truth
+  - id: T006-O06
+    scenario: cancel-and-accept-commit-in-both-orders-across-restart
+    t006_oracle: cutoff outcome is a deterministic function of durable fact order in every matrix cell, including across process death/reopen
+  - id: T006-O07
+    scenario: two-clients-submit-identical-work-concurrently
+    t006_oracle: one lineage, one effect, one accepted artifact; duplicate submit never forks a second acquisition
+  - id: T006-O08
+    scenario: duplicate-cancel-and-duplicate-accept-race
+    t006_oracle: repeated/duplicate cancel or accept control facts are idempotent; outcome equals the serial-ordering result
+  - id: T006-O09
+    scenario: retry-after-cancellation-explicit-resume
+    t006_oracle: only an explicit authorized retry/resume transition reopens processing on the same frozen lineage with remaining budgets; reconciliation alone never does
+  - id: T006-O10
+    scenario: retry-attempts-new-member-or-target
+    t006_oracle: rejected; retry domain is original frozen member/target identities only (CJ-06; cf. C12 membership rule)
+  - id: T006-O11
+    scenario: restart-after-consumption
+    t006_oracle: remaining budgets equal pre-restart remaining values; no replenishment; no consumption lost or double-counted (cf. C13)
+  - id: T006-O12
+    scenario: restart-repair-ui-cli-concurrent-budget-consumption
+    t006_oracle: one authoritative ledger view; inherited remaining budgets; no duplicate allocation (cf. C13)
+  - id: T006-O13
+    scenario: budget-stop-projected-as-scope-completion
+    t006_oracle: budget exhaustion may stop work but cannot yield scope-complete/coverage-complete semantics; stop reason stays budget-truthful
+  - id: T006-O14
+    scenario: suppressed-lineage-restarts-after-process-death
+    t006_oracle: cancellation authority survives reopen; dispatch stays suppressed; no automatic acceptance appears
+  - id: T006-O15
+    scenario: crash-between-effect-execution-and-acceptance
+    t006_oracle: at-least-once replay reconciles by durable effect identity; no duplicate accepted effect; uncertain outcome is not rewritten to success
+  - id: T006-O16
+    scenario: pause-vs-elapsed-time-accounting
+    t006_oracle: user pause time is excluded from active elapsed-time counters unless a specific global wall-clock limit says otherwise
+
+negative_coverage:
+  - private-per-worker-or-surface-budget-counter
+  - budget-replenishment-on-retry-restart-or-repair
+  - budget-value-used-as-scope-or-membership-source
+  - auto-accept-after-authoritative-cancel
+  - cancellation-retroactively-revoking-accepted-identity
+  - new-dispatch-after-durable-cancellation
+  - duplicate-submit-forking-second-lineage-effect-or-artifact
+  - retry-adding-or-replacing-members-or-targets
+  - resume-without-explicit-authorized-control-transition
+  - reconciliation-alone-reopening-acceptance-processing
+  - multi-host-distributed-claim-or-lease-construct
+  - exactly-once-execution-claim
+  - uncertain-or-failed-work-rewritten-to-success
+  - control-transition-consuming-unvalidated-or-forked-canonical-identity
+
+completion_rule: >-
+  T006 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the T006-O01-O16 state-machine/oracle matrix, and required negative cases are executable and pass.
+  This JIT Prep creates no PASS evidence.
