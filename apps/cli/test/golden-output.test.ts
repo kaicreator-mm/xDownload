@@ -37,8 +37,8 @@ describe('golden machine-readable output', () => {
       intent_type: 'SINGLE_RESOURCE',
       lineage_status: 'ACTIVE',
       projection_schema: { schema: 'xdownload.domain-contracts', version: '1.0.0' },
-      requested_scope: null,
-      continuation_scope: null,
+      requested_scope: { kind: 'single_resource', targetId: 'target-file-001' },
+      continuation_scope: { kind: 'NONE' },
       snapshot_id: null,
       requested_count_if_known: null,
       auth_accessible_count_if_known: null,
@@ -73,8 +73,16 @@ describe('golden machine-readable output', () => {
     expect(json['selected_count']).toBe(3);
     expect(json['contract_revision']).toBe(2);
     expect(json['lineage_status']).toBe('ACTIVE');
-    expect(json['requested_scope']).toBe(null);
+    // Scope facts are projected verbatim from the confirmed contract.
+    expect(json['requested_scope']).toStrictEqual({
+      kind: 'entire_supported_collection',
+      collectionIdentity: 'collection/playlist-001',
+    });
+    expect(json['continuation_scope']).toStrictEqual({ kind: 'NONE' });
+    // Not carried by the v1 projection: rendered absent, never invented.
     expect(json['resolved_count']).toBe(null);
+    expect(json['requested_count_if_known']).toBe(null);
+    expect(json['auth_accessible_count_if_known']).toBe(null);
   });
 
   it('terminal success status projects the exact six-dimension tuple', async () => {
@@ -108,8 +116,8 @@ describe('golden machine-readable output', () => {
       intent_type: 'SINGLE_RESOURCE',
       lineage_status: 'TERMINAL',
       projection_schema: { schema: 'xdownload.domain-contracts', version: '1.0.0' },
-      requested_scope: null,
-      continuation_scope: null,
+      requested_scope: { kind: 'single_resource', targetId: 'target-file-001' },
+      continuation_scope: { kind: 'NONE' },
       snapshot_id: null,
       requested_count_if_known: null,
       auth_accessible_count_if_known: null,

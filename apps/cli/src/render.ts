@@ -8,7 +8,11 @@
  */
 
 import type { SeamDiagnostic, SeamProjectionView } from '@xdownload/core-seam';
-import type { TerminalResult } from '@xdownload/domain-contracts';
+import type {
+  ContinuationScope,
+  RequestedScope,
+  TerminalResult,
+} from '@xdownload/domain-contracts';
 
 /** CLI presentation schema of the JSON documents (CLI-local, not a wire contract). */
 export const CLI_OUTPUT_SCHEMA = '1' as const;
@@ -50,12 +54,15 @@ export interface StatusDocument {
   readonly intent_type: string;
   readonly lineage_status: string;
   readonly projection_schema: { readonly schema: string; readonly version: string };
-  /** v1 READ_PROJECTION does not carry scope; rendered absent, never invented. */
-  readonly requested_scope: null;
-  readonly continuation_scope: null;
+  /** Projected verbatim from the confirmed contract's immutable scope (PRD §27). */
+  readonly requested_scope: RequestedScope | null;
+  readonly continuation_scope: ContinuationScope | null;
   readonly snapshot_id: string | null;
+  /** Not carried by the v1 READ_PROJECTION; rendered absent, never invented. */
   readonly requested_count_if_known: null;
+  /** Not carried by the v1 READ_PROJECTION; rendered absent, never invented. */
   readonly auth_accessible_count_if_known: null;
+  /** Not carried by the v1 READ_PROJECTION; rendered absent, never invented. */
   readonly resolved_count: null;
   readonly selected_count: number | null;
   readonly validated_success_count: number | null;
@@ -190,10 +197,13 @@ export function terminalExitCode(terminal: TerminalResult): 0 | 4 {
 
 /**
  * Render the PRD §27 status document from one Core-owned projection view.
- * Values are projected verbatim; `selected_count` is the cardinality of the
- * projected selected-identity list; `validated_success_count` is the
- * projected validation summary's passed count. All other §27 counts and both
- * scope fields are not carried by the v1 projection and render as `null`.
+ * Values are projected verbatim: requested/continuation scope from the
+ * confirmed contract, `selected_count`/`validated_success_count` from the
+ * projection's additive §27 count facts. Fields the v1 projection does not
+ * carry (`requested_count_if_known`, `auth_accessible_count_if_known`,
+ * `resolved_count`, and any status fact before its truth is projected) render
+ * as `null` — absent, never invented (EXECUTION_CONTRACT "fail closed";
+ * TEST_MATRIX "missing-projection-fields-render-absent").
  */
 export function renderStatusDocument(view: SeamProjectionView): StatusDocument {
   const terminal = view.terminal;
@@ -205,14 +215,14 @@ export function renderStatusDocument(view: SeamProjectionView): StatusDocument {
     intent_type: view.contract.intentType,
     lineage_status: view.lineage.status,
     projection_schema: { ...view.schemaIdentity },
-    requested_scope: null,
-    continuation_scope: null,
+    requested_scope: view.contract.requestedScope ?? null,
+    continuation_scope: view.contract.continuationScope ?? null,
     snapshot_id: view.snapshot?.snapshotId ?? null,
     requested_count_if_known: null,
     auth_accessible_count_if_known: null,
     resolved_count: null,
-    selected_count: view.snapshot === undefined ? null : view.snapshot.selectedMemberIds.length,
-    validated_success_count: terminal === undefined ? null : terminal.validationSummary.passedCount,
+    selected_count: view.selectedMemberCount ?? null,
+    validated_success_count: view.validatedSuccessCount ?? null,
     RequestFulfillmentStatus: terminal === undefined ? null : terminal.requestFulfillment,
     TargetResolutionStatus: terminal === undefined ? null : terminal.targetResolution,
     SelectionAcquisitionStatus: terminal === undefined ? null : terminal.selectionAcquisition,

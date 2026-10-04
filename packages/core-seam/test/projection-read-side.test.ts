@@ -272,3 +272,138 @@ describe('projection reflects snapshot confirmation state', () => {
     );
   });
 });
+
+describe('additive PRD §27 exposure on the read projection', () => {
+  it('requested/continuation scope are projected verbatim from the confirmed contract', () => {
+    const s = server();
+    submitSingle(s);
+    const response = s.handleFrame(
+      JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })),
+    );
+    expect(response.outcome).toBe('PROJECTION');
+    const contract = (response.projection as Record<string, unknown>)['contract'] as Record<
+      string,
+      unknown
+    >;
+    expect(contract['requestedScope']).toStrictEqual({
+      kind: 'single_resource',
+      targetId: 'target-file-001',
+    });
+    expect(contract['continuationScope']).toStrictEqual({ kind: 'NONE' });
+    // Read-only canonical values: the projected scope is deep-frozen.
+    expect(Object.isFrozen(contract['requestedScope'] as object)).toBe(true);
+  });
+
+  it('selected/validated counts have explicit presence: the keys are absent while unknown', () => {
+    const s = server();
+    submitSingle(s);
+    const before = s.handleFrame(JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })));
+    const beforeView = before.projection as Record<string, unknown>;
+    // No snapshot, no terminal: neither §27 count fact exists yet, and the
+    // projection must not carry a placeholder (absent, never null/0).
+    expect(Object.prototype.hasOwnProperty.call(beforeView, 'selectedMemberCount')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(beforeView, 'validatedSuccessCount')).toBe(false);
+
+    const terminal = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'PROJECT_TERMINAL_RESULT',
+          aggregateId: 'contract-single-001',
+          expectedRevision: 1,
+          payload: {
+            result: rawTerminalResult(),
+            selectedValidationOutcomes: [
+              { memberId: 'target-file-001', requiredValidationPassed: true },
+            ],
+          },
+        }),
+      ),
+    );
+    expect(terminal.outcome).toBe('ACCEPTED');
+    const after = s.handleFrame(JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })));
+    const afterView = after.projection as Record<string, unknown>;
+    // Terminal truth exists now: the validated success count is exposed;
+    // the selected count is still absent (no snapshot was confirmed).
+    expect(afterView['validatedSuccessCount']).toBe(1);
+    expect(Object.prototype.hasOwnProperty.call(afterView, 'selectedMemberCount')).toBe(false);
+  });
+
+  it('after CONFIRM_SNAPSHOT the selected-member count is exposed as the confirmed cardinality', () => {
+    const s = server();
+    const submit = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: 'contract-collection-001',
+          payload: rawCollectionContract(),
+        }),
+      ),
+    );
+    expect(submit.outcome).toBe('ACCEPTED');
+    const confirm = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'CONFIRM_SNAPSHOT',
+          aggregateId: 'contract-collection-001',
+          expectedRevision: 1,
+          payload: rawSnapshot(),
+        }),
+      ),
+    );
+    expect(confirm.outcome).toBe('ACCEPTED');
+    const response = s.handleFrame(
+      JSON.stringify(rawQuery({ aggregateId: 'contract-collection-001' })),
+    );
+    const view = response.projection as Record<string, unknown>;
+    expect(view['selectedMemberCount']).toBe(3);
+    expect(Object.prototype.hasOwnProperty.call(view, 'validatedSuccessCount')).toBe(false);
+    expect((view['contract'] as Record<string, unknown>)['requestedScope']).toStrictEqual({
+      kind: 'entire_supported_collection',
+      collectionIdentity: 'collection/playlist-001',
+    });
+  });
+
+  it('additive fields survive the wire round-trip; unknown facts stay absent on the wire', () => {
+    const s = server();
+    submitSingle(s);
+    const bare = s.handleFrame(JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })));
+    const bareWire = JSON.parse(JSON.stringify(bare)) as { projection: Record<string, unknown> };
+    // The scope facts ride the wire verbatim...
+    expect(
+      (bareWire.projection['contract'] as Record<string, unknown>)['requestedScope'],
+    ).toStrictEqual({ kind: 'single_resource', targetId: 'target-file-001' });
+    // ...while the unknown count facts produce no wire bytes at all.
+    expect(JSON.stringify(bareWire.projection)).not.toContain('selectedMemberCount');
+    expect(JSON.stringify(bareWire.projection)).not.toContain('validatedSuccessCount');
+
+    const confirm = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: 'contract-collection-001',
+          payload: rawCollectionContract(),
+        }),
+      ),
+    );
+    expect(confirm.outcome).toBe('ACCEPTED');
+    const snapshot = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'CONFIRM_SNAPSHOT',
+          aggregateId: 'contract-collection-001',
+          expectedRevision: 1,
+          payload: rawSnapshot(),
+        }),
+      ),
+    );
+    expect(snapshot.outcome).toBe('ACCEPTED');
+    const confirmed = s.handleFrame(
+      JSON.stringify(rawQuery({ aggregateId: 'contract-collection-001' })),
+    );
+    const confirmedWire = JSON.parse(JSON.stringify(confirmed)) as {
+      projection: Record<string, unknown>;
+    };
+    // Wire round-trip: the additive presence facts arrive intact.
+    expect(confirmedWire.projection['selectedMemberCount']).toBe(3);
+  });
+});

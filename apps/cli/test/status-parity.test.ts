@@ -74,13 +74,20 @@ describe('status parity with core', () => {
     await setupContract(harnessClient(seam.target), singleResourceContract());
     const run = await runCli(['status', '--contract', 'contract-single-001'], seam.target);
     const json = run.json as Record<string, unknown>;
-    // The v1 READ_PROJECTION view carries none of these; the CLI must not
-    // synthesize scopes, counts or statuses before Core projects them.
-    expect(json['requested_scope']).toBe(null);
-    expect(json['continuation_scope']).toBe(null);
+    // Scope facts the projection carries are rendered verbatim, never
+    // re-derived or rewritten by the CLI.
+    expect(json['requested_scope']).toStrictEqual({
+      kind: 'single_resource',
+      targetId: 'target-file-001',
+    });
+    expect(json['continuation_scope']).toStrictEqual({ kind: 'NONE' });
+    // The v1 READ_PROJECTION carries none of these counts or statuses; the
+    // CLI must not synthesize them before Core projects them.
     expect(json['requested_count_if_known']).toBe(null);
     expect(json['auth_accessible_count_if_known']).toBe(null);
     expect(json['resolved_count']).toBe(null);
+    expect(json['selected_count']).toBe(null);
+    expect(json['validated_success_count']).toBe(null);
     expect(json['RequestFulfillmentStatus']).toBe(null);
     expect(json['needs_user_action']).toBe(null);
   });
