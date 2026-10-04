@@ -1,0 +1,163 @@
+task_id: T006
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T006 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T006 would require violating Frozen L2 ownership, authority or trust boundaries (second budget path, per-surface scheduler authority, weakened cancellation cutoff)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T002 completion identity (PR #52 merge c813d3a1f2afea7bd3f99de1d01321904f5fbdd5) is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: private-budget-counter
+    trigger: budget consumption appears through any path other than the single Core-owned mutation ordering (per-worker, per-surface or adapter-local counters)
+    classification: BUDGET_AUTHORITY_VIOLATION
+    required_action:
+      - reject the implementation path
+      - converge all consumption onto the one authoritative mutation path
+      - never reconcile divergent private counters by averaging/merging
+    false_pass_forbidden: true
+
+  - id: budget-replenishment
+    trigger: retry/restart/resume/repair implies restored or additional budget capacity
+    classification: BUDGET_REPLENISHMENT_REJECTED
+    required_action:
+      - inherit remaining budgets only
+      - reject any reset/refill transition
+    false_pass_forbidden: true
+
+  - id: budget-as-scope
+    trigger: budget value or exhaustion creates, enlarges, narrows or reinterprets requested scope or membership
+    classification: SCOPE_MUTATION_REJECTED
+    required_action:
+      - keep budget strictly a constraint over lifecycle work
+      - require explicit successor contract/snapshot for any scope change per Product authority
+    false_pass_forbidden: true
+
+  - id: auto-accept-after-cancel
+    trigger: automatic recovery/reconciliation creates acceptance for a lineage whose durable USER_CANCELLED authority precedes acceptance
+    classification: CANCELLATION_CUTOFF_VIOLATION
+    required_action:
+      - block the acceptance path deterministically
+      - permit only bounded truthful reconciliation (preserve/quarantine/clean up)
+      - reopen processing only through explicit authorized retry/resume
+    false_pass_forbidden: true
+
+  - id: cancel-revokes-acceptance
+    trigger: cancellation retroactively revokes or rewrites an already durably accepted effect identity
+    classification: ACCEPTED_IDENTITY_MUTATION_REJECTED
+    required_action:
+      - preserve the accepted identity
+      - restrict post-cancel work to bounded materialization/finalization truth reconciliation
+    false_pass_forbidden: true
+
+  - id: dispatch-after-cancel
+    trigger: new discovery/transfer/retry dispatch is emitted after durable cancellation for a still-unaccepted lineage, or a suppressed lineage resurrects after restart
+    classification: DISPATCH_SUPPRESSION_VIOLATION
+    required_action:
+      - enforce suppression from durable facts
+      - keep only bounded reconciliation active during suppression
+    false_pass_forbidden: true
+
+  - id: duplicate-lineage-fork
+    trigger: duplicate submit creates a second lineage, effect or accepted artifact for the same logical work
+    classification: LINEAGE_FORK_REJECTED
+    required_action:
+      - converge duplicates onto the existing durable lineage/effect identity
+      - never merge by discarding one side silently
+    false_pass_forbidden: true
+
+  - id: retry-membership-drift
+    trigger: retry/resume introduces a new member/target, changes scope, or binds a different Contract/Snapshot identity than the frozen lineage
+    classification: SNAPSHOT_DRIFT_REJECTED
+    required_action:
+      - constrain retry to original frozen member/target identities
+      - require explicit successor contract/snapshot through Product authority when change is genuinely needed
+    false_pass_forbidden: true
+
+  - id: unauthenticated-resume
+    trigger: acceptance processing reopens without an explicit authorized retry/resume control transition (reconciliation alone or an automatic path)
+    classification: UNAUTHORIZED_TRANSITION_REJECTED
+    required_action:
+      - reopen only via the explicit authorized transition on the same frozen lineage and remaining budgets
+    false_pass_forbidden: true
+
+  - id: distributed-claim-construct
+    trigger: implementation introduces multi-host/distributed claims, leases or coordination constructs outside the single local authoritative Core
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - reject the construct
+      - route any perceived need through the architecture amendment path
+    false_pass_forbidden: true
+
+  - id: exactly-once-claim
+    trigger: implementation or evidence claims exactly-once external-effect execution
+    classification: FALSE_DURABILITY_CLAIM
+    required_action:
+      - model at-least-once effects with idempotent acceptance/reconciliation only
+      - record the claim limitation truthfully
+    false_pass_forbidden: true
+
+  - id: failure-rewritten-to-success
+    trigger: restart, retry, reconciliation or AI explanation rewrites uncertain/failed work or a failure category into success
+    classification: RESULT_FALSIFICATION_REJECTED
+    required_action:
+      - keep truthful non-success classifications
+      - require new evidence through ordinary validation rules for any status change
+    false_pass_forbidden: true
+
+  - id: persistence-semantic-conflict
+    trigger: the control-ordering seam cannot be defined without redefining T005/T015 persistence/recovery semantics
+    classification: PERSISTENCE_SEMANTIC_CONFLICT
+    required_action:
+      - stop; route to planning/architecture per Frozen Task Pack Merge/routing
+      - never resolve by parallel redefinition of persistence/recovery semantics
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/state-machine test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder proposes a runtime scheduling/state-machine dependency without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep choice within F1 and Frozen Architecture
+    false_pass_forbidden: true
