@@ -35,7 +35,11 @@ import type { PeerIdentity } from '@xdownload/core-seam';
 
 /** Connection/degradation display state (never a status truth claim). */
 export type DesktopConnectionState =
-  'CONNECTED' | 'DISCONNECTED' | 'STALE_PROJECTION' | 'UNPARSEABLE_PROJECTION';
+  | 'CONNECTED'
+  | 'DISCONNECTED'
+  | 'REJECTED_PROJECTION'
+  | 'STALE_PROJECTION'
+  | 'UNPARSEABLE_PROJECTION';
 
 /** One confirmed immutable scope display (echo bound to a live projection). */
 export interface ScopeDisplayModel {
@@ -117,6 +121,11 @@ export function connectionBanner(state: DesktopConnectionState): string | null {
       return (
         'DEGRADED: the last projection could not be refreshed and is stale. ' +
         'Showing last known Core state; values may be out of date.'
+      );
+    case 'REJECTED_PROJECTION':
+      return (
+        'DEGRADED: Core rejected the last projection read; no projection was ' +
+        'served and nothing is displayed from it. Re-request the projection from Core.'
       );
     case 'UNPARSEABLE_PROJECTION':
       return (
@@ -286,11 +295,23 @@ export type RetryDomain =
 
 /**
  * The v1 seam projection exposes the failed-member COUNT but not the failed
- * identities. Because Core guarantees retried ⊆ failed ⊆ selected, the
- * failed identity domain is uniquely determined exactly when
- * |selected \ retried| === failedMemberCount. In that case retry routes on
- * that set; otherwise the adapter refuses to guess and presents retry as
- * unavailable (fail closed, never fabricate a retry domain).
+ * identities. Core guarantees retried ⊆ failed ⊆ selected, so the failed
+ * identity domain is uniquely determined only in two exact cases:
+ *
+ * - |failed| === |selected| → failed = selected (a subset equal in count to
+ *   its superset is the superset);
+ * - |failed| === |retried|  → failed = retried (equal counts on retried ⊆
+ *   failed force equality).
+ *
+ * Any other count is ambiguous — the failed set cannot be located between
+ * selected and retried — so the adapter refuses to guess and presents retry
+ * as unavailable (fail closed, never fabricate a retry domain). Repair note
+ * (T014-REV-P1-1, review 5980174310): the former predicate
+ * |selected \ retried| === failedMemberCount was NOT sound for non-empty
+ * retriedMemberIds — it could equate a candidates set with the failed count
+ * while the actual failed members overlap the retried set (e.g. S={a,b,c},
+ * F={b,c}, R={b} derived {a,c}: a non-failed member routed and the
+ * still-failed member omitted).
  */
 export function deriveRetryDomain(input: {
   readonly selectedMemberIds: readonly string[];
@@ -300,15 +321,16 @@ export function deriveRetryDomain(input: {
   if (input.failedMemberCount === 0) {
     return { kind: 'UNAVAILABLE', reason: 'NO_FAILED_MEMBERS' };
   }
-  const retried = new Set(input.retriedMemberIds);
-  const candidates = input.selectedMemberIds.filter((memberId) => !retried.has(memberId));
-  if (candidates.length !== input.failedMemberCount) {
-    return {
-      kind: 'UNAVAILABLE',
-      reason: 'FAILED_IDENTITIES_NOT_EXPOSED_BY_PROJECTION',
-    };
+  if (input.failedMemberCount === input.selectedMemberIds.length) {
+    return { kind: 'DETERMINED', memberIds: input.selectedMemberIds };
   }
-  return { kind: 'DETERMINED', memberIds: candidates };
+  if (input.failedMemberCount === input.retriedMemberIds.length) {
+    return { kind: 'DETERMINED', memberIds: input.retriedMemberIds };
+  }
+  return {
+    kind: 'UNAVAILABLE',
+    reason: 'FAILED_IDENTITIES_NOT_EXPOSED_BY_PROJECTION',
+  };
 }
 
 /** The peer identity descriptor rendered on the surface footer. */

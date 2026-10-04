@@ -86,7 +86,21 @@ import {
   type ScopeDisplayModel,
 } from './view-model.ts';
 
-/** Workflow facts for the confirmation plan — sourced from Core-side state. */
+/**
+ * Workflow facts for the confirmation plan — sourced from Core-side state.
+ *
+ * v1 interface gap 3 of 3 (recorded per review 5980174310, T014-REV-P2-3):
+ * the v1 seam exposes no discovery-facts projection, so these facts reach
+ * the canonical `planConfirmationWorkflow` as trusted CALLER inputs. The
+ * plan producer is Core-side canonical and this surface invents no fact,
+ * but a real shell MUST source candidateCount, ambiguousMaterialMemberIds
+ * and autoEvidenceSufficient from Core discovery state — never from
+ * surface-local guesses — or the canonical plan would be computed over
+ * caller-asserted inputs. (Gap 1: failed-member identities are not exposed
+ * by the projection, see deriveRetryDomain; gap 2: confirmed-scope display
+ * is echo-bound while the live projection still binds the contract, see
+ * ScopeDisplayModel.)
+ */
 export interface ConfirmationWorkflowFacts {
   readonly ambiguousMaterialMemberIds: readonly string[];
   readonly candidateCount: number;
@@ -594,7 +608,8 @@ export class DesktopUiAdapter {
     | { readonly ok: true }
     | {
         readonly ok: false;
-        readonly reason: 'DISCONNECTED' | 'STALE_PROJECTION' | 'UNPARSEABLE_PROJECTION';
+        readonly reason:
+          'DISCONNECTED' | 'REJECTED_PROJECTION' | 'STALE_PROJECTION' | 'UNPARSEABLE_PROJECTION';
       }
   > {
     let response: SeamResponse;
@@ -612,9 +627,12 @@ export class DesktopUiAdapter {
       return { ok: false, reason: 'DISCONNECTED' };
     }
     if (response.outcome === 'REJECTED') {
+      // Repair note (T014-REV-P2-2, review 5980174310): a rejected read is
+      // labeled as exactly that — Core refused to serve a projection — and
+      // never as a "stale" projection that could not be refreshed.
       this.recordRejections(response);
-      this.connection = 'STALE_PROJECTION';
-      return { ok: false, reason: 'STALE_PROJECTION' };
+      this.connection = 'REJECTED_PROJECTION';
+      return { ok: false, reason: 'REJECTED_PROJECTION' };
     }
     const verified = verifyProjectionPayload(response.projection, aggregateId);
     if (!verified.ok) {

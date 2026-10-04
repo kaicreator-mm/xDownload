@@ -74,6 +74,27 @@ const SUMMARY_STATUSES: readonly ValidationSummaryStatus[] = [
   'INSUFFICIENT_EVIDENCE',
   'NOT_PERFORMED',
 ];
+// Repair note (T014-REV-P2-4, review 5980174310): stopReason is gated
+// against the canonical StopReason literal set (mirroring domain-contracts
+// result.ts byte-for-byte), not merely checked as a string. Unknown or
+// tampered literals fail verification like every other dimension.
+const STOP_REASONS: readonly StopReason[] = [
+  'NONE',
+  'NATURAL_COLLECTION_END',
+  'USER_SCOPE_REACHED',
+  'USER_SELECTION_COMPLETE',
+  'DISCOVERY_BUDGET_EXHAUSTED',
+  'TRANSFER_BUDGET_EXHAUSTED',
+  'GLOBAL_SAFETY_LIMIT',
+  'NO_PROGRESS',
+  'AUTH_REQUIRED',
+  'AUTH_FAILED',
+  'TARGET_CHANGED',
+  'COLLECTION_CHANGED',
+  'UNSUPPORTED',
+  'USER_CANCELLED',
+  'VALIDATION_FAILED',
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -216,8 +237,8 @@ export function verifyTerminalDimensions(terminal: unknown): TerminalVerificatio
   if (!COVERAGE.includes(terminal['coverage'] as CoverageStatus)) {
     return fail('PROJECTION_MALFORMED', 'coverage is not a known literal');
   }
-  if (typeof terminal['stopReason'] !== 'string') {
-    return fail('PROJECTION_MALFORMED', 'stopReason is missing');
+  if (!STOP_REASONS.includes(terminal['stopReason'] as StopReason)) {
+    return fail('PROJECTION_MALFORMED', 'stopReason is not a known literal');
   }
   const summary = terminal['validationSummary'];
   if (!isRecord(summary)) {

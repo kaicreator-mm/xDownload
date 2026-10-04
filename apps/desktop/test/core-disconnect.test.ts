@@ -125,17 +125,33 @@ describe('core disconnect behavior', () => {
     await adapter.close();
   });
 
-  it('a rejected projection read (stale aggregate) degrades instead of rendering live status', async () => {
+  it('a rejected projection read degrades with a faithful rejected label, never a stale-projection claim (T014-REV-P2-2)', async () => {
     const core = await startCore();
     const adapter = desktopAdapter(core);
-    await confirmSingleResourceTask(adapter);
+    const done = await confirmSingleResourceTask(adapter);
+    const contractId = done.routed[0]?.aggregateId ?? '';
     // Pointing the view at an aggregate this surface does not know refuses.
     const switched = adapter.viewAggregate('contract-does-not-exist');
     expect(switched.refusals[0]).toContain('unknown aggregate');
-    // The current aggregate stays attached and its read stays healthy.
-    const outcome = await adapter.refresh();
-    expect(outcome.refusals).toStrictEqual([]);
-    expect(outcome.display.connection).toBe('CONNECTED');
+
+    // A projection read Core REJECTS (unknown aggregate → AGGREGATE_NOT_FOUND)
+    // is exactly that: a rejected read. The degraded state is labeled
+    // faithfully — it never claims the last projection is "stale".
+    const rejected = await adapter.attachAggregate('contract-does-not-exist');
+    expect(rejected.display.connection).toBe('REJECTED_PROJECTION');
+    const banner = sectionLines(rejected.display, 'Connection').join('\n');
+    expect(banner).toContain('DEGRADED: Core rejected the last projection read');
+    expect(banner).not.toContain('stale');
+    // The typed rejection is surfaced verbatim on the outcome; nothing
+    // renders from it.
+    expect(rejected.rejections.map((r) => r.code)).toContain('AGGREGATE_NOT_FOUND');
+
+    // The known aggregate stays healthy: re-viewing and re-reading it
+    // restores CONNECTED.
+    adapter.viewAggregate(contractId);
+    const refreshed = await adapter.refresh();
+    expect(refreshed.refusals).toStrictEqual([]);
+    expect(refreshed.display.connection).toBe('CONNECTED');
     await adapter.close();
     await core.stop();
   });
