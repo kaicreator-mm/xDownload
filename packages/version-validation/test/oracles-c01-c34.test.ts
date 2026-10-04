@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  assertCanonicalStatusRuleValue,
   CANONICAL_ORACLE_IDS,
   loadOracleCorpus,
   oracleCorpusRecords,
@@ -160,43 +161,31 @@ describe('c01-c34 oracle loading — canonical result-vocabulary binding', () =>
     ).toBe(true);
   });
 
-  it('every rule assertion value is a canonical status literal for its field', () => {
-    const canonical: Record<string, readonly string[]> = {
-      requestFulfillment: ['COMPLETE', 'PARTIAL', 'UNSATISFIED', 'UNKNOWN'],
-      targetResolution: ['RESOLVED', 'PARTIAL', 'EMPTY_CONFIRMED', 'EMPTY_UNKNOWN', 'BLOCKED'],
-      selectionAcquisition: ['NOT_STARTED', 'COMPLETE', 'PARTIAL', 'FAILED', 'CANCELLED'],
-      coverage: ['VERIFIED_COMPLETE', 'VERIFIED_SUBSET', 'TRUNCATED', 'UNKNOWN', 'NOT_APPLICABLE'],
-      stopReason: [
-        'NONE',
-        'NATURAL_COLLECTION_END',
-        'USER_SCOPE_REACHED',
-        'USER_SELECTION_COMPLETE',
-        'DISCOVERY_BUDGET_EXHAUSTED',
-        'TRANSFER_BUDGET_EXHAUSTED',
-        'GLOBAL_SAFETY_LIMIT',
-        'NO_PROGRESS',
-        'AUTH_REQUIRED',
-        'AUTH_FAILED',
-        'TARGET_CHANGED',
-        'COLLECTION_CHANGED',
-        'UNSUPPORTED',
-        'USER_CANCELLED',
-        'VALIDATION_FAILED',
-      ],
-      'validationSummary.status': [
-        'ALL_PASSED',
-        'PARTIAL',
-        'FAILED',
-        'INSUFFICIENT_EVIDENCE',
-        'NOT_PERFORMED',
-      ],
-    };
+  it('every rule assertion value survives the canonical status probe for its field', () => {
     for (const oracle of corpus.oracles) {
       for (const rule of oracle.ruleAssertions) {
-        expect(canonical[rule.field]).toBeDefined();
-        expect(canonical[rule.field]).toContain(rule.value);
+        expect(
+          assertCanonicalStatusRuleValue(rule.field, rule.value, `rule:${oracle.oracleId}`).ok,
+        ).toBe(true);
         expect(['MUST', 'MAY', 'MUST_NOT']).toContain(rule.polarity);
       }
+    }
+  });
+
+  it('a rule assertion with a non-canonical value fails closed through the canonical probe', () => {
+    const bad = oracleWithId('C01');
+    const rules = bad['ruleAssertions'] as Record<string, unknown>[];
+    rules[0]!['value'] = 'SORT_OF_COMPLETE';
+    const result = loadOracleCorpus(
+      oracleCorpusRecords().map((r) =>
+        (r as Record<string, unknown>)['oracleId'] === 'C01' ? bad : r,
+      ),
+      loadedCorpusRegistry(),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.diagnostics.some((d) => d.code === 'UNKNOWN_ENUM_VALUE')).toBe(true);
+      expect(result.diagnostics.some((d) => d.message.includes('canonical'))).toBe(true);
     }
   });
 

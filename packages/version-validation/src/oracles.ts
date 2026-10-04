@@ -26,7 +26,11 @@ import {
   requireNonEmptyString,
   type DomainValidationResult,
 } from '@xdownload/domain-contracts';
-import { decodeExpectedTuple, type ExpectedTerminalStatusTuple } from './canonical-probe.ts';
+import {
+  decodeExpectedTuple,
+  assertCanonicalStatusRuleValue,
+  type ExpectedTerminalStatusTuple,
+} from './canonical-probe.ts';
 import type { CorpusRegistry } from './corpora.ts';
 import {
   CANONICAL_ORACLE_IDS,
@@ -110,36 +114,21 @@ const ORACLE_KEYS: readonly string[] = [
   'g0PlanRef',
 ];
 
-const STATUS_ENUMS_BY_FIELD: Readonly<Record<StatusRuleField, readonly string[]>> = Object.freeze({
-  requestFulfillment: ['COMPLETE', 'PARTIAL', 'UNSATISFIED', 'UNKNOWN'],
-  targetResolution: ['RESOLVED', 'PARTIAL', 'EMPTY_CONFIRMED', 'EMPTY_UNKNOWN', 'BLOCKED'],
-  selectionAcquisition: ['NOT_STARTED', 'COMPLETE', 'PARTIAL', 'FAILED', 'CANCELLED'],
-  coverage: ['VERIFIED_COMPLETE', 'VERIFIED_SUBSET', 'TRUNCATED', 'UNKNOWN', 'NOT_APPLICABLE'],
-  stopReason: [
-    'NONE',
-    'NATURAL_COLLECTION_END',
-    'USER_SCOPE_REACHED',
-    'USER_SELECTION_COMPLETE',
-    'DISCOVERY_BUDGET_EXHAUSTED',
-    'TRANSFER_BUDGET_EXHAUSTED',
-    'GLOBAL_SAFETY_LIMIT',
-    'NO_PROGRESS',
-    'AUTH_REQUIRED',
-    'AUTH_FAILED',
-    'TARGET_CHANGED',
-    'COLLECTION_CHANGED',
-    'UNSUPPORTED',
-    'USER_CANCELLED',
-    'VALIDATION_FAILED',
-  ],
-  'validationSummary.status': [
-    'ALL_PASSED',
-    'PARTIAL',
-    'FAILED',
-    'INSUFFICIENT_EVIDENCE',
-    'NOT_PERFORMED',
-  ],
-});
+/**
+ * Pre-registered status rule fields. Rule VALUES are never redeclared here:
+ * each value is validated against the canonical result vocabulary of
+ * `@xdownload/domain-contracts` through `assertCanonicalStatusRuleValue`
+ * (the canonical structural decoder probe), so local drift from the canonical
+ * enums is unrepresentable.
+ */
+const STATUS_RULE_FIELDS: readonly StatusRuleField[] = [
+  'requestFulfillment',
+  'targetResolution',
+  'selectionAcquisition',
+  'coverage',
+  'stopReason',
+  'validationSummary.status',
+];
 
 const SCOPE_REF_KEYS: readonly string[] = ['corpusId', 'taskCaseId'];
 const RULE_KEYS: readonly string[] = ['field', 'value', 'polarity', 'prdRef', 'canonicalRuleRef'];
@@ -181,7 +170,7 @@ function decodeRuleAssertion(
 ): DomainValidationResult<StatusRuleAssertion> {
   return andThen(asRecord(value, path), (record) =>
     andThen(rejectUnknownFields(record, RULE_KEYS, path), () => {
-      const field = requireLiteral(record, 'field', Object.keys(STATUS_ENUMS_BY_FIELD), path);
+      const field = requireLiteral(record, 'field', STATUS_RULE_FIELDS, path);
       if (!field.ok) {
         return field;
       }
@@ -198,16 +187,20 @@ function decodeRuleAssertion(
         return valueRaw;
       }
       const canonicalRuleRef = requireNonEmptyString(record, 'canonicalRuleRef', path);
-      const allowed = STATUS_ENUMS_BY_FIELD[field.value as StatusRuleField]!;
-      if (!allowed.includes(valueRaw.value)) {
-        return fail([
-          diagnostic(
-            'UNKNOWN_ENUM_VALUE',
-            `${path}.value`,
-            `rule value '${valueRaw.value}' is not a canonical '${field.value}' status; oracle rules must bind the canonical result vocabulary`,
-            'PRD-§16',
-          ),
-        ]);
+      // Bind the rule value to the canonical result vocabulary through the
+      // structural decoder probe — never against a local redeclaration.
+      const canonical = assertCanonicalStatusRuleValue(
+        field.value as StatusRuleField,
+        valueRaw.value,
+        `${path}.value`,
+      );
+      if (!canonical.ok) {
+        return fail(
+          canonical.diagnostics.map((d) => ({
+            ...d,
+            message: `rule value '${valueRaw.value}' is not a canonical '${field.value}' status; oracle rules must bind the canonical result vocabulary`,
+          })),
+        );
       }
       return ok(
         deepFreeze({

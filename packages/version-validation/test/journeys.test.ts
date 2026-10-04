@@ -3,7 +3,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  assertCanonicalStatusValue,
   CANONICAL_JOURNEY_IDS,
+  CJ07_NEEDS_USER_ACTION_UPWARD_MAPPING,
   journeyRegistryRecords,
   loadJourneyRegistry,
 } from '../src/index.ts';
@@ -203,6 +205,42 @@ describe('critical journeys — complete, unique, and canonically bound registry
   it('the shipped journey registry loads deterministically', () => {
     expect(JSON.stringify(loadedJourneyRegistry().journeys)).toBe(
       JSON.stringify(loadedJourneyRegistry().journeys),
+    );
+  });
+});
+
+describe('CJ-07 upward canonical-vocabulary mapping (review 5976989281 P2)', () => {
+  const registry = loadedJourneyRegistry();
+
+  it('the PRD NEEDS_USER_ACTION token maps upward to the encodable canonical subset', () => {
+    expect(CJ07_NEEDS_USER_ACTION_UPWARD_MAPPING.prdToken).toBe('NEEDS_USER_ACTION');
+    expect(CJ07_NEEDS_USER_ACTION_UPWARD_MAPPING.prdRef).toBe('PRD-§31/CJ-07');
+    expect(CJ07_NEEDS_USER_ACTION_UPWARD_MAPPING.canonicalEncoding).toEqual({
+      coverage: 'UNKNOWN',
+      stopReason: 'UNSUPPORTED',
+      validationSummaryStatus: 'NOT_PERFORMED',
+    });
+  });
+
+  it('the mapping values are canonical and match the shipped CJ-07 pre-registration', () => {
+    const encoding = CJ07_NEEDS_USER_ACTION_UPWARD_MAPPING.canonicalEncoding;
+    expect(assertCanonicalStatusValue('coverage', encoding.coverage, 'cj07-mapping').ok).toBe(true);
+    expect(assertCanonicalStatusValue('stopReason', encoding.stopReason, 'cj07-mapping').ok).toBe(
+      true,
+    );
+    expect(
+      assertCanonicalStatusValue(
+        'validationSummary',
+        { status: encoding.validationSummaryStatus, passedCount: 0, failedCount: 0 },
+        'cj07-mapping',
+      ).ok,
+    ).toBe(true);
+    const cj07 = registry.byId('CJ-07')!;
+    expect(cj07.prdRef).toBe(CJ07_NEEDS_USER_ACTION_UPWARD_MAPPING.prdRef);
+    expect(cj07.expectedStop).toBe(encoding.stopReason);
+    expect(cj07.expectedResultStatuses.coverage).toBe(encoding.coverage);
+    expect(cj07.expectedResultStatuses.validationSummary.status).toBe(
+      encoding.validationSummaryStatus,
     );
   });
 });

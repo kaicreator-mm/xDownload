@@ -82,6 +82,27 @@ const INVARIANT_KEYS: readonly string[] = [
 const SCOPE_REF_KEYS: readonly string[] = ['corpusId', 'taskCaseId'];
 
 /**
+ * CJ-07 upward canonical-vocabulary mapping (frozen PRD §31/CJ-07).
+ *
+ * The PRD journey token `NEEDS_USER_ACTION` has no literal in the canonical
+ * StopReason enum of `@xdownload/domain-contracts`. CJ-07 therefore
+ * pre-registers the encodable canonical subset — coverage UNKNOWN, stop
+ * UNSUPPORTED, validation NOT_PERFORMED (the shipped CJ-07 record below).
+ * The literal itself is deliberately unrepresentable as a terminal status
+ * here; surfacing it literally requires an upward canonical-vocabulary
+ * change in `@xdownload/domain-contracts`, never a local redeclaration.
+ */
+export const CJ07_NEEDS_USER_ACTION_UPWARD_MAPPING = deepFreeze({
+  prdToken: 'NEEDS_USER_ACTION',
+  prdRef: 'PRD-§31/CJ-07',
+  canonicalEncoding: deepFreeze({
+    coverage: 'UNKNOWN',
+    stopReason: 'UNSUPPORTED',
+    validationSummaryStatus: 'NOT_PERFORMED',
+  }),
+});
+
+/**
  * Frozen per-journey required scope invariants (PRD §31). A definition that
  * omits a required invariant, or adds scope/continuation beyond it, fails
  * closed.

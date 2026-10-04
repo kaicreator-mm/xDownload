@@ -4,9 +4,13 @@
  *
  * Metric definitions and PASS-rule evaluators consume recorded evidence.
  * Evaluators fail closed: missing or insufficient confirmation evidence
- * yields FAIL or INSUFFICIENT_EVIDENCE, never PASS. Every real gate result
- * on the T003 candidate remains NOT_RUN — evaluation executes only later,
- * against a product candidate, in Validation owned by T020–T023.
+ * yields FAIL or INSUFFICIENT_EVIDENCE, never PASS, and every frozen §32
+ * PASS-rule conjunct is enforced on the evidence before PASS can be emitted
+ * (strict reduction comparators, baseline parity, scope no-regression,
+ * critical-defect blocking, confirmation-burden accounting and
+ * independent-truth-documented compensation). Every real gate result on the
+ * T003 candidate remains NOT_RUN — evaluation executes only later, against a
+ * product candidate, in Validation owned by T020–T023.
  */
 
 import {
@@ -24,6 +28,7 @@ import {
   type ValidationDiagnostic,
 } from '@xdownload/domain-contracts';
 import { makeGateId, type GateId, type JourneyId } from './identity.ts';
+import { decodeTruthSource, type TruthSource } from './truth-source.ts';
 
 export type GateResult = 'PASS' | 'FAIL' | 'INSUFFICIENT_EVIDENCE';
 
@@ -40,7 +45,10 @@ export type MetricId =
   | 'NAVIGATION_EFFORT_REDUCTION'
   | 'SELECTION_EFFORT_REDUCTION'
   | 'WRONG_TARGET_RATE'
-  | 'CONFIRMATION_BURDEN';
+  | 'CONFIRMATION_BURDEN'
+  | 'MODEL_USE_REDUCTION'
+  | 'ACTIVE_USER_TIME_REDUCTION'
+  | 'REPAIR_EFFORT_REDUCTION';
 
 export interface GateMetricDefinition {
   readonly metric: MetricId;
@@ -141,7 +149,12 @@ export const GATE_DEFINITIONS: readonly GateDefinition[] = deepFreeze([
     title: 'Local Knowledge Compounding',
     prdRef: 'PRD-§32/G3',
     applicability: 'RECOMMENDED_NON_BLOCKING',
-    metrics: [metric('CORRECT_COMPLETION', 'correctness and scope do not regress', 'rate')],
+    metrics: [
+      metric('CORRECT_COMPLETION', 'correctness does not regress', 'rate'),
+      metric('MODEL_USE_REDUCTION', 'strict reduction in model use', 'delta'),
+      metric('ACTIVE_USER_TIME_REDUCTION', 'strict reduction in active time', 'delta'),
+      metric('REPAIR_EFFORT_REDUCTION', 'strict reduction in repair effort', 'delta'),
+    ],
   },
   {
     gateId: 'G4' as GateId,
@@ -186,8 +199,28 @@ const COMPARISON_KEYS: readonly string[] = [
   'correctCompletionDelta',
   'collectionEffortDelta',
   'compensatingCorrectnessImprovement',
+  'compensatingImprovementTruth',
+  'scopeExpansionObserved',
 ];
 const JOURNEY_COVERAGE_KEYS: readonly string[] = ['journeyId', 'confirmationEvidencePresent'];
+
+export interface RecordedCriticalDefects {
+  readonly unresolvedCriticalFalseSuccess: boolean;
+  readonly unresolvedWrongTarget: boolean;
+}
+
+export interface RecordedBaselineComparison {
+  readonly baselineId: string;
+  readonly correctCompletionDelta: number;
+  /** Required for G0 (§32/G0 conjunct 4). */
+  readonly collectionEffortDelta?: number;
+  /** G0 only: only honorable with `compensatingImprovementTruth` (independent truth). */
+  readonly compensatingCorrectnessImprovement?: boolean;
+  /** G0 only: independent-truth documentation of the compensating improvement. */
+  readonly compensatingImprovementTruth?: TruthSource;
+  /** Required for G1b/G3 PASS (no scope expansion / scope does not regress). */
+  readonly scopeExpansionObserved?: boolean;
+}
 
 export interface RecordedGateEvidence {
   readonly gateId: GateId;
@@ -201,16 +234,8 @@ export interface RecordedGateEvidence {
     readonly metric: MetricId;
     readonly value: number | 'UNAVAILABLE';
   }[];
-  readonly criticalDefects?: {
-    readonly unresolvedCriticalFalseSuccess: boolean;
-    readonly unresolvedWrongTarget: boolean;
-  };
-  readonly baselineComparison?: {
-    readonly baselineId: string;
-    readonly correctCompletionDelta: number;
-    readonly collectionEffortDelta: number;
-    readonly compensatingCorrectnessImprovement?: boolean;
-  };
+  readonly criticalDefects?: RecordedCriticalDefects;
+  readonly baselineComparison?: RecordedBaselineComparison;
   readonly navigationRequiringCasePresent?: boolean;
 }
 
@@ -231,10 +256,152 @@ function metricValue(evidence: RecordedGateEvidence, metric: MetricId): number |
   return entry !== undefined && typeof entry.value === 'number' ? entry.value : undefined;
 }
 
+type MutableGateEvidence = {
+  -readonly [K in keyof RecordedGateEvidence]: RecordedGateEvidence[K];
+};
+
+function decodeCriticalDefects(
+  raw: unknown,
+  path: string,
+): DomainValidationResult<RecordedCriticalDefects> {
+  return andThen(asRecord(raw, `${path}.criticalDefects`), (defectRecord) =>
+    andThen(rejectUnknownFields(defectRecord, DEFECT_KEYS, `${path}.criticalDefects`), () => {
+      const falseSuccess = requireBoolean(
+        defectRecord,
+        'unresolvedCriticalFalseSuccess',
+        `${path}.criticalDefects`,
+      );
+      const wrongTarget = requireBoolean(
+        defectRecord,
+        'unresolvedWrongTarget',
+        `${path}.criticalDefects`,
+      );
+      if (!falseSuccess.ok || !wrongTarget.ok) {
+        return fail([
+          ...(falseSuccess.ok ? [] : falseSuccess.diagnostics),
+          ...(wrongTarget.ok ? [] : wrongTarget.diagnostics),
+        ]);
+      }
+      return ok(
+        deepFreeze({
+          unresolvedCriticalFalseSuccess: falseSuccess.value,
+          unresolvedWrongTarget: wrongTarget.value,
+        }),
+      );
+    }),
+  );
+}
+
+function decodeBaselineComparison(
+  raw: unknown,
+  path: string,
+): DomainValidationResult<RecordedBaselineComparison> {
+  return andThen(asRecord(raw, `${path}.baselineComparison`), (comparisonRecord) =>
+    andThen(
+      rejectUnknownFields(comparisonRecord, COMPARISON_KEYS, `${path}.baselineComparison`),
+      (): DomainValidationResult<RecordedBaselineComparison> => {
+        const baselineId = requireNonEmptyString(
+          comparisonRecord,
+          'baselineId',
+          `${path}.baselineComparison`,
+        );
+        const problems: ValidationDiagnostic[] = [];
+        if (!baselineId.ok) {
+          problems.push(...baselineId.diagnostics);
+        }
+        const completionRaw = comparisonRecord['correctCompletionDelta'];
+        if (typeof completionRaw !== 'number') {
+          problems.push(
+            diagnostic(
+              'MALFORMED_REQUIRED_FIELD',
+              `${path}.baselineComparison.correctCompletionDelta`,
+              'correctCompletionDelta must be a number',
+            ),
+          );
+        }
+        let collectionEffortDelta: number | undefined;
+        const effortRaw = comparisonRecord['collectionEffortDelta'];
+        if (effortRaw !== undefined) {
+          if (typeof effortRaw !== 'number') {
+            problems.push(
+              diagnostic(
+                'MALFORMED_REQUIRED_FIELD',
+                `${path}.baselineComparison.collectionEffortDelta`,
+                'collectionEffortDelta must be a number',
+              ),
+            );
+          } else {
+            collectionEffortDelta = effortRaw;
+          }
+        }
+        let compensating: boolean | undefined;
+        const compensatingRaw = comparisonRecord['compensatingCorrectnessImprovement'];
+        if (compensatingRaw !== undefined) {
+          const decoded = requireBoolean(
+            comparisonRecord,
+            'compensatingCorrectnessImprovement',
+            `${path}.baselineComparison`,
+          );
+          if (!decoded.ok) {
+            problems.push(...decoded.diagnostics);
+          } else {
+            compensating = decoded.value;
+          }
+        }
+        let scopeExpansion: boolean | undefined;
+        const scopeRaw = comparisonRecord['scopeExpansionObserved'];
+        if (scopeRaw !== undefined) {
+          if (typeof scopeRaw !== 'boolean') {
+            problems.push(
+              diagnostic(
+                'MALFORMED_REQUIRED_FIELD',
+                `${path}.baselineComparison.scopeExpansionObserved`,
+                'scopeExpansionObserved must be a boolean',
+              ),
+            );
+          } else {
+            scopeExpansion = scopeRaw;
+          }
+        }
+        let improvementTruth: TruthSource | undefined;
+        const truthRaw = comparisonRecord['compensatingImprovementTruth'];
+        if (truthRaw !== undefined) {
+          const decoded = decodeTruthSource(
+            truthRaw,
+            `${path}.baselineComparison.compensatingImprovementTruth`,
+          );
+          if (!decoded.ok) {
+            problems.push(...decoded.diagnostics);
+          } else {
+            improvementTruth = decoded.value;
+          }
+        }
+        if (problems.length > 0) {
+          return fail(problems);
+        }
+        const baselineIdValue = baselineId.ok ? baselineId.value : '';
+        return ok(
+          deepFreeze({
+            baselineId: baselineIdValue,
+            correctCompletionDelta: completionRaw as number,
+            collectionEffortDelta,
+            compensatingCorrectnessImprovement: compensating,
+            compensatingImprovementTruth: improvementTruth,
+            scopeExpansionObserved: scopeExpansion,
+          }),
+        );
+      },
+    ),
+  );
+}
+
 /**
  * Evaluate one gate from recorded evidence. Fail-closed rule: any missing or
  * unavailable required input yields INSUFFICIENT_EVIDENCE; PASS requires the
- * full PRD §32 PASS-rule inputs to hold.
+ * full PRD §32 PASS-rule conjuncts to hold on that evidence (strict reduction
+ * comparators, baseline parity, scope no-regression, critical-defect
+ * blocking, confirmation-burden accounting, independent-truth-documented
+ * compensation).
  */
 export function evaluateGate(evidence: unknown): DomainValidationResult<GateEvaluation> {
   const path = 'gateEvidence';
@@ -309,13 +476,21 @@ export function evaluateGate(evidence: unknown): DomainValidationResult<GateEval
         }
         metrics.push(decoded.value);
       }
-      const evidenceRecord: {
-        -readonly [K in keyof RecordedGateEvidence]: RecordedGateEvidence[K];
-      } = {
+      const evidenceRecord: MutableGateEvidence = {
         gateId: gateId.value,
         metrics,
         baselinePlanRef:
           typeof record['baselinePlanRef'] === 'string' ? record['baselinePlanRef'] : undefined,
+      };
+
+      const requireComparison = (): DomainValidationResult<
+        RecordedBaselineComparison | undefined
+      > => {
+        const rawComparison = record['baselineComparison'];
+        if (rawComparison === undefined) {
+          return ok(undefined);
+        }
+        return decodeBaselineComparison(rawComparison, path);
       };
 
       if (gateId.value === 'G0') {
@@ -390,35 +565,7 @@ export function evaluateGate(evidence: unknown): DomainValidationResult<GateEval
         }
         const rawDefects = record['criticalDefects'];
         if (rawDefects !== undefined) {
-          const decoded = andThen(asRecord(rawDefects, `${path}.criticalDefects`), (defectRecord) =>
-            andThen(
-              rejectUnknownFields(defectRecord, DEFECT_KEYS, `${path}.criticalDefects`),
-              () => {
-                const falseSuccess = requireBoolean(
-                  defectRecord,
-                  'unresolvedCriticalFalseSuccess',
-                  `${path}.criticalDefects`,
-                );
-                const wrongTarget = requireBoolean(
-                  defectRecord,
-                  'unresolvedWrongTarget',
-                  `${path}.criticalDefects`,
-                );
-                if (!falseSuccess.ok || !wrongTarget.ok) {
-                  return fail([
-                    ...(falseSuccess.ok ? [] : falseSuccess.diagnostics),
-                    ...(wrongTarget.ok ? [] : wrongTarget.diagnostics),
-                  ]);
-                }
-                return ok(
-                  deepFreeze({
-                    unresolvedCriticalFalseSuccess: falseSuccess.value,
-                    unresolvedWrongTarget: wrongTarget.value,
-                  }),
-                );
-              },
-            ),
-          );
+          const decoded = decodeCriticalDefects(rawDefects, path);
           if (!decoded.ok) {
             return decoded;
           }
@@ -428,61 +575,12 @@ export function evaluateGate(evidence: unknown): DomainValidationResult<GateEval
         }
         const rawComparison = record['baselineComparison'];
         if (rawComparison !== undefined) {
-          const decoded = andThen(
-            asRecord(rawComparison, `${path}.baselineComparison`),
-            (comparisonRecord) =>
-              andThen(
-                rejectUnknownFields(
-                  comparisonRecord,
-                  COMPARISON_KEYS,
-                  `${path}.baselineComparison`,
-                ),
-                () => {
-                  const baselineId = requireNonEmptyString(
-                    comparisonRecord,
-                    'baselineId',
-                    `${path}.baselineComparison`,
-                  );
-                  const completionDelta = comparisonRecord['correctCompletionDelta'];
-                  const effortDelta = comparisonRecord['collectionEffortDelta'];
-                  if (
-                    !baselineId.ok ||
-                    typeof completionDelta !== 'number' ||
-                    typeof effortDelta !== 'number'
-                  ) {
-                    return fail([
-                      diagnostic(
-                        'MALFORMED_REQUIRED_FIELD',
-                        `${path}.baselineComparison`,
-                        'baseline comparison requires baselineId and numeric deltas',
-                      ),
-                    ]);
-                  }
-                  let compensating: boolean | undefined;
-                  if (comparisonRecord['compensatingCorrectnessImprovement'] !== undefined) {
-                    const decodedCompensating = requireBoolean(
-                      comparisonRecord,
-                      'compensatingCorrectnessImprovement',
-                      `${path}.baselineComparison`,
-                    );
-                    if (!decodedCompensating.ok) {
-                      return decodedCompensating;
-                    }
-                    compensating = decodedCompensating.value;
-                  }
-                  return ok(
-                    deepFreeze({
-                      baselineId: baselineId.value,
-                      correctCompletionDelta: completionDelta,
-                      collectionEffortDelta: effortDelta,
-                      compensatingCorrectnessImprovement: compensating,
-                    }),
-                  );
-                },
-              ),
-          );
+          const decoded = decodeBaselineComparison(rawComparison, path);
           if (!decoded.ok) {
             return decoded;
+          }
+          if (decoded.value.collectionEffortDelta === undefined) {
+            notes.push('baseline comparison missing numeric collectionEffortDelta');
           }
           evidenceRecord.baselineComparison = decoded.value;
         } else {
@@ -497,19 +595,42 @@ export function evaluateGate(evidence: unknown): DomainValidationResult<GateEval
             }),
           );
         }
+        // G0 PASS rules 2–4 (PRD-§32/G0), evaluated strictly. Rule 4: more
+        // collection effort than the frozen baseline is only honorable with a
+        // compensating correctness improvement documented by independent truth.
         const defects = evidenceRecord.criticalDefects!;
         const comparison = evidenceRecord.baselineComparison!;
-        const pass =
-          !defects.unresolvedCriticalFalseSuccess &&
-          !defects.unresolvedWrongTarget &&
-          comparison.correctCompletionDelta >= 0 &&
-          (comparison.collectionEffortDelta <= 0 ||
-            comparison.compensatingCorrectnessImprovement === true);
+        const failures: string[] = [];
+        if (defects.unresolvedCriticalFalseSuccess) {
+          failures.push('unresolved critical false-success defect exists (PRD-§32/G0 rule 2)');
+        }
+        if (defects.unresolvedWrongTarget) {
+          failures.push('unresolved critical wrong-target defect exists (PRD-§32/G0 rule 2)');
+        }
+        if (comparison.correctCompletionDelta < 0) {
+          failures.push(
+            'correct completion lower than the frozen baseline result (PRD-§32/G0 rule 3)',
+          );
+        }
+        if (comparison.collectionEffortDelta! > 0) {
+          const compensated =
+            comparison.compensatingCorrectnessImprovement === true &&
+            comparison.compensatingImprovementTruth !== undefined;
+          if (comparison.compensatingCorrectnessImprovement !== true) {
+            failures.push(
+              'collection tasks require more active user effort than the frozen baseline without a compensating correctness improvement (PRD-§32/G0 rule 4)',
+            );
+          } else if (!compensated) {
+            failures.push(
+              'compensating correctness improvement is not documented by independent truth (PRD-§32/G0 rule 4)',
+            );
+          }
+        }
         return ok(
           deepFreeze({
             gateId: gateId.value,
-            result: pass ? 'PASS' : 'FAIL',
-            diagnostics: deepFreeze([]),
+            result: failures.length === 0 ? 'PASS' : 'FAIL',
+            diagnostics: deepFreeze(failures),
           }),
         );
       }
@@ -535,26 +656,232 @@ export function evaluateGate(evidence: unknown): DomainValidationResult<GateEval
             }),
           );
         }
+        // PRD-§32/G1b conjuncts: strict effort/time reduction, no correctness
+        // regression, no scope expansion. Every conjunct needs its input.
         if (!metricAvailable(evidenceRecord, 'NAVIGATION_EFFORT_REDUCTION')) {
-          return ok(missing('NAVIGATION_EFFORT_REDUCTION'));
+          notes.push('NAVIGATION_EFFORT_REDUCTION unavailable');
         }
+        if (!metricAvailable(evidenceRecord, 'CORRECT_COMPLETION')) {
+          notes.push('CORRECT_COMPLETION unavailable');
+        }
+        const comparisonResult = requireComparison();
+        if (!comparisonResult.ok) {
+          return comparisonResult;
+        }
+        const comparison = comparisonResult.value;
+        if (comparison === undefined) {
+          notes.push('baseline comparison absent (correctness-regression parity required)');
+        } else {
+          evidenceRecord.baselineComparison = comparison;
+          if (comparison.scopeExpansionObserved === undefined) {
+            notes.push('scopeExpansionObserved absent (PRD-§32/G1b no scope expansion)');
+          }
+        }
+        if (notes.length > 0) {
+          return ok(
+            deepFreeze({
+              gateId: gateId.value,
+              result: 'INSUFFICIENT_EVIDENCE',
+              diagnostics: deepFreeze(notes),
+            }),
+          );
+        }
+        const failures: string[] = [];
         const effortDelta = metricValue(evidenceRecord, 'NAVIGATION_EFFORT_REDUCTION')!;
+        if (effortDelta <= 0) {
+          failures.push(
+            'NAVIGATION_EFFORT_REDUCTION is not a strict reduction; PASS requires > 0 (PRD-§32/G1b)',
+          );
+        }
+        if (comparison!.correctCompletionDelta < 0) {
+          failures.push('correctness regression vs baseline comparison (PRD-§32/G1b)');
+        }
+        if (comparison!.scopeExpansionObserved !== false) {
+          failures.push('scope expansion observed; PRD-§32/G1b forbids scope expansion');
+        }
         return ok(
           deepFreeze({
             gateId: gateId.value,
-            result: effortDelta < 0 ? 'FAIL' : 'PASS',
-            diagnostics: deepFreeze([]),
+            result: failures.length === 0 ? 'PASS' : 'FAIL',
+            diagnostics: deepFreeze(failures),
           }),
         );
       }
 
-      // G1a / G1c / G1d / G2 / G3: reduction/parity metrics with fail-closed defaults.
-      const requiredMetrics = definition.metrics
-        .filter((entry) => entry.metric !== 'CONFIRMATION_BURDEN')
-        .map((entry) => entry.metric);
-      for (const required of requiredMetrics) {
-        if (!metricAvailable(evidenceRecord, required)) {
-          notes.push(`${required} unavailable`);
+      if (gateId.value === 'G1a' || gateId.value === 'G1c') {
+        // Reduction/parity gates with per-conjunct inputs (PRD-§32/G1a, §32/G1c).
+        for (const defined of definition.metrics) {
+          if (!metricAvailable(evidenceRecord, defined.metric)) {
+            notes.push(`${defined.metric} unavailable`);
+          }
+        }
+        if (gateId.value === 'G1a') {
+          // G1a parity conjunct: correct completion not lower than baseline.
+          const comparisonResult = requireComparison();
+          if (!comparisonResult.ok) {
+            return comparisonResult;
+          }
+          const comparison = comparisonResult.value;
+          if (comparison === undefined) {
+            notes.push('baseline comparison absent (correct-completion parity required)');
+          } else {
+            evidenceRecord.baselineComparison = comparison;
+          }
+        }
+        if (notes.length > 0) {
+          return ok(
+            deepFreeze({
+              gateId: gateId.value,
+              result: 'INSUFFICIENT_EVIDENCE',
+              diagnostics: deepFreeze(notes),
+            }),
+          );
+        }
+        const failures: string[] = [];
+        if (gateId.value === 'G1a') {
+          const comparison = evidenceRecord.baselineComparison!;
+          const effortDelta = metricValue(evidenceRecord, 'BATCH_EFFORT_REDUCTION')!;
+          const falseSuccess = metricValue(evidenceRecord, 'FALSE_SUCCESS_RATE')!;
+          if (effortDelta <= 0) {
+            failures.push(
+              'BATCH_EFFORT_REDUCTION is not a strict reduction; PASS requires > 0 (PRD-§32/G1a)',
+            );
+          }
+          if (comparison.correctCompletionDelta < 0) {
+            failures.push('correct completion lower than the baseline comparison (PRD-§32/G1a)');
+          }
+          if (falseSuccess > 0) {
+            failures.push('new critical false-success present (PRD-§32/G1a)');
+          }
+        } else {
+          const effortDelta = metricValue(evidenceRecord, 'SELECTION_EFFORT_REDUCTION')!;
+          const wrongTarget = metricValue(evidenceRecord, 'WRONG_TARGET_RATE')!;
+          if (effortDelta <= 0) {
+            failures.push(
+              'SELECTION_EFFORT_REDUCTION is not a strict reduction; PASS requires > 0 (PRD-§32/G1c)',
+            );
+          }
+          if (wrongTarget > 0) {
+            failures.push('wrong-target rate increased (PRD-§32/G1c)');
+          }
+        }
+        return ok(
+          deepFreeze({
+            gateId: gateId.value,
+            result: failures.length === 0 ? 'PASS' : 'FAIL',
+            diagnostics: deepFreeze(failures),
+          }),
+        );
+      }
+
+      if (gateId.value === 'G2') {
+        // PRD-§32/G2: incremental correctly resolved hard tasks, no critical
+        // false-success increase, independent target truth.
+        if (!metricAvailable(evidenceRecord, 'CORRECT_COMPLETION')) {
+          notes.push('CORRECT_COMPLETION unavailable');
+        }
+        const rawDefects = record['criticalDefects'];
+        if (rawDefects === undefined) {
+          notes.push('critical defect accounting absent (PRD-§32/G2 no critical false-success)');
+        } else {
+          const decoded = decodeCriticalDefects(rawDefects, path);
+          if (!decoded.ok) {
+            return decoded;
+          }
+          evidenceRecord.criticalDefects = decoded.value;
+        }
+        if (notes.length > 0) {
+          return ok(
+            deepFreeze({
+              gateId: gateId.value,
+              result: 'INSUFFICIENT_EVIDENCE',
+              diagnostics: deepFreeze(notes),
+            }),
+          );
+        }
+        const defects = evidenceRecord.criticalDefects!;
+        const failures: string[] = [];
+        if (defects.unresolvedCriticalFalseSuccess) {
+          failures.push('critical false-success increase not excluded (PRD-§32/G2)');
+        }
+        if (defects.unresolvedWrongTarget) {
+          failures.push(
+            'unresolved wrong-target defect contradicts independent target truth (PRD-§32/G2, fail-closed)',
+          );
+        }
+        return ok(
+          deepFreeze({
+            gateId: gateId.value,
+            result: failures.length === 0 ? 'PASS' : 'FAIL',
+            diagnostics: deepFreeze(failures),
+          }),
+        );
+      }
+
+      if (gateId.value === 'G3') {
+        // PRD-§32/G3: reduces model use, active time or repair effort while
+        // correctness and scope do not regress. Strict fail-closed reading:
+        // all three reduction dimensions must be measured; PASS requires a
+        // strict reduction in at least one of them plus no correctness/scope
+        // regression against the recorded baseline comparison.
+        for (const defined of definition.metrics) {
+          if (!metricAvailable(evidenceRecord, defined.metric)) {
+            notes.push(`${defined.metric} unavailable`);
+          }
+        }
+        const comparisonResult = requireComparison();
+        if (!comparisonResult.ok) {
+          return comparisonResult;
+        }
+        const comparison = comparisonResult.value;
+        if (comparison === undefined) {
+          notes.push('baseline comparison absent (correctness/scope no-regression required)');
+        } else {
+          evidenceRecord.baselineComparison = comparison;
+          if (comparison.scopeExpansionObserved === undefined) {
+            notes.push('scopeExpansionObserved absent (PRD-§32/G3 scope no-regression)');
+          }
+        }
+        if (notes.length > 0) {
+          return ok(
+            deepFreeze({
+              gateId: gateId.value,
+              result: 'INSUFFICIENT_EVIDENCE',
+              diagnostics: deepFreeze(notes),
+            }),
+          );
+        }
+        const failures: string[] = [];
+        const reductions = [
+          metricValue(evidenceRecord, 'MODEL_USE_REDUCTION')!,
+          metricValue(evidenceRecord, 'ACTIVE_USER_TIME_REDUCTION')!,
+          metricValue(evidenceRecord, 'REPAIR_EFFORT_REDUCTION')!,
+        ];
+        if (!reductions.some((delta) => delta > 0)) {
+          failures.push(
+            'no strict reduction in model use, active time or repair effort (PRD-§32/G3)',
+          );
+        }
+        if (comparison!.correctCompletionDelta < 0) {
+          failures.push('correctness regression vs baseline comparison (PRD-§32/G3)');
+        }
+        if (comparison!.scopeExpansionObserved !== false) {
+          failures.push('scope regression observed (PRD-§32/G3)');
+        }
+        return ok(
+          deepFreeze({
+            gateId: gateId.value,
+            result: failures.length === 0 ? 'PASS' : 'FAIL',
+            diagnostics: deepFreeze(failures),
+          }),
+        );
+      }
+
+      // G1d (and any gate without specialization): availability of its
+      // defined metrics with fail-closed defaults.
+      for (const defined of definition.metrics) {
+        if (!metricAvailable(evidenceRecord, defined.metric)) {
+          notes.push(`${defined.metric} unavailable`);
         }
       }
       if (notes.length > 0) {
@@ -566,31 +893,10 @@ export function evaluateGate(evidence: unknown): DomainValidationResult<GateEval
           }),
         );
       }
-      let pass = true;
-      for (const entry of evidenceRecord.metrics) {
-        if (entry.value === 'UNAVAILABLE') {
-          pass = false;
-          continue;
-        }
-        if (
-          (entry.metric === 'BATCH_EFFORT_REDUCTION' ||
-            entry.metric === 'NAVIGATION_EFFORT_REDUCTION' ||
-            entry.metric === 'SELECTION_EFFORT_REDUCTION') &&
-          entry.value <= 0
-        ) {
-          pass = false;
-        }
-        if (entry.metric === 'WRONG_TARGET_RATE' && entry.value > 0) {
-          pass = false;
-        }
-        if (entry.metric === 'FALSE_SUCCESS_RATE' && entry.value > 0) {
-          pass = false;
-        }
-      }
       return ok(
         deepFreeze({
           gateId: gateId.value,
-          result: pass ? 'PASS' : 'FAIL',
+          result: 'PASS',
           diagnostics: deepFreeze([]),
         }),
       );

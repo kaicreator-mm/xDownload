@@ -66,6 +66,30 @@ export function assertCanonicalStatusValue(
   return ok(undefined);
 }
 
+/** Status field name as used by pre-registered status rule assertions. */
+export type StatusRuleFieldName = StatusFieldName | 'validationSummary.status';
+
+/**
+ * Prove a pre-registered status rule value is canonical for its field. This is
+ * the single canonical binding for rule-assertion vocabularies — no local
+ * redeclaration of any status enum may exist. `validationSummary.status` is
+ * probed through the canonical `validationSummary` object decoder.
+ */
+export function assertCanonicalStatusRuleValue(
+  field: StatusRuleFieldName,
+  value: unknown,
+  path: string,
+): DomainValidationResult<void> {
+  if (field === 'validationSummary.status') {
+    return assertCanonicalStatusValue(
+      'validationSummary',
+      { status: value, passedCount: 0, failedCount: 0 },
+      path,
+    );
+  }
+  return assertCanonicalStatusValue(field, value, path);
+}
+
 /**
  * One pre-registered expected terminal status tuple. Every present field is
  * validated against the canonical vocabulary; the decoded canonical values
