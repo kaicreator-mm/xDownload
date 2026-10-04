@@ -1,0 +1,118 @@
+task_id: T009
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T009 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T009 would require violating Frozen L2 ownership, authority or trust boundaries (e.g., opaque byte path instead of a specialized adapter, or tooling promoted above the port)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T002 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: unsupported-topology-degradation
+    trigger: encrypted/DRM/unsupported track/mux/post-processing topology is processed as generic byte transfer or partial success instead of failing closed
+    classification: MEDIA_TOPOLOGY_FAILCLOSED_VIOLATED
+    required_action:
+      - reject the path and emit truthful UNSUPPORTED/FAILED in the canonical result vocabulary
+      - preserve diagnostic facts without attempting decryption/bypass
+      - never broaden supported topology locally to make the case pass
+    false_pass_forbidden: true
+
+  - id: false-accept-of-invalid-media
+    trigger: missing/truncated/failed segment or failed assembly/probe validation is normalized into an accepted or completed media claim
+    classification: MEDIA_VALIDATION_FALSE_ACCEPT
+    required_action:
+      - keep the artifact unaccepted on the same effect lineage
+      - require the full applicable manifest/rendition/segment/format/media/target validation chain
+      - never derive validity from segment counts, byte totals or budget exhaustion
+    false_pass_forbidden: true
+
+  - id: budget-accounting-violation
+    trigger: segment/manifest requests escape TransferBudget accounting, discovery budget is spent as transfer budget, or retry/restart implies replenishment
+    classification: BUDGET_ACCOUNTING_VIOLATED
+    required_action:
+      - debit segment/manifest transfer through canonical TransferBudget semantics
+      - stop truthfully on exhaustion without redefining requested scope
+      - keep budget domains distinct and inherit remaining budget on retry
+    false_pass_forbidden: true
+
+  - id: locator-identity-substitution
+    trigger: an unrelated CDN/segment/signed locator replaces the bound logical target or rendition binding without manifest provenance or successor identity
+    classification: TARGET_IDENTITY_VIOLATED
+    required_action:
+      - reject the substitution and fail closed
+      - allow only provenance-bound locator transitions on the frozen binding
+    false_pass_forbidden: true
+
+  - id: adapter-local-success-semantics
+    trigger: adapter projects its own success/completion verdicts or terminal tuples instead of emitting canonical effect/evidence/validation records
+    classification: SEMANTIC_AUTHORITY_VIOLATED
+    required_action:
+      - route all claims through the T002 canonical vocabulary/ports
+      - remove local success projection; no per-adapter truth
+    false_pass_forbidden: true
+
+  - id: media-tooling-unavailable-or-nondeterministic
+    trigger: required assembly/probe tooling or dependency is unavailable, nondeterministic, or cannot execute in the test environment
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact tool/command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial assembly/probe gate
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/contract test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder introduces a runtime parser/dependency or external media tool without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency/tool choice as accepted
+      - record exact package/tool/version/license and primary source before merge candidate qualification
+      - keep choice within F1 and Frozen Architecture (tooling stays behind the replaceable port)
+    false_pass_forbidden: true
+
+  - id: raw-secret-in-adapter-state
+    trigger: adapter stores signed-URL secrets, DRM key material, cookies or equivalent reusable credential material as ordinary state
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - reject/redesign within existing opaque AuthorizationContextRef boundary
+      - escalate if Frozen Product/L2 semantics cannot be satisfied without secret persistence
+    false_pass_forbidden: true
