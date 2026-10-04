@@ -188,6 +188,27 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1))
 
+  apps/browser-extension:
+    dependencies:
+      '@xdownload/browser-auth-broker':
+        specifier: workspace:*
+        version: link:../../packages/browser-auth-broker
+      '@xdownload/browser-observation':
+        specifier: workspace:*
+        version: link:../../packages/browser-observation
+
+  packages/browser-auth-broker:
+    dependencies:
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+
+  packages/browser-observation:
+    dependencies:
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+
   packages/core-scheduler:
     dependencies:
       '@xdownload/domain-contracts':

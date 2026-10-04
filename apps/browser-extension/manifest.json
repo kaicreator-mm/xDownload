@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "xDownload Browser Integration",
+  "version": "0.1.0",
+  "description": "T010 browser observation and scoped authorization handoff. Observations are provenance-bound evidence inputs; authorization is brokered by the local native host with opaque AuthorizationContextRef only.",
+  "permissions": ["activeTab", "scripting", "nativeMessaging"],
+  "host_permissions": [],
+  "optional_permissions": [],
+  "background": {
+    "service_worker": "background.service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": []
+}
