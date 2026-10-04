@@ -1,0 +1,134 @@
+task_id: T016
+base_sha: 4166b51841709bd74cedf1dd89cfcf8f373c38a1
+scope: browser-and-collection-workflow-integration-s2-s5-s6
+validation_owner: T016-concern-validation
+status: specification-only-not-run-by-jit-prep
+validation_scope_source: >-
+  Issue #35 body (frozen materialization of T016): "Focused real-browser +
+  fixture S2/S5/S6 flows, expiry, continuation rules, partial/inaccessible
+  members and provenance redirects." Mirrored one-to-one into required_suites
+  below; version-level visible Validation remains owned by T020-T023 on the
+  exact T019 candidate.
+
+required_suites:
+  - id: s2-explicit-attachment-handoff
+    must_prove:
+      - a real-browser and/or fixture S2 flow carries an explicit current-page attachment from observation (recordObservation/buildObservationHandoff, EVIDENCE_INPUT_ONLY) through the scoped-authorization broker to an authoritative Core acquisition
+      - the acquisition executes through core-runtime lineage flow with canonical budget ports; the browser lane never owns transfer lifecycle or terminal truth
+      - observation/handoff records remain evidence-input-only through the composed flow and cannot self-certify validation claims
+      - exit-sink redaction and the untrusted-input gate hold at every boundary crossing
+  - id: provenance-redirects
+    must_prove:
+      - a provenance-bound redirect/CDN locator transition on an S2/S5 member preserves logical target identity through the composed flow (C29 shape)
+      - an unrelated redirect that does not descend from recorded provenance is rejected/fails truthfully and cannot silently substitute the target
+      - locator changes are recorded as provenance facts without mutating contract/snapshot identity
+  - id: s5-current-page-collection
+    must_prove:
+      - the composed S5 flow produces a confirmed current-page membership snapshot with continuation_scope=NONE by default
+      - continuation-loaded members are excluded from acquisition and coverage when no explicit continuation scope was confirmed (C08 shape)
+      - membership identity accounting (not count equality) drives coverage; per-member Target/Transfer/Format validation is exercised through the Core adapters
+  - id: s6-explicit-collection
+    must_prove:
+      - a declared CollectionIdentity with a deterministic supported membership relation drives a finite or naturally terminable composed flow (C04 shape)
+      - only declared collection continuation/member-detail edges are followed; any attempt at a general site frontier is rejected (C06 shape)
+      - requested continuation that fails to close yields truthful TRUNCATED/UNKNOWN, never a synthesized complete
+  - id: continuation-rules
+    must_prove:
+      - a continuation request is admitted only through admitContinuationRequest/assertContinuationWithinFrozenScope within the frozen scope
+      - admitted continuation/expansion derives a successor contract/snapshot via deriveContinuationSuccessor; the original snapshot remains immutable historical authority (C11 shape)
+      - budget exhaustion never creates, implies or expands continuation scope
+      - failed-member retry operates on the original frozen member identities only (planFailedMemberRetry; C12 shape) with no replacement membership
+      - detectFrozenMembershipDrift rejects silent member drift through the composed flow
+  - id: auth-expiry-and-inaccessible-members
+    must_prove:
+      - scoped capability expiry surfaces truthfully mid-flow (capabilityStatus) — expired authorization yields AUTH_REQUIRED/AUTH_FAILED-influenced truthful partials, never silent success or silent re-authorization (C24 shape)
+      - authorization-limited whole-collection flow acquiring only the accessible subset yields the exact PARTIAL tuple with requested scope unchanged (C10 shape)
+      - capability binding mismatch (origin/target/contract/snapshot/provenance/partition/scope) is rejected via bindingsExactMatch/bindingMismatchField semantics through the composed flow
+      - only an opaque AuthorizationContextRef crosses the flow; no raw reusable secret enters glue, fixtures or logs
+  - id: partial-truncated-unknown-truth
+    must_prove:
+      - discovery-budget exhaustion mid-collection yields the truthful PARTIAL/TRUNCATED tuple with DiscoveryBudget StopReason and no continuation inference (C23 shape)
+      - discovered targets succeeding while enumeration is unfinished do not produce VERIFIED_COMPLETE coverage (C14 shape)
+      - range-scoped requests (C25 shape) and frozen-target transfer under exhausted discovery budget (C28 shape) project the frozen PRD tuples through the composed flow
+      - every terminal flow result is multidimensional (Request/Target/Selection/Coverage/StopReason/Validation) projected only through the T007 layer
+
+applicable_counterexample_oracles:
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t016_oracle: composed flow stops at the safety cap and projects PARTIAL/PARTIAL/TRUNCATED through the Core projector; no COMPLETE from cap exhaustion
+  - id: C03
+    scenario: next-page-fails-missing-control-or-loop
+    t016_oracle: composed S5/S6 flow treats next-page failure as failure, not natural end; coverage stays UNKNOWN-or-TRUNCATED with truthful StopReason
+  - id: C04
+    scenario: finite-collection-valid-natural-end
+    t016_oracle: composed S6 flow reaches VERIFIED_COMPLETE only with identity/membership closure evidence via the declared natural-end relation
+  - id: C06
+    scenario: first-1000-pages-under-domain-all-pdfs
+    t016_oracle: composed flow rejects admission of an arbitrary frontier; only confirmed snapshot/declared-collection edges are followed
+  - id: C07
+    scenario: member-needs-detail-page-or-cdn
+    t016_oracle: composed flow follows only declared member-detail/delivery edges; logical member identity stays stable across the provenance-bound locator chain
+  - id: C08
+    scenario: page-range-1-3-with-iframe-loadmore-detail-no-continuation
+    t016_oracle: composed S5 flow acquires exactly the confirmed range with continuation_scope=NONE; later load-more members are excluded without successor identity
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-known-inaccessible
+    t016_oracle: composed flow projects PARTIAL/RESOLVED/COMPLETE/VERIFIED_COMPLETE/AUTH_REQUIRED with requested scope still 18; inaccessible members are named, not dropped
+  - id: C11
+    scenario: collection-changes-after-preview
+    t016_oracle: composed flow detects drift against the frozen snapshot; refresh requires deriveContinuationSuccessor/successor identity, never mutation
+  - id: C12
+    scenario: retry-failed-items
+    t016_oracle: composed retry submits the original failed member identities only via planFailedMemberRetry domains; no new/replacement membership
+  - id: C14
+    scenario: discovered-targets-succeed-enumeration-unfinished
+    t016_oracle: composed flow may complete selection while Request stays PARTIAL-or-UNKNOWN; coverage never becomes VERIFIED_COMPLETE
+  - id: C20
+    scenario: local-recipe-replay-on-changed-page-session-layout
+    t016_oracle: recipe replay through the composed flow validates against current observation; changed page state cannot silently overwrite frozen scope/targets
+  - id: C21
+    scenario: shared-knowledge-independent-user-account
+    t016_oracle: composed flow carries only opaque AuthorizationContextRef between recipe/reuse and acquisition; no shared recipe data re-binds another account's authority
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t016_oracle: composed flow projects PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED truthfully; no continuation inferred from the exhausted budget
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t016_oracle: composed flow projects UNSATISFIED/BLOCKED/NOT_STARTED/UNKNOWN/AUTH_REQUIRED-or-AUTH_FAILED truthfully
+  - id: C25
+    scenario: parent-ten-pages-user-requests-1-3-all-succeed
+    t016_oracle: composed flow binds CoverageTarget to requested pages 1-3; VERIFIED_COMPLETE for the request never implies parent completeness
+  - id: C28
+    scenario: discovery-budget-exhausted-hls-target-needs-segments
+    t016_oracle: composed flow still executes the frozen-target HLS acquisition through Core budget ports while Transfer/GlobalSafety remain; discovery stop stays truthful
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t016_oracle: composed S2 flow accepts the provenance-bound redirect to the declared CDN, validates the final target, and rejects an unrelated redirect
+  - id: C30
+    scenario: fifty-item-confirmations-vs-batch-selection
+    t016_oracle: composed confirmation workflow (planConfirmationWorkflow/recordConfirmation, batch/manual) stays within MAX_MATERIAL_ITEM_CONFIRMATIONS material-confirm bounds and preserves one selection claim set
+  - id: C31
+    scenario: prior-12-of-18-selection-reused-on-different-page
+    t016_oracle: assertSelectionKnowledgeReusable semantics hold through composition; task-local selection cannot become reusable membership authority without validated provenance
+
+negative_coverage:
+  - continuation-scope-inferred-from-budget-exhaustion
+  - continuation-loaded-members-acquired-without-confirmed-scope
+  - browser-lane-claims-transfer-progress-or-terminal-truth
+  - unscoped-or-wildcard-origin-broker-request-accepted
+  - fallback-transport-bypassing-allowed-origins
+  - raw-secret-or-cookie-material-crossing-the-flow-or-entering-logs
+  - observation-record-promoted-to-validation-truth
+  - expired-capability-silently-extended-or-reused
+  - capability-binding-field-substitution-passing-use
+  - unrelated-redirect-inheriting-logical-target-identity
+  - snapshot-member-replacement-hidden-by-count-equality
+  - successor-identity-skipped-for-scope-expansion
+  - glue-local-status-or-evidence-type-bypassing-domain-contracts
+  - real-browser-gate-unavailable-silently-marked-pass
+
+completion_rule: >-
+  T016 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the applicable C-oracle workflow representations, and required negative cases are executable and pass
+  (real-browser suites executed where the environment admits, otherwise durably NOT_EXECUTED — never PASS).
+  This JIT Prep creates no PASS evidence.
