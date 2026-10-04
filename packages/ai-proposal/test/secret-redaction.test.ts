@@ -169,4 +169,95 @@ describe('T012 secret redaction and sentinel containment (TEST_MATRIX secret-red
     expect(auditValueContainsSentinel(`prefix ${SENTINEL_SECRET} suffix`)).toBe(true);
     expect(auditValueContainsSentinel('nothing here')).toBe(false);
   });
+
+  it('negative[hostile-cyclic-provider-payload]: a cyclic provider response fails closed to a typed rejection, never an uncaught RangeError', () => {
+    const hostile: Record<string, unknown> = { note: 'hostile recursive payload' };
+    hostile['self'] = hostile;
+    const provider = deterministicFakeProvider({ payload: hostile });
+    const adapter = createAiProposalAdapter({ provider: provider });
+    return adapter
+      .proposeRecipe({
+        gap: gapEnvelopeInput(),
+        expectedGapRef: GAP_REF,
+        expectedContractRef: CONTRACT_REF,
+        contract: CONTINUATION_CONTRACT,
+      })
+      .then((path) => {
+        expect(path.kind).toBe('MODEL_UNAVAILABLE');
+        if (path.kind === 'MODEL_UNAVAILABLE') {
+          expect(path.reason).toBe('PROVIDER_RESPONSE_REJECTED');
+          expect(path.detail).toContain('CYCLIC_STRUCTURE@self');
+          expect(path.fallback.kind).toBe('ASK_USER');
+          expect(path.fallback.via).toBe('DETERMINISTIC_PATH');
+        }
+      });
+  });
+
+  it('the audit terminates deterministically on nested object and array cycles, naming the re-entry path', () => {
+    const outer: Record<string, unknown> = { inner: {} as unknown };
+    (outer['inner'] as Record<string, unknown>)['back'] = outer;
+    const arrayCycle: unknown[] = ['entry'];
+    arrayCycle.push(arrayCycle);
+    expect(auditSecretMaterial(outer)).toEqual([{ kind: 'CYCLIC_STRUCTURE', path: 'inner.back' }]);
+    expect(auditSecretMaterial(arrayCycle)).toEqual([{ kind: 'CYCLIC_STRUCTURE', path: '[1]' }]);
+  });
+
+  it('shared (non-cyclic) references are not false positives: only true ancestor cycles fail', () => {
+    const shared = { note: 'ordinary shared fact' };
+    const dag = { first: shared, second: shared, list: [shared, shared] };
+    expect(auditSecretMaterial(dag)).toEqual([]);
+  });
+
+  it('negative[non-string-raw-secret-key-value]: values of ANY type under a raw-secret key violate, matching the T010 key-based rule', () => {
+    const violations = auditSecretMaterial({
+      token: 42,
+      credentials: { user: 'u', host: 'h' },
+      grants: [{ authorization: ['Bearer', 'raw-scheme'] }],
+      apiKey: null,
+      nested: { sessionToken: REDACTED_MARKER },
+    });
+    expect(violations).toEqual([
+      { kind: 'RAW_SECRET_KEY_VALUE', path: 'token' },
+      { kind: 'RAW_SECRET_KEY_VALUE', path: 'credentials' },
+      { kind: 'RAW_SECRET_KEY_VALUE', path: 'grants[0].authorization' },
+      { kind: 'RAW_SECRET_KEY_VALUE', path: 'apiKey' },
+    ]);
+  });
+
+  it('a structured raw-secret-key value on the provider response path is rejected before any durable use', () => {
+    const provider = deterministicFakeProvider({
+      payload: { sessionToken: { value: 'structured-raw-secret' }, note: 'fact' },
+    });
+    const adapter = createAiProposalAdapter({ provider: provider });
+    return adapter
+      .proposeRecipe({
+        gap: gapEnvelopeInput(),
+        expectedGapRef: GAP_REF,
+        expectedContractRef: CONTRACT_REF,
+        contract: CONTINUATION_CONTRACT,
+      })
+      .then((path) => {
+        expect(path.kind).toBe('MODEL_UNAVAILABLE');
+        if (path.kind === 'MODEL_UNAVAILABLE') {
+          expect(path.reason).toBe('PROVIDER_RESPONSE_REJECTED');
+          expect(path.detail).toContain('RAW_SECRET_KEY_VALUE@sessionToken');
+          expect(provider.requests).toHaveLength(1);
+        }
+      });
+  });
+
+  it('positive control: clean payloads with mixed safe types (objects, arrays, numbers) audit clean and are still accepted', () => {
+    const provider = deterministicFakeProvider();
+    return propose(provider, gapEnvelopeInput()).then((path) => {
+      expect(path.kind).toBe('PROPOSAL_ACCEPTED');
+      const request = provider.requests[0];
+      expect(request).toBeDefined();
+      if (request === undefined) {
+        return;
+      }
+      // Redacted model input and the exact legal proposal bytes audit clean.
+      expect(auditSecretMaterial(request)).toEqual([]);
+      expect(auditSecretMaterial(JSON.parse(request.serialized))).toEqual([]);
+    });
+  });
 });

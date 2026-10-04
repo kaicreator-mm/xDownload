@@ -93,7 +93,7 @@ export interface RedactedModelInput {
 
 /** One containment violation found by the secret-material audit. */
 export interface SecretMaterialViolation {
-  readonly kind: 'RAW_SECRET_KEY_VALUE' | 'SENTINEL_VALUE';
+  readonly kind: 'RAW_SECRET_KEY_VALUE' | 'SENTINEL_VALUE' | 'CYCLIC_STRUCTURE';
   readonly path: string;
 }
 
@@ -102,14 +102,24 @@ function childPath(prefix: string, key: string): string {
 }
 
 /**
- * Deep audit for secret material: values under raw-secret keys must be the
- * redaction marker, and no string anywhere may contain a registered secret
- * sentinel. Sentinel matching follows the sanctioned T010 registry
- * mechanics; the audit is the executable containment proof at every T012
- * boundary (model input, proposal payload, provider response).
+ * Deep audit for secret material: values under raw-secret keys must be
+ * exactly the redaction marker regardless of their type (the re-proof of the
+ * T010 `redactForSink` key-based rule, which replaces values of ANY type
+ * under a `RAW_SECRET_FIELD_NAMES` key), and no string anywhere may contain
+ * a registered secret sentinel. Sentinel matching follows the sanctioned
+ * T010 registry mechanics; the audit is the executable containment proof at
+ * every T012 boundary (model input, proposal payload, provider response).
+ *
+ * The walk is cycle-safe: an object or array that is its own ancestor
+ * (hostile/buggy recursive provider payload) is reported as a
+ * `CYCLIC_STRUCTURE` violation instead of recursing forever — the audit
+ * terminates deterministically on any input and never throws. Shared
+ * (non-cyclic) references are walked once per reference without a false
+ * positive: only true ancestor cycles fail.
  */
 export function auditSecretMaterial(value: unknown): readonly SecretMaterialViolation[] {
   const violations: SecretMaterialViolation[] = [];
+  const ancestors = new WeakSet<object>();
   const walk = (node: unknown, path: string): void => {
     if (typeof node === 'string') {
       if (auditValueContainsSentinel(node)) {
@@ -118,21 +128,29 @@ export function auditSecretMaterial(value: unknown): readonly SecretMaterialViol
       return;
     }
     if (Array.isArray(node)) {
+      if (ancestors.has(node)) {
+        violations.push({ kind: 'CYCLIC_STRUCTURE', path: path });
+        return;
+      }
+      ancestors.add(node);
       node.forEach((item, index) => walk(item, `${path}[${String(index)}]`));
+      ancestors.delete(node);
       return;
     }
     if (typeof node === 'object' && node !== null) {
+      if (ancestors.has(node)) {
+        violations.push({ kind: 'CYCLIC_STRUCTURE', path: path });
+        return;
+      }
+      ancestors.add(node);
       for (const [key, child] of Object.entries(node)) {
         const at = childPath(path, key);
-        if (
-          RAW_SECRET_FIELD_NAMES.has(key) &&
-          typeof child === 'string' &&
-          child !== REDACTED_MARKER
-        ) {
+        if (RAW_SECRET_FIELD_NAMES.has(key) && child !== REDACTED_MARKER) {
           violations.push({ kind: 'RAW_SECRET_KEY_VALUE', path: at });
         }
         walk(child, at);
       }
+      ancestors.delete(node);
     }
   };
   walk(value, '');
@@ -307,18 +325,7 @@ export function buildModelInput(raw: unknown): ProposalValidationResult<Redacted
   };
   const violations = auditSecretMaterial(redacted);
   if (violations.length > 0) {
-    return proposalFail(
-      violations.map((violation) =>
-        proposalDiagnostic(
-          'SECRET_MATERIAL_DETECTED',
-          violation.path,
-          violation.kind === 'SENTINEL_VALUE'
-            ? 'registered secret sentinel survived redaction; model input fails closed (C21)'
-            : 'raw secret key carries an unredacted value; model input fails closed (PRD-§29)',
-          violation.kind === 'SENTINEL_VALUE' ? 'C21' : 'PRD-§29',
-        ),
-      ),
-    );
+    return proposalFail(violations.map(violationDiagnostic));
   }
   const serialized = JSON.stringify(redacted);
   if (serialized.length > MAX_MODEL_INPUT_SERIALIZED_CHARS) {
@@ -344,4 +351,31 @@ export function buildModelInput(raw: unknown): ProposalValidationResult<Redacted
 
 function toProposalDiagnostic(d: ValidationDiagnostic): ProposalDiagnostic {
   return { code: d.code, path: d.path, message: d.message, invariant: d.invariant };
+}
+
+/** Exhaustive mapping of an audit violation to its typed, invariant-naming diagnostic. */
+function violationDiagnostic(violation: SecretMaterialViolation): ProposalDiagnostic {
+  switch (violation.kind) {
+    case 'SENTINEL_VALUE':
+      return proposalDiagnostic(
+        'SECRET_MATERIAL_DETECTED',
+        violation.path,
+        'registered secret sentinel survived redaction; model input fails closed (C21)',
+        'C21',
+      );
+    case 'RAW_SECRET_KEY_VALUE':
+      return proposalDiagnostic(
+        'SECRET_MATERIAL_DETECTED',
+        violation.path,
+        'raw secret key carries an unredacted value; model input fails closed (PRD-§29)',
+        'PRD-§29',
+      );
+    case 'CYCLIC_STRUCTURE':
+      return proposalDiagnostic(
+        'SECRET_MATERIAL_DETECTED',
+        violation.path,
+        'cyclic structure rejected by the containment audit; input fails closed (T012-bounded-envelope)',
+        'T012-bounded-envelope',
+      );
+  }
 }
