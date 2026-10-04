@@ -1,0 +1,111 @@
+task_id: T010
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T010 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T010 would require violating Frozen L2 ownership, trust or secret-boundary rules (e.g. only an allowed_origins bypass or raw-secret persistence could work)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T002 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: allowed-origins-bypass
+    trigger: implementation adds any path around Native Messaging allowed_origins, including unrestricted local IPC fallback after Native Messaging rejection
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - remove the bypass path
+      - keep allowed_origins as the separate platform-enforced boundary
+      - treat any requirement that seems to need the bypass as an architecture contradiction
+    false_pass_forbidden: true
+
+  - id: raw-secret-propagation
+    trigger: reusable cookie/token/password/session/signed-URL material appears in canonical state, Core-durable paths, logs, evidence, Recipe data or model input
+    classification: SECRET_SINK_CONTAINMENT_REJECTED
+    required_action:
+      - contain raw material inside the browser/broker secret zone
+      - expose only the opaque AuthorizationContextRef outward
+      - escalate if Frozen Product/L2 semantics cannot be satisfied without secret export
+    false_pass_forbidden: true
+
+  - id: binding-violation
+    trigger: capability use accepts mismatched origin, target, contract, snapshot, provenance or partition context, or auth context rewrites confirmed requested_scope
+    classification: AUTH_BINDING_VIOLATED
+    required_action:
+      - fail the use closed
+      - require a new issue decision bound to the successor identity for any legitimate tuple change
+      - never re-bind a capability in place
+    false_pass_forbidden: true
+
+  - id: untruthful-auth-lifecycle
+    trigger: expiry/revocation is masked by automatic re-issue, scope/target widening or success projection instead of AUTH_REQUIRED/AUTH_FAILED semantics
+    classification: AUTH_LIFECYCLE_REJECTED
+    required_action:
+      - restore truthful expiry/revocation behavior
+      - re-issue only through an explicit authorized decision path, never as failure recovery
+    false_pass_forbidden: true
+
+  - id: untrusted-input-privilege-escape
+    trigger: page/content-script input reaches privileged native/auth action without schema/size plus origin/target/provenance validation, or oversized messages are accepted
+    classification: BROWSER_BOUNDARY_REJECTED
+    required_action:
+      - enforce the schema/size gate before any privilege
+      - fail closed with typed diagnostics, no secret leakage
+    false_pass_forbidden: true
+
+  - id: untested-tuple-claim
+    trigger: closeout or tests claim browser/OS/native-host support not actually exercised (e.g. Firefox/Safari or Windows/macOS claims from a Chromium/Linux run)
+    classification: FALSE_TUPLE_CLAIM
+    required_action:
+      - restrict claims to the exact tested tuple
+      - record untested tuples as explicit limitations
+      - never report an unexecuted tuple as PASS
+    false_pass_forbidden: true
+
+  - id: incomplete-negative-matrix
+    trigger: any origin/target/snapshot/provenance/partition misuse, expiry, oversized-message, allowed_origins or secret-sink negative lacks executable coverage on the real tuple
+    classification: T010_VALIDATION_INCOMPLETE
+    required_action:
+      - keep concern Validation non-PASS
+      - add bounded negative coverage only
+      - do not weaken the boundary to make the gap disappear
+    false_pass_forbidden: true
+
+  - id: test-tooling-or-environment-failure
+    trigger: real Chromium/native host unavailable, or install/typecheck/lint/unit/browser tests cannot execute, crash, time out
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - treat missing real-browser capability as state:blocked evidence, never simulate the tuple
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true

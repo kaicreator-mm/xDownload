@@ -15,5 +15,10 @@
     "verbatimModuleSyntax": true,
     "types": ["node"]
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "vitest.config.ts"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "vitest.config.ts"
+  ]
 }
