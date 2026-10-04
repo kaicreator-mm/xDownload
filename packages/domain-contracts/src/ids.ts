@@ -25,6 +25,7 @@ export type LogicalTargetId = Branded<string, 'LogicalTargetId'>;
 export type MemberId = Branded<string, 'MemberId'>;
 export type EffectId = Branded<string, 'EffectId'>;
 export type EvidenceId = Branded<string, 'EvidenceId'>;
+export type ValidationRecordId = Branded<string, 'ValidationRecordId'>;
 export type CollectionId = Branded<string, 'CollectionId'>;
 /** Opaque reference into the local authorization broker; never carries raw secrets. */
 export type AuthorizationContextRef = Branded<string, 'AuthorizationContextRef'>;
@@ -56,6 +57,7 @@ export const makeLogicalTargetId = brandedId('LogicalTargetId');
 export const makeMemberId = brandedId('MemberId');
 export const makeEffectId = brandedId('EffectId');
 export const makeEvidenceId = brandedId('EvidenceId');
+export const makeValidationRecordId = brandedId('ValidationRecordId');
 export const makeCollectionId = brandedId('CollectionId');
 export const makeAuthorizationContextRef = brandedId('AuthorizationContextRef');
 export const makeProfileContextRef = brandedId('ProfileContextRef');
