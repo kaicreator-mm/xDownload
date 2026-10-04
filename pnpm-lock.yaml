@@ -206,6 +206,12 @@ importers:
         specifier: workspace:*
         version: link:../domain-contracts
 
+  packages/discovery-recipe:
+    dependencies:
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+
   packages/domain-contracts: {}
 
   packages/persistence-ledger:
