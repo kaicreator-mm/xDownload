@@ -188,6 +188,8 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1))
 
+  packages/domain-contracts: {}
+
   packages/toolchain-smoke:
     dependencies:
       '@xdownload/toolchain-smoke-core':
@@ -195,6 +197,12 @@ importers:
         version: link:../toolchain-smoke-core
 
   packages/toolchain-smoke-core: {}
+
+  packages/version-validation:
+    dependencies:
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
 
 packages:
 
