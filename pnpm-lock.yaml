@@ -197,6 +197,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/browser-observation
 
+  apps/cli:
+    dependencies:
+      '@xdownload/core-seam':
+        specifier: workspace:*
+        version: link:../../packages/core-seam
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../../packages/domain-contracts
+
   packages/ai-proposal:
     dependencies:
       '@xdownload/browser-observation':

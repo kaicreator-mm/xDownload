@@ -11,6 +11,8 @@
 import {
   deepFreeze,
   type AcquisitionContract,
+  type ContinuationScope,
+  type RequestedScope,
   type TerminalResult,
 } from '@xdownload/domain-contracts';
 import type { LineageState, SeamAuthorityState } from './state.ts';
@@ -21,6 +23,16 @@ export interface ContractProjectionView {
   readonly intentType: AcquisitionContract['intentType'];
   readonly revision: number;
   readonly supersedesContractId?: string;
+  /**
+   * Additive PRD §27 exposure (wire-compatible, v1 schema unchanged): the
+   * confirmed contract's immutable requested/continuation scope, projected
+   * verbatim as read-only canonical values. Present whenever the aggregate
+   * exists (always, in v1); typed optional so presence stays the explicit
+   * contract and an absent fact is rendered absent by consumers, never
+   * synthesized.
+   */
+  readonly requestedScope?: RequestedScope;
+  readonly continuationScope?: ContinuationScope;
 }
 
 export interface SnapshotProjectionView {
@@ -44,6 +56,19 @@ export interface SeamProjectionView {
   readonly lineage: LineageProjectionView;
   /** Present only once the lineage has a projected terminal result. */
   readonly terminal?: TerminalResult;
+  /**
+   * Additive PRD §27 exposure (wire-compatible, v1 schema unchanged): the
+   * cardinality of the confirmed selection identity list. Present only while
+   * a snapshot is confirmed; when unknown the key is absent entirely (never
+   * null/0) so consumers render the fact as absent, not invented.
+   */
+  readonly selectedMemberCount?: number;
+  /**
+   * Additive PRD §27 exposure (wire-compatible, v1 schema unchanged): the
+   * projected validation summary's passed count. Present only once a terminal
+   * result is projected; when unknown the key is absent entirely.
+   */
+  readonly validatedSuccessCount?: number;
 }
 
 /**
@@ -71,6 +96,11 @@ export function projectAggregate(
       intentType: contract.intentType,
       revision: aggregate.revision,
       supersedesContractId: contract.supersedesContractId,
+      // Additive §27 exposure: the scope values are read-only canonical
+      // domain values (already deep-frozen by the domain decode); shared by
+      // reference exactly like the terminal result, never writable here.
+      requestedScope: contract.requestedScope,
+      continuationScope: contract.continuationScope,
     },
     snapshot: lineage.snapshot && {
       snapshotId: lineage.snapshot.snapshotId,
@@ -85,6 +115,16 @@ export function projectAggregate(
       retriedMemberIds: [...lineage.retriedMembers],
     },
     terminal: lineage.terminal,
+    // Additive §27 exposure with explicit presence semantics: a fact that is
+    // unknown at this lineage state gets NO key at all, so the wire form and
+    // the in-process form both render it absent (JSON.stringify drops the
+    // conditional-spread absence identically).
+    ...(lineage.snapshot === undefined
+      ? {}
+      : { selectedMemberCount: lineage.snapshot.selectedMemberIds.length }),
+    ...(lineage.terminal === undefined
+      ? {}
+      : { validatedSuccessCount: lineage.terminal.validationSummary.passedCount }),
   };
   return deepFreeze(view);
 }

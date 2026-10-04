@@ -1,0 +1,110 @@
+task_id: T013
+base_sha: f5ac137f94438a591fd6781c5b758be6c375233a
+scope: cli-adapter-submission-status-diagnostics
+validation_owner: T013-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+required_suites:
+  - id: golden-machine-readable-output
+    must_prove:
+      - PRD §27 required field set is present verbatim in machine-readable output contract_id intent_type requested_scope continuation_scope snapshot_id? requested_count_if_known auth_accessible_count_if_known resolved_count selected_count validated_success_count RequestFulfillmentStatus TargetResolutionStatus SelectionAcquisitionStatus CoverageStatus StopReason needs_user_action
+      - status values are projected from Core-owned READ_PROJECTION views and never locally derived
+      - golden fixtures are deterministic across runs for the same projection input
+  - id: acceptance-vs-final-result
+    must_prove:
+      - submit acceptance (ACCEPTED with requestId/revision/converged) is exposed separately from the final acquisition result
+      - submit exit success does not imply final task success; a golden case shows submit-success followed by terminal non-success
+      - wait-mode final exit semantics reflect the final request/selection result rather than acceptance
+  - id: non-interactive-bounded-behavior
+    must_prove:
+      - non-interactive mode never blocks indefinitely when confirmation is required
+      - confirmation-required cases return a bounded machine-readable NEEDS_USER_ACTION state
+      - non-interactive errors are typed/stable (malformed input, unknown flag/command, missing target) with deterministic non-success exits
+  - id: batch-input
+    must_prove:
+      - multiple targets/requests submit in one invocation with per-item identity/correlation preserved
+      - per-item failures are reported per item without merging or cross-promoting results
+      - batch handling cannot enlarge requested scope or add continuation authority through defaults
+  - id: cancel-retry-routing
+    must_prove:
+      - cancellation routes as CANCEL_LINEAGE through the same Core transition Desktop/Browser use; no surface-local precedence exists
+      - failed-member retry routes as RETRY_FAILED_MEMBERS and cannot add replacement/new members
+      - duplicate/reconnect resubmission reuses the SAME idempotent requestId and converges rather than double-applies
+  - id: status-parity-with-core
+    must_prove:
+      - CLI machine-readable status equals the Core projection for the same aggregate, including projected terminal result
+      - absent projection fields render as absent/unknown, never as invented values
+      - verified-empty scope renders as no-match truthfully, never as download success
+  - id: headless-operation
+    must_prove:
+      - every CLI function operates without Desktop UI running
+      - CLI behavior does not own or require starting/stopping Core as an authority prerequisite
+  - id: no-private-lifecycle-authority
+    must_prove:
+      - CLI holds no private lifecycle store, scheduler, budget, selection or result semantics
+      - read caches/projections never become authority; a stale cache cannot resurrect terminal truth
+      - no code path bypasses seam peer authorization or declared SEAM_MESSAGE_LIMITS
+
+applicable_counterexample_oracles:
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t013_oracle: CLI renders the Core-projected PARTIAL/TRUNCATED tuple verbatim; exit/output never upgrades cap-exhaustion to success
+  - id: C05
+    scenario: user-selects-five-before-confirmation-all-five-succeed
+    t013_oracle: pre-confirmation submit surfaces bounded NEEDS_USER_ACTION in non-interactive mode; post-confirmation result renders the exact Core tuple
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-known-inaccessible
+    t013_oracle: CLI status output shows the exact PARTIAL/RESOLVED/COMPLETE/VERIFIED_COMPLETE/AUTH_REQUIRED projection with requested scope 18, needs_user_action truthy
+  - id: C12
+    scenario: retry-failed-items
+    t013_oracle: retry command routes failed member identities only; CLI output reflects Core-accepted retry scope, never CLI-computed membership
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t013_oracle: a second concurrent CLI client observing the same lineage reads the same Core projection; duplicate cancel/retry converges via idempotent identity
+  - id: C14
+    scenario: discovered-targets-succeed-enumeration-unfinished
+    t013_oracle: output renders Selection COMPLETE alongside Request PARTIAL-or-UNKNOWN exactly as projected; no CLI-side completion inference
+  - id: C15
+    scenario: unsupported-dash-separate-av-needs-mux
+    t013_oracle: UNSUPPORTED-or-FAILED result renders as non-success; exit and needs_user_action never present it as success
+  - id: C16
+    scenario: simple-task-forced-through-unnecessary-preview
+    t013_oracle: direct single-resource submission completes without CLI-invented collection/confirmation steps
+  - id: C17
+    scenario: batch-succeeds-pagination-untested
+    t013_oracle: batch per-item evidence renders without cross-claim promotion; batch success cannot assert continuation/navigation coverage
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t013_oracle: CLI renders the exact PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED projection verbatim
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t013_oracle: CLI renders UNSATISFIED/BLOCKED/NOT_STARTED/UNKNOWN with AUTH_REQUIRED-or-AUTH_FAILED and non-success exit
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t013_oracle: confirmation routing proves selection only; CLI output keeps QUALITY claim independently unverified as projected
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t013_oracle: CLI renders Core-rejected SelectionAcquisition COMPLETE as non-success; no CLI-side waiver of validation
+  - id: C32
+    scenario: gate-set-includes-failure-abandonment-unknown-out-of-scope
+    t013_oracle: CLI output preserves distinct non-success and exclusion classifications as projected; no generic success collapse
+
+negative_cases:
+  - malformed-argv-or-batch-input
+  - unknown-flag-or-subcommand
+  - unsupported-seam-schema-version-response
+  - seam-typed-rejection-projected-with-non-success-exit
+  - peer-unauthorized-response-not-masked-as-success
+  - oversized-batch-item-respects-seam-message-limits
+  - non-interactive-confirmation-required-yields-bounded-needs-user-action
+  - missing-projection-fields-render-absent-not-invented
+  - rejected-command-never-exits-success
+  - cancel-or-retry-of-foreign-aggregate-routes-through-seam-rejection
+  - stale-read-cache-cannot-overwrite-fresh-projection
+  - default-flags-cannot-widen-scope-or-add-continuation
+  - desktop-absent-cli-still-fully-operational
+
+completion_rule: >-
+  T013 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the applicable C-oracle surface renderings, and required negative cases are executable and pass on the
+  exact base. This JIT Prep creates no PASS evidence.
