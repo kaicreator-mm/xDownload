@@ -1,0 +1,125 @@
+task_id: T013
+base_sha: f5ac137f94438a591fd6781c5b758be6c375233a
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T013 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T013 would require violating Frozen L2 ownership, authority or trust boundaries
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T004/T007 completion identities are no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: seam-contract-mismatch
+    trigger: the T004/T007 seam does not expose what T013 must surface (missing vocabulary, projection field, or semantics)
+    classification: CONTRACT_MISMATCH_ESCALATED
+    required_action:
+      - stop the CLI path
+      - route to the T004/T007 owner per the frozen pack merge/routing rule
+      - never build a CLI-local compatibility shim, fork or second vocabulary over the mismatch
+    false_pass_forbidden: true
+
+  - id: private-lifecycle-authority
+    trigger: CLI code introduces a private lifecycle store, scheduler, budget, selection or result semantics, or a surface-side status derivation competing with Core projections
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - remove the competing authority
+      - route all transitions/reads through the seam client
+      - never render locally derived status as Core truth
+    false_pass_forbidden: true
+
+  - id: acceptance-result-conflation
+    trigger: submit acceptance is presented as final task success, or a non-success terminal result exits as success
+    classification: RESULT_TRUTH_VIOLATION
+    required_action:
+      - separate acceptance from final result in output and exit semantics per PRD §27
+      - keep wait-mode final exit bound to the final request/selection result
+      - never normalize non-success into success
+    false_pass_forbidden: true
+
+  - id: non-interactive-blocking
+    trigger: non-interactive mode blocks indefinitely on confirmation, or CLI fabricates confirmation/user action locally
+    classification: NEEDS_USER_ACTION_CONTRACT_VIOLATION
+    required_action:
+      - return the bounded machine-readable NEEDS_USER_ACTION state instead of blocking
+      - never synthesize confirmation or scope decisions in the CLI
+    false_pass_forbidden: true
+
+  - id: scope-broadening-defaults
+    trigger: default flags/config, retry or batch handling enlarges requested scope, adds continuation authority, or changes budget/authorization semantics
+    classification: SCOPE_MUTATION_REJECTED
+    required_action:
+      - remove the hidden broadening
+      - scope/continuation changes can exist only as Core-decided successor contracts, never as CLI defaults
+    false_pass_forbidden: true
+
+  - id: diagnostics-suppressed-or-reinterpreted
+    trigger: SeamDiagnostic/ValidationDiagnostic rejections are swallowed, reworded into success, or mapped to success exit codes
+    classification: DIAGNOSTIC_FALSIFICATION
+    required_action:
+      - project typed diagnostics verbatim with stable non-success exits
+      - keep unsupported-version/unauthorized/oversized rejections visible rather than approximated
+    false_pass_forbidden: true
+
+  - id: desktop-lifetime-coupling
+    trigger: any CLI function requires the Desktop UI to be running or couples CLI operation to Desktop lifetime
+    classification: HEADLESS_VIOLATION
+    required_action:
+      - decouple via the seam client contract
+      - Core lifetime is never a CLI-owned authority prerequisite
+    false_pass_forbidden: true
+
+  - id: transport-or-auth-bypass
+    trigger: CLI opens a private channel bypassing seam peer authorization, declared bounds or version gates
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - use only the T004 transport ports and peer identity path
+      - production transport choice remains a downstream frozen-L2 decision; the loopback transport does not authorize a new production channel
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/contract test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder proposes a CLI runtime dependency without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep choice within F2 and Frozen Architecture
+    false_pass_forbidden: true
