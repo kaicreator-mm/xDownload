@@ -1,0 +1,168 @@
+task_id: T011
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: declarative-recipe-engine-bounded-discovery-collection-semantics
+validation_owner: T011-concern-validation
+status: specification-only-not-run-by-jit-prep
+validation_scope_source: >
+  Issue #30 / frozen TASK_PACKS.json T011 entry: "S5/S6 + C01-C34 collection
+  fixtures including continuation NONE, declared bounds, successor snapshots,
+  loops and frontier rejection." Concern-level only; version-level visible
+  Validation is owned by T020-T023 on the exact T019 candidate.
+
+required_suites:
+  - id: continuation-scope-none-r01
+    must_prove:
+      - confirmed current_page membership is frozen from the confirmed current-page membership snapshot without executing any continuation action
+      - with continuation_scope=NONE, scroll-revealed/load-more/continuation-edge members stay outside the contract
+      - passive completion of evidence for an already-frozen member may continue and never adds a new member
+      - a later load-more/continue/include-more request against continuation_scope=NONE is refused and yields a successor contract + successor snapshot path
+  - id: declared-continuation-bounds
+    must_prove:
+      - DECLARED_BATCH_COUNT(n) admits at most n members and reaching the bound is USER_SCOPE_REACHED, not natural end
+      - DECLARED_PAGE_RANGE(a..b) is 1-based logical collection pages anchored to the collection root; member detail pages and iframe content never increment page count; load-more/infinite-scroll is never silently a numbered page
+      - DECLARED_NATURAL_END is admitted only for a supported collection with a validated natural-end relation; stopping without validated natural end never claims complete
+      - DiscoveryBudget exhaustion under DECLARED_NATURAL_END produces exactly the PRD 10.2 tuple PARTIAL/PARTIAL/COMPLETE-only-if-frozen-S-succeeded/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED and is never reinterpreted as end of user scope
+      - continuation is never inferred, sized or extended from available DiscoveryBudget
+  - id: collection-admission-frontier-rejection
+    must_prove:
+      - all six PRD 9 admission conditions are enforced for collection acquisition
+      - "search first 1000 pages under a domain and download every PDF"-style crawl/filter requests are rejected as arbitrary frontier
+      - user-declared finite member sets are accepted without bypassing the crawler boundary
+      - no capability or recipe can express recursive link following, general site frontier or continuous recrawl
+  - id: successor-contract-snapshot
+    must_prove:
+      - post-confirmation continuation expansion requires successor AcquisitionContract and successor SelectionSnapshot with new identity; original snapshot remains immutable historical authority
+      - an explicit continuation scope is honored only within its exact frozen bounds; any enlargement creates successor identity
+      - silent candidate replacement after preview/confirmation is rejected
+      - changed collection/profile/version requiring re-enumeration routes through successor snapshot, never in-place mutation
+      - retry/resume operates only on the original frozen member identities (failed-item retry cannot add or replace members)
+  - id: discovery-budget-semantics
+    must_prove:
+      - DiscoveryBudget exhaustion stops new discovery/navigation while already-frozen S members may continue transfer if TransferBudget and GlobalSafetyBudget remain
+      - budget values never create, enlarge, narrow or redefine requested scope
+      - discovery stop is reported with truthful stop reason and coverage TRUNCATED/UNKNOWN, never converted to complete
+  - id: member-identity-and-completeness
+    must_prove:
+      - completeness accounting uses identity correspondence; duplicate-replaces-missing with equal count is never VERIFIED_COMPLETE
+      - natural-end VERIFIED_COMPLETE requires independent identity/membership closure evidence, not no-more-found alone
+      - member detail-page/CDN transitions are provenance-bound locator changes that preserve logical member identity; unrelated substitution cannot inherit identity
+      - same-bytes/same-name members never collapse distinct logical member identities
+      - inaccessible members count only as accounted-for coverage with independently evidenced identity/auth status, never as acquired
+  - id: recipe-schema-and-interpreter
+    must_prove:
+      - Recipe is declarative data (identity/version, applicability scope, matcher, parameters, allowed capabilities, evidence/validation rules, failure conditions, deterministic fallback) per PRD 23 and L2 6.6
+      - allowed actions come from a finite typed capability vocabulary bounded by PRD 14; unknown or undeclared capabilities fail closed
+      - recipe execution is matcher to capability plan to policy/scope validation to bounded execution to typed evidence, traceable to the confirmed contract
+      - arbitrary shell, unrestricted JS/filesystem/cookie-token export and host scanning cannot be expressed as capabilities
+      - scroll_current_page is a capability, never implicit scope authority
+      - recipe replay on changed page/session/layout revalidates scope/membership instead of trusting cached membership
+  - id: selection-confirmation-workflow
+    must_prove:
+      - AUTO requires sufficient evidence for material target/membership/scope claims; ASSISTED requests only a small number of material confirmations; MANUAL_SELECTION exposes the candidate set for personal/ambiguous choice
+      - one batch/manual selection surface can resolve what 50 per-item confirmations would ask (C30); interaction priority follows PRD 13
+      - confirmation proves selection only; it cannot certify target quality/originality (C26) or waive required validation (C27)
+      - task-local selection on a similar-but-different page is not reusable membership authority without distinct validated provenance (C31)
+      - confirmation sets containing failure/abandonment/UNKNOWN/out-of-scope apply the common-denominator rules exactly (C32)
+  - id: s5-s6-slice-semantics
+    must_prove:
+      - S5 behaves per PRD 28 - current-page identity plus supported explicit member relation, frozen snapshot default NONE, successor on later expansion, provenance-bound member delivery, no arbitrary frontier
+      - S6 behaves per PRD 28 - explicit CollectionIdentity, deterministic supported membership relation, only declared collection continuation/member-detail edges, finite or naturally terminable collections, truthful TRUNCATED/UNKNOWN on failure to close requested continuation
+      - Membership + per-member Target/Transfer/Format + requested-scope Coverage layer requirements are respected as layer contracts without implementing the validators
+
+counterexample_oracles:
+  - id: C01
+    scenario: duplicate-replaces-missing-member-count-equal
+    t011_oracle: discovery/completeness accounting rejects VERIFIED_COMPLETE; identity correspondence is required
+  - id: C03
+    scenario: next-page-fails-next-control-missing-or-pagination-loops
+    t011_oracle: not natural end; continuation stops with truthful stop reason and coverage UNKNOWN-or-TRUNCATED
+  - id: C04
+    scenario: supported-finite-collection-reaches-validated-natural-end
+    t011_oracle: natural-end admission path exists and VERIFIED_COMPLETE requires closure evidence
+  - id: C05
+    scenario: user-selects-five-of-larger-collection-all-succeed
+    t011_oracle: selected-subset workflow yields the exact PRD C05 tuple Request COMPLETE/Resolution RESOLVED/Selection COMPLETE/Coverage VERIFIED_COMPLETE/Stop USER_SELECTION_COMPLETE for the selected scope; no parent-collection claim
+  - id: C06
+    scenario: first-1000-pages-under-domain-all-pdfs
+    t011_oracle: collection admission rejects the arbitrary frontier before any discovery action executes
+  - id: C07
+    scenario: confirmed-member-requires-detail-page-or-cdn
+    t011_oracle: only traceable member/detail/CDN paths are followed; provenance chain is retained; logical member identity is stable
+  - id: C08
+    scenario: page-range-1-3-with-iframe-loadmore-detail-pages-no-continuation-permission
+    t011_oracle: only logical root pages 1-3 and supported-basis members are in scope; iframe/load-more/detail never add pages or members; later load-more requires successor contract/snapshot
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-known-inaccessible
+    t011_oracle: discovery reports 16 accessible + 2 independently evidenced inaccessible; requested scope remains 18; selection/accounting preserves the PRD 17.2 tuple rather than shrinking scope
+  - id: C11
+    scenario: collection-changes-after-preview
+    t011_oracle: snapshot cannot silently drift; detected change forces refresh via successor snapshot
+  - id: C12
+    scenario: retry-failed-items
+    t011_oracle: retry domain is original failed member identities only; no new/replacement members
+  - id: C14
+    scenario: discovered-targets-succeed-enumeration-unfinished
+    t011_oracle: selection may complete while request stays PARTIAL-or-UNKNOWN and coverage is not VERIFIED_COMPLETE; discovery truthfully reports unfinished enumeration
+  - id: C20
+    scenario: local-recipe-replay-on-changed-page-session-layout
+    t011_oracle: recipe revalidates applicability/scope/membership against current observations; cached membership cannot overwrite current contract scope or target identity
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t011_oracle: discovery stops at budget; exact PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED tuple is produced; budget exhaustion is never reported as natural end or user scope reached
+  - id: C25
+    scenario: parent-ten-pages-user-requests-1-3-all-requested-succeed
+    t011_oracle: CoverageTarget binds requested pages 1-3 only; VERIFIED_COMPLETE carries no whole-parent claim
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t011_oracle: confirmation workflow records a selection claim only; no quality/originality evidence is emitted by the confirmation path
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t011_oracle: confirmation does not waive validation layers; workflow cannot mark selection acquisition complete from confirmation alone
+  - id: C28
+    scenario: discovery-budget-exhausted-frozen-target-still-needs-work
+    t011_oracle: discovery stops; frozen selected targets remain eligible downstream under remaining TransferBudget/GlobalSafetyBudget per budget precedence
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t011_oracle: provenance-bound member delivery is followed with retained provenance; an unrelated redirect is rejected/fails
+  - id: C30
+    scenario: fifty-candidates-versus-batch-manual-selection
+    t011_oracle: workflow supports one batch/group or manual-selection confirmation instead of per-item interrogation; per-item burden is not the default path
+  - id: C31
+    scenario: prior-12-of-18-selection-reused-on-different-page
+    t011_oracle: task-local selection is not replayed as membership authority without distinct validated knowledge provenance
+  - id: C34
+    scenario: ui-discovery-suggestion-used-as-ground-truth
+    t011_oracle: discovery/recipe suggestions are DISCOVERY_DERIVED evidence only and can never be typed as independent validation truth for the same claim
+
+oracle_boundary_note: >-
+  C02/C09/C13/C15-C19/C21/C22/C24/C32/C33 are primarily owned at other concern
+  layers (T002 contract/result representation, T006 scheduler/budget ledger,
+  T007 evidence/result projection, T008/T009 transfer/media, T012 AI adapter,
+  T003/T020+ experiment/gate discipline). T011 must not implement their
+  behavior; where T011 consumes or produces inputs for them it must preserve
+  the canonical identities and truthful values those concerns require.
+
+negative_coverage:
+  - frontier-or-crawl-scope-expressed-through-recipe-capability-or-continuation
+  - continuation-width-derived-from-discovery-budget
+  - member-added-to-continuation-none-contract-without-successor
+  - declared-batch-count-or-page-range-exceeded
+  - natural-end-claimed-from-failed-next-page-missing-control-or-loop
+  - verified-complete-claimed-from-count-limit-timeout-or-budget
+  - silent-snapshot-candidate-replacement-or-membership-growth-after-confirmation
+  - retry-adding-replacement-members
+  - unknown-or-undeclared-recipe-capability
+  - recipe-capability-expressing-shell-js-filesystem-cookie-export-or-host-scan
+  - discovery-inference-used-as-independent-membership-or-quality-oracle
+  - confirmation-treated-as-target-quality-or-validation-pass
+  - task-local-selection-replayed-as-reusable-membership-authority
+  - non-declarative-or-imperative-recipe-body-shell-script-js-expression
+  - unsupported-scope-primitive-or-continuation-form-at-admission
+  - iframe-or-detail-page-counted-as-collection-page-in-range
+
+completion_rule: >-
+  T011 concern Validation may PASS only on an exact implementation candidate
+  where all required suites, the applicable C01-C34 collection oracle fixtures,
+  and the negative coverage are executable and pass on the exact candidate.
+  This JIT Prep creates no PASS evidence; version-level visible Validation
+  remains owned by T020-T023 on the exact T019 candidate.
