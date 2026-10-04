@@ -197,6 +197,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/browser-observation
 
+  apps/desktop:
+    dependencies:
+      '@xdownload/core-seam':
+        specifier: workspace:*
+        version: link:../../packages/core-seam
+      '@xdownload/discovery-recipe':
+        specifier: workspace:*
+        version: link:../../packages/discovery-recipe
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../../packages/domain-contracts
+
   packages/browser-auth-broker:
     dependencies:
       '@xdownload/domain-contracts':
