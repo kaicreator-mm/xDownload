@@ -1,0 +1,129 @@
+task_id: T005
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: sqlite-persistence-durable-ledger-and-recovery
+validation_owner: T005-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+required_suites:
+  - id: schema-and-migrations
+    must_prove:
+      - the production schema carries an explicit version identity (e.g. SQLite user_version or equivalent durable marker)
+      - a fresh install creates the current schema deterministically and the ledger is immediately consistent with the single-writer path
+      - forward migration from each supported prior version preserves authoritative rows, durable identities and lifecycle-state distinctions
+      - backward migration behaves exactly as designed (explicit rollback support only; history/identity is never mutated by migration)
+      - reopening a database at an unsupported or semantically incompatible version fails closed instead of silently reinterpreting fields
+  - id: durable-ledger-lineage
+    must_prove:
+      - command/work/effect/artifact/attempt identities are durable across restart and retry reconciles by lineage instead of blindly replaying
+      - staged vs materialized vs finalized vs accepted are distinct durable states and no transition collapses them silently
+      - lifecycle-budget reservation/consumption facts are transactional with state transitions and survive restart without replenishment or double consumption
+      - duplicate command/effect submits (including from independent duplicate clients) converge to one lineage, one effect and one accepted artifact
+      - exactly one authoritative writer path exists; a second writable path is rejected or serialized through the single path
+      - stored authorization context remains an opaque reference; no raw reusable cookie/token/password/signed-URL secret is ordinary stored state
+  - id: process-kill-restart-persistence
+    must_prove:
+      - tests run against a real SQLite file and a real filesystem (no in-memory database or mocked store) with real process kills at injected windows
+      - reopen after kill yields a deterministic recovery classification from durable facts (candidate classes per L2 §11 include NOT_DISPATCHED, IN_FLIGHT_UNKNOWN, PARTIAL_RECOVERABLE, SUCCEEDED_UNACCEPTED, ACCEPTED, explicit terminal-failure equivalents)
+      - budgets are neither replenished nor double-consumed across tested kill/restart windows
+      - durable transition-order facts survive restart so adapter arrival time or process restart cannot redefine dispatch/acceptance/cancellation order
+      - the host OS tuple actually exercised is recorded; claims never exceed process-death/reopen truth
+  - id: recovery-reconciliation-db-first-fs-first
+    must_prove:
+      - DB-first recovery: a durable accepted DB state with missing/unmaterialized/non-finalized bytes never projects final success
+      - FS-first recovery: staged/completed/validated/materialized/finalized bytes without prior durable acceptance do not become accepted through automatic recovery
+      - uncertain external effects (IN_FLIGHT_UNKNOWN) are reconciled from durable facts, never silently marked success and never blindly duplicated
+      - retry/resume operates on the same frozen lineage and inherits remaining budgets; already-present bytes satisfying identity/provenance/validation may be reused without forcing a duplicate external effect
+      - recovery records distinguish transactional DB state from filesystem staging/materialization/finalization in their output
+  - id: digest-provenance-binding
+    must_prove:
+      - artifact bytes are bound to durable effect/artifact identity via digest/provenance before acceptance
+      - missing bytes never become success regardless of DB state
+      - digest-mismatched or corrupt bytes never become success; they classify truthfully as failed/uncertain per the recovery vocabulary
+      - accepted artifacts always have validation-passing, digest-bound bytes; transfer alone never suffices
+      - identical bytes under different logical member/effect identities remain distinct records (content identity does not collapse logical identity)
+  - id: cancellation-acceptance-cutoff
+    must_prove:
+      - when durable USER_CANCELLED is committed before durable acceptance, no restart, staged/finalized byte discovery, validation PASS or reconciliation classification creates a new accepted artifact
+      - cancelled-but-byted lineage projects truthfully (e.g. SelectionAcquisitionStatus=CANCELLED, StopReason=USER_CANCELLED) and never COMPLETE solely because valid bytes exist
+      - acceptance committed before cancellation remains accepted; cancellation does not retroactively revoke it; bounded reconciliation may still establish materialization/finalization truth
+      - unaccepted staged bytes after cancellation remain unaccepted/quarantined-or-cleanup-eligible and are never silently exposed as accepted Product artifacts
+      - automatic new dispatch (network/media/discovery/retry/budget allocation) is suppressed for a cancellation-authoritative lineage; only explicit retry/resume reopens it on the same lineage and remaining budgets
+  - id: semantic-claim-boundaries
+    must_prove:
+      - no code path, schema field, log message or test claims exactly-once execution; semantics remain recoverable at-least-once + idempotent acceptance/reconciliation
+      - no code path or test claims host-power-loss/kernel-panic/storage-controller durability; only the tested process-death/reopen tuple is claimed
+      - persistence preserves multidimensional result inputs (PRD §16); no single success boolean is introduced by the store or projector inputs
+
+counterexample_oracles:
+  - id: R01
+    scenario: ar-f01-dispatched-staged-cancelled-while-down (L2 §11.1 required normalization)
+    t005_oracle: restart binds staged bytes to the frozen lineage for classification but automatic acceptance is forbidden; bytes remain unaccepted/quarantined-or-cleanup-eligible; projection is CANCELLED/USER_CANCELLED, never COMPLETE from byte existence
+  - id: R02
+    scenario: accepted-db-missing-bytes
+    t005_oracle: no DB-only final success; recovery reports the missing/unmaterialized truth and result cannot claim success
+  - id: R03
+    scenario: fs-finalized-bytes-no-db-acceptance
+    t005_oracle: classification is SUCCEEDED_UNACCEPTED-equivalent; automatic recovery never promotes to accepted
+  - id: R04
+    scenario: duplicate-clients-one-lineage (L2 #7 evidence tuple)
+    t005_oracle: two independent duplicate submits converge to one lineage, one effect and one accepted artifact; no duplicate allocation
+  - id: R05
+    scenario: restart-budget-inheritance (PRD C13)
+    t005_oracle: budgets inherit remaining values across kill/restart; no replenishment and no double consumption
+  - id: R06
+    scenario: partial-bytes-after-kill
+    t005_oracle: classification is PARTIAL_RECOVERABLE-equivalent; explicit retry/resume continues the same lineage and may reuse valid staged bytes without a duplicate external effect
+  - id: R07
+    scenario: digest-mismatch-after-crash
+    t005_oracle: corrupt/mismatched bytes classify as failed/uncertain truth; they never become success and never silently re-stage over the record
+  - id: R08
+    scenario: accept-then-cancel
+    t005_oracle: accepted identity survives cancellation; cancellation cannot retroactively revoke; reconciliation may still establish materialization truth and result still cannot claim success from acceptance alone if bytes are absent
+  - id: R09
+    scenario: in-flight-external-effect-crash
+    t005_oracle: IN_FLIGHT_UNKNOWN-equivalent classification; reconciliation from durable facts; neither silent success nor blind duplicate replay
+  - id: R10
+    scenario: same-bytes-two-members (PRD C18 persistence view)
+    t005_oracle: content/digest identity does not collapse distinct logical member/effect/artifact identities or their lineage records
+  - id: R11
+    scenario: cancel-before-dispatch (L2 §11.1 cancel timing matrix)
+    t005_oracle: cancellation recorded, reservation reconciled per durable dispatch facts, no external dispatch, no artifact ever accepted from that cancelled execution
+  - id: R12
+    scenario: reopen-unsupported-schema-version
+    t005_oracle: fail closed with typed incompatibility; never silently migrate, downgrade or reinterpret; original file preserved for diagnostics where safe
+
+product_counterexample_cross_reference:
+  - C12 retry-failed-items: retry domain is original failed member identities only; persistence enforces lineage-bound retry without replacement membership
+  - C13 restart/repair/UI+CLI concurrency: budgets inherit remaining values; no duplicate allocation through any surface
+  - C18 same-bytes-different-members: blob identity does not collapse logical member/source identity in stored records
+
+negative_decode_cases:
+  - malformed-required-ledger-field
+  - unknown-authoritative-state-enum-value
+  - unsupported-schema-version
+  - incompatible-version-transition
+  - duplicate-effect-identity-with-conflicting-payload
+  - accepted-state-without-digest-binding
+  - accepted-state-without-artifact-record
+  - non-monotonic-transition-order-fact
+
+negative_persistence_cases:
+  - db-accept-without-bytes-projected-success (forbidden)
+  - automatic-acceptance-after-cancel-before-accept (forbidden)
+  - retroactive-revocation-of-accepted-identity (forbidden)
+  - restart-replenishes-budget (forbidden)
+  - restart-double-consumes-budget (forbidden)
+  - restart-duplicates-accepted-effect (forbidden)
+  - corrupt-bytes-projected-success (forbidden)
+  - staged-bytes-post-cancel-exposed-as-accepted (forbidden)
+  - second-writer-bypasses-authoritative-path (forbidden)
+  - migration-mutates-historical-identity (forbidden)
+  - raw-secret-persisted-as-ordinary-state (forbidden)
+  - in-memory-db-substituted-for-real-file-in-required-suite (forbidden)
+
+completion_rule: >-
+  T005 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the R01-R12 recovery/durability oracles, the PRD cross-referenced counterexamples and required negative
+  cases are executable on a real local SQLite/filesystem host and pass. Claims are bounded to the actually
+  exercised process-death/reopen tuple; broader durability remains unproven per the Frozen Task Pack.
+  This JIT Prep creates no PASS evidence.
