@@ -1,0 +1,140 @@
+task_id: T016
+base_sha: 4166b51841709bd74cedf1dd89cfcf8f373c38a1
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T016 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T016 would require violating Frozen L2 ownership, authority or trust boundaries (e.g. only implementable by browser-owned transfer truth, relaxed broker origin/scope binding, or glue-level terminal decisions)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T010/T011/T015 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: authorization-boundary-failure
+    trigger: composed flow accepts a capability outside its exact binding (origin/target/contract/snapshot/provenance/partition/scope), on a wildcard/unlisted origin, via a fallback transport, after expiry, or reuses an expired/revoked capability
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - stop the affected path; the broker rejection semantics are authoritative and must surface unchanged
+      - never absorb an authorization failure into partial success or skip-and-continue
+      - treat any need to relax broker binding as ARCHITECTURE_CONTRADICTION, not a bug to patch locally
+    false_pass_forbidden: true
+
+  - id: secret-leakage
+    trigger: raw reusable credential/cookie/token/signed-URL secret material crosses the workflow as ordinary state, enters glue types, fixtures, logs or the exit sink unredacted
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - contain/redact at the T010 secret-zone boundary; keep only opaque AuthorizationContextRef in the flow
+      - escalate if Frozen Product/L2 semantics cannot be satisfied without secret persistence
+    false_pass_forbidden: true
+
+  - id: browser-lane-authority-escalation
+    trigger: browser/extension lane begins owning transfer lifecycle, progress authority, terminal truth, or validates its own claims
+    classification: OWNERSHIP_BOUNDARY_REJECTED
+    required_action:
+      - stop; observation remains EVIDENCE_INPUT_ONLY and Core owns transfer/terminal truth
+      - redesign so the handoff ends authority at the canonical handoff record
+    false_pass_forbidden: true
+
+  - id: frontier-or-continuation-escape
+    trigger: discovery follows edges beyond the confirmed snapshot/declared collection, infers continuation from budget/state, or treats crawl-until-empty as natural end
+    classification: SCOPE_MUTATION_REJECTED
+    required_action:
+      - stop the path; admission only via the T011 continuation machinery
+      - continuation exists only as explicit confirmed scope/successor identity
+    false_pass_forbidden: true
+
+  - id: membership-drift
+    trigger: snapshot member identity set changes, count equality hides replacement/duplication, or retry adds replacement members through the composed flow
+    classification: SNAPSHOT_DRIFT_REJECTED
+    required_action:
+      - retain original snapshot identity
+      - require successor contract/snapshot when re-enumeration is authorized
+      - never silently replace members
+    false_pass_forbidden: true
+
+  - id: scope-mutation
+    trigger: budget, authorization accessibility or runtime state changes confirmed requested_scope/continuation_scope without successor identity
+    classification: SCOPE_MUTATION_REJECTED
+    required_action:
+      - reject mutation
+      - require explicit successor contract/snapshot where Product authority permits change
+    false_pass_forbidden: true
+
+  - id: glue-authority-rewrite
+    trigger: composition glue defines its own status/evidence/identity types, projects terminal truth outside the T007 layer, or edits a consumed package to change semantics/exports/invariants
+    classification: OWNERSHIP_BOUNDARY_REJECTED
+    required_action:
+      - consume domain-contracts vocabulary and upstream APIs as-is
+      - route genuine API gaps as escalations, never as local rewrites
+    false_pass_forbidden: true
+
+  - id: unverified-coverage-claim
+    trigger: composed flow reports VERIFIED_COMPLETE or COMPLETE from count equality, budget/timeout exhaustion, failed next-page, pagination loop, or unproven natural end
+    classification: DOMAIN_INVARIANT_REJECTED
+    required_action:
+      - keep terminal truth in the T007 projector semantics
+      - identify the violated oracle and fix composition, never the invariant
+    false_pass_forbidden: true
+
+  - id: real-browser-environment-unavailable
+    trigger: required real-browser suites cannot execute (no browser, driver, or extension host available)
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact environment/failure durably
+      - report those suites NOT_EXECUTED; never substitute fixture PASS for real-browser PASS
+      - distinguish infrastructure unavailability from product failure
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/flow tests cannot execute, crash, time out, or required tooling is unavailable
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: scope-creep-t017
+    trigger: implementation reaches into apps/* product features, ai-proposal convergence, or cross-surface shared runtime beyond bounded real-browser test wiring
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop; T017 owns surface/AI convergence
+      - remove/revert the creep before any claim
+    false_pass_forbidden: true
+
+  - id: incomplete-oracle-mapping
+    trigger: any applicable C-oracle lacks a composed-flow representation or negative/positive test oracle
+    classification: T016_VALIDATION_INCOMPLETE
+    required_action:
+      - keep concern Validation non-PASS
+      - add bounded workflow-level representation/test only
+      - do not implement downstream product behavior to close the gap
+    false_pass_forbidden: true

@@ -236,6 +236,30 @@ importers:
         specifier: workspace:*
         version: link:../domain-contracts
 
+  packages/browser-collection-workflow:
+    dependencies:
+      '@xdownload/browser-auth-broker':
+        specifier: workspace:*
+        version: link:../browser-auth-broker
+      '@xdownload/browser-observation':
+        specifier: workspace:*
+        version: link:../browser-observation
+      '@xdownload/core-runtime':
+        specifier: workspace:*
+        version: link:../core-runtime
+      '@xdownload/direct-acquisition':
+        specifier: workspace:*
+        version: link:../direct-acquisition
+      '@xdownload/discovery-recipe':
+        specifier: workspace:*
+        version: link:../discovery-recipe
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+      '@xdownload/hls-vod-adapter':
+        specifier: workspace:*
+        version: link:../hls-vod-adapter
+
   packages/browser-observation:
     dependencies:
       '@xdownload/domain-contracts':
