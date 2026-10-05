@@ -25,7 +25,8 @@ export type BrokerBoundaryCode =
   | 'AUTH_BINDING_VIOLATED'
   | 'PARTITION_CONTEXT_STRIPPED'
   | 'SCOPE_BINDING_MISMATCH'
-  | 'SECRET_IN_SINK';
+  | 'SECRET_IN_SINK'
+  | 'CYCLIC_STRUCTURE';
 
 /** Local codes plus the canonical diagnostic codes reused verbatim. */
 export type BrokerDiagnosticCode = BrokerBoundaryCode | DiagnosticCode;
