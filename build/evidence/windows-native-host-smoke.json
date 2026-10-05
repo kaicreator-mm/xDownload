@@ -1,0 +1,71 @@
+{
+  "suite": "windows-native-host-smoke",
+  "executedAt": "2026-10-05T13:57:30.122Z",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26200",
+    "osVersion": "Windows 11 Pro",
+    "node": "24.21.0",
+    "executable": "C:\\Users\\15549\\AppData\\Roaming\\fnm\\node-versions\\v24.21.0\\installation\\node.exe",
+    "tmpRoot": "C:\\Users\\15549\\AppData\\Local\\Temp"
+  },
+  "checks": [
+    {
+      "id": "native-host-stdio-broker-loop",
+      "status": "PASS",
+      "command": [
+        "node",
+        "native-host/xdownload-broker-host.js",
+        "--config",
+        "broker-config.json",
+        "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
+      ],
+      "exitCode": 0,
+      "detail": "packaged stdio broker accepted the allow-listed caller origin and answered one Native-Messaging frame with a typed rejection (kind=REJECTED, requestId echoed)",
+      "stdoutExcerpt": "{\"kind\":\"REJECTED\",\"requestId\":\"smoke-inspect-1\",\"reasons\":[{\"code\":\"CAPABILITY_UNKNOWN\",\"path\":\"ref\",\"message\":\"no capability is registered under this ref\"}]}"
+    },
+    {
+      "id": "native-host-fail-closed-without-origin",
+      "status": "PASS",
+      "command": [
+        "node",
+        "native-host/xdownload-broker-host.js",
+        "--config",
+        "broker-config.json"
+      ],
+      "exitCode": 2,
+      "expectedExitCode": 2,
+      "detail": "a launch without a browser-passed chrome-extension origin refuses the session (typed stderr, no stdout frames, no simulated session)",
+      "stderrExcerpt": "xdownload-broker-host: session refused: no chrome-extension:// origin argument was passed to the native host; refusing to establish a session\n"
+    },
+    {
+      "id": "native-host-windows-registration-roundtrip",
+      "status": "PASS",
+      "command": [
+        "reg",
+        "add",
+        "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker",
+        "/ve",
+        "/t",
+        "REG_SZ",
+        "/d",
+        "C:\\Users\\15549\\.xdownload\\native-host\\com.xdownload.broker.json",
+        "/f"
+      ],
+      "detail": "HKCU registration written at HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker -> C:\\Users\\15549\\.xdownload\\native-host\\com.xdownload.broker.json; manifest carries the exact allowed_origins list and read-back matches"
+    },
+    {
+      "id": "native-host-windows-unregistration-restores-state",
+      "status": "PASS",
+      "command": [
+        "reg",
+        "delete",
+        "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker",
+        "/f"
+      ],
+      "detail": "registration removed and read-back confirms the machine is as found"
+    }
+  ],
+  "overall": "PASS"
+}

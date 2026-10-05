@@ -8,6 +8,8 @@
     "node": "24.21.0"
   },
   "scripts": {
+    "build": "node build/package.ts",
+    "smoke": "node build/smoke.ts",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -17,6 +19,11 @@
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@types/node": "24.19.1",
+    "@xdownload/browser-auth-broker": "workspace:*",
+    "@xdownload/core-runtime": "workspace:*",
+    "@xdownload/core-seam": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*",
+    "esbuild": "0.25.12",
     "eslint": "9.39.5",
     "prettier": "3.9.9",
     "typescript": "5.9.3",

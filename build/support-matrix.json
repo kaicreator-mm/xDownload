@@ -1,0 +1,133 @@
+{
+  "matrixVersion": "t018-concern-level-1",
+  "note": "T018 support/NOT_PROVEN matrix (durable data, TEST_MATRIX required output 5). Statuses: BUILT_AND_SMOKED only where the artifact was actually built AND smoke-proven on the recorded real host with cited PASS evidence; everything else is NOT_PROVEN or BLOCKED — a platform blocker is BLOCKED, never an invented PASS. Platform qualification is owned by T023 on the exact T019 candidate; no entry here implies it. claimType vocabulary: built-and-smoked-on-host | not-proven | blocked.",
+  "exercisedBuildHost": {
+    "platform": "win32",
+    "form": "windows-11-x64 (Build Host of record for this task)",
+    "runtime": "node@24.21.0",
+    "note": "Recorded honestly from the executing host at smoke time; see evidence files for exact environment capture."
+  },
+  "tuples": [
+    {
+      "id": "cli-core-windows-x64-node24",
+      "tuple": {
+        "os": "windows",
+        "arch": "x64",
+        "runtime": "node@24.21.0",
+        "surface": "CLI + Core host"
+      },
+      "artifact": "cli+core",
+      "status": "BUILT_AND_SMOKED",
+      "claimType": "built-and-smoked-on-host",
+      "evidence": ["windows-cli-core-clean-install.json", "build-reproducibility.json"],
+      "claim": "CLI and Core-host packages were built from the pinned lockfile toolchain and smoke-proven on this Windows host: clean-environment launch, CLI<->Core reachability through the loopback seam, typed transport-failure degradation, NEEDS_USER_ACTION honesty, and byte-identical rebuild.",
+      "scopeNote": "Concern-level evidence only. No installer, updater, signing or release claim; surface independence (CLI does not depend on Desktop lifetime) is structural here because no Desktop process exists."
+    },
+    {
+      "id": "extension-chromium-windows-x64",
+      "tuple": {
+        "os": "windows",
+        "arch": "x64",
+        "browser": "chromium-family",
+        "surface": "browser extension"
+      },
+      "artifact": "extension",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "The extension bundle is emitted and audited to match apps/browser-extension/manifest.json exactly (build + package-content audit pass), but no real-browser load, service-worker activation, or extension<->native handshake was executed in T018 — no browser harness ran. The packaged allowed_origins still carries the sources' placeholder origin because the real unpacked-extension origin is only knowable once actually loaded; it is never widened or guessed.",
+      "claim": "No browser support claim. Loading/activation/handshake remain NOT_PROVEN for every browser."
+    },
+    {
+      "id": "native-host-chromium-windows-x64",
+      "tuple": {
+        "os": "windows",
+        "arch": "x64",
+        "browser": "chromium-family",
+        "surface": "native messaging host"
+      },
+      "artifact": "native-host",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "evidence": ["windows-native-host-smoke.json"],
+      "reason": "Partially exercised on the real host, not proven as a suite: the Windows HKCU registration mechanism round-trip (register -> verify -> unregister, leaving the machine as found) and the packaged stdio broker loop (origin gate + typed rejection frame; fail-closed without a browser-passed origin) both executed; the extension<->native handshake inside a real browser was NOT executed, so the suite stays NOT_PROVEN.",
+      "claim": "No registration-in-production claim. allowed_origins stays the platform-enforced boundary; unregistered hosts degrade by refusing the session, never simulating one."
+    },
+    {
+      "id": "desktop-windows-x64-shell-unselected",
+      "tuple": {
+        "os": "windows",
+        "arch": "x64",
+        "shell": "none installed",
+        "surface": "Desktop UI"
+      },
+      "artifact": "none",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "No concrete desktop shell is installed or wired by T018. Per Frozen L2 §6.9/ADR-012/U9 the desktop shell remains replaceable; the desktop adapter is consumed source-pure, no desktop artifact/installer/launcher was produced, and none is claimed.",
+      "claim": "No desktop platform or installer claim."
+    },
+    {
+      "id": "cli-linux-x64",
+      "tuple": {
+        "os": "linux",
+        "arch": "x64",
+        "runtime": "node@24.21.0",
+        "surface": "CLI + Core host"
+      },
+      "artifact": "cli+core",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "No Linux Build Host was exercised in this task; nothing about Linux packaging or launch is claimed."
+    },
+    {
+      "id": "cli-macos-arm64",
+      "tuple": {
+        "os": "macos",
+        "arch": "arm64",
+        "runtime": "node@24.21.0",
+        "surface": "CLI + Core host"
+      },
+      "artifact": "cli+core",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "No macOS Build Host was exercised in this task; nothing about macOS packaging or launch is claimed."
+    },
+    {
+      "id": "extension-firefox-any",
+      "tuple": { "os": "any", "arch": "any", "browser": "firefox", "surface": "browser extension" },
+      "artifact": "extension",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "Firefox is outside the exercised tuple; the MV3 manifest/service-worker layout is not claimed to load or function there."
+    },
+    {
+      "id": "extension-safari-any",
+      "tuple": { "os": "any", "arch": "any", "browser": "safari", "surface": "browser extension" },
+      "artifact": "extension",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "Safari is outside the exercised tuple; nothing about Safari support is claimed."
+    },
+    {
+      "id": "native-host-linux-macos",
+      "tuple": {
+        "os": "linux+macos",
+        "arch": "any",
+        "browser": "chromium-family",
+        "surface": "native messaging host"
+      },
+      "artifact": "native-host",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "No Linux/macOS registration adapter was emitted (data-driven matrix: unselected platforms generate nothing) and no registration was performed or claimed on them."
+    },
+    {
+      "id": "updater-signing-any",
+      "tuple": { "os": "any", "arch": "any", "surface": "updater/signing" },
+      "artifact": "any",
+      "status": "NOT_PROVEN",
+      "claimType": "not-proven",
+      "reason": "No updater or code-signing mechanism is configured, so none is claimed anywhere (TEST_MATRIX negative coverage: updater-or-signing-claim-without-configured-validated-mechanism)."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "suite": "build-reproducibility",
+  "executedAt": "2026-10-05T13:57:31.133Z",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26200",
+    "osVersion": "Windows 11 Pro",
+    "node": "24.21.0",
+    "executable": "C:\\Users\\15549\\AppData\\Roaming\\fnm\\node-versions\\v24.21.0\\installation\\node.exe",
+    "tmpRoot": "C:\\Users\\15549\\AppData\\Local\\Temp"
+  },
+  "checks": [
+    {
+      "id": "rebuild-byte-identity-cli",
+      "status": "PASS",
+      "command": [
+        "pnpm build --out out/repro",
+        "compare identity contentHash"
+      ],
+      "detail": "second full build produced the byte-identical artifact (same canonical content hash)"
+    },
+    {
+      "id": "rebuild-byte-identity-core",
+      "status": "PASS",
+      "command": [
+        "pnpm build --out out/repro",
+        "compare identity contentHash"
+      ],
+      "detail": "second full build produced the byte-identical artifact (same canonical content hash)"
+    },
+    {
+      "id": "rebuild-byte-identity-extension",
+      "status": "PASS",
+      "command": [
+        "pnpm build --out out/repro",
+        "compare identity contentHash"
+      ],
+      "detail": "second full build produced the byte-identical artifact (same canonical content hash)"
+    },
+    {
+      "id": "rebuild-byte-identity-native-host",
+      "status": "PASS",
+      "command": [
+        "pnpm build --out out/repro",
+        "compare identity contentHash"
+      ],
+      "detail": "second full build produced the byte-identical artifact (same canonical content hash)"
+    }
+  ],
+  "overall": "PASS"
+}

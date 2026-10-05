@@ -1,0 +1,128 @@
+{
+  "suite": "windows-cli-core-clean-install",
+  "executedAt": "2026-10-05T13:57:25.336Z",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26200",
+    "osVersion": "Windows 11 Pro",
+    "node": "24.21.0",
+    "executable": "C:\\Users\\15549\\AppData\\Roaming\\fnm\\node-versions\\v24.21.0\\installation\\node.exe",
+    "tmpRoot": "C:\\Users\\15549\\AppData\\Local\\Temp"
+  },
+  "checks": [
+    {
+      "id": "clean-environment-copied-artifacts-only",
+      "status": "PASS",
+      "detail": "artifacts copied to C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-clean-eVwFeo; the directory contains only the emitted package trees"
+    },
+    {
+      "id": "cli-launch-help",
+      "status": "PASS",
+      "command": [
+        "node",
+        "cli/xdownload-cli.js",
+        "help"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "detail": "CLI launches standalone (no Desktop UI, no workspace) and prints usage",
+      "stdoutExcerpt": "xdownload — thin CLI adapter over the core seam (PRD §27)\n\nUsage: xdownload <command> [options]\n\nCommands:\n  submit   Submit one acquisition contract (JSON payload; acceptance only unless --wait)\n  status   Read the machine-readable status projection for one contract\n  wait     Poll READ_PROJECTION until a terminal result is projected (bounded)\n  cancel   Cancel a lineage (CANCEL_LINEAGE through t..."
+    },
+    {
+      "id": "cli-usage-error-typed",
+      "status": "PASS",
+      "command": [
+        "node",
+        "cli/xdownload-cli.js",
+        "status"
+      ],
+      "exitCode": 1,
+      "expectedExitCode": 1,
+      "detail": "missing required options produce a typed USAGE document and exit 1",
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.error\",\"schema\":\"1\",\"error\":\"USAGE\",\"message\":\"missing required option --port\",\"usage\":\"run: xdownload help\",\"diagnostics\":null}\n"
+    },
+    {
+      "id": "core-host-launch-ready",
+      "status": "PASS",
+      "command": [
+        "node",
+        "core/xdownload-core-host.js",
+        "--root",
+        "<clean>/core-data",
+        "--port",
+        "0"
+      ],
+      "exitCode": 0,
+      "detail": "Core host composed the authoritative runtime and reported readiness on loopback port 63449",
+      "stdoutExcerpt": "{\"document\":\"xdownload.core-host.ready\",\"host\":\"127.0.0.1\",\"port\":63449,\"pid\":9524,\"installId\":\"smoke-install-001\",\"userId\":\"smoke-user-001\"}\n"
+    },
+    {
+      "id": "cli-submit-accepted-via-seam",
+      "status": "PASS",
+      "command": [
+        "node",
+        "cli/xdownload-cli.js",
+        "submit",
+        "--file",
+        "<contract>"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "detail": "packaged CLI submitted a canonical contract through the loopback seam to the packaged Core and rendered acceptance",
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.acceptance\",\"schema\":\"1\",\"command\":\"submit\",\"outcome\":\"ACCEPTED\",\"contract_id\":\"contract-smoke-001\",\"request_id\":\"req-43f63d3e-c343-4152-9e2f-4b2b0bf4e088\",\"revision\":1,\"converged\":false,\"current_revision\":1,\"needs_user_action\":false,\"required_action\":null,\"note\":\"submit acceptance is not final acquisition success\"}\n",
+      "stderrExcerpt": "submit accepted (exit 0)\n"
+    },
+    {
+      "id": "cli-status-projection-via-seam",
+      "status": "PASS",
+      "command": [
+        "node",
+        "cli/xdownload-cli.js",
+        "status",
+        "--contract",
+        "contract-smoke-001"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "detail": "packaged CLI read the Core-owned projection for the submitted lineage",
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-smoke-001\",\"contract_revision\":1,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"ACTIVE\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-smoke-001\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":n..."
+    },
+    {
+      "id": "cli-submit-needs-user-action",
+      "status": "PASS",
+      "command": [
+        "node",
+        "cli/xdownload-cli.js",
+        "submit",
+        "--file",
+        "<explicit-selection-contract>"
+      ],
+      "exitCode": 3,
+      "expectedExitCode": 3,
+      "detail": "explicit-user-selection submission returns the bounded NEEDS_USER_ACTION state (exit 3, needs_user_action=true), never a blocked or invented status",
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.acceptance\",\"schema\":\"1\",\"command\":\"submit\",\"outcome\":\"ACCEPTED\",\"contract_id\":\"contract-smoke-002\",\"request_id\":\"req-13e20f9c-c206-44b5-b353-151e66b93a45\",\"revision\":1,\"converged\":false,\"current_revision\":1,\"needs_user_action\":true,\"required_action\":\"CONFIRM_SNAPSHOT\",\"note\":\"submit acceptance is not final acquisition success\"}\n"
+    },
+    {
+      "id": "core-durable-files-present",
+      "status": "PASS",
+      "detail": "Core data root contains 4 durable files: ledger.sqlite, ledger.sqlite-shm, ledger.sqlite-wal, seam-journal.jsonl"
+    },
+    {
+      "id": "cli-unreachable-core-typed-transport-failure",
+      "status": "PASS",
+      "command": [
+        "node",
+        "cli/xdownload-cli.js",
+        "status",
+        "--port",
+        "9"
+      ],
+      "exitCode": 5,
+      "expectedExitCode": 5,
+      "detail": "packaged CLI degrades honestly when Core is unreachable: typed TRANSPORT document, documented exit 5, no fabricated status",
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.error\",\"schema\":\"1\",\"error\":\"TRANSPORT\",\"message\":\"connect ECONNREFUSED 127.0.0.1:9\",\"usage\":null,\"diagnostics\":null}\n"
+    }
+  ],
+  "overall": "PASS"
+}
