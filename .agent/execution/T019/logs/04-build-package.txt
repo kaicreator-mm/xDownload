@@ -1,0 +1,5 @@
+package cli: sha256-be65bbd90220424cf6cef2d21c17c2df7f108ed987267e760f3abdf5c338072c
+package core: sha256-18cba665a52c5bc44f3ade3257f7cadd0cd85cbb0738d6b6ebf7e64a1a0fe472
+package extension: sha256-5d2cfd8a3608ac55dc3bfdf80d17abc4e15d1b4cc59de58a898df3904ce553a6
+package native-host: sha256-f58819bafe8b7001f86cbc340b773b1c2b90327e7ad40ea4657d13a66e7b86a3
+package-content audit: PASS

@@ -1,0 +1,28 @@
+Scope: all 20 workspace projects
+✓ Lockfile passes supply-chain policies (verified 4h ago)
+Lockfile is up to date, resolution step is skipped
+Packages are hard linked from the content-addressable store to the virtual store.
+  Content-addressable store is at: C:\Users\15549\AppData\Local\pnpm\store\v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 118, reused 117, downloaded 0, added 104
+Packages: +153
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 153, reused 153, downloaded 0, added 153, done
+.../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+.../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+
+devDependencies:
++ @eslint/js 9.39.5
++ @types/node 24.19.1
++ @xdownload/browser-auth-broker link:packages/browser-auth-broker
++ @xdownload/core-runtime link:packages/core-runtime
++ @xdownload/core-seam link:packages/core-seam
++ @xdownload/domain-contracts link:packages/domain-contracts
++ esbuild 0.25.12
++ eslint 9.39.5
++ prettier 3.9.9
++ typescript 5.9.3
++ typescript-eslint 8.71.0
++ vitest 4.1.11
+
+Done in 3.9s using pnpm v12.8.1

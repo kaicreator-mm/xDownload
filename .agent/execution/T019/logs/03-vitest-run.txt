@@ -1,0 +1,1 @@
+JSON report written to C:/xDev/kAiCreator/xDownload/i38-t019/.agent/execution/T019/logs/03-vitest-results.json

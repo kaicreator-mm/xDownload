@@ -1,0 +1,96 @@
+# T019 G0/G1(+G2-G4) gate status board — verbatim from the T003 version-validation machinery
+schema: xdownload/t019-gate-status-v1
+task: T019
+issue: "#38"
+candidate:
+  commit_sha: "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4"
+  tree_sha: "90b478be23c2fe45fd38227c06884c9e5e1b1125"
+evaluated_at: "2026-10-05T17:39:35.892Z"
+machinery: packages/version-validation/src/gates.ts (gateStatusBoard(); evaluateGate())
+evaluation_note: >-
+  gateStatusBoard() called on the exact candidate and recorded as emitted.
+  No product measurement was performed by T019; gate product measurement
+  (real hosts, real corpora runs) belongs to T020-T023. NOT_RUN entries are
+  the honest starting board, exactly as the T003 machinery emits them.
+  evaluateGate() probes with non-evidence inputs threw (recorded as-is);
+  evaluator semantics are exercised by the gates harness suite (155/155 green).
+
+status_board_verbatim:
+  - gate_id: "G0"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+  - gate_id: "G1a"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+  - gate_id: "G1b"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+  - gate_id: "G1c"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+  - gate_id: "G1d"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+  - gate_id: "G2"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+  - gate_id: "G3"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+  - gate_id: "G4"
+    status: "NOT_RUN"
+    note: "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+
+definitions_verbatim:
+  - gate_id: "G0"
+    title: "Product Value"
+    prd_ref: "PRD-§32/G0"
+    applicability: "REQUIRED"
+    metrics: ["CORRECT_COMPLETION", "ACTIVE_USER_TIME", "MANUAL_ACTIONS", "RECOVERY_EFFORT", "FALSE_SUCCESS_RATE"]
+  - gate_id: "G1a"
+    title: "Batch Acquisition Increment"
+    prd_ref: "PRD-§32/G1a"
+    applicability: "REQUIRED_FOR_S5_S6"
+    metrics: ["BATCH_EFFORT_REDUCTION", "CORRECT_COMPLETION", "FALSE_SUCCESS_RATE"]
+  - gate_id: "G1b"
+    title: "Navigation Increment"
+    prd_ref: "PRD-§32/G1b"
+    applicability: "REQUIRED_WHEN_S6_CONTINUATION"
+    metrics: ["NAVIGATION_EFFORT_REDUCTION", "CORRECT_COMPLETION"]
+  - gate_id: "G1c"
+    title: "Semantic Selection Increment"
+    prd_ref: "PRD-§32/G1c"
+    applicability: "REQUIRED_WHEN_SEMANTIC_SELECTION"
+    metrics: ["SELECTION_EFFORT_REDUCTION", "WRONG_TARGET_RATE", "CONFIRMATION_BURDEN"]
+  - gate_id: "G1d"
+    title: "Organization Increment"
+    prd_ref: "PRD-§32/G1d"
+    applicability: "RECOMMENDED_NON_BLOCKING"
+    metrics: ["CORRECT_COMPLETION"]
+  - gate_id: "G2"
+    title: "AI Increment"
+    prd_ref: "PRD-§32/G2"
+    applicability: "CONDITIONAL"
+    metrics: ["CORRECT_COMPLETION"]
+  - gate_id: "G3"
+    title: "Local Knowledge Compounding"
+    prd_ref: "PRD-§32/G3"
+    applicability: "RECOMMENDED_NON_BLOCKING"
+    metrics: ["CORRECT_COMPLETION", "MODEL_USE_REDUCTION", "ACTIVE_USER_TIME_REDUCTION", "REPAIR_EFFORT_REDUCTION"]
+  - gate_id: "G4"
+    title: "Shared Knowledge"
+    prd_ref: "PRD-§32/G4"
+    applicability: "DEFERRED_NOT_A_V010_RELEASE_GATE"
+    metrics: []
+
+probes_recorded_as_emitted:
+  - probe: "evaluateGate-undefined"
+    outcome: "\"undefined\" is not valid JSON"
+  - probe: "evaluateGate-empty-object"
+    outcome: "\"undefined\" is not valid JSON"
+
+summary:
+  PASS: 0
+  FAIL: 0
+  NOT_RUN: 8
+  fabricated_passes: 0
