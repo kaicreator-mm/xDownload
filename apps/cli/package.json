@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@xdownload/converged-runtime": "workspace:*",
     "@xdownload/core-seam": "workspace:*",
     "@xdownload/domain-contracts": "workspace:*"
   }

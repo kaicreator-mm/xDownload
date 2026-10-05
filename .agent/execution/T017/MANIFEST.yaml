@@ -1,0 +1,101 @@
+pack_id: xdownload-v0.1.0-T017-5b86cd2ca3b5
+pack_state_at_generation: PACK_CURRENT
+task_id: T017
+repository: kaicreator-mm/xDownload
+version: v0.1.0
+parent_issue: "#36"
+base_sha: 5b86cd2ca3b5cc587f7bf42f4331716637081353
+base_tree: 4f6fe02886d373613597711fb9d8cc4ba7915d7f
+integration_branch: version/v0.1.0
+task_pack_ref: docs/implementation/v0.1.0/task-packs/T017_surface-ai-integration.md@234eb3ac308b0520e5ef022c7124d0ad622182b9
+task_pack_blob: 234eb3ac308b0520e5ef022c7124d0ad622182b9
+task_dag_blob: 232e561c2b350a60085c6d13d6030b759295c7cf
+task_pack_index_blob: 586e765d7bf1777d7fadded9b0e78041acfd3666
+architecture_blob: 5f6865974a4f2dbe78062c26e66d6a24af43d4a7
+freeze_checkpoint: 40bc80abc16012a42cb396a1aa3b6a6752daf061
+materialization_issue: "#19"
+materialization_terminal_comment: "5968293780"
+branch: task/v0.1.0-t017-surface-ai-convergence
+branch_created_from_sha: 5b86cd2ca3b5cc587f7bf42f4331716637081353
+agent_freedom: F1_BOUNDED_IMPLEMENTATION
+l3_requirement: required
+review_policy: review:required
+risk: risk:high
+pinned_standard_revision: 94cad2b0487e8a552c66d6bcd1cba36b7779383d
+generated_by: zcode:t017-jit-prep
+generated_at: "2026-10-05T05:02:00Z"
+dependency_completion:
+  - T012#31@70f6ef22ce9bdd6127c82c03a61b3661a514c5ec
+  - T013#32@4258bed923b20d472b024d1a815a206ddf65a826
+  - T014#33@356178754a9e92ea422328f8f7332b15d906d9f0
+  - T015#34@4166b51841709bd74cedf1dd89cfcf8f373c38a1
+  - T016#35@5b86cd2ca3b5cc587f7bf42f4331716637081353
+dependency_completion_note: >-
+  All five frozen blocked-by dependencies are CLOSED with merge commits on
+  version/v0.1.0: T012 (#31, PR #63, bounded AI proposal adapter) merged as
+  70f6ef22ce9b; T013 (#32, PR #64, CLI adapter) merged as 4258bed923b2; T014
+  (#33, PR #69, desktop UI adapter) merged as 356178754a9e; T015 (#34, PR #73,
+  authoritative Core runtime) merged as 4166b5184170; T016 (#35, PR #74,
+  browser + collection workflow integration) merged as 5b86cd2ca3b5, which
+  additionally carries the #72 T010 hardening merge (e652ca0) and is itself
+  the observed integration base for this pack. Task-pack filename fact: the
+  frozen pack file at the freeze checkpoint is
+  `T017_surface-ai-integration.md` (matching the Issue #36 body); the blob
+  sha above was resolved from the real tree before this pack was committed.
+owned_scope: >-
+  Product-surface convergence, cross-surface client behavior and AI fallback
+  integration: wire the already-merged CLI surface (apps/cli, T013) and
+  Desktop surface (apps/desktop, T014) — and exercise the browser-extension
+  surface (apps/browser-extension, T010) as a consumer — onto the integrated
+  Core/Browser/Collection runtime so all surfaces share one contract/result
+  authority through the T004 seam; wire the bounded AI proposal adapter
+  (@xdownload/ai-proposal, T012) into the composed discovery/collection path
+  as a strictly optional suggestion source; prove deterministic/template work
+  stays model-independent; bind the T012 P2 waiver integration constraint —
+  the provider invocation deadline belongs to the caller/budget (PRD §15
+  GlobalSafetyBudget: configured model cost/calls and global active elapsed
+  time), because @xdownload/ai-proposal deliberately enforces none internally.
+write_set: >-
+  Cross-surface convergence wiring/glue under apps/cli, apps/desktop and
+  (as consumer, no packaging) apps/browser-extension; minimal new integration
+  composition module(s) under the existing packages/* workspace seam where
+  surface-shared composition needs a home (naming/decomposition is an F1
+  choice); narrowly necessary root workspace dependency/script/config wiring
+  directly required by that composition and its tests; package-local and
+  app-local focused convergence tests fit for the existing vitest
+  packages/*/test/**/*.test.ts seam. Upstream package sources
+  (packages/domain-contracts, packages/version-validation, packages/core-seam,
+  packages/core-scheduler, packages/persistence-ledger,
+  packages/direct-acquisition, packages/hls-vod-adapter,
+  packages/browser-observation, packages/browser-auth-broker,
+  packages/discovery-recipe, packages/ai-proposal, packages/core-runtime,
+  packages/browser-collection-workflow) and the two T001 smoke packages are
+  consumed as-is; semantic modification of consumed packages is forbidden.
+core_artifacts:
+  - MANIFEST.yaml
+  - EXECUTION_CONTRACT.md
+  - TEST_MATRIX.yaml
+  - FAILURE_MATRIX.yaml
+  - IMPLEMENTATION_MAP.md
+  - REVIEW_CHECKLIST.md
+optional_artifacts:
+  - REFERENCE_PACK.md
+retention: full-provenance
+package_excluded: true
+material_paths:
+  - .dev-standard/
+  - AGENTS.md
+  - docs/planning/
+  - docs/product/PRD-v0.4.2-review-candidate.md
+  - docs/architecture/L2_ARCHITECTURE_EVIDENCE.md
+  - docs/implementation/v0.1.0/TASK_DAG.md
+  - docs/implementation/v0.1.0/TASK_PACKS.json
+  - docs/implementation/v0.1.0/task-packs/T017_surface-ai-integration.md
+  - package.json
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - tsconfig.json
+  - vitest.config.ts
+  - eslint.config.js
+  - packages/
+  - apps/

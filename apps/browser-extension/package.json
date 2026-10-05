@@ -5,6 +5,8 @@
   "type": "module",
   "dependencies": {
     "@xdownload/browser-auth-broker": "workspace:*",
-    "@xdownload/browser-observation": "workspace:*"
+    "@xdownload/browser-observation": "workspace:*",
+    "@xdownload/converged-runtime": "workspace:*",
+    "@xdownload/core-seam": "workspace:*"
   }
 }
