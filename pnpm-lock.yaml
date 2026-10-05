@@ -196,9 +196,18 @@ importers:
       '@xdownload/browser-observation':
         specifier: workspace:*
         version: link:../../packages/browser-observation
+      '@xdownload/converged-runtime':
+        specifier: workspace:*
+        version: link:../../packages/converged-runtime
+      '@xdownload/core-seam':
+        specifier: workspace:*
+        version: link:../../packages/core-seam
 
   apps/cli:
     dependencies:
+      '@xdownload/converged-runtime':
+        specifier: workspace:*
+        version: link:../../packages/converged-runtime
       '@xdownload/core-seam':
         specifier: workspace:*
         version: link:../../packages/core-seam
@@ -208,6 +217,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@xdownload/converged-runtime':
+        specifier: workspace:*
+        version: link:../../packages/converged-runtime
       '@xdownload/core-seam':
         specifier: workspace:*
         version: link:../../packages/core-seam
@@ -265,6 +277,31 @@ importers:
       '@xdownload/domain-contracts':
         specifier: workspace:*
         version: link:../domain-contracts
+
+  packages/converged-runtime:
+    dependencies:
+      '@xdownload/ai-proposal':
+        specifier: workspace:*
+        version: link:../ai-proposal
+      '@xdownload/core-seam':
+        specifier: workspace:*
+        version: link:../core-seam
+      '@xdownload/discovery-recipe':
+        specifier: workspace:*
+        version: link:../discovery-recipe
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+    devDependencies:
+      '@xdownload/browser-auth-broker':
+        specifier: workspace:*
+        version: link:../browser-auth-broker
+      '@xdownload/browser-collection-workflow':
+        specifier: workspace:*
+        version: link:../browser-collection-workflow
+      '@xdownload/core-runtime':
+        specifier: workspace:*
+        version: link:../core-runtime
 
   packages/core-runtime:
     dependencies:
