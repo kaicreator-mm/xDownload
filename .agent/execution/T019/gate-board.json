@@ -1,0 +1,141 @@
+{
+  "suite": "g0-g1-gate-status-board",
+  "executedAt": "2026-10-05T17:39:35.892Z",
+  "candidateHead": "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4",
+  "definitions": [
+    {
+      "gateId": "G0",
+      "title": "Product Value",
+      "prdRef": "PRD-§32/G0",
+      "applicability": "REQUIRED",
+      "metrics": [
+        "CORRECT_COMPLETION",
+        "ACTIVE_USER_TIME",
+        "MANUAL_ACTIONS",
+        "RECOVERY_EFFORT",
+        "FALSE_SUCCESS_RATE"
+      ]
+    },
+    {
+      "gateId": "G1a",
+      "title": "Batch Acquisition Increment",
+      "prdRef": "PRD-§32/G1a",
+      "applicability": "REQUIRED_FOR_S5_S6",
+      "metrics": [
+        "BATCH_EFFORT_REDUCTION",
+        "CORRECT_COMPLETION",
+        "FALSE_SUCCESS_RATE"
+      ]
+    },
+    {
+      "gateId": "G1b",
+      "title": "Navigation Increment",
+      "prdRef": "PRD-§32/G1b",
+      "applicability": "REQUIRED_WHEN_S6_CONTINUATION",
+      "metrics": [
+        "NAVIGATION_EFFORT_REDUCTION",
+        "CORRECT_COMPLETION"
+      ]
+    },
+    {
+      "gateId": "G1c",
+      "title": "Semantic Selection Increment",
+      "prdRef": "PRD-§32/G1c",
+      "applicability": "REQUIRED_WHEN_SEMANTIC_SELECTION",
+      "metrics": [
+        "SELECTION_EFFORT_REDUCTION",
+        "WRONG_TARGET_RATE",
+        "CONFIRMATION_BURDEN"
+      ]
+    },
+    {
+      "gateId": "G1d",
+      "title": "Organization Increment",
+      "prdRef": "PRD-§32/G1d",
+      "applicability": "RECOMMENDED_NON_BLOCKING",
+      "metrics": [
+        "CORRECT_COMPLETION"
+      ]
+    },
+    {
+      "gateId": "G2",
+      "title": "AI Increment",
+      "prdRef": "PRD-§32/G2",
+      "applicability": "CONDITIONAL",
+      "metrics": [
+        "CORRECT_COMPLETION"
+      ]
+    },
+    {
+      "gateId": "G3",
+      "title": "Local Knowledge Compounding",
+      "prdRef": "PRD-§32/G3",
+      "applicability": "RECOMMENDED_NON_BLOCKING",
+      "metrics": [
+        "CORRECT_COMPLETION",
+        "MODEL_USE_REDUCTION",
+        "ACTIVE_USER_TIME_REDUCTION",
+        "REPAIR_EFFORT_REDUCTION"
+      ]
+    },
+    {
+      "gateId": "G4",
+      "title": "Shared Knowledge",
+      "prdRef": "PRD-§32/G4",
+      "applicability": "DEFERRED_NOT_A_V010_RELEASE_GATE",
+      "metrics": []
+    }
+  ],
+  "statusBoard": [
+    {
+      "gateId": "G0",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    },
+    {
+      "gateId": "G1a",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    },
+    {
+      "gateId": "G1b",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    },
+    {
+      "gateId": "G1c",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    },
+    {
+      "gateId": "G1d",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    },
+    {
+      "gateId": "G2",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    },
+    {
+      "gateId": "G3",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    },
+    {
+      "gateId": "G4",
+      "status": "NOT_RUN",
+      "note": "T003 builds instrumentation only; execution belongs to version-level Validation on the T019 candidate"
+    }
+  ],
+  "probes": [
+    {
+      "probe": "evaluateGate-undefined",
+      "threw": "\"undefined\" is not valid JSON"
+    },
+    {
+      "probe": "evaluateGate-empty-object",
+      "threw": "\"undefined\" is not valid JSON"
+    }
+  ]
+}

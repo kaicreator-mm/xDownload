@@ -1,0 +1,180 @@
+$ pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test:unit
+$ prettier --check .
+Checking formatting...
+All matched files use Prettier code style!
+$ eslint .
+$ tsc --noEmit
+$ vitest run
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mC:/xDev/kAiCreator/xDownload/i38-t019[39m
+
+ [32m✓[39m packages/domain-contracts/test/oracles-c01-c34.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-result-projector.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-oracles-c01-c34.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 48[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/discovery-bounds.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/oracles-t011.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/manifest-binding.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/projection-read-side.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m apps/cli/test/oracles.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 539[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/gates.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/core-authority.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 337[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/oracle-mappings.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 336[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/oracles-parity.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/broker-capability.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/recipe-engine.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m build/test/packaging.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 1424[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/negative-coverage.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 345[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/schema-migrations.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 893[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/hitl-parity.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 461[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/budgets.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 554[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/cross-surface-same-contract-status.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 907[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/projection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 966[2mms[22m[39m
+     [33m[2m✓[22m[39m produces terminal truth only through the projector and it is deterministic [33m 342[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/continuation-successor.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/transfer-and-media.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1286[2mms[22m[39m
+     [33m[2m✓[22m[39m blocks acceptance when the validate chain fails (C27) and never projects COMPLETE [33m 413[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/ledger-lineage.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 613[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/continuation-rules.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 577[2mms[22m[39m
+     [33m[2m✓[22m[39m retries exactly the original failed frozen members on the frozen identities with no replacement membership (C12) [33m 554[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/transition-legality.test.ts [2m([22m[2m37 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s2-handoff.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 749[2mms[22m[39m
+     [33m[2m✓[22m[39m carries an explicit attachment from gated observation through the broker to an authoritative Core acquisition [33m 365[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/result-combinations.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/ai-offline-fallback.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/status-explanation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 200[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/oracles.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/confirmation-workflow.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/lifecycle-restart.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 134[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/g0-baseline-plan.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-validation-registry.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s5-current-page.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 2633[2mms[22m[39m
+     [33m[2m✓[22m[39m produces the confirmed current-page flow with continuation_scope=NONE and excludes continuation-loaded members (C08) [33m 704[2mms[22m[39m
+     [33m[2m✓[22m[39m drives the composed flow from real gated observation records (observation-feed level) [33m 470[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps the confirmation workflow within material-item bounds with one selection claim set (C30) [33m 479[2mms[22m[39m
+     [33m[2m✓[22m[39m proceeds with injected outcomes that record INJECTED_SOURCE provenance and gates acquisition on the actual record [33m 752[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/resume-validators.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 458[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/integrity.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 446[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/focused-core-integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 439[2mms[22m[39m
+     [33m[2m✓[22m[39m serves command→schedule→transfer→validate→persist→project end-to-end through the loopback seam [33m 324[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/partial-truncated-unknown.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 3348[2mms[22m[39m
+     [33m[2m✓[22m[39m projects PARTIAL/PARTIAL/TRUNCATED when the global-safety cap stops a batch continuation (C02) [33m 463[2mms[22m[39m
+     [33m[2m✓[22m[39m treats a failed next page / missing control as failure, never natural end (C03) [33m 527[2mms[22m[39m
+     [33m[2m✓[22m[39m projects the exact C23 tuple under discovery-budget exhaustion with no continuation inference [33m 526[2mms[22m[39m
+     [33m[2m✓[22m[39m binds coverage to the requested page range and never implies parent completeness (C25) [33m 880[2mms[22m[39m
+     [33m[2m✓[22m[39m executes the frozen-target HLS acquisition after discovery exhaustion through Core budget ports (C28) [33m 307[2mms[22m[39m
+     [33m[2m✓[22m[39m projects only canonical multidimensional terminal shapes (negative: no glue-local vocabulary) [33m 420[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/cancellation-cutoff.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 861[2mms[22m[39m
+     [33m[2m✓[22m[39m blocks automatic later acceptance after cancel-before-accept (ADR-013) [33m 412[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/auth-expiry.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1822[2mms[22m[39m
+     [33m[2m✓[22m[39m projects the exact C10 PARTIAL tuple: accessible subset acquired, inaccessible named, scope unchanged [33m 1755[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/oracles-c01-c34.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 70[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/denominator-accounting.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/evidence.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/secret-redaction.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-coverage-accounting.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/assembly-validation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/single-mutation-path.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/redirects-locator.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 173[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/snapshot.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s6-explicit-collection.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 1662[2mms[22m[39m
+     [33m[2m✓[22m[39m reaches VERIFIED_COMPLETE only through the declared natural-end relation with identity closure (C04) [33m 783[2mms[22m[39m
+     [33m[2m✓[22m[39m rejects any general site frontier: only declared collection/member edges are followed (C06) [33m 441[2mms[22m[39m
+     [33m[2m✓[22m[39m treats an undeclared natural-end signal as a non-authority and keeps declared bounds frozen [33m 436[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/concurrent-ui-cli-convergence.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 270[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/immutable-scope.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 198[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/duplicate-command.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 328[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/cancellation-cutoff.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 517[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/provenance-redirects.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 308[2mms[22m[39m
+ [32m✓[39m apps/cli/test/convergence.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 127[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/process-restart.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 8123[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-lineage' [33m 1041[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-stage' [33m 1211[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-materialize' [33m 1546[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-finalize' [33m 1877[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-accept-commit' [33m 1688[2mms[22m[39m
+     [33m[2m✓[22m[39m inherits remaining budgets across an in-process restart on the same frozen lineage [33m 550[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/secret-sink-cycle.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/idempotency-revision.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/journeys.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/malicious-proposals.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/retry-resume.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/malicious-proposal-safety.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/browser-triggered-identical-projection.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 310[2mms[22m[39m
+     [33m[2m✓[22m[39m a browser-triggered S2 flow projects identically to every observing surface through the same T007 projection [33m 307[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/identity-accounting.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/evidence-exact-subject.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/budgets-retry.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 3384[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/lineage-idempotency.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/budget-precedence.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/cancel-cutoff-matrix.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/selection-knowledge.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m apps/cli/test/cancel-retry.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 157[2mms[22m[39m
+ [32m✓[39m apps/cli/test/golden-output.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 248[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/corpora-identity.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/budgets.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/malformed-oversized-input.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 3209[2mms[22m[39m
+     [33m[2m✓[22m[39m an oversized-payload rejection names the bound and never echoes payload content [33m 2923[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/recovery-reconciliation.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 711[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/budget-accounting.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/canonical-records.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/oracles-transfer.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 143[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/version-decode.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/envelope-wire-compatibility.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m packages/browser-observation/test/sink-redaction.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/no-surface-local-authority.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 179[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/core-disconnect.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 164[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/auth-prompts.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 165[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/restart-inheritance.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 344[2mms[22m[39m
+     [33m[2m✓[22m[39m inherits durable truth across reopenCoreRuntime: recovery classification, remaining budgets, continued acquisition, no re-enumeration [33m 342[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/digest-provenance.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 401[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/peer-authorization.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/topology.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/selection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 105[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/contract-scope.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-ledger.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/proposal-schema.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/segment-plan-provenance.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/duplicate-clients.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/slices-ports.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/convergence.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 168[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/batch-confirmation.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 153[2mms[22m[39m
+ [32m✓[39m apps/cli/test/status-parity.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 171[2mms[22m[39m
+ [32m✓[39m apps/cli/test/non-interactive.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 235[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/native-host-session.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/model-offline-fallback.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m packages/browser-observation/test/message-gate.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/acquisition.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/transport-loopback.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 173[2mms[22m[39m
+ [32m✓[39m apps/cli/test/batch.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 165[2mms[22m[39m
+ [32m✓[39m apps/cli/test/acceptance-vs-result.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 276[2mms[22m[39m
+ [32m✓[39m apps/cli/test/headless-authority.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 126[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/suppression.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/identity-locator.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/slices-s5-s6.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/secret-sink.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/harness-determinism.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32m✓[39m packages/browser-observation/test/observation-handoff.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/provenance-redirect.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m build/test/core-host.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 78[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/allowed-origins.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/broker-channel.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m apps/cli/test/negatives.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 56[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/semantic-claims.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/native-frame.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m packages/toolchain-smoke/test/index.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/real-browser-flows.test.ts [2m([22m[2m4 tests[22m[2m | [22m[90m3 todo[39m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/crash-windows.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 5543[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-submit' reopens with deterministic classification and exact budget truth [33m 634[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-dispatch-mid-external-effect' reopens with deterministic classification and exact budget truth [33m 992[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-effect-observed' reopens with deterministic classification and exact budget truth [33m 856[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-stage-bytes' reopens with deterministic classification and exact budget truth [33m 589[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-materialize' reopens with deterministic classification and exact budget truth [33m 699[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-finalize' reopens with deterministic classification and exact budget truth [33m 851[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-accept-commit' reopens with deterministic classification and exact budget truth [33m 477[2mms[22m[39m
+     [33m[2m✓[22m[39m an interrupted lifecycle resumes to acceptance on the same lineage after restart [33m 418[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m127 passed[39m[22m[90m (127)[39m
+[2m      Tests [22m [1m[32m1290 passed[39m[22m[2m | [22m[90m3 todo[39m[90m (1293)[39m
+[2m   Start at [22m 01:18:22
+[2m   Duration [22m 21.89s[2m (transform 68.00s, setup 0ms, import 156.72s, tests 50.43s, environment 26ms)[22m
+
