@@ -1,0 +1,101 @@
+pack_id: xdownload-v0.1.0-T019-6e512e6e
+pack_state_at_generation: PACK_CURRENT
+task_id: T019
+repository: kaicreator-mm/xDownload
+version: v0.1.0
+parent_issue: "#38"
+base_sha: 6e512e6e5397eae14bb1a4aa7d0722d517641b88
+base_tree: daa0853ddb6b61dbc781c9df111fe8a69f765eda
+integration_branch: version/v0.1.0
+task_pack_ref: docs/implementation/v0.1.0/task-packs/T019_candidate-preparation-visible-regression.md@5d2cd990b108fd5602a10b88d4fe5625011ea858
+task_pack_blob: 5d2cd990b108fd5602a10b88d4fe5625011ea858
+task_dag_blob: 232e561c2b350a60085c6d13d6030b759295c7cf
+task_pack_index_blob: 586e765d7bf1777d7fadded9b0e78041acfd3666
+architecture_blob: 5f6865974a4f2dbe78062c26e66d6a24af43d4a7
+freeze_checkpoint: 40bc80abc16012a42cb396a1aa3b6a6752daf061
+materialization_issue: "#19"
+materialization_terminal_comment: "5968293780"
+branch: task/v0.1.0-t019-candidate-preparation
+branch_created_from_sha: 6e512e6e5397eae14bb1a4aa7d0722d517641b88
+agent_freedom: F1_BOUNDED_IMPLEMENTATION
+l3_requirement: required
+review_policy: review:required
+risk: risk:critical
+pinned_standard_revision: 94cad2b0487e8a552c66d6bcd1cba36b7779383d
+generated_by: zcode:t019-jit-prep
+generated_at: "2026-10-05T16:40:00Z"
+dependency_completion:
+  - T003#22@e06cc15c937ba3ac50bc7bd16b707c2d20bb194b
+  - T017#36@888ce342b1d170ab4a217e0fff418cd8b0a0a712
+  - T018#37@6e512e6e5397eae14bb1a4aa7d0722d517641b88
+dependency_completion_note: >-
+  All three frozen blocked-by dependencies are CLOSED with merge commits
+  observed on version/v0.1.0: T003 (#22, validation harness/corpora/gate
+  instrumentation) at merge e06cc15c937ba3ac50bc7bd16b707c2d20bb194b (PR #57);
+  T017 (#36, surface + AI convergence) at merge
+  888ce342b1d170ab4a217e0fff418cd8b0a0a712 (PR #76); T018 (#37, packaging and
+  platform integration) at merge 6e512e6e5397eae14bb1a4aa7d0722d517641b88
+  (PR #77), which is itself the observed integration base for this pack — HEAD
+  of version/v0.1.0 after T003-T018 plus the #72 T010 hardening merges; base
+  tree daa0853ddb6b61dbc781c9df111fe8a69f765eda. The task-pack blob sha above
+  was resolved from the real tree with
+  `git rev-parse HEAD:docs/implementation/v0.1.0/task-packs/T019_candidate-preparation-visible-regression.md`
+  before this pack was committed.
+owned_scope: >-
+  Version candidate preparation and visible regression convergence on
+  version/v0.1.0: converge all implementation/package work (T003-T018) on the
+  version branch, run the configured cheap/full visible regression
+  preconditions on one exact candidate (clean bootstrap, configured CI, full
+  workspace unit/contract/integration discovery, S1-S6 harness availability,
+  production package build/smoke), evaluate the version-validation G0/G1 gate
+  instrumentation on that exact candidate with truthful statuses, repair only
+  separately authorized bounded defects, and record one immutable exact
+  candidate identity (SHA/tree) that T020-T023 version-level Validation binds
+  to. Version artifacts owned by this task per the Frozen Task Pack: the
+  recorded exact candidate identity and its visible regression/gate-status
+  convergence evidence. No new feature scope.
+write_set: >-
+  Candidate identity/version metadata artifacts recording the exact candidate
+  (SHA/tree/branch/gate-status summary) under .agent/execution/T019/ (evidence
+  only); narrowly necessary convergence wiring directly required to make the
+  full visible regression run executable and green on the exact candidate
+  (root/package scripts or config only when a defect blocks the run);
+  refreshed build/evidence/*.json produced by running the T018 build/smoke
+  pipeline on the exact candidate; separately authorized bounded defect
+  repairs (each with its own authorization reference and review). Consumed
+  as-is and semantically immutable: all 16 packages under packages/ (including
+  version-validation, converged-runtime, core-runtime), apps/ sources, Frozen
+  docs (docs/planning/, Frozen PRD, Frozen L2, TASK_DAG.md, TASK_PACKS.json,
+  the T019 Task Pack), tests and corpora/baselines after gate results are
+  visible. .agent/execution/** stays evidence-only and must never enter a
+  shipped package. No Candidate Freeze, Hidden Validation, Closure or Release
+  artifacts are created by T019.
+core_artifacts:
+  - MANIFEST.yaml
+  - EXECUTION_CONTRACT.md
+  - TEST_MATRIX.yaml
+  - FAILURE_MATRIX.yaml
+  - IMPLEMENTATION_MAP.md
+  - REVIEW_CHECKLIST.md
+optional_artifacts:
+  - REFERENCE_PACK.md
+retention: full-provenance
+package_excluded: true
+material_paths:
+  - .dev-standard/
+  - AGENTS.md
+  - docs/planning/
+  - docs/product/PRD-v0.4.2-review-candidate.md
+  - docs/architecture/L2_ARCHITECTURE_EVIDENCE.md
+  - docs/implementation/v0.1.0/TASK_DAG.md
+  - docs/implementation/v0.1.0/TASK_PACKS.json
+  - docs/implementation/v0.1.0/task-packs/T019_candidate-preparation-visible-regression.md
+  - package.json
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - tsconfig.json
+  - vitest.config.ts
+  - eslint.config.js
+  - packages/
+  - apps/
+  - build/
