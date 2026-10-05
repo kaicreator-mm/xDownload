@@ -38,6 +38,7 @@ import {
   type LocatorProvenance,
   type ProjectedTerminalResult,
   type ResourceLocator,
+  type ValidationDiagnostic,
 } from '@xdownload/domain-contracts';
 import type { DirectTransferRequest } from '@xdownload/direct-acquisition';
 import {
@@ -95,9 +96,13 @@ export function composeObservationHandoff(input: {
   return { ok: true, record: recorded.value, handoff: handoff.value };
 }
 
-/** Explicit issue decision for the S2 lane (least-authority TTL is mandatory). */
+/**
+ * Explicit issue decision for the S2 lane (least-authority TTL is mandatory).
+ * No caller-asserted origin exists: the binding derives its origin from the
+ * gated observation's handoff (`lane.handoff.origin`) — the only origin
+ * authority in this lane.
+ */
 export interface S2AuthorizationInput {
-  readonly origin: string;
   readonly partition?: string;
   readonly ttlMs: number;
   readonly issueDecisionToken: string;
@@ -139,6 +144,10 @@ export type S2HandoffRejection =
       readonly outcome: 'AUTH_REQUIRED' | 'AUTH_FAILED';
       readonly reasons: readonly BrokerDiagnostic[];
     }
+  | {
+      readonly stage: 'DELIVERY_LOCATOR';
+      readonly diagnostics: readonly ValidationDiagnostic[];
+    }
   | { readonly stage: 'CORE_ACQUISITION'; readonly error: CoreRuntimeFlowError };
 
 export type S2HandoffOutcome =
@@ -155,9 +164,9 @@ export type S2HandoffOutcome =
 
 /**
  * Run the composed S2 explicit-attachment flow. Fails closed at every stage:
- * gate → record → handoff → capability issue → exact-binding use → Core
- * acquisition. An authorization rejection never runs an acquisition and is
- * never absorbed into a partial success.
+ * gate → record → handoff → capability issue → exact-binding use →
+ * delivery-locator binding → Core acquisition. An authorization rejection
+ * never runs an acquisition and is never absorbed into a partial success.
  */
 export async function runS2AttachmentFlow(input: S2AttachmentFlowInput): Promise<S2HandoffOutcome> {
   // 1–3. Untrusted gate → provenance-bound record → redacted handoff envelope.
@@ -202,16 +211,19 @@ export async function runS2AttachmentFlow(input: S2AttachmentFlowInput): Promise
       },
     };
   }
-  // 6. Authoritative Core acquisition through the canonical budget ports.
+  // 6. Delivery locator bound to the frozen identity with its provenance
+  //    fact; a rejection is a typed lane failure, never an untyped throw.
   const locator = bindLocator(input.delivery.locator, input.contract.requestedTarget, {
     binding: input.delivery.provenance.binding,
     originLocatorUri: input.delivery.provenance.originLocatorUri,
   });
   if (!locator.ok) {
-    throw new Error(
-      `s2 delivery locator rejected: ${locator.diagnostics.map((d) => d.code).join(', ')}`,
-    );
+    return {
+      ok: false,
+      rejection: { stage: 'DELIVERY_LOCATOR', diagnostics: locator.diagnostics },
+    };
   }
+  // 7. Authoritative Core acquisition through the canonical budget ports.
   const transfer: DirectTransferRequest = {
     effectId: unwrapOrThrow(
       makeEffectId(

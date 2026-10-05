@@ -25,10 +25,15 @@ import {
   type BudgetRemaining,
   type ClaimSubject,
   type ClaimType,
+  type ConfirmationOutcome,
   type ContinuationScope,
   type EvidenceRecord,
   type SelectionSnapshot,
 } from '@xdownload/domain-contracts';
+import type {
+  ConfirmationOutcomeSource,
+  ConfirmationOutcomeSourceResolution,
+} from '../src/index.ts';
 
 export const SCHEMA = { schema: 'xdownload.domain-contracts', version: '1.0.0' } as const;
 
@@ -374,4 +379,27 @@ export function independentEvidence(
     scope: { domain: 'AUTHORIZATION' },
     certaintyClass: 'DECISIVE',
   });
+}
+
+/**
+ * Explicitly injected confirmation-outcome source driving a composed flow
+ * (review P1-1 repair): scripted outcomes enter ONLY through this declared
+ * port, so every flow result records INJECTED_SOURCE provenance for them —
+ * they are never autonomous CONFIRMED truth. Without an injected source a
+ * required confirmation degrades to the typed cannot-proceed outcome.
+ */
+export function injectedConfirmationSource(
+  outcomesFor?: (memberRefs: readonly string[]) => readonly ConfirmationOutcome[],
+): ConfirmationOutcomeSource {
+  return {
+    resolve: ({
+      memberRefs,
+    }: {
+      readonly memberRefs: readonly string[];
+    }): ConfirmationOutcomeSourceResolution => ({
+      kind: 'RESOLVED',
+      origin: 'INJECTED_SOURCE',
+      outcomes: outcomesFor ? outcomesFor(memberRefs) : memberRefs.map(() => 'CONFIRMED' as const),
+    }),
+  };
 }

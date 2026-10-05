@@ -86,7 +86,7 @@ describe('T016 provenance-redirects', () => {
         artifactId: 'artifact:c29-001',
         commandId: 'cmd-c29-001',
         observation: observationFor(pageBase),
-        authorization: { origin: pageBase, ttlMs: 60_000, issueDecisionToken: 'user-confirm:c29' },
+        authorization: { ttlMs: 60_000, issueDecisionToken: 'user-confirm:c29' },
         delivery: baseDelivery(pageBase, cdnBase, bytes),
       });
       expect(outcome.ok).toBe(true);
@@ -159,7 +159,7 @@ describe('T016 provenance-redirects', () => {
         artifactId: 'artifact:c29-002',
         commandId: 'cmd-c29-002',
         observation: observationFor(pageBase),
-        authorization: { origin: pageBase, ttlMs: 60_000, issueDecisionToken: 'user-confirm:c29b' },
+        authorization: { ttlMs: 60_000, issueDecisionToken: 'user-confirm:c29b' },
         delivery: baseDelivery(pageBase, cdnBase, bytes),
       });
       expect(outcome.ok).toBe(true);

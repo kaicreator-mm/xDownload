@@ -45,6 +45,7 @@ import {
 import {
   budgetsOpen,
   currentPageContract,
+  injectedConfirmationSource,
   finiteSetContract,
   mid,
   payload,
@@ -254,6 +255,7 @@ describe('T016 continuation-rules', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:c12',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T05:20:00Z',
       });
       expect(firstOutcome.ok).toBe(true);

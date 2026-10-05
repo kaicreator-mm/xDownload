@@ -26,6 +26,7 @@ import {
 import { runCollectionFlow } from '../src/index.ts';
 import {
   budgetsOpen,
+  injectedConfirmationSource,
   playlistContract,
   SCHEMA,
   seedBytes,
@@ -118,6 +119,7 @@ describe('T016 s6-explicit-collection', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:s6-c04',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T04:00:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -213,6 +215,7 @@ describe('T016 s6-explicit-collection', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:s6-c06',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T04:10:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -265,6 +268,7 @@ describe('T016 s6-explicit-collection', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:s6-end',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T04:20:00Z',
       });
       expect(outcome.ok).toBe(true);

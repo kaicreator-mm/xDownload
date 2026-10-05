@@ -45,6 +45,7 @@ import {
   budgetsGlobalExhausted,
   budgetsOpen,
   currentPageContract,
+  injectedConfirmationSource,
   pageRangeContract,
   playlistContract,
   seedBytes,
@@ -151,6 +152,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
         deliveryFor: deliveryFor(served),
         declaredRequestedMemberIds: PAGE_MEMBERS,
         authorization: auth(served, 'user-confirm:c02'),
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T07:00:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -198,6 +200,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
         deliveryFor: deliveryFor(served),
         declaredRequestedMemberIds: RANGE_MEMBERS.slice(0, 4),
         authorization: auth(served, 'user-confirm:c03'),
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T07:10:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -237,6 +240,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
           deliveryFor: deliveryFor(served),
           declaredRequestedMemberIds: RANGE_MEMBERS.slice(0, 4),
           authorization: auth(served, 'user-confirm:c03b'),
+          confirmationSource: injectedConfirmationSource(),
           recordedAt: '2026-10-04T07:12:00Z',
         });
         expect(outcome2.ok).toBe(true);
@@ -276,6 +280,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
         budgetSteps: [budgetsOpen],
         deliveryFor: deliveryFor(served),
         authorization: auth(served, 'user-confirm:c14'),
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T07:20:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -327,6 +332,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
         deliveryFor: deliveryFor(served),
         declaredRequestedMemberIds: PAGE_MEMBERS,
         authorization: auth(served, 'user-confirm:c23'),
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T07:30:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -382,6 +388,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
         deliveryFor: deliveryFor(served),
         declaredRequestedMemberIds: RANGE_MEMBERS,
         authorization: auth(served, 'user-confirm:c25'),
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T07:40:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -511,6 +518,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
         },
         declaredRequestedMemberIds: PAGE_MEMBERS,
         authorization: auth(served, 'user-confirm:c28'),
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T07:50:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -567,6 +575,7 @@ describe('T016 partial-truncated-unknown-truth', () => {
         budgetSteps: [budgetsOpen],
         deliveryFor: deliveryFor(served),
         authorization: auth(served, 'user-confirm:shape'),
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T08:00:00Z',
       });
       expect(outcome.ok).toBe(true);

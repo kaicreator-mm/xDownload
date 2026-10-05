@@ -49,6 +49,9 @@ export {
   type CollectionFlowOutcome,
   type CollectionFlowRejection,
   type CollectionFlowResult,
+  type ConfirmationOutcomeOrigin,
+  type ConfirmationOutcomeSource,
+  type ConfirmationOutcomeSourceResolution,
   type MemberAcquisitionOutcome,
   type MemberDelivery,
 } from './collection-flow.ts';

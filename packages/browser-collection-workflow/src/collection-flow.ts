@@ -8,7 +8,9 @@
  *   optional recipe plan (T011 declarative interpreter) → slice conformance
  *   (T011) → bounded discovery session (T011 engine, typed rejections,
  *   canonical budget input) → confirmation workflow (T011, one selection
- *   claim set, MAX_MATERIAL_ITEM_CONFIRMATIONS bounds) → frozen membership
+ *   claim set, MAX_MATERIAL_ITEM_CONFIRMATIONS bounds; outcomes enter ONLY
+ *   through the declared ConfirmationOutcomeSource — never synthesized — and
+ *   acquisition is gated on the recorded confirmation) → frozen membership
  *   (S5 default continuation_scope=NONE) → per-member scoped capability
  *   (exact broker tuple, opaque ref only) → per-member acquisition through
  *   @xdownload/core-runtime budget ports → requested-scope accounting
@@ -32,6 +34,8 @@ import {
   scopeIdentityKey,
   unwrapOrThrow,
   type BudgetRemaining,
+  type ConfirmationOutcome,
+  type ConfirmationType,
   type CoverageAccounting,
   type CoverageEvidence,
   type DomainValidationResult,
@@ -79,6 +83,7 @@ import {
   recordConfirmation,
   stepDiscovery,
   type ConfirmationOutcomeRecord,
+  type ConfirmationRequest,
   type DiscoveryEvent,
   type DiscoveryRejection,
   type DiscoverySession,
@@ -118,6 +123,38 @@ export type MemberDelivery =
       readonly assemblyPort: MediaAssemblyPort;
       readonly recordedAt: string;
     };
+
+/**
+ * Where recorded confirmation outcomes came from: a real user decision or an
+ * explicitly injected source (declared driver — e.g. a scripted test drive).
+ * Injected outcomes are recorded as source-injected provenance and are never
+ * autonomous CONFIRMED truth or USER_CONFIRMATION evidence.
+ */
+export type ConfirmationOutcomeOrigin = 'USER' | 'INJECTED_SOURCE';
+
+/** What an injected/real confirmation source resolved for one confirmation step. */
+export type ConfirmationOutcomeSourceResolution =
+  | {
+      readonly kind: 'RESOLVED';
+      readonly origin: ConfirmationOutcomeOrigin;
+      /** One verbatim outcome per member ref, in member-ref order. */
+      readonly outcomes: readonly ConfirmationOutcome[];
+    }
+  | { readonly kind: 'NOT_AVAILABLE'; readonly reason: string };
+
+/**
+ * Injectable source of actual confirmation outcomes (the host's user-input
+ * channel; tests drive flows through an explicitly injected instance). The
+ * production/default composition is ABSENT: a confirmation step that requires
+ * real user input then degrades to the typed cannot-proceed outcome instead
+ * of proceeding on a synthesized decision.
+ */
+export interface ConfirmationOutcomeSource {
+  readonly resolve: (input: {
+    readonly confirmationType: ConfirmationType;
+    readonly memberRefs: readonly MemberId[];
+  }) => ConfirmationOutcomeSourceResolution;
+}
 
 /** Explicit issue decision for the collection lane (least-authority TTL). */
 export interface CollectionAuthorizationInput {
@@ -160,6 +197,13 @@ export interface CollectionFlowInput {
   readonly declaredRequestedMemberIds?: readonly string[];
   /** Ambiguous material members routed through the confirmation workflow. */
   readonly ambiguousMaterialMemberIds?: readonly string[];
+  /**
+   * Declared source of actual confirmation outcomes. ABSENT by default: a
+   * required confirmation then yields the typed cannot-proceed outcome
+   * (CONFIRMATION_REQUIRED / NO_OUTCOME_SOURCE) and acquisition never starts.
+   * Scripted outcomes enter ONLY here and are recorded as INJECTED_SOURCE.
+   */
+  readonly confirmationSource?: ConfirmationOutcomeSource;
   readonly recordedAt: string;
 }
 
@@ -183,9 +227,28 @@ export type CollectionFlowRejection =
       readonly diagnostics: readonly ValidationDiagnostic[];
     }
   | {
+      readonly stage: 'CONFIRMATION_REQUIRED';
+      readonly requests: readonly ConfirmationRequest[];
+      readonly reason:
+        | 'NO_OUTCOME_SOURCE'
+        | 'SOURCE_NOT_AVAILABLE'
+        | 'SOURCE_OUTCOME_COUNT_MISMATCH'
+        | 'RECORD_REJECTED'
+        | 'SELECTION_NOT_CONFIRMED';
+      /** The injected source's own decline reason (SOURCE_NOT_AVAILABLE). */
+      readonly sourceReason?: string;
+      /** The verbatim recorded aggregate (SELECTION_NOT_CONFIRMED). */
+      readonly recordedAggregate?: ConfirmationOutcome;
+    }
+  | {
       readonly stage: 'AUTHORIZATION_ISSUE';
       readonly memberId: string;
       readonly diagnostics: readonly BrokerDiagnostic[];
+    }
+  | {
+      readonly stage: 'MEMBER_DELIVERY_LOCATOR';
+      readonly memberId: string;
+      readonly diagnostics: readonly ValidationDiagnostic[];
     }
   | {
       readonly stage: 'CORE_ACQUISITION';
@@ -202,6 +265,12 @@ export interface CollectionFlowResult {
   readonly session: DiscoverySession;
   readonly rejections: readonly DiscoveryRejection[];
   readonly confirmation: ConfirmationOutcomeRecord | undefined;
+  /**
+   * Provenance of the recorded confirmation outcomes: USER for a real user
+   * decision, INJECTED_SOURCE for outcomes that entered through the declared
+   * source. Undefined when no confirmation was required/recorded.
+   */
+  readonly confirmationOrigin: ConfirmationOutcomeOrigin | undefined;
   /** Recipe capability exclusions (verbatim interpreter facts), when planned. */
   readonly recipeExclusions: readonly {
     readonly capability: string;
@@ -408,18 +477,63 @@ export async function runCollectionFlow(
     autoEvidenceSufficient: true,
   });
   let confirmation: ConfirmationOutcomeRecord | undefined;
+  let confirmationOrigin: ConfirmationOutcomeOrigin | undefined;
   if (confirmationPlan.requests.length > 0 && session.resolvedMemberIds.length > 0) {
     const memberRefs: MemberId[] = session.resolvedMemberIds.map((id) =>
       unwrapOrThrow(makeMemberId(id)),
     );
+    // Outcomes are never synthesized here. A required confirmation (scope
+    // level, batch group, material item, MANUAL_SELECTION_UI) resolves only
+    // through the declared source; without it the flow degrades to the typed
+    // cannot-proceed outcome — a genuine user decision point is never
+    // decided inside glue.
+    const resolution = input.confirmationSource?.resolve({
+      confirmationType: 'CONFIRM_SELECTION',
+      memberRefs,
+    });
+    if (resolution === undefined || resolution.kind === 'NOT_AVAILABLE') {
+      return {
+        ok: false,
+        rejection: {
+          stage: 'CONFIRMATION_REQUIRED',
+          requests: confirmationPlan.requests,
+          reason: resolution === undefined ? 'NO_OUTCOME_SOURCE' : 'SOURCE_NOT_AVAILABLE',
+          ...(resolution === undefined ? {} : { sourceReason: resolution.reason }),
+        },
+      };
+    }
+    if (resolution.outcomes.length !== memberRefs.length) {
+      return {
+        ok: false,
+        rejection: {
+          stage: 'CONFIRMATION_REQUIRED',
+          requests: confirmationPlan.requests,
+          reason: 'SOURCE_OUTCOME_COUNT_MISMATCH',
+        },
+      };
+    }
     const recorded = recordConfirmation({
       claimKind: memberRefs.length > 1 ? 'BATCH' : 'SINGLE',
       confirmationType: 'CONFIRM_SELECTION',
       memberRefs,
-      outcomes: memberRefs.map(() => 'CONFIRMED' as const),
+      outcomes: resolution.outcomes,
     });
-    if (recorded.ok) {
-      confirmation = recorded.value;
+    if (!recorded.ok) {
+      return {
+        ok: false,
+        rejection: {
+          stage: 'CONFIRMATION_REQUIRED',
+          requests: confirmationPlan.requests,
+          reason: 'RECORD_REJECTED',
+        },
+      };
+    }
+    confirmation = recorded.value;
+    confirmationOrigin = resolution.origin;
+    // Real user confirmations carry canonical USER_CONFIRMATION evidence;
+    // injected outcomes are recorded as source-injected provenance on the
+    // result — never as autonomous user truth in the evidence store.
+    if (resolution.origin === 'USER') {
       const evidence = confirmationEvidenceRecord({
         confirmationType: 'CONFIRM_SELECTION',
         evidenceId: `evidence-selection-${input.contract.contractId}`,
@@ -433,6 +547,19 @@ export async function runCollectionFlow(
       if (evidence.ok) {
         ledger.append(evidence.value);
       }
+    }
+    // Acquisition gate: the flow never proceeds past an unfulfilled
+    // confirmation — the verbatim upstream aggregate owns the verdict.
+    if (confirmation.outcomesAggregate !== 'CONFIRMED') {
+      return {
+        ok: false,
+        rejection: {
+          stage: 'CONFIRMATION_REQUIRED',
+          requests: confirmationPlan.requests,
+          reason: 'SELECTION_NOT_CONFIRMED',
+          recordedAggregate: confirmation.outcomesAggregate,
+        },
+      };
     }
   }
 
@@ -494,9 +621,16 @@ export async function runCollectionFlow(
           delivery.provenance,
         );
         if (!locator.ok) {
-          throw new Error(
-            `member delivery locator rejected: ${locator.diagnostics.map((d) => d.code).join(', ')}`,
-          );
+          // Typed lane rejection: the verbatim upstream diagnostics surface
+          // fail-closed instead of an untyped throw.
+          return {
+            ok: false,
+            rejection: {
+              stage: 'MEMBER_DELIVERY_LOCATOR',
+              memberId,
+              diagnostics: locator.diagnostics,
+            },
+          };
         }
         const transfer: DirectTransferRequest = {
           effectId: unwrapOrThrow(
@@ -685,6 +819,7 @@ export async function runCollectionFlow(
         session,
         rejections,
         confirmation,
+        confirmationOrigin,
         recipeExclusions,
         evidenceLedger: ledger,
         memberOutcomes,
@@ -719,6 +854,7 @@ export async function runCollectionFlow(
         session,
         rejections,
         confirmation,
+        confirmationOrigin,
         recipeExclusions,
         evidenceLedger: ledger,
         memberOutcomes,
@@ -739,6 +875,7 @@ export async function runCollectionFlow(
       session,
       rejections,
       confirmation,
+      confirmationOrigin,
       recipeExclusions,
       evidenceLedger: ledger,
       memberOutcomes,

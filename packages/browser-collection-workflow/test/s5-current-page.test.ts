@@ -29,6 +29,7 @@ import { requestContinuation, runCollectionFlow } from '../src/index.ts';
 import {
   budgetsOpen,
   currentPageContract,
+  injectedConfirmationSource,
   networkObservation,
   pageContextObservation,
   payload as fixturePayload,
@@ -132,6 +133,7 @@ describe('T016 s5-current-page-collection', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:s5-c08',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T03:30:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -225,6 +227,7 @@ describe('T016 s5-current-page-collection', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:s5-obs',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T03:40:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -272,6 +275,7 @@ describe('T016 s5-current-page-collection', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:s5-c30',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T03:50:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -304,5 +308,266 @@ describe('T016 s5-current-page-collection', () => {
     // Broker binding construction is exercised end-to-end in the other suites;
     // here the fixture simply pins the canonical provenance shape.
     expect((raw['provenance'] as Record<string, unknown>)['partition']).toBe('partition-a');
+  });
+
+  it('degrades a required confirmation with no outcome source to the typed cannot-proceed outcome — acquisition never starts', async () => {
+    const served = await startFixture(FROZEN.map((member) => `/${member}.bin`));
+    const contract = currentPageContract();
+
+    const rootDir = makeTempDir('t016-s5-no-source');
+    dirs.push(rootDir);
+    const runtime = openRuntime(rootDir);
+    try {
+      // No confirmationSource is injected (the production default): the
+      // ASSISTED scope-level confirmation cannot be decided inside glue.
+      const outcome = await runCollectionFlow({
+        runtime,
+        broker: createAuthBroker(),
+        slice: 'S5',
+        contract,
+        snapshot: snapshotFor(contract, FROZEN),
+        events: FROZEN.map(
+          (memberId) =>
+            ({ kind: 'MEMBER_OBSERVED', memberId, basis: 'FROZEN_BASIS' }) as DiscoveryEvent,
+        ),
+        budgetSteps: [budgetsOpen],
+        deliveryFor: directDeliveryFor(served),
+        authorization: {
+          origin: served.baseUri,
+          provenanceChain: 'tab-7/frame-0/http://127.0.0.1:9/-/-',
+          ttlMs: 60_000,
+          issueDecisionToken: 'user-confirm:s5-no-source',
+        },
+        recordedAt: '2026-10-04T03:55:00Z',
+      });
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error('unreachable');
+      expect(outcome.rejection.stage).toBe('CONFIRMATION_REQUIRED');
+      if (outcome.rejection.stage !== 'CONFIRMATION_REQUIRED') throw new Error('unreachable');
+      expect(outcome.rejection.reason).toBe('NO_OUTCOME_SOURCE');
+      expect(outcome.rejection.requests).toEqual([
+        {
+          level: 'SCOPE_LEVEL',
+          scopeKey: expect.any(String),
+        },
+      ]);
+      // Acquisition never started: zero durable work, zero member outcomes.
+      expect(runtime.writer.reader.workItems().length).toBe(0);
+
+      // A source that cannot resolve degrades the same way, with its own
+      // reason carried verbatim.
+      const declined = await runCollectionFlow({
+        runtime,
+        broker: createAuthBroker(),
+        slice: 'S5',
+        contract,
+        snapshot: snapshotFor(contract, FROZEN),
+        events: FROZEN.map(
+          (memberId) =>
+            ({ kind: 'MEMBER_OBSERVED', memberId, basis: 'FROZEN_BASIS' }) as DiscoveryEvent,
+        ),
+        budgetSteps: [budgetsOpen],
+        deliveryFor: directDeliveryFor(served),
+        confirmationSource: {
+          resolve: () => ({ kind: 'NOT_AVAILABLE', reason: 'ui-channel-closed' }),
+        },
+        authorization: {
+          origin: served.baseUri,
+          provenanceChain: 'tab-7/frame-0/http://127.0.0.1:9/-/-',
+          ttlMs: 60_000,
+          issueDecisionToken: 'user-confirm:s5-no-source-2',
+        },
+        recordedAt: '2026-10-04T03:56:00Z',
+      });
+      expect(declined.ok).toBe(false);
+      if (declined.ok || declined.rejection.stage !== 'CONFIRMATION_REQUIRED') {
+        throw new Error('unreachable');
+      }
+      expect(declined.rejection.reason).toBe('SOURCE_NOT_AVAILABLE');
+      expect(declined.rejection.sourceReason).toBe('ui-channel-closed');
+      expect(runtime.writer.reader.workItems().length).toBe(0);
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('degrades a MANUAL_SELECTION_UI confirmation with no outcome source to the typed cannot-proceed outcome', async () => {
+    const served = await startFixture(FROZEN.map((member) => `/${member}.bin`));
+    const contract = currentPageContract({ automationMode: 'MANUAL_SELECTION' });
+
+    const rootDir = makeTempDir('t016-s5-manual-no-source');
+    dirs.push(rootDir);
+    const runtime = openRuntime(rootDir);
+    try {
+      const outcome = await runCollectionFlow({
+        runtime,
+        broker: createAuthBroker(),
+        slice: 'S5',
+        contract,
+        snapshot: snapshotFor(contract, FROZEN),
+        events: FROZEN.map(
+          (memberId) =>
+            ({ kind: 'MEMBER_OBSERVED', memberId, basis: 'FROZEN_BASIS' }) as DiscoveryEvent,
+        ),
+        budgetSteps: [budgetsOpen],
+        deliveryFor: directDeliveryFor(served),
+        authorization: {
+          origin: served.baseUri,
+          provenanceChain: 'tab-7/frame-0/http://127.0.0.1:9/-/-',
+          ttlMs: 60_000,
+          issueDecisionToken: 'user-confirm:s5-manual',
+        },
+        recordedAt: '2026-10-04T03:57:00Z',
+      });
+      // The manual-selection user decision point is never rubber-stamped by
+      // glue: without a source the flow cannot proceed.
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok || outcome.rejection.stage !== 'CONFIRMATION_REQUIRED') {
+        throw new Error('unreachable');
+      }
+      expect(outcome.rejection.reason).toBe('NO_OUTCOME_SOURCE');
+      expect(outcome.rejection.requests).toEqual([
+        { level: 'MANUAL_SELECTION_UI', candidateRefs: [] },
+      ]);
+      expect(runtime.writer.reader.workItems().length).toBe(0);
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('proceeds with injected outcomes that record INJECTED_SOURCE provenance and gates acquisition on the actual record', async () => {
+    const served = await startFixture(FROZEN.map((member) => `/${member}.bin`));
+    const contract = currentPageContract();
+
+    const rootDir = makeTempDir('t016-s5-injected');
+    dirs.push(rootDir);
+    const runtime = openRuntime(rootDir);
+    try {
+      // Injected outcomes are the ONLY way a scripted flow proceeds past its
+      // confirmation; the result records the injected provenance.
+      const outcome = await runCollectionFlow({
+        runtime,
+        broker: createAuthBroker(),
+        slice: 'S5',
+        contract,
+        snapshot: snapshotFor(contract, FROZEN),
+        events: FROZEN.map(
+          (memberId) =>
+            ({ kind: 'MEMBER_OBSERVED', memberId, basis: 'FROZEN_BASIS' }) as DiscoveryEvent,
+        ),
+        budgetSteps: [budgetsOpen],
+        deliveryFor: directDeliveryFor(served),
+        confirmationSource: injectedConfirmationSource(),
+        authorization: {
+          origin: served.baseUri,
+          provenanceChain: 'tab-7/frame-0/http://127.0.0.1:9/-/-',
+          ttlMs: 60_000,
+          issueDecisionToken: 'user-confirm:s5-injected',
+        },
+        recordedAt: '2026-10-04T03:58:00Z',
+      });
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) throw new Error('unreachable');
+      expect(outcome.result.confirmationOrigin).toBe('INJECTED_SOURCE');
+      expect(outcome.result.confirmation?.outcomesAggregate).toBe('CONFIRMED');
+      expect(outcome.result.memberOutcomes.map((member) => member.memberId)).toEqual(FROZEN);
+      // Injected outcomes are not autonomous user truth: no USER_CONFIRMATION
+      // evidence record exists in the flow ledger for them.
+      const userConfirmationEvidence = outcome.result.evidenceLedger
+        .records()
+        .filter((record) => record.sourceType === 'USER_CONFIRMATION');
+      expect(userConfirmationEvidence.length).toBe(0);
+
+      // Acquisition gating: an unfulfilled (FAILED aggregate) record stops the
+      // flow before any member acquisition — the aggregate owns the verdict.
+      const gatingRuntimeRoot = makeTempDir('t016-s5-gating');
+      dirs.push(gatingRuntimeRoot);
+      const gatingRuntime = openRuntime(gatingRuntimeRoot);
+      try {
+        const unconfirmed = await runCollectionFlow({
+          runtime: gatingRuntime,
+          broker: createAuthBroker(),
+          slice: 'S5',
+          contract,
+          snapshot: snapshotFor(contract, FROZEN),
+          events: FROZEN.map(
+            (memberId) =>
+              ({ kind: 'MEMBER_OBSERVED', memberId, basis: 'FROZEN_BASIS' }) as DiscoveryEvent,
+          ),
+          budgetSteps: [budgetsOpen],
+          deliveryFor: directDeliveryFor(served),
+          confirmationSource: injectedConfirmationSource(() => [
+            'CONFIRMED',
+            'FAILED',
+            'CONFIRMED',
+          ]),
+          authorization: {
+            origin: served.baseUri,
+            provenanceChain: 'tab-7/frame-0/http://127.0.0.1:9/-/-',
+            ttlMs: 60_000,
+            issueDecisionToken: 'user-confirm:s5-gating',
+          },
+          recordedAt: '2026-10-04T03:59:00Z',
+        });
+        expect(unconfirmed.ok).toBe(false);
+        if (unconfirmed.ok || unconfirmed.rejection.stage !== 'CONFIRMATION_REQUIRED') {
+          throw new Error('unreachable');
+        }
+        expect(unconfirmed.rejection.reason).toBe('SELECTION_NOT_CONFIRMED');
+        expect(unconfirmed.rejection.recordedAggregate).toBe('FAILED');
+        // Never proceeds past an unfulfilled confirmation.
+        expect(gatingRuntime.writer.reader.workItems().length).toBe(0);
+      } finally {
+        closeRuntime(gatingRuntime);
+      }
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('surfaces a member delivery locator rejection as a typed lane failure (no untyped throw)', async () => {
+    const served = await startFixture(FROZEN.map((member) => `/${member}.bin`));
+    const contract = currentPageContract();
+
+    const rootDir = makeTempDir('t016-s5-locator');
+    dirs.push(rootDir);
+    const runtime = openRuntime(rootDir);
+    try {
+      const outcome = await runCollectionFlow({
+        runtime,
+        broker: createAuthBroker(),
+        slice: 'S5',
+        contract,
+        snapshot: snapshotFor(contract, FROZEN),
+        events: FROZEN.map(
+          (memberId) =>
+            ({ kind: 'MEMBER_OBSERVED', memberId, basis: 'FROZEN_BASIS' }) as DiscoveryEvent,
+        ),
+        budgetSteps: [budgetsOpen],
+        deliveryFor: (memberId) => {
+          const base = directDeliveryFor(served)(memberId);
+          if (base.kind !== 'direct') throw new Error('unreachable');
+          return { ...base, locator: { kind: 'direct' as const, uri: '' } };
+        },
+        confirmationSource: injectedConfirmationSource(),
+        authorization: {
+          origin: served.baseUri,
+          provenanceChain: 'tab-7/frame-0/http://127.0.0.1:9/-/-',
+          ttlMs: 60_000,
+          issueDecisionToken: 'user-confirm:s5-locator',
+        },
+        recordedAt: '2026-10-04T04:00:00Z',
+      });
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok || outcome.rejection.stage !== 'MEMBER_DELIVERY_LOCATOR') {
+        throw new Error('unreachable');
+      }
+      expect(outcome.rejection.memberId).toBe(FROZEN[0]);
+      expect(outcome.rejection.diagnostics.some((d) => d.code === 'MALFORMED_REQUIRED_FIELD')).toBe(
+        true,
+      );
+    } finally {
+      closeRuntime(runtime);
+    }
   });
 });

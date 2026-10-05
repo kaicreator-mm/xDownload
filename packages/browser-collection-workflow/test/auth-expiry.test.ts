@@ -42,6 +42,7 @@ import { runCollectionFlow } from '../src/index.ts';
 import {
   budgetsOpen,
   currentPageContract,
+  injectedConfirmationSource,
   independentEvidence,
   seedBytes,
   sha256,
@@ -131,6 +132,7 @@ describe('T016 auth-expiry-and-inaccessible-members', () => {
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:c10',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T06:00:00Z',
       });
       expect(outcome.ok).toBe(true);
@@ -208,6 +210,7 @@ describe('T016 auth-expiry-and-inaccessible-members', () => {
           ttlMs: 1,
           issueDecisionToken: 'user-confirm:c24',
         },
+        confirmationSource: injectedConfirmationSource(),
         recordedAt: '2026-10-04T06:10:00Z',
       });
       expect(outcome.ok).toBe(true);

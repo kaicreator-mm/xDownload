@@ -97,7 +97,6 @@ describe('T016 s2-explicit-attachment-handoff', () => {
           capturedAtMs: 1_000,
         },
         authorization: {
-          origin: baseUri,
           ttlMs: 60_000,
           issueDecisionToken: 'user-confirm:s2-attachment-42',
         },
@@ -190,7 +189,7 @@ describe('T016 s2-explicit-attachment-handoff', () => {
           observationId: 'obs-s2-002',
           capturedAtMs: 1_100,
         },
-        authorization: { origin: baseUri, ttlMs: 60_000, issueDecisionToken: 'user-confirm:s2-2' },
+        authorization: { ttlMs: 60_000, issueDecisionToken: 'user-confirm:s2-2' },
         delivery: {
           locator: { kind: 'direct', uri: `${baseUri}/file.bin` },
           provenance: {
@@ -299,7 +298,7 @@ describe('T016 s2-explicit-attachment-handoff', () => {
           observationId: 'obs-s2-003',
           capturedAtMs: 1_200,
         },
-        authorization: { origin: baseUri, ttlMs: 60_000, issueDecisionToken: 'user-confirm:s2-3' },
+        authorization: { ttlMs: 60_000, issueDecisionToken: 'user-confirm:s2-3' },
         delivery: {
           locator: { kind: 'direct', uri: `${baseUri}/file.bin` },
           provenance: {
@@ -359,7 +358,7 @@ describe('T016 s2-explicit-attachment-handoff', () => {
           observationId: 'obs-s2-004',
           capturedAtMs: 1_300,
         },
-        authorization: { origin: baseUri, ttlMs: 60_000, issueDecisionToken: 'user-confirm:s2-4' },
+        authorization: { ttlMs: 60_000, issueDecisionToken: 'user-confirm:s2-4' },
         delivery: {
           locator: { kind: 'direct', uri: `${baseUri}/file.bin` },
           provenance: {
@@ -382,6 +381,61 @@ describe('T016 s2-explicit-attachment-handoff', () => {
       expect(coreSide).not.toContain(leaked);
     } finally {
       clearSinkScrubSentinels();
+      closeRuntime(runtime);
+    }
+  });
+
+  it('surfaces a delivery-locator rejection as a typed lane failure, not an untyped throw', async () => {
+    const fixture = new ControlledHttpFixture();
+    fixtures.push(fixture);
+    const baseUri = await fixture.start();
+    const bytes = payload(256, 8);
+    fixture.serveFile('/file.bin', { body: bytes, etag: 's2-etag-5' });
+
+    const rootDir = makeTempDir('t016-s2-locator');
+    dirs.push(rootDir);
+    const runtime = openRuntime(rootDir);
+    try {
+      const outcome = await runS2AttachmentFlow({
+        runtime,
+        broker: createAuthBroker(),
+        contract: CONTRACT,
+        snapshotId: SNAPSHOT,
+        memberId: MEMBER,
+        artifactId: 'artifact:s2-005',
+        commandId: 'cmd-s2-005',
+        observation: {
+          raw: pageContextObservation({
+            origin: baseUri,
+            pageUrl: `${baseUri}/watch/44`,
+          }),
+          observationId: 'obs-s2-005',
+          capturedAtMs: 1_400,
+        },
+        authorization: { ttlMs: 60_000, issueDecisionToken: 'user-confirm:s2-5' },
+        delivery: {
+          // A delivery locator that fails the canonical binding is a typed
+          // lane rejection carrying the verbatim upstream diagnostics.
+          locator: { kind: 'direct', uri: '' },
+          provenance: {
+            binding: 'SELECTED_RESOURCE_PROVENANCE',
+            originLocatorUri: `${baseUri}/file.bin`,
+          },
+          declaredRedirectHosts: [new URL(baseUri).host],
+          expectedSha256: sha256(bytes),
+        },
+      });
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok && outcome.rejection.stage === 'DELIVERY_LOCATOR') {
+        expect(
+          outcome.rejection.diagnostics.some((d) => d.code === 'MALFORMED_REQUIRED_FIELD'),
+        ).toBe(true);
+      } else {
+        throw new Error('expected a DELIVERY_LOCATOR rejection');
+      }
+      // The rejection preceded any durable work: the boundary held.
+      expect(runtime.writer.reader.workItems().length).toBe(0);
+    } finally {
       closeRuntime(runtime);
     }
   });
