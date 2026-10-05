@@ -14,6 +14,19 @@
  * the browser context. The zone APIs exist to enforce and audit containment
  * so a later, separately validated broker-side vault cannot silently widen
  * what exits the zone.
+ *
+ * Cyclic/aliased object graphs (issue #72, T010-CTRL-P1-CYCLE-SINK) share
+ * the browser-observation cycle semantic: sanitizing sinks (`redactForSink`,
+ * `scrubSentinels`) replace a cycle back-edge with the inert
+ * `BROKER_REDACTED_MARKER` and reuse already-sanitized copies for shared
+ * non-cyclic references, so an original reference can never re-enter
+ * sanitized output and hostile graphs cannot force unbounded recursion; the
+ * typed rejection boundary (`rejectRawSecretPayload`) fails closed on a true
+ * ancestor cycle with a `CYCLIC_STRUCTURE` diagnostic (T012
+ * `auditSecretMaterial` precedent, PR #63); the sentinel audit terminates
+ * deterministically on any finite graph with exact answers. Non-cycle
+ * semantics (the ANY-type `RAW_SECRET_FIELD_NAMES` rule, sentinel
+ * replacement, opaque AuthorizationContextRef pass-through) are unchanged.
  */
 
 import { RAW_SECRET_FIELD_NAMES } from '@xdownload/domain-contracts';
@@ -29,25 +42,54 @@ export const BROKER_REDACTED_MARKER = '[REDACTED]' as const;
 
 /** Deep-redaction at broker exit sinks (Core-durable, log, evidence, Recipe, model). */
 export function redactForSink<T>(value: T): T {
-  return redact(value, new WeakSet()) as T;
+  return redact(value, new WeakSet<object>(), new Map<object, unknown>()) as T;
 }
 
-function redact(value: unknown, seen: WeakSet<object>): unknown {
+/**
+ * Cycle-safe redaction walk (same semantic as the browser-observation
+ * redactor): `ancestors` detects true cycles, `sanitized` memoizes finished
+ * copies for shared non-cyclic references; an original reference is never
+ * returned into sanitized output.
+ */
+function redact(
+  value: unknown,
+  ancestors: WeakSet<object>,
+  sanitized: Map<object, unknown>,
+): unknown {
   if (typeof value === 'string') {
     return looksLikeSecretValue(value) ? BROKER_REDACTED_MARKER : value;
   }
   if (Array.isArray(value)) {
-    if (seen.has(value)) return value;
-    seen.add(value);
-    return value.map((item) => redact(item, seen));
+    if (ancestors.has(value)) {
+      return BROKER_REDACTED_MARKER;
+    }
+    const cached = sanitized.get(value);
+    if (cached !== undefined) {
+      return cached;
+    }
+    ancestors.add(value);
+    const out: unknown[] = value.map((item) => redact(item, ancestors, sanitized));
+    ancestors.delete(value);
+    sanitized.set(value, out);
+    return out;
   }
   if (typeof value === 'object' && value !== null) {
-    if (seen.has(value)) return value;
-    seen.add(value);
+    if (ancestors.has(value)) {
+      return BROKER_REDACTED_MARKER;
+    }
+    const cached = sanitized.get(value);
+    if (cached !== undefined) {
+      return cached;
+    }
+    ancestors.add(value);
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
-      out[key] = RAW_SECRET_FIELD_NAMES.has(key) ? BROKER_REDACTED_MARKER : redact(child, seen);
+      out[key] = RAW_SECRET_FIELD_NAMES.has(key)
+        ? BROKER_REDACTED_MARKER
+        : redact(child, ancestors, sanitized);
     }
+    ancestors.delete(value);
+    sanitized.set(value, out);
     return out;
   }
   return value;
@@ -71,16 +113,40 @@ function looksLikeSecretValue(value: string): boolean {
 
 /** Reject a payload that tries to carry raw-secret fields through a broker boundary. */
 export function rejectRawSecretPayload(value: unknown, path: string): BrokerResult<void> {
+  return rejectRawSecretWalk(value, path, new WeakSet<object>());
+}
+
+/**
+ * Ancestor-guarded rejection walk (T012 `auditSecretMaterial` precedent):
+ * a true ancestor cycle fails closed with a typed `CYCLIC_STRUCTURE`
+ * diagnostic naming the re-entry path, shared non-cyclic references are
+ * walked once per reference without a false positive, and the walk
+ * terminates deterministically on any input without throwing.
+ */
+function rejectRawSecretWalk(
+  value: unknown,
+  path: string,
+  ancestors: WeakSet<object>,
+): BrokerResult<void> {
   if (Array.isArray(value)) {
+    if (ancestors.has(value)) {
+      return brokerFail([cyclicStructureDiagnostic(path)]);
+    }
+    ancestors.add(value);
     const diagnostics = value
-      .map((item, index) => rejectRawSecretPayload(item, `${path}[${index}]`))
+      .map((item, index) => rejectRawSecretWalk(item, `${path}[${index}]`, ancestors))
       .filter(
         (result): result is { ok: false; diagnostics: readonly BrokerDiagnostic[] } => !result.ok,
       )
       .flatMap((result) => result.diagnostics);
+    ancestors.delete(value);
     return diagnostics.length === 0 ? brokerOk(undefined) : brokerFail(diagnostics);
   }
   if (typeof value === 'object' && value !== null) {
+    if (ancestors.has(value)) {
+      return brokerFail([cyclicStructureDiagnostic(path)]);
+    }
+    ancestors.add(value);
     const diagnostics: BrokerDiagnostic[] = [];
     for (const [key, child] of Object.entries(value)) {
       if (RAW_SECRET_FIELD_NAMES.has(key)) {
@@ -93,26 +159,64 @@ export function rejectRawSecretPayload(value: unknown, path: string): BrokerResu
           ),
         );
       }
-      const nested = rejectRawSecretPayload(child, path === '' ? key : `${path}.${key}`);
+      const nested = rejectRawSecretWalk(child, path === '' ? key : `${path}.${key}`, ancestors);
       if (!nested.ok) {
         diagnostics.push(...nested.diagnostics);
       }
     }
+    ancestors.delete(value);
     return diagnostics.length === 0 ? brokerOk(undefined) : brokerFail(diagnostics);
   }
   return brokerOk(undefined);
 }
 
+function cyclicStructureDiagnostic(path: string): BrokerDiagnostic {
+  return brokerDiagnostic(
+    'CYCLIC_STRUCTURE',
+    path,
+    'cyclic structure cannot be proven secret-free; the broker boundary rejects the payload',
+    'PRD-§29',
+  );
+}
+
 /** Sentinel audit: does the value contain the sentinel material anywhere? */
 export function auditContainsSecretSentinel(value: unknown, sentinel: string): boolean {
+  return auditSentinelMaterial(value, sentinel, new WeakSet<object>());
+}
+
+/**
+ * Ancestor-guarded sentinel audit: terminates deterministically on any
+ * finite graph (every distinct node is visited exactly once, so the boolean
+ * answer stays exact) and shared non-cyclic references never produce a
+ * false positive.
+ */
+function auditSentinelMaterial(
+  value: unknown,
+  sentinel: string,
+  ancestors: WeakSet<object>,
+): boolean {
   if (typeof value === 'string') {
     return value.includes(sentinel);
   }
   if (Array.isArray(value)) {
-    return value.some((item) => auditContainsSecretSentinel(item, sentinel));
+    if (ancestors.has(value)) {
+      return false;
+    }
+    ancestors.add(value);
+    const hit = value.some((item) => auditSentinelMaterial(item, sentinel, ancestors));
+    ancestors.delete(value);
+    return hit;
   }
   if (typeof value === 'object' && value !== null) {
-    return Object.values(value).some((child) => auditContainsSecretSentinel(child, sentinel));
+    if (ancestors.has(value)) {
+      return false;
+    }
+    ancestors.add(value);
+    const hit = Object.values(value).some((child) =>
+      auditSentinelMaterial(child, sentinel, ancestors),
+    );
+    ancestors.delete(value);
+    return hit;
   }
   return false;
 }
@@ -125,7 +229,12 @@ export function auditContainsSecretSentinel(value: unknown, sentinel: string): b
  */
 export function guardedSinkWrite<T>(value: T, sentinels: readonly string[]): BrokerResult<T> {
   const redacted = redactForSink(value);
-  const scrubbed = scrubSentinels(redacted, sentinels, new WeakSet());
+  const scrubbed = scrubSentinels(
+    redacted,
+    sentinels,
+    new WeakSet<object>(),
+    new Map<object, unknown>(),
+  );
   for (const sentinel of sentinels) {
     if (sentinel.length > 0 && auditContainsSecretSentinel(scrubbed, sentinel)) {
       return brokerFail([
@@ -144,7 +253,8 @@ export function guardedSinkWrite<T>(value: T, sentinels: readonly string[]): Bro
 function scrubSentinels(
   value: unknown,
   sentinels: readonly string[],
-  seen: WeakSet<object>,
+  ancestors: WeakSet<object>,
+  sanitized: Map<object, unknown>,
 ): unknown {
   if (typeof value === 'string') {
     let out = value;
@@ -156,17 +266,34 @@ function scrubSentinels(
     return out;
   }
   if (Array.isArray(value)) {
-    if (seen.has(value)) return value;
-    seen.add(value);
-    return value.map((item) => scrubSentinels(item, sentinels, seen));
+    if (ancestors.has(value)) {
+      return BROKER_REDACTED_MARKER;
+    }
+    const cached = sanitized.get(value);
+    if (cached !== undefined) {
+      return cached;
+    }
+    ancestors.add(value);
+    const out = value.map((item) => scrubSentinels(item, sentinels, ancestors, sanitized));
+    ancestors.delete(value);
+    sanitized.set(value, out);
+    return out;
   }
   if (typeof value === 'object' && value !== null) {
-    if (seen.has(value)) return value;
-    seen.add(value);
+    if (ancestors.has(value)) {
+      return BROKER_REDACTED_MARKER;
+    }
+    const cached = sanitized.get(value);
+    if (cached !== undefined) {
+      return cached;
+    }
+    ancestors.add(value);
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
-      out[key] = scrubSentinels(child, sentinels, seen);
+      out[key] = scrubSentinels(child, sentinels, ancestors, sanitized);
     }
+    ancestors.delete(value);
+    sanitized.set(value, out);
     return out;
   }
   return value;
