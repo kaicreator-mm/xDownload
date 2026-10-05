@@ -8,6 +8,10 @@ dist/
 out/
 *.log
 
+# T018: structured smoke evidence is machine-written data (build/smoke.ts),
+# not source; reformatting it would fight the evidence generator.
+build/evidence/
+
 # pre-existing authority / planning documents (not T001-owned)
 docs/
 .agent/

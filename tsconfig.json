@@ -20,6 +20,7 @@
     "packages/*/test/**/*.ts",
     "apps/*/src/**/*.ts",
     "vitest.config.ts",
-    "apps/*/test/**/*.ts"
+    "apps/*/test/**/*.ts",
+    "build/**/*.ts"
   ]
 }

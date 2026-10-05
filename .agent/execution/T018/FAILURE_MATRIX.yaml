@@ -1,0 +1,119 @@
+task_id: T018
+base_sha: 888ce342b1d170ab4a217e0fff418cd8b0a0a712
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T018 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T018 would require violating Frozen L2 ownership, authority or trust boundaries (e.g. packaging only works by bypassing allowed_origins, seam authorization or Core-owned truth)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code, config or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base 888ce342b1d170ab4a217e0fff418cd8b0a0a712 or T017 completion identity (#36) is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: package-leaks-dev-material
+    trigger: shipped package contains .agent/execution content, frozen docs, T001 toolchain-smoke packages, test fixtures or dev-only tooling
+    classification: PACKAGING_CONTENT_VIOLATION
+    required_action:
+      - fail the package build/audit closed
+      - repair content rules until the audit passes
+      - never ship a package with a known content violation
+    false_pass_forbidden: true
+
+  - id: unqualified-platform-claim
+    trigger: support/registration/compatibility claim made for a tuple that was not actually built and smoke-proven on a real host, or updater/signing claim without an actually configured and validated mechanism
+    classification: PLATFORM_CLAIM_OVERREACH
+    required_action:
+      - retract the claim; record the tuple as NOT_PROVEN or BLOCKED in the support matrix
+      - a platform blocker is BLOCKED, not an invented PASS
+      - platform qualification stays owned by T023 on the exact T019 candidate
+    false_pass_forbidden: true
+
+  - id: security-weakening-for-packaging
+    trigger: packaging relaxes or bypasses Native Messaging allowed_origins, seam authorization/peer bounds, message-size bounds, validation, or bundles raw reusable credentials to make a package build/launch
+    classification: PACKAGING_SECURITY_WEAKENING
+    required_action:
+      - reject the wiring
+      - restore the boundary and solve the packaging problem inside it
+      - escalate as ARCHITECTURE_CONTRADICTION if no compliant path exists
+    false_pass_forbidden: true
+
+  - id: build-toolchain-undocumented
+    trigger: new build/packaging dependency or toolchain adopted without exact version/license/provenance record, or builds executed off the pinned lockfile/toolchain
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat the toolchain choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep the choice within F2 and Frozen Architecture
+    false_pass_forbidden: true
+
+  - id: missing-build-output-vs-manifest
+    trigger: a package manifest references artifacts the build does not emit (e.g. extension background.service-worker.js) yet the package is declared built
+    classification: PACKAGE_MANIFEST_MISMATCH
+    required_action:
+      - fail the build closed on missing referenced output
+      - fix the pipeline until emitted layout matches the manifest exactly
+    false_pass_forbidden: true
+
+  - id: clean-install-smoke-failure
+    trigger: install/launch/Core reachability/registration smoke fails on a claimed tuple, or only passes with workspace/node_modules/store residue present
+    classification: PACKAGING_SMOKE_FAILURE
+    required_action:
+      - record the exact command/environment/failure on the real host
+      - the tuple is not claimed; matrix entry is NOT_PROVEN or BLOCKED until it actually passes
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: package-identity-unproven
+    trigger: an artifact lacks source-revision/toolchain/content-hash identity, or a rebuild changes identity where the toolchain permits determinism without a recorded cause
+    classification: PACKAGE_IDENTITY_UNPROVEN
+    required_action:
+      - emit durable package identities for every artifact
+      - investigate and record determinism deviations; do not hand-wave identity
+    false_pass_forbidden: true
+
+  - id: t019-or-version-validation-encroachment
+    trigger: T018 freezes a release-candidate identity, cuts the T019 candidate, or executes version-level visible Validation (T020-T023 scope)
+    classification: SCOPE_OVERREACH
+    required_action:
+      - stop the encroaching step
+      - leave candidate preparation and version-level Validation to their owning tasks
+      - keep T018 evidence concern-level only
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: build/install/audit/smoke cannot execute, crashes, times out, or required tooling/host is unavailable
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate; unavailable host/toolchain is state:blocked with durable evidence
+    false_pass_forbidden: true
