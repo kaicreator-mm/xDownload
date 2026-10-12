@@ -109,8 +109,21 @@ export type SeamJournalEntry = AcceptedCommandJournalEntry | CoverageAccountingJ
  * in-memory concern-test representation; the durable Core-owned ledger is
  * T005. Production implementations must be Core-authoritative writers.
  */
+export type SeamJournalAppendResult =
+  | { readonly status: 'COMMITTED' }
+  | { readonly status: 'NOT_COMMITTED'; readonly error: string }
+  | { readonly status: 'UNCERTAIN'; readonly error: string };
+
 export interface SeamJournal {
-  append(entry: SeamJournalEntry): void;
+  /**
+   * Append one authority record with an explicit durability outcome.
+   *
+   * COMMITTED means the implementation has crossed its durable commit point.
+   * NOT_COMMITTED means it can prove no durable authority was created.
+   * UNCERTAIN means callers must stop/recover rather than report success or
+   * rejection, because restart may reveal either durable outcome.
+   */
+  append(entry: SeamJournalEntry): SeamJournalAppendResult;
   replayAll(): readonly SeamJournalEntry[];
 }
 
@@ -120,6 +133,7 @@ export function createInMemorySeamJournal(): SeamJournal {
   return {
     append(entry) {
       entries.push(entry);
+      return { status: 'COMMITTED' };
     },
     replayAll() {
       return [...entries];
