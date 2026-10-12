@@ -1008,9 +1008,7 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
         /fenced; reopen\/recovery required/,
       );
       expect(() => s.acceptedCommandCount).toThrow(/fenced; reopen\/recovery required/);
-      const read = s.handleFrame(
-        JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })),
-      );
+      const read = s.handleFrame(JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })));
       expect(read.outcome).toBe('REJECTED');
       expect(read.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
       const retry = s.handleFrame(
