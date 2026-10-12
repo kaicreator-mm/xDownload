@@ -914,8 +914,7 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
       expect(
         replayed.diagnostics.some(
           (item) =>
-            item.path === 'classificationEvidence' &&
-            item.message.includes('exactly match'),
+            item.path === 'classificationEvidence' && item.message.includes('exactly match'),
         ),
       ).toBe(true);
     }
