@@ -30,3 +30,5 @@ export * from './g0-plan.ts';
 export * from './denominator.ts';
 export * from './gates.ts';
 export * from './evidence-capture.ts';
+
+export * from './journey-successor.ts';
