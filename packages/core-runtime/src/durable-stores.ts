@@ -35,11 +35,7 @@ import {
   type DurableControlFact,
   type DurableControlFactLog,
 } from '@xdownload/core-scheduler';
-import type {
-  SeamJournal,
-  SeamJournalAppendResult,
-  SeamJournalEntry,
-} from '@xdownload/core-seam';
+import type { SeamJournal, SeamJournalAppendResult, SeamJournalEntry } from '@xdownload/core-seam';
 
 const BUDGET_FACT_KINDS: ReadonlySet<string> = new Set(['budgetReserved', 'budgetConsumed']);
 
