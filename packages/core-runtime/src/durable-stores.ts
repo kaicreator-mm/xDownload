@@ -249,7 +249,11 @@ export class FileBackedSeamJournal implements SeamJournal {
   }
 
   replayAll(): readonly SeamJournalEntry[] {
-    return [...this.#entries];
+    // Re-read the durable file rather than trusting only the in-process cache.
+    // This is required for append-outcome reconciliation: write/fsync/close can
+    // throw after bytes became visible/durable but before #entries.push().
+    // openExisting applies the same structural fail-closed decoder.
+    return [...FileBackedSeamJournal.openExisting(this.#path).#entries];
   }
 }
 
