@@ -10,6 +10,7 @@
 import { afterEach } from 'vitest';
 import {
   createCoreSeamServer,
+  createInMemorySeamJournal,
   createLoopbackClientTransport,
   createLoopbackServerTransport,
   createSeamClient,
@@ -206,8 +207,12 @@ export interface RunningSeam {
 /** Start the real seam server behind the loopback transport (port 0). */
 export async function startSeam(
   expectedPeer: ExpectedPeerScope = EXPECTED_PEER,
+  options: { readonly durableJournal?: boolean } = {},
 ): Promise<RunningSeam> {
-  const result = createCoreSeamServer({ expectedPeer });
+  const result = createCoreSeamServer({
+    expectedPeer,
+    ...(options.durableJournal === true ? { journal: createInMemorySeamJournal() } : {}),
+  });
   if (!result.ok) {
     throw new Error('seam server construction failed');
   }

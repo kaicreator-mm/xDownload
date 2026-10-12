@@ -416,7 +416,9 @@ describe('C15 — unsupported-dash-separate-av-needs-mux', () => {
     expect(run.exitCode).toBe(4);
     expect(json['StopReason']).toBe('UNSUPPORTED');
     expect(json['SelectionAcquisitionStatus']).toBe('FAILED');
-    expect(json['needs_user_action']).toBe(false);
+    // Core has no authoritative user-action classification for UNSUPPORTED;
+    // preserve UNKNOWN as null rather than synthesizing false in the CLI.
+    expect(json['needs_user_action']).toBe(null);
   });
 });
 
