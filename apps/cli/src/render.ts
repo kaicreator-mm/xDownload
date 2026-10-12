@@ -58,12 +58,12 @@ export interface StatusDocument {
   readonly requested_scope: RequestedScope | null;
   readonly continuation_scope: ContinuationScope | null;
   readonly snapshot_id: string | null;
-  /** Not carried by the v1 READ_PROJECTION; rendered absent, never invented. */
-  readonly requested_count_if_known: null;
-  /** Not carried by the v1 READ_PROJECTION; rendered absent, never invented. */
-  readonly auth_accessible_count_if_known: null;
-  /** Not carried by the v1 READ_PROJECTION; rendered absent, never invented. */
-  readonly resolved_count: null;
+  /** Projected only from a Core-proven requested member count. */
+  readonly requested_count_if_known: number | null;
+  /** Projected only from a Core-proven auth-accessible member count. */
+  readonly auth_accessible_count_if_known: number | null;
+  /** Projected only from a Core-proven resolved member count. */
+  readonly resolved_count: number | null;
   readonly selected_count: number | null;
   readonly validated_success_count: number | null;
   readonly RequestFulfillmentStatus: string | null;
@@ -197,13 +197,11 @@ export function terminalExitCode(terminal: TerminalResult): 0 | 4 {
 
 /**
  * Render the PRD §27 status document from one Core-owned projection view.
- * Values are projected verbatim: requested/continuation scope from the
- * confirmed contract, `selected_count`/`validated_success_count` from the
- * projection's additive §27 count facts. Fields the v1 projection does not
- * carry (`requested_count_if_known`, `auth_accessible_count_if_known`,
- * `resolved_count`, and any status fact before its truth is projected) render
- * as `null` — absent, never invented (EXECUTION_CONTRACT "fail closed";
- * TEST_MATRIX "missing-projection-fields-render-absent").
+ * Values are projected verbatim: requested/continuation scope and known
+ * requested/auth-accessible/resolved/selected/validated counts from Core.
+ * Missing accounting remains absent; the CLI never synthesizes counts from
+ * snapshot/member cardinality. Unknown user-action state likewise stays null,
+ * not a guessed false.
  */
 export function renderStatusDocument(view: SeamProjectionView): StatusDocument {
   const terminal = view.terminal;
@@ -218,9 +216,9 @@ export function renderStatusDocument(view: SeamProjectionView): StatusDocument {
     requested_scope: view.contract.requestedScope ?? null,
     continuation_scope: view.contract.continuationScope ?? null,
     snapshot_id: view.snapshot?.snapshotId ?? null,
-    requested_count_if_known: null,
-    auth_accessible_count_if_known: null,
-    resolved_count: null,
+    requested_count_if_known: view.requestedMemberCount ?? null,
+    auth_accessible_count_if_known: view.authAccessibleMemberCount ?? null,
+    resolved_count: view.resolvedMemberCount ?? null,
     selected_count: view.selectedMemberCount ?? null,
     validated_success_count: view.validatedSuccessCount ?? null,
     RequestFulfillmentStatus: terminal === undefined ? null : terminal.requestFulfillment,
@@ -228,7 +226,7 @@ export function renderStatusDocument(view: SeamProjectionView): StatusDocument {
     SelectionAcquisitionStatus: terminal === undefined ? null : terminal.selectionAcquisition,
     CoverageStatus: terminal === undefined ? null : terminal.coverage,
     StopReason: terminal === undefined ? null : terminal.stopReason,
-    needs_user_action: needsUserActionFromTerminal(terminal),
+    needs_user_action: view.needsUserAction ?? null,
     failed_member_count: view.lineage.failedMemberCount,
     retried_member_ids: [...view.lineage.retriedMemberIds],
     presentation: renderPresentation(terminal),
