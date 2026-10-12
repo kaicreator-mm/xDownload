@@ -203,18 +203,37 @@ export class FileBackedSeamJournal implements SeamJournal {
           `seam journal contains a line that is not valid JSON: ${String(error)}`,
         );
       }
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        !('envelope' in parsed) ||
-        !('response' in parsed) ||
-        !('payloadDigest' in parsed)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new DurableStoreCorruptError(path, 'seam journal entry must be an object');
+      }
+      const record = parsed as Record<string, unknown>;
+      if (record['kind'] === 'COVERAGE_ACCOUNTING') {
+        if (
+          typeof record['aggregateId'] !== 'string' ||
+          record['aggregateId'].length === 0 ||
+          typeof record['accounting'] !== 'object' ||
+          record['accounting'] === null ||
+          Array.isArray(record['accounting'])
+        ) {
+          throw new DurableStoreCorruptError(
+            path,
+            'seam coverage receipt is missing identity or accounting object',
+          );
+        }
+      } else if (
+        (record['kind'] !== undefined && record['kind'] !== 'COMMAND') ||
+        typeof record['envelope'] !== 'object' ||
+        record['envelope'] === null ||
+        typeof record['response'] !== 'object' ||
+        record['response'] === null ||
+        typeof record['payloadDigest'] !== 'string'
       ) {
         throw new DurableStoreCorruptError(
           path,
           'seam journal entry is missing required accepted-command fields',
         );
       }
+      // Semantic receipt validation occurs during seam replay, also fail-closed.
       entries.push(parsed as SeamJournalEntry);
     }
     return new FileBackedSeamJournal(path, entries);

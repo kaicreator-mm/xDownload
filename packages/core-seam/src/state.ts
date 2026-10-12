@@ -12,6 +12,8 @@
 
 import type {
   AcquisitionContract,
+  CoverageAccounting,
+  EvidenceRecord,
   MemberId,
   SelectionSnapshot,
   TerminalResult,
@@ -33,6 +35,11 @@ export interface LineageState {
   /** Durable cancel order among control transitions (single Core order, L2 §11). */
   cancelOrder?: number;
   terminal?: TerminalResult;
+  /**
+   * Trusted Core-runtime CoverageAccounting receipt. This is internal authority
+   * state only: surfaces cannot write it through the command vocabulary.
+   */
+  coverageAccounting?: CoverageAccounting;
   /** Original failed-member identity domain (the only legal retry domain, C12). */
   failedMembers: MemberId[];
   /** Members whose explicit retry has been authorized through the seam. */
@@ -71,12 +78,31 @@ export function createSeamAuthorityState(): SeamAuthorityState {
   };
 }
 
-/** One durably accepted command + its response; replay input after restart. */
-export interface SeamJournalEntry {
+/** One durably accepted surface command + its response; replay input after restart. */
+export interface AcceptedCommandJournalEntry {
+  /**
+   * Optional only for backward-compatible replay of journals written before
+   * the Core-fact discriminator existed.
+   */
+  readonly kind?: 'COMMAND';
   readonly envelope: CommandEnvelope;
   readonly response: SeamResponse;
   readonly payloadDigest: string;
 }
+
+/**
+ * Core-internal durable CoverageAccounting receipt. It is written only through
+ * the trusted server API, never through a surface command.
+ */
+export interface CoverageAccountingJournalEntry {
+  readonly kind: 'COVERAGE_ACCOUNTING';
+  readonly aggregateId: string;
+  readonly accounting: CoverageAccounting;
+  /** Immutable oracle-grade authorization witnesses; validated on write and replay. */
+  readonly classificationEvidence: readonly EvidenceRecord[];
+}
+
+export type SeamJournalEntry = AcceptedCommandJournalEntry | CoverageAccountingJournalEntry;
 
 /**
  * Persistence port for accepted commands. T004 ships only the port and an

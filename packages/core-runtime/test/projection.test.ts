@@ -31,7 +31,9 @@ import {
   openRuntime,
   rawCollectionContract,
   rawSingleResourceContract,
+  rawSnapshot,
   removeTempDir,
+  runtimeOptions,
   seamCommand,
 } from './helpers.ts';
 import { ControlledHttpFixture } from './fixture-http.ts';
@@ -44,7 +46,7 @@ import {
   type LogicalTargetId,
 } from '@xdownload/domain-contracts';
 import { executeDirectAcquisition, registerLineage } from '../src/index.ts';
-import { projectLineageResult } from '../src/index.ts';
+import { projectLineageResult, reopenCoreRuntime } from '../src/index.ts';
 
 const dirs: string[] = [];
 
@@ -82,6 +84,115 @@ function projectionInput(
 }
 
 describe('T015 projection', () => {
+  it('persists Core collection accounting into READ_PROJECTION across a file-backed reopen', () => {
+    const rootDir = makeTempDir('t015-projection-core-receipt');
+    dirs.push(rootDir);
+    const runtime = openRuntime(rootDir);
+    const contractId = 'contract-collection-001';
+    const requested = ['member-001', 'member-002', 'member-003'];
+    const selected = ['member-001'];
+    const collectionScope = {
+      kind: 'entire_supported_collection',
+      collectionIdentity: 'collection/playlist-001',
+    };
+    const snapshot = rawSnapshot({
+      requestedScope: collectionScope,
+      coverageTarget: {
+        collectionIdentity: 'collection/playlist-001',
+        scopeKind: 'entire_supported_collection',
+        scopeIdentityKey: 'entire_supported_collection:collection/playlist-001',
+        snapshotVersion: 1,
+      },
+      authAccessibleBasis: { kind: 'EXPLICIT_IDENTITIES', memberIds: selected },
+      selectedMemberIds: selected,
+      selectionClaims: [
+        { kind: 'BATCH', confirmationType: 'CONFIRM_SELECTION', memberRefs: selected },
+      ],
+    });
+    const collectionContract: Record<string, unknown> = {
+      ...rawCollectionContract({ requestedScope: collectionScope }),
+      collectionIdentity: 'collection/playlist-001',
+      membershipBasis: { basis: 'SUPPORTED_TEMPLATE', templateRef: 'template/gallery-v1' },
+      explorationPermission: 'COLLECTION_MEMBER_EDGES',
+    };
+
+    try {
+      const submit = seamCommand(runtime, {
+        commandType: 'SUBMIT_CONTRACT',
+        aggregateId: contractId,
+        payload: collectionContract,
+        expectedRevision: 0,
+      });
+      expect(submit.outcome).toBe('ACCEPTED');
+      const confirmed = seamCommand(runtime, {
+        commandType: 'CONFIRM_SNAPSHOT',
+        aggregateId: contractId,
+        payload: snapshot,
+        expectedRevision: 1,
+      });
+      expect(confirmed.outcome).toBe('ACCEPTED');
+      registerLineage(
+        runtime,
+        {
+          contractId,
+          snapshotId: 'snapshot-001',
+          targetId: 'target-collection-root-001',
+          authorizationContextRef: 'authctx/local-001',
+          budgetProfile: collectionContract['budgetProfile'],
+        },
+        { commandId: 'cmd-receipt-flow-001', memberId: selected[0]! },
+      );
+      const accounting = unwrapOrThrow(
+        buildCoverageAccounting(
+          {
+            coverageTarget: snapshot['coverageTarget'] as never,
+            requestedMemberIds: requested.map((item) => unwrapOrThrow(makeMemberId(item))),
+            resolvedMemberIds: selected.map((item) => unwrapOrThrow(makeMemberId(item))),
+            authAccessibleMemberIds: selected.map((item) => unwrapOrThrow(makeMemberId(item))),
+            authInaccessibleMembers: [],
+            selectedMemberIds: selected.map((item) => unwrapOrThrow(makeMemberId(item))),
+            validatedMemberIds: [],
+            authorizationContextRef: 'authctx/local-001' as never,
+          },
+          createEvidenceLedger(),
+        ),
+      );
+      const projected = projectLineageResult(runtime, {
+        lineageKey: [
+          contractId,
+          'snapshot-001',
+          'target-collection-root-001',
+          'effect:contract-collection-001:snapshot-001:target-collection-root-001',
+        ].join('|'),
+        contractId,
+        snapshotId: 'snapshot-001',
+        intentType: 'COLLECTION',
+        scopeKind: 'entire_supported_collection',
+        requestedMemberIds: requested,
+        recordedAt: '2026-10-04T06:00:00Z',
+        enumeration: { kind: 'TRUNCATED', by: 'DISCOVERY_BUDGET' },
+        accounting,
+      });
+      expect(projected.ok).toBe(true);
+      const view = runtime.seam.inspectProjection(contractId);
+      expect(view?.requestedMemberCount).toBe(3);
+      expect(view?.authAccessibleMemberCount).toBe(1);
+      expect(view?.resolvedMemberCount).toBe(1);
+    } finally {
+      closeRuntime(runtime);
+    }
+
+    const reopened = reopenCoreRuntime(runtimeOptions(rootDir));
+    try {
+      const view = reopened.seam.inspectProjection(contractId);
+      expect(view?.requestedMemberCount).toBe(3);
+      expect(view?.authAccessibleMemberCount).toBe(1);
+      expect(view?.resolvedMemberCount).toBe(1);
+    } finally {
+      closeRuntime(reopened);
+    }
+  });
+
   it('produces terminal truth only through the projector and it is deterministic', async () => {
     const rootDir = makeTempDir('t015-projection-deterministic');
     dirs.push(rootDir);

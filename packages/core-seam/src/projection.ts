@@ -71,8 +71,12 @@ export interface SeamProjectionView {
    * result is projected; when unknown the key is absent entirely.
    */
   readonly validatedSuccessCount?: number;
-  /** Actual immutable requested members when the contract determines them. */
+  /** Actual immutable requested members when Core has authoritative identity evidence. */
   readonly requestedMemberCount?: number;
+  /** Auth-accessible requested identities from the durable Core accounting receipt. */
+  readonly authAccessibleMemberCount?: number;
+  /** Independently resolved requested identities from the durable Core accounting receipt. */
+  readonly resolvedMemberCount?: number;
   /** Core-owned action semantics, present only for an authoritative terminal. */
   readonly needsUserAction?: boolean;
 }
@@ -141,12 +145,20 @@ export function projectAggregate(
               ? { needsUserAction: false }
               : {}),
         }),
-    ...(contract.requestedScope.kind === 'single_resource'
-      ? { requestedMemberCount: 1 }
-      : contract.requestedScope.kind === 'explicit_member_set' ||
-          contract.requestedScope.kind === 'selected_collection_members'
-        ? { requestedMemberCount: contract.requestedScope.memberIds.length }
-        : {}),
+    ...(lineage.coverageAccounting === undefined
+      ? contract.requestedScope.kind === 'single_resource'
+        ? { requestedMemberCount: 1 }
+        : contract.requestedScope.kind === 'explicit_member_set' ||
+            contract.requestedScope.kind === 'selected_collection_members'
+          ? { requestedMemberCount: contract.requestedScope.memberIds.length }
+          : {}
+      : {
+          // Never trust stored bare counts: derive the public facts from the
+          // replay-safe identity sets in the trusted Core accounting receipt.
+          requestedMemberCount: lineage.coverageAccounting.requested.length,
+          authAccessibleMemberCount: lineage.coverageAccounting.authAccessible.length,
+          resolvedMemberCount: lineage.coverageAccounting.resolved.length,
+        }),
   };
   return deepFreeze(view);
 }

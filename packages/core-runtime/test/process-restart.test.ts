@@ -129,6 +129,59 @@ afterEach(async () => {
 });
 
 describe('T015 process-restart', () => {
+  it('reopens mixed legacy command and durable coverage receipt journal entries', () => {
+    const rootDir = makeTempDir('t015-coverage-receipt-reopen');
+    dirs.push(rootDir);
+    const first = openRuntime(rootDir);
+    try {
+      expect(
+        seamCommand(first, {
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: 'contract-single-001',
+          payload: rawSingleResourceContract(),
+          expectedRevision: 0,
+        }).outcome,
+      ).toBe('ACCEPTED');
+      const accounting = {
+        coverageTarget: {
+          scopeKind: 'single_resource',
+          scopeIdentityKey: 'single_resource:target-file-001',
+        },
+        authorizationContextRef: 'authctx/local-001',
+        requested: ['target-file-001'],
+        authAccessible: ['target-file-001'],
+        authInaccessible: [],
+        resolved: ['target-file-001'],
+        selected: ['target-file-001'],
+        validated: ['target-file-001'],
+        accounted: ['target-file-001'],
+        counts: {
+          requested: 1,
+          accounted: 1,
+          authAccessible: 1,
+          authInaccessible: 0,
+          selected: 1,
+          validated: 1,
+        },
+      };
+      expect(
+        first.seam.recordCoverageAccounting('contract-single-001', accounting as never).ok,
+      ).toBe(true);
+      expect(first.seam.inspectProjection('contract-single-001')?.resolvedMemberCount).toBe(1);
+    } finally {
+      closeCoreRuntime(first);
+    }
+    const reopened = reopenCoreRuntime(runtimeOptions(rootDir));
+    try {
+      const view = reopened.seam.inspectProjection('contract-single-001');
+      expect(view?.requestedMemberCount).toBe(1);
+      expect(view?.authAccessibleMemberCount).toBe(1);
+      expect(view?.resolvedMemberCount).toBe(1);
+    } finally {
+      closeCoreRuntime(reopened);
+    }
+  });
+
   for (const window of CRASH_WINDOWS) {
     it(
       `re-derives state from durable truth after a real process kill at '${window}'`,

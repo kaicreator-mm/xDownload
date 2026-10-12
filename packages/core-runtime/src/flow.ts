@@ -39,6 +39,7 @@ import {
   unwrapOrThrow,
   makeLogicalTargetId,
   type CoverageAccounting,
+  type EvidenceLedger,
   type CoverageEvidence,
   type DomainValidationResult,
   type EnumerationClosure,
@@ -49,6 +50,7 @@ import {
   type MemberRequiredValidation,
   type ProjectionFacts,
   type ProjectedTerminalResult,
+  projectResult,
   type ResolutionFacts,
   type SnapshotId,
   type StopFacts,
@@ -619,6 +621,8 @@ export interface LineageProjectionInput {
   readonly resolution?: ResolutionFacts;
   /** Canonical coverage accounting built through the domain-contracts API. */
   readonly accounting?: CoverageAccounting;
+  /** Independent canonical evidence ledger for persisted authorization witnesses. */
+  readonly evidenceLedger?: EvidenceLedger;
   readonly coverageBasis?: CoverageEvidence;
   readonly requiredLayers?: readonly ValidationLayer[];
 }
@@ -733,6 +737,30 @@ export function projectLineageResult(
     ...(cancellation === undefined ? {} : { cancellation }),
     ...(input.resolution === undefined ? {} : { resolution: input.resolution }),
   };
+  // Validate without mutating terminal-store authority. A seam receipt failure
+  // cannot leave behind a published in-memory terminal result.
+  const checked = projectResult(facts);
+  if (!checked.ok) return checked;
+  if (
+    input.accounting !== undefined &&
+    runtime.seam.inspectProjection(input.contractId) !== undefined
+  ) {
+    // Only an already registered Core seam lineage is eligible for a
+    // persistent receipt; unrelated internal projection consumers remain
+    // backward-compatible and never fabricate a surface lineage.
+    const recorded = runtime.seam.recordCoverageAccounting(
+      input.contractId,
+      input.accounting,
+      input.evidenceLedger,
+    );
+    if (!recorded.ok) {
+      return fail(
+        recorded.diagnostics.map((item) =>
+          diagnostic('ADMISSION_REJECTED', item.path, item.message),
+        ),
+      );
+    }
+  }
   return runtime.terminalStore.project(facts);
 }
 
