@@ -910,15 +910,18 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
 
   it('does not return a false rejection when append outcome cannot be reconciled', () => {
     const backing = createInMemorySeamJournal();
+    let appendAttempted = false;
     const uncertainJournal = {
       append(entry: Parameters<typeof backing.append>[0]) {
         if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          appendAttempted = true;
           throw new Error('simulated uncertain durable append');
         }
         backing.append(entry);
       },
       replayAll() {
-        throw new Error('simulated durable replay unavailable');
+        if (appendAttempted) throw new Error('simulated durable replay unavailable');
+        return backing.replayAll();
       },
     };
     const s = server(uncertainJournal);
