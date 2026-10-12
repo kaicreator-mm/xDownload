@@ -351,47 +351,16 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         ),
       ]);
     }
-    const rawAuthInaccessible =
-      typeof accounting === 'object' && accounting !== null
-        ? (accounting as { authInaccessible?: unknown }).authInaccessible
-        : undefined;
-    if (
-      !Array.isArray(rawAuthInaccessible) ||
-      rawAuthInaccessible.some(
-        (member) =>
-          typeof member !== 'object' ||
-          member === null ||
-          Array.isArray(member) ||
-          typeof (member as { memberId?: unknown }).memberId !== 'string' ||
-          (member as { memberId: string }).memberId.length === 0 ||
-          typeof (member as { independentlyAccounted?: unknown }).independentlyAccounted !==
-            'boolean' ||
-          ((member as { independentlyAccounted: boolean }).independentlyAccounted &&
-            (typeof (member as { classificationEvidenceId?: unknown }).classificationEvidenceId !==
-              'string' ||
-              (member as { classificationEvidenceId: string }).classificationEvidenceId.length ===
-                0))
-      )
-    ) {
-      return seamFail([
-        seamDiagnostic(
-          'ENVELOPE_MALFORMED',
-          'coverageAccounting.authInaccessible',
-          'auth-inaccessible receipt entries require non-empty memberId, boolean independentlyAccounted, and evidence id when independently accounted',
-          'PRD-§17/§19',
-        ),
-      ]);
+    const inaccessibleResult = validateAuthInaccessibleMembers(
+      (accounting as { authInaccessible?: unknown } | null)?.authInaccessible,
+    );
+    if (!inaccessibleResult.ok) {
+      return inaccessibleResult;
     }
     const referencedEvidenceIds = new Set(
-      rawAuthInaccessible
-        .filter(
-          (member) =>
-            (member as { independentlyAccounted: boolean }).independentlyAccounted,
-        )
-        .map(
-          (member) =>
-            (member as { classificationEvidenceId: string }).classificationEvidenceId,
-        ),
+      inaccessibleResult.value
+        .filter((member) => member.independentlyAccounted)
+        .map((member) => member.classificationEvidenceId),
     );
     const classificationEvidence = (evidenceLedger?.records() ?? []).filter((record) =>
       referencedEvidenceIds.has(record.evidenceId),
@@ -524,6 +493,85 @@ function validateCoverageIdentitySet(
   return seamOk(ids);
 }
 
+interface RuntimeAuthInaccessibleMember {
+  readonly memberId: string;
+  readonly independentlyAccounted: boolean;
+  readonly classificationEvidenceId?: string;
+}
+
+function validateAuthInaccessibleMembers(
+  value: unknown,
+): SeamResult<readonly RuntimeAuthInaccessibleMember[]> {
+  if (!Array.isArray(value)) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'coverageAccounting.authInaccessible',
+        'auth-inaccessible receipt entries must be an array',
+        'PRD-§17/§19',
+      ),
+    ]);
+  }
+  const decoded: RuntimeAuthInaccessibleMember[] = [];
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'coverageAccounting.authInaccessible',
+          'auth-inaccessible receipt member must be an object',
+          'PRD-§17/§19',
+        ),
+      ]);
+    }
+    const member = raw as Record<string, unknown>;
+    if (
+      typeof member['memberId'] !== 'string' ||
+      member['memberId'].length === 0 ||
+      typeof member['independentlyAccounted'] !== 'boolean'
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'coverageAccounting.authInaccessible',
+          'auth-inaccessible receipt member requires non-empty memberId and boolean independentlyAccounted',
+          'PRD-§17/§19',
+        ),
+      ]);
+    }
+    const evidenceId = member['classificationEvidenceId'];
+    if (
+      evidenceId !== undefined &&
+      (typeof evidenceId !== 'string' || evidenceId.length === 0)
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'coverageAccounting.authInaccessible.classificationEvidenceId',
+          'classification evidence id must be a non-empty string when present',
+          'PRD-§19',
+        ),
+      ]);
+    }
+    if (member['independentlyAccounted'] && evidenceId === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'coverageAccounting.authInaccessible',
+          'independently accounted inaccessible members require evidence identity',
+          'PRD-§19',
+        ),
+      ]);
+    }
+    decoded.push({
+      memberId: member['memberId'],
+      independentlyAccounted: member['independentlyAccounted'],
+      ...(evidenceId === undefined ? {} : { classificationEvidenceId: evidenceId }),
+    });
+  }
+  return seamOk(decoded);
+}
+
 /**
  * Validate and apply one trusted Core-runtime CoverageAccounting receipt.
  * Counts are never trusted directly: projection derives cardinalities from the
@@ -604,45 +652,11 @@ function applyCoverageAccountingReceipt(
     ]);
   }
 
-  const authInaccessible = (accounting as { authInaccessible?: unknown }).authInaccessible;
-  if (
-    !Array.isArray(authInaccessible) ||
-    authInaccessible.some(
-      (item) =>
-        typeof item !== 'object' ||
-        item === null ||
-        typeof (item as { memberId?: unknown }).memberId !== 'string' ||
-        typeof (item as { independentlyAccounted?: unknown }).independentlyAccounted !== 'boolean',
-    )
-  ) {
-    return seamFail([
-      seamDiagnostic(
-        'ENVELOPE_MALFORMED',
-        'coverageAccounting.authInaccessible',
-        'auth-inaccessible receipt entries must carry memberId and independentlyAccounted',
-      ),
-    ]);
-  }
-  for (const item of authInaccessible) {
-    const member = item as {
-      independentlyAccounted: boolean;
-      classificationEvidenceId?: unknown;
-    };
-    if (
-      member.independentlyAccounted &&
-      (typeof member.classificationEvidenceId !== 'string' ||
-        member.classificationEvidenceId.length === 0)
-    ) {
-      return seamFail([
-        seamDiagnostic(
-          'ADMISSION_REJECTED',
-          'coverageAccounting.authInaccessible',
-          'independently accounted inaccessible members require evidence identity',
-          'PRD-§19',
-        ),
-      ]);
-    }
-  }
+  const inaccessibleResult = validateAuthInaccessibleMembers(
+    (accounting as { authInaccessible?: unknown }).authInaccessible,
+  );
+  if (!inaccessibleResult.ok) return inaccessibleResult;
+  const authInaccessible = inaccessibleResult.value;
   // Evidence *identity* is not independent proof. Persist canonical evidence
   // records with the receipt and re-decode/oracle-check them on every reopen.
   if (!Array.isArray(classificationEvidence)) {
@@ -697,7 +711,7 @@ function applyCoverageAccountingReceipt(
       ]);
     }
   }
-  const inaccessibleIds = authInaccessible.map((item) => (item as { memberId: string }).memberId);
+  const inaccessibleIds = authInaccessible.map((item) => item.memberId);
   const inaccessibleSetCheck = validateCoverageIdentitySet(
     inaccessibleIds,
     'coverageAccounting.authInaccessible',
@@ -705,8 +719,8 @@ function applyCoverageAccountingReceipt(
   );
   if (!inaccessibleSetCheck.ok) return inaccessibleSetCheck;
   const evidencedInaccessible = authInaccessible
-    .filter((item) => (item as { independentlyAccounted: boolean }).independentlyAccounted)
-    .map((item) => (item as { memberId: string }).memberId);
+    .filter((item) => item.independentlyAccounted)
+    .map((item) => item.memberId);
   const accounted = parsed.get('coverageAccounting.accounted') ?? [];
   const resolved = parsed.get('coverageAccounting.resolved') ?? [];
   const expectedAccounted = [...new Set([...validated, ...evidencedInaccessible])];
@@ -737,11 +751,7 @@ function applyCoverageAccountingReceipt(
   }
 
   const counts = (accounting as { counts?: unknown }).counts;
-  if (
-    typeof counts !== 'object' ||
-    counts === null ||
-    Array.isArray(counts)
-  ) {
+  if (typeof counts !== 'object' || counts === null || Array.isArray(counts)) {
     return seamFail([
       seamDiagnostic(
         'ENVELOPE_MALFORMED',
