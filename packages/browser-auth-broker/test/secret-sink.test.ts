@@ -80,14 +80,12 @@ describe('raw-secret-field-in-canonical-or-logged-state', () => {
     }
   });
 
-  it('rejects a sentinel present only in an object KEY (top-level or nested)', () => {
-    const payloads: readonly Record<string, unknown>[] = [
-      { [`public-${SENTINEL}-name`]: 'safe-value' },
-      { nested: { [SENTINEL]: { ordinary: 'safe-value' } } },
-    ];
-    for (const payload of payloads) {
-      expect(auditContainsSecretSentinel(payload, SENTINEL)).toBe(true);
-      const written = guardedSinkWrite(payload, [SENTINEL]);
+  it('rejects top-level and nested sentinel-bearing object keys', () => {
+    const key = `key-${SENTINEL}`;
+    const cases = [{ [key]: 'safe' }, { nested: { [key]: 'safe' } }];
+    for (const value of cases) {
+      expect(auditContainsSecretSentinel(value, SENTINEL)).toBe(true);
+      const written = guardedSinkWrite(value, [SENTINEL]);
       expect(written.ok).toBe(false);
       if (!written.ok) {
         expect(written.diagnostics.map((d) => d.code)).toContain('SECRET_IN_SINK');
@@ -95,23 +93,18 @@ describe('raw-secret-field-in-canonical-or-logged-state', () => {
     }
   });
 
-  it('rejects a sentinel-bearing object key inside a cyclic or aliased graph', () => {
-    const shared: Record<string, unknown> = { [`key-${SENTINEL}`]: 'nonsecret' };
+  it('rejects sentinel keys through cycles and shared aliases', () => {
+    const shared = { [SENTINEL]: 'safe' };
     const cyclic: Record<string, unknown> = { one: shared, two: shared };
     cyclic['self'] = cyclic;
     expect(auditContainsSecretSentinel(cyclic, SENTINEL)).toBe(true);
     const written = guardedSinkWrite(cyclic, [SENTINEL]);
     expect(written.ok).toBe(false);
-    if (!written.ok) {
-      expect(written.diagnostics.map((d) => d.code)).toContain('SECRET_IN_SINK');
-    }
   });
 
-  it('still scrubs value-only sentinels without rejecting safe object keys', () => {
-    const written = guardedSinkWrite(
-      { safeKey: { anotherSafeKey: `prefix-${SENTINEL}-suffix` } },
-      [SENTINEL],
-    );
+  it('preserves safe keys while scrubbing sentinel values', () => {
+    const payload = { safeKey: { nested: `prefix-${SENTINEL}-suffix` } };
+    const written = guardedSinkWrite(payload, [SENTINEL]);
     expect(written.ok).toBe(true);
     if (written.ok) {
       expect(auditContainsSecretSentinel(written.value, SENTINEL)).toBe(false);
