@@ -103,9 +103,8 @@ describe('raw-secret-field-in-canonical-or-logged-state', () => {
   });
 
   it('preserves own __proto__ as data instead of hiding a nested secret in the prototype', () => {
-    const hostile = JSON.parse(
-      `{"__proto__":{"notes":"prefix-${SENTINEL}-suffix"}}`,
-    ) as Record<string, unknown>;
+    const protoData = { notes: `prefix-${SENTINEL}-suffix` };
+    const hostile = Object.fromEntries([['__proto__', protoData]]);
     expect(Object.prototype.hasOwnProperty.call(hostile, '__proto__')).toBe(true);
     const written = guardedSinkWrite(hostile, [SENTINEL]);
     expect(written.ok).toBe(true);
@@ -118,9 +117,7 @@ describe('raw-secret-field-in-canonical-or-logged-state', () => {
   });
 
   it('rejects secret-bearing keys under a hostile own __proto__ data property', () => {
-    const hostile = Object.fromEntries([
-      ['__proto__', { [`key-${SENTINEL}`]: 'safe' }],
-    ]);
+    const hostile = Object.fromEntries([['__proto__', { [`key-${SENTINEL}`]: 'safe' }]]);
     const written = guardedSinkWrite(hostile, [SENTINEL]);
     expect(written.ok).toBe(false);
     if (!written.ok) {
