@@ -540,10 +540,7 @@ function validateAuthInaccessibleMembers(
       ]);
     }
     const evidenceId = member['classificationEvidenceId'];
-    if (
-      evidenceId !== undefined &&
-      (typeof evidenceId !== 'string' || evidenceId.length === 0)
-    ) {
+    if (evidenceId !== undefined && (typeof evidenceId !== 'string' || evidenceId.length === 0)) {
       return seamFail([
         seamDiagnostic(
           'ENVELOPE_MALFORMED',
