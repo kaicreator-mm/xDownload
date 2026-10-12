@@ -318,6 +318,15 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
           )}`,
         );
       }
+      // A malformed/custom/legacy port result is itself durability uncertainty.
+      // Authority was already mutated; never let a TypeError escape unfenced.
+      if (
+        durability === null ||
+        typeof durability !== 'object' ||
+        !['COMMITTED', 'NOT_COMMITTED', 'UNCERTAIN'].includes(durability.status)
+      ) {
+        poisonForRecovery('accepted command journal returned an invalid durability outcome');
+      }
       if (durability.status !== 'COMMITTED') {
         poisonForRecovery(
           `accepted command authority changed before journal commit; durability=${durability.status}: ${durability.error}`,
@@ -431,6 +440,15 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
             error,
           )}`,
         );
+      }
+      // Journal ports are TypeScript interfaces, but runtime adapters may be
+      // malformed (including a legacy void append); poison before any read.
+      if (
+        durability === null ||
+        typeof durability !== 'object' ||
+        !['COMMITTED', 'NOT_COMMITTED', 'UNCERTAIN'].includes(durability.status)
+      ) {
+        poisonForRecovery('coverage receipt journal returned an invalid durability outcome');
       }
       if (durability.status === 'UNCERTAIN') {
         poisonForRecovery(
