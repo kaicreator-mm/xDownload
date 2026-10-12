@@ -214,8 +214,8 @@ function auditSentinelMaterial(
     ancestors.add(value);
     // Object keys are also data at exit sinks: never let a sentinel in a
     // property name bypass the guard while its value looks innocuous (#79).
-    const hit = Object.entries(value).some(([key, child]) =>
-      key.includes(sentinel) || auditSentinelMaterial(child, sentinel, ancestors),
+    const hit = Object.entries(value).some(
+      ([key, child]) => key.includes(sentinel) || auditSentinelMaterial(child, sentinel, ancestors),
     );
     ancestors.delete(value);
     return hit;
