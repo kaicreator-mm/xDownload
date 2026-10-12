@@ -351,24 +351,47 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         ),
       ]);
     }
+    const rawAuthInaccessible =
+      typeof accounting === 'object' && accounting !== null
+        ? (accounting as { authInaccessible?: unknown }).authInaccessible
+        : undefined;
     if (
-      typeof accounting !== 'object' ||
-      accounting === null ||
-      !Array.isArray(accounting.authInaccessible)
+      !Array.isArray(rawAuthInaccessible) ||
+      rawAuthInaccessible.some(
+        (member) =>
+          typeof member !== 'object' ||
+          member === null ||
+          Array.isArray(member) ||
+          typeof (member as { memberId?: unknown }).memberId !== 'string' ||
+          (member as { memberId: string }).memberId.length === 0 ||
+          typeof (member as { independentlyAccounted?: unknown }).independentlyAccounted !==
+            'boolean' ||
+          ((member as { independentlyAccounted: boolean }).independentlyAccounted &&
+            (typeof (member as { classificationEvidenceId?: unknown }).classificationEvidenceId !==
+              'string' ||
+              (member as { classificationEvidenceId: string }).classificationEvidenceId.length ===
+                0))
+      )
     ) {
       return seamFail([
         seamDiagnostic(
           'ENVELOPE_MALFORMED',
           'coverageAccounting.authInaccessible',
-          'coverage receipt requires a structured auth-inaccessible identity set',
-          'PRD-§17',
+          'auth-inaccessible receipt entries require non-empty memberId, boolean independentlyAccounted, and evidence id when independently accounted',
+          'PRD-§17/§19',
         ),
       ]);
     }
     const referencedEvidenceIds = new Set(
-      accounting.authInaccessible
-        .filter((member) => member.independentlyAccounted)
-        .map((member) => member.classificationEvidenceId),
+      rawAuthInaccessible
+        .filter(
+          (member) =>
+            (member as { independentlyAccounted: boolean }).independentlyAccounted,
+        )
+        .map(
+          (member) =>
+            (member as { classificationEvidenceId: string }).classificationEvidenceId,
+        ),
     );
     const classificationEvidence = (evidenceLedger?.records() ?? []).filter((record) =>
       referencedEvidenceIds.has(record.evidenceId),
@@ -383,23 +406,48 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       return applied;
     }
     if (!applied.value.converged) {
+      const receiptEntry = {
+        kind: 'COVERAGE_ACCOUNTING' as const,
+        aggregateId,
+        accounting,
+        classificationEvidence,
+      };
       try {
-        journal.append({
-          kind: 'COVERAGE_ACCOUNTING',
-          aggregateId,
-          accounting,
-          classificationEvidence,
-        });
-      } catch {
-        // The in-memory write is not authoritative until the durable append
-        // succeeds. A failed journal port must not leak phantom read facts.
+        journal.append(receiptEntry);
+      } catch (error) {
+        // An append exception is not proof of non-commit: write/fsync/close or
+        // a transport acknowledgement can fail after the entry reached the
+        // durable journal. Reconcile against the journal's durable replay
+        // view before returning any rejection, otherwise a rejected-now
+        // receipt could revive after restart.
+        let committedAfterError: boolean;
+        try {
+          const expected = stableStringify(receiptEntry);
+          committedAfterError = journal
+            .replayAll()
+            .some((entry) => stableStringify(entry) === expected);
+        } catch (reconcileError) {
+          // The commit outcome is genuinely unknowable. Do not lie by
+          // returning ADMISSION_REJECTED: stop the trusted publication path
+          // so restart/recovery can re-establish durable truth.
+          throw new Error(
+            `coverage receipt durability outcome is uncertain; runtime recovery required: append=${String(
+              error,
+            )}; reconcile=${String(reconcileError)}`,
+          );
+        }
+        if (committedAfterError) {
+          // Lost acknowledgement after durable commit: converge as committed.
+          return applied;
+        }
+        // The durable replay view proves absence, so rollback and reject.
         const lineage = state.lineages.get(aggregateId);
         if (lineage !== undefined) lineage.coverageAccounting = undefined;
         return seamFail([
           seamDiagnostic(
             'ADMISSION_REJECTED',
             'journal',
-            'coverage receipt was not durably committed; publication rejected',
+            'coverage receipt append failed and durable replay proves the receipt absent',
             'L2-§6.8',
           ),
         ]);
@@ -688,15 +736,29 @@ function applyCoverageAccountingReceipt(
     ]);
   }
 
-  const counts = (accounting as { counts?: Record<string, unknown> }).counts;
+  const counts = (accounting as { counts?: unknown }).counts;
   if (
-    counts === undefined ||
-    counts['requested'] !== requested.length ||
-    counts['authAccessible'] !== authAccessible.length ||
-    counts['authInaccessible'] !== inaccessibleIds.length ||
-    counts['selected'] !== selected.length ||
-    counts['validated'] !== validated.length ||
-    counts['accounted'] !== (parsed.get('coverageAccounting.accounted') ?? []).length
+    typeof counts !== 'object' ||
+    counts === null ||
+    Array.isArray(counts)
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'coverageAccounting.counts',
+        'coverage receipt counts must be an object',
+        'PRD-§17',
+      ),
+    ]);
+  }
+  const countRecord = counts as Record<string, unknown>;
+  if (
+    countRecord['requested'] !== requested.length ||
+    countRecord['authAccessible'] !== authAccessible.length ||
+    countRecord['authInaccessible'] !== inaccessibleIds.length ||
+    countRecord['selected'] !== selected.length ||
+    countRecord['validated'] !== validated.length ||
+    countRecord['accounted'] !== (parsed.get('coverageAccounting.accounted') ?? []).length
   ) {
     return seamFail([
       seamDiagnostic(
