@@ -1007,6 +1007,12 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
       expect(() => s.inspectProjection('contract-single-001')).toThrow(
         /fenced; reopen\/recovery required/,
       );
+      expect(() => s.acceptedCommandCount).toThrow(/fenced; reopen\/recovery required/);
+      const read = s.handleFrame(
+        JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })),
+      );
+      expect(read.outcome).toBe('REJECTED');
+      expect(read.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
       const retry = s.handleFrame(
         JSON.stringify(
           rawCommand({
@@ -1024,6 +1030,46 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
       expect(view?.lineage.status).toBe('ACTIVE');
     },
   );
+
+  it('poisons after command acknowledgement loss and recovers the durably committed command only on reopen', () => {
+    const backing = createInMemorySeamJournal();
+    let commandAppendCount = 0;
+    const ackLostJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind !== 'COMMAND') return backing.append(entry);
+        commandAppendCount += 1;
+        backing.append(entry);
+        if (commandAppendCount === 2) {
+          throw new Error('simulated command acknowledgement loss after durable commit');
+        }
+        return { status: 'COMMITTED' as const };
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(ackLostJournal);
+    submitSingle(s);
+
+    expect(() =>
+      s.handleFrame(
+        JSON.stringify(
+          rawCommand({
+            commandType: 'CANCEL_LINEAGE',
+            aggregateId: 'contract-single-001',
+            expectedRevision: 1,
+          }),
+        ),
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-single-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    expect(() => s.acceptedCommandCount).toThrow(/fenced; reopen\/recovery required/);
+
+    const reopened = server(backing);
+    const view = reopened.inspectProjection('contract-single-001');
+    expect(view?.lineage.status).toBe('CANCELLED');
+    expect(reopened.acceptedCommandCount).toBe(2);
+  });
 
   it('rolls back and rejects only when the journal proves NOT_COMMITTED', () => {
     const backing = createInMemorySeamJournal();
