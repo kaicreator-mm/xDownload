@@ -1069,6 +1069,64 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
     expect(reopened.acceptedCommandCount).toBe(2);
   });
 
+  it('fences coverage authority on malformed/legacy journal outcomes after apply', () => {
+    const fixture = accountingFixture();
+    const backing = createInMemorySeamJournal();
+    const malformed = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind === 'COVERAGE_ACCOUNTING') return undefined as never;
+        return backing.append(entry);
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(malformed);
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+
+    expect(() =>
+      s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-collection-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    const reopened = server(backing);
+    expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBeUndefined();
+  });
+
+  it('fences command authority on malformed journal outcome after apply', () => {
+    const backing = createInMemorySeamJournal();
+    let commands = 0;
+    const malformed = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind === 'COMMAND' && ++commands === 2) {
+          return { status: 'UNKNOWN' } as never;
+        }
+        return backing.append(entry);
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(malformed);
+    submitSingle(s);
+    expect(() =>
+      s.handleFrame(
+        JSON.stringify(
+          rawCommand({
+            commandType: 'CANCEL_LINEAGE',
+            aggregateId: 'contract-single-001',
+            expectedRevision: 1,
+          }),
+        ),
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-single-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    expect(server(backing).inspectProjection('contract-single-001')?.lineage.status).toBe('ACTIVE');
+  });
+
   it('rolls back and rejects only when the journal proves NOT_COMMITTED', () => {
     const backing = createInMemorySeamJournal();
     const failedJournal = {
