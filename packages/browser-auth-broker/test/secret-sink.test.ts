@@ -102,6 +102,32 @@ describe('raw-secret-field-in-canonical-or-logged-state', () => {
     expect(written.ok).toBe(false);
   });
 
+  it('preserves own __proto__ as data instead of hiding a nested secret in the prototype', () => {
+    const hostile = JSON.parse(
+      `{"__proto__":{"notes":"prefix-${SENTINEL}-suffix"}}`,
+    ) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(hostile, '__proto__')).toBe(true);
+    const written = guardedSinkWrite(hostile, [SENTINEL]);
+    expect(written.ok).toBe(true);
+    if (written.ok) {
+      expect(Object.getPrototypeOf(written.value)).toBe(Object.prototype);
+      expect(Object.prototype.hasOwnProperty.call(written.value, '__proto__')).toBe(true);
+      expect(auditContainsSecretSentinel(written.value, SENTINEL)).toBe(false);
+      expect(JSON.stringify(written.value)).toContain('[REDACTED]');
+    }
+  });
+
+  it('rejects secret-bearing keys under a hostile own __proto__ data property', () => {
+    const hostile = Object.fromEntries([
+      ['__proto__', { [`key-${SENTINEL}`]: 'safe' }],
+    ]);
+    const written = guardedSinkWrite(hostile, [SENTINEL]);
+    expect(written.ok).toBe(false);
+    if (!written.ok) {
+      expect(written.diagnostics.map((d) => d.code)).toContain('SECRET_IN_SINK');
+    }
+  });
+
   it('preserves safe keys while scrubbing sentinel values', () => {
     const payload = { safeKey: { nested: `prefix-${SENTINEL}-suffix` } };
     const written = guardedSinkWrite(payload, [SENTINEL]);
