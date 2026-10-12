@@ -877,18 +877,15 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
     }
   });
 
-  it('converges as committed when append throws after the durable entry is already visible', () => {
+  it('converges as committed when the journal reports its durable commit point', () => {
     const backing = createInMemorySeamJournal();
-    const ackLostJournal = {
+    const committedJournal = {
       append(entry: Parameters<typeof backing.append>[0]) {
-        backing.append(entry);
-        if (entry.kind === 'COVERAGE_ACCOUNTING') {
-          throw new Error('simulated acknowledgement loss after commit');
-        }
+        return backing.append(entry);
       },
       replayAll: () => backing.replayAll(),
     };
-    const s = server(ackLostJournal);
+    const s = server(committedJournal);
     const fixture = accountingFixture();
     seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
 
@@ -908,21 +905,47 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
     expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
   });
 
-  it('does not return a false rejection when append outcome cannot be reconciled', () => {
+  it('treats an unexpected throw after durable commit as uncertainty, never as rejection', () => {
     const backing = createInMemorySeamJournal();
-    let appendAttempted = false;
+    const ackLostJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        backing.append(entry);
+        if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          throw new Error('simulated acknowledgement loss after commit');
+        }
+        return { status: 'COMMITTED' as const };
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(ackLostJournal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+
+    expect(() =>
+      s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ),
+    ).toThrow(/durability outcome is uncertain/);
+
+    const reopened = server(backing);
+    expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
+  });
+
+  it('does not return a false rejection when the journal reports UNCERTAIN durability', () => {
+    const backing = createInMemorySeamJournal();
     const uncertainJournal = {
       append(entry: Parameters<typeof backing.append>[0]) {
         if (entry.kind === 'COVERAGE_ACCOUNTING') {
-          appendAttempted = true;
-          throw new Error('simulated uncertain durable append');
+          return {
+            status: 'UNCERTAIN' as const,
+            error: 'simulated fsync failure after write',
+          };
         }
-        backing.append(entry);
+        return backing.append(entry);
       },
-      replayAll() {
-        if (appendAttempted) throw new Error('simulated durable replay unavailable');
-        return backing.replayAll();
-      },
+      replayAll: () => backing.replayAll(),
     };
     const s = server(uncertainJournal);
     const fixture = accountingFixture();
@@ -936,12 +959,14 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
     ).toThrow(/durability outcome is uncertain/);
   });
 
-  it('does not expose receipt counts if the durable journal append fails', () => {
+  it('rolls back and rejects only when the journal proves NOT_COMMITTED', () => {
     const backing = createInMemorySeamJournal();
     const failedJournal = {
       append(entry: Parameters<typeof backing.append>[0]) {
-        if (entry.kind === 'COVERAGE_ACCOUNTING') throw new Error('simulated durable write error');
-        backing.append(entry);
+        if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          return { status: 'NOT_COMMITTED' as const, error: 'simulated open failure' };
+        }
+        return backing.append(entry);
       },
       replayAll: () => backing.replayAll(),
     };
