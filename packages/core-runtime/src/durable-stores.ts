@@ -68,7 +68,10 @@ function appendDurableSeamLine(path: string, line: string): SeamJournalAppendRes
   try {
     fd = openSync(path, 'a');
   } catch (error) {
-    return { status: 'NOT_COMMITTED', error: `open failed before append: ${String(error)}` };
+    return {
+      status: 'NOT_COMMITTED',
+      error: `open failed before append: ${String(error)}`,
+    };
   }
 
   let outcome: SeamJournalAppendResult = {
