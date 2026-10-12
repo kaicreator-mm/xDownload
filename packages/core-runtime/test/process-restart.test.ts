@@ -40,6 +40,7 @@ import {
 } from './helpers.ts';
 import {
   closeCoreRuntime,
+  durableLayout,
   DurableStoreCorruptError,
   executeDirectAcquisition,
   registerLineage,
@@ -171,6 +172,22 @@ describe('T015 process-restart', () => {
     } finally {
       closeCoreRuntime(first);
     }
+
+    // Convert the accepted command line to the actual historical wire shape:
+    // legacy journals predate the discriminator and therefore have no
+    // `kind: 'COMMAND'`. Keep the coverage receipt line unchanged.
+    const journalPath = durableLayout(rootDir).journalPath;
+    const journalLines = readFileSync(journalPath, 'utf8').trimEnd().split('\n');
+    const legacyCommand = JSON.parse(journalLines[0]!) as Record<string, unknown>;
+    expect(legacyCommand['kind']).toBe('COMMAND');
+    delete legacyCommand['kind'];
+    journalLines[0] = JSON.stringify(legacyCommand);
+    writeFileSync(journalPath, `${journalLines.join('\n')}\n`);
+    const persistedLegacy = JSON.parse(
+      readFileSync(journalPath, 'utf8').trimEnd().split('\n')[0]!,
+    ) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(persistedLegacy, 'kind')).toBe(false);
+
     const reopened = reopenCoreRuntime(runtimeOptions(rootDir));
     try {
       const view = reopened.seam.inspectProjection('contract-single-001');
