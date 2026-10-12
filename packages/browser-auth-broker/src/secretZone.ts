@@ -84,9 +84,17 @@ function redact(
     ancestors.add(value);
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
-      out[key] = RAW_SECRET_FIELD_NAMES.has(key)
-        ? BROKER_REDACTED_MARKER
-        : redact(child, ancestors, sanitized);
+      // Preserve hostile own keys (notably __proto__) as data properties.
+      // A direct out[key] assignment can change the output prototype and
+      // hide secret material from Object.entries-based sink auditing.
+      Object.defineProperty(out, key, {
+        value: RAW_SECRET_FIELD_NAMES.has(key)
+          ? BROKER_REDACTED_MARKER
+          : redact(child, ancestors, sanitized),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     ancestors.delete(value);
     sanitized.set(value, out);
@@ -292,7 +300,14 @@ function scrubSentinels(
     ancestors.add(value);
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
-      out[key] = scrubSentinels(child, sentinels, ancestors, sanitized);
+      // Never route an untrusted __proto__ property through the inherited
+      // setter: keep it as an own enumerable field for the final audit.
+      Object.defineProperty(out, key, {
+        value: scrubSentinels(child, sentinels, ancestors, sanitized),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     ancestors.delete(value);
     sanitized.set(value, out);
