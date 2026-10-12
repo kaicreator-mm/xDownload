@@ -630,13 +630,14 @@ function applyCoverageAccountingReceipt(
       !canServeAsIndependentValidationOracle(evidence) ||
       evidence.claimType !== 'AUTHORIZATION' ||
       evidence.scope.domain !== 'AUTHORIZATION' ||
-      (evidence.provenance.executionContext?.authorizationContextRef !== undefined &&
-        evidence.provenance.executionContext.authorizationContextRef !==
-          accounting.authorizationContextRef) ||
+      evidence.provenance.executionContext?.authorizationContextRef !==
+        accounting.authorizationContextRef ||
       evidence.claimSubject.kind !== 'MEMBER' ||
       evidence.claimSubject.ref !== item.memberId ||
       evidence.scope.contractRef !== aggregateId ||
-      (lineage.snapshot !== undefined && evidence.scope.snapshotRef !== lineage.snapshot.snapshotId)
+      (lineage.snapshot === undefined
+        ? evidence.scope.snapshotRef !== undefined
+        : evidence.scope.snapshotRef !== lineage.snapshot.snapshotId)
     ) {
       return seamFail([
         seamDiagnostic(
