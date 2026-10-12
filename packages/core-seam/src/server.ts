@@ -122,6 +122,25 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   const state: SeamAuthorityState = createSeamAuthorityState();
   const journal = options.journal;
   const gateway: DomainGateway = createDomainGateway();
+  let recoveryFenceReason: string | undefined;
+
+  function recoveryFenceMessage(): string {
+    return `Core seam authority is fenced; reopen/recovery required${recoveryFenceReason === undefined ? '' : `: ${recoveryFenceReason}`}`;
+  }
+
+  function poisonForRecovery(reason: string): never {
+    recoveryFenceReason ??= reason;
+    throw new Error(recoveryFenceMessage());
+  }
+
+  function recoveryFenceDiagnostic(): SeamDiagnostic {
+    return seamDiagnostic(
+      'ADMISSION_REJECTED',
+      'runtime',
+      recoveryFenceMessage(),
+      'L2-§6.8',
+    );
+  }
 
   // Restart replay: re-apply every durably accepted command through the same
   // deterministic authority path, gate-bypassed (they were gated at
@@ -177,6 +196,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   }
 
   function handleFrame(frame: string): SeamResponse {
+    if (recoveryFenceReason !== undefined) {
+      return rejectedUnknown([recoveryFenceDiagnostic()]);
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(frame) as unknown;
@@ -293,15 +315,15 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       try {
         durability = journal.append({ kind: 'COMMAND', envelope, response, payloadDigest: digest });
       } catch (error) {
-        throw new Error(
-          `accepted command durability outcome is uncertain; runtime recovery required: ${String(
+        poisonForRecovery(
+          `accepted command journal threw after authority apply; durability is uncertain: ${String(
             error,
           )}`,
         );
       }
       if (durability.status !== 'COMMITTED') {
-        throw new Error(
-          `accepted command did not reach a proven durable commit point (${durability.status}); runtime recovery required: ${durability.error}`,
+        poisonForRecovery(
+          `accepted command authority changed before journal commit; durability=${durability.status}: ${durability.error}`,
         );
       }
     }
@@ -330,6 +352,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     aggregateId: string,
     memberIds: readonly string[],
   ): SeamResult<void> {
+    if (recoveryFenceReason !== undefined) {
+      return seamFail([recoveryFenceDiagnostic()]);
+    }
     const lineage = state.lineages.get(aggregateId);
     if (lineage === undefined) {
       return seamFail([
@@ -357,6 +382,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     accounting: CoverageAccounting,
     evidenceLedger?: EvidenceLedger,
   ): SeamResult<{ readonly converged: boolean }> {
+    if (recoveryFenceReason !== undefined) {
+      return seamFail([recoveryFenceDiagnostic()]);
+    }
     if (journal === undefined) {
       return seamFail([
         seamDiagnostic(
@@ -401,15 +429,15 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       try {
         durability = journal.append(receiptEntry);
       } catch (error) {
-        throw new Error(
-          `coverage receipt durability outcome is uncertain; runtime recovery required: ${String(
+        poisonForRecovery(
+          `coverage receipt journal threw after in-memory authority apply; durability is uncertain: ${String(
             error,
           )}`,
         );
       }
       if (durability.status === 'UNCERTAIN') {
-        throw new Error(
-          `coverage receipt durability outcome is uncertain; runtime recovery required: ${durability.error}`,
+        poisonForRecovery(
+          `coverage receipt durability is uncertain after in-memory authority apply: ${durability.error}`,
         );
       }
       if (durability.status === 'NOT_COMMITTED') {
@@ -435,9 +463,15 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     recordFailedMembers,
     recordCoverageAccounting,
     inspectProjection(aggregateId: string) {
+      if (recoveryFenceReason !== undefined) {
+        throw new Error(recoveryFenceMessage());
+      }
       return projectAggregate(state, aggregateId);
     },
     get acceptedCommandCount() {
+      if (recoveryFenceReason !== undefined) {
+        throw new Error(recoveryFenceMessage());
+      }
       return state.accepted.size;
     },
   };
