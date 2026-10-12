@@ -118,7 +118,14 @@ describe('projections are read-only values', () => {
     const keys = Object.keys(view).sort();
     // Schema identity + contract/snapshot/lineage/terminal facts only. No
     // budget ledger, no mutation handle, no surface-owned result state.
-    expect(keys).toStrictEqual(['contract', 'lineage', 'schemaIdentity', 'snapshot', 'terminal']);
+    expect(keys).toStrictEqual([
+      'contract',
+      'lineage',
+      'requestedMemberCount',
+      'schemaIdentity',
+      'snapshot',
+      'terminal',
+    ]);
     expect(keys.some((key) => key.toLowerCase().includes('budget'))).toBe(false);
     const before = JSON.stringify(view);
     s.handleFrame(
@@ -301,6 +308,9 @@ describe('additive PRD §27 exposure on the read projection', () => {
     const beforeView = before.projection as Record<string, unknown>;
     // No snapshot, no terminal: neither §27 count fact exists yet, and the
     // projection must not carry a placeholder (absent, never null/0).
+    expect(beforeView['requestedMemberCount']).toBe(1);
+    expect((beforeView['lineage'] as Record<string, unknown>)['failedMemberIds']).toStrictEqual([]);
+    expect(Object.prototype.hasOwnProperty.call(beforeView, 'needsUserAction')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(beforeView, 'selectedMemberCount')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(beforeView, 'validatedSuccessCount')).toBe(false);
 
@@ -325,7 +335,35 @@ describe('additive PRD §27 exposure on the read projection', () => {
     // Terminal truth exists now: the validated success count is exposed;
     // the selected count is still absent (no snapshot was confirmed).
     expect(afterView['validatedSuccessCount']).toBe(1);
+    expect(afterView['needsUserAction']).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(afterView, 'selectedMemberCount')).toBe(false);
+  });
+
+  it('authoritative authorization stop requires user action without fabricating success', () => {
+    const s = server();
+    submitSingle(s);
+    const response = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'PROJECT_TERMINAL_RESULT',
+          aggregateId: 'contract-single-001',
+          expectedRevision: 1,
+          payload: {
+            result: rawTerminalResult({
+              requestFulfillment: 'UNSATISFIED',
+              targetResolution: 'BLOCKED',
+              selectionAcquisition: 'NOT_STARTED',
+              stopReason: 'AUTH_FAILED',
+              validationSummary: { status: 'NOT_PERFORMED', passedCount: 0, failedCount: 0 },
+            }),
+          },
+        }),
+      ),
+    );
+    expect(response.outcome).toBe('ACCEPTED');
+    const view = s.inspectProjection('contract-single-001');
+    expect(view?.needsUserAction).toBe(true);
+    expect(view?.validatedSuccessCount).toBe(0);
   });
 
   it('after CONFIRM_SNAPSHOT the selected-member count is exposed as the confirmed cardinality', () => {
@@ -356,11 +394,51 @@ describe('additive PRD §27 exposure on the read projection', () => {
     );
     const view = response.projection as Record<string, unknown>;
     expect(view['selectedMemberCount']).toBe(3);
+    // An entire collection has no proven requested cardinality at this seam.
+    expect(Object.prototype.hasOwnProperty.call(view, 'requestedMemberCount')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(view, 'needsUserAction')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(view, 'validatedSuccessCount')).toBe(false);
     expect((view['contract'] as Record<string, unknown>)['requestedScope']).toStrictEqual({
       kind: 'entire_supported_collection',
       collectionIdentity: 'collection/playlist-001',
     });
+  });
+
+  it('Core projects exact failure identities, not a count-derived guess', () => {
+    const s = server();
+    submitSingle(s);
+    const recorded = s.recordFailedMembers('contract-single-001', ['member-001']);
+    expect(recorded.ok).toBe(true);
+    const response = s.handleFrame(
+      JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })),
+    );
+    const view = response.projection as Record<string, unknown>;
+    const lineage = view['lineage'] as Record<string, unknown>;
+    expect(lineage['failedMemberCount']).toBe(1);
+    expect(lineage['failedMemberIds']).toStrictEqual(['member-001']);
+    expect(Object.isFrozen(lineage['failedMemberIds'] as object)).toBe(true);
+  });
+
+  it('unknown collection cardinalities remain absent and do not equal selected count', () => {
+    const s = server();
+    const accepted = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: 'contract-collection-001',
+          payload: rawCollectionContract(),
+        }),
+      ),
+    );
+    expect(accepted.outcome).toBe('ACCEPTED');
+    const view = s.inspectProjection('contract-collection-001') as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(Object.prototype.hasOwnProperty.call(view, 'requestedMemberCount')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(view, 'needsUserAction')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(view, 'resolvedMemberCount')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(view, 'authAccessibleMemberCount')).toBe(false);
   });
 
   it('additive fields survive the wire round-trip; unknown facts stay absent on the wire', () => {
@@ -373,6 +451,8 @@ describe('additive PRD §27 exposure on the read projection', () => {
       (bareWire.projection['contract'] as Record<string, unknown>)['requestedScope'],
     ).toStrictEqual({ kind: 'single_resource', targetId: 'target-file-001' });
     // ...while the unknown count facts produce no wire bytes at all.
+    expect(bareWire.projection['requestedMemberCount']).toBe(1);
+    expect(JSON.stringify(bareWire.projection)).not.toContain('needsUserAction');
     expect(JSON.stringify(bareWire.projection)).not.toContain('selectedMemberCount');
     expect(JSON.stringify(bareWire.projection)).not.toContain('validatedSuccessCount');
 
