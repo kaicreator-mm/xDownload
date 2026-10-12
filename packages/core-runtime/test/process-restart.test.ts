@@ -40,6 +40,7 @@ import {
 } from './helpers.ts';
 import {
   closeCoreRuntime,
+  durableLayout,
   DurableStoreCorruptError,
   executeDirectAcquisition,
   registerLineage,
@@ -129,6 +130,128 @@ afterEach(async () => {
 });
 
 describe('T015 process-restart', () => {
+  it('reopens mixed legacy command and durable coverage receipt journal entries', () => {
+    const rootDir = makeTempDir('t015-coverage-receipt-reopen');
+    dirs.push(rootDir);
+    const first = openRuntime(rootDir);
+    try {
+      expect(
+        seamCommand(first, {
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: 'contract-single-001',
+          payload: rawSingleResourceContract(),
+          expectedRevision: 0,
+        }).outcome,
+      ).toBe('ACCEPTED');
+      const accounting = {
+        coverageTarget: {
+          scopeKind: 'single_resource',
+          scopeIdentityKey: 'single_resource:target-file-001',
+        },
+        authorizationContextRef: 'authctx/local-001',
+        requested: ['target-file-001'],
+        authAccessible: ['target-file-001'],
+        authInaccessible: [],
+        resolved: ['target-file-001'],
+        selected: ['target-file-001'],
+        validated: ['target-file-001'],
+        accounted: ['target-file-001'],
+        counts: {
+          requested: 1,
+          accounted: 1,
+          authAccessible: 1,
+          authInaccessible: 0,
+          selected: 1,
+          validated: 1,
+        },
+      };
+      expect(
+        first.seam.recordCoverageAccounting('contract-single-001', accounting as never).ok,
+      ).toBe(true);
+      expect(first.seam.inspectProjection('contract-single-001')?.resolvedMemberCount).toBe(1);
+    } finally {
+      closeCoreRuntime(first);
+    }
+
+    // Convert the accepted command line to the actual historical wire shape:
+    // legacy journals predate the discriminator and therefore have no
+    // `kind: 'COMMAND'`. Keep the coverage receipt line unchanged.
+    const journalPath = durableLayout(rootDir).journalPath;
+    const journalLines = readFileSync(journalPath, 'utf8').trimEnd().split('\n');
+    const legacyCommand = JSON.parse(journalLines[0]!) as Record<string, unknown>;
+    expect(legacyCommand['kind']).toBe('COMMAND');
+    delete legacyCommand['kind'];
+    journalLines[0] = JSON.stringify(legacyCommand);
+    writeFileSync(journalPath, `${journalLines.join('\n')}\n`);
+    const persistedLegacy = JSON.parse(
+      readFileSync(journalPath, 'utf8').trimEnd().split('\n')[0]!,
+    ) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(persistedLegacy, 'kind')).toBe(false);
+
+    const reopened = reopenCoreRuntime(runtimeOptions(rootDir));
+    try {
+      const view = reopened.seam.inspectProjection('contract-single-001');
+      expect(view?.requestedMemberCount).toBe(1);
+      expect(view?.authAccessibleMemberCount).toBe(1);
+      expect(view?.resolvedMemberCount).toBe(1);
+    } finally {
+      closeCoreRuntime(reopened);
+    }
+  });
+
+  it('fails closed when a persisted coverage receipt loses its classification-evidence field', () => {
+    const rootDir = makeTempDir('t015-coverage-receipt-missing-evidence');
+    dirs.push(rootDir);
+    const first = openRuntime(rootDir);
+    try {
+      expect(
+        seamCommand(first, {
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: 'contract-single-001',
+          payload: rawSingleResourceContract(),
+          expectedRevision: 0,
+        }).outcome,
+      ).toBe('ACCEPTED');
+      const accounting = {
+        coverageTarget: {
+          scopeKind: 'single_resource',
+          scopeIdentityKey: 'single_resource:target-file-001',
+        },
+        authorizationContextRef: 'authctx/local-001',
+        requested: ['target-file-001'],
+        authAccessible: ['target-file-001'],
+        authInaccessible: [],
+        resolved: ['target-file-001'],
+        selected: ['target-file-001'],
+        validated: ['target-file-001'],
+        accounted: ['target-file-001'],
+        counts: {
+          requested: 1,
+          accounted: 1,
+          authAccessible: 1,
+          authInaccessible: 0,
+          selected: 1,
+          validated: 1,
+        },
+      };
+      expect(
+        first.seam.recordCoverageAccounting('contract-single-001', accounting as never).ok,
+      ).toBe(true);
+    } finally {
+      closeCoreRuntime(first);
+    }
+
+    const journalPath = durableLayout(rootDir).journalPath;
+    const journalLines = readFileSync(journalPath, 'utf8').trimEnd().split('\n');
+    const receipt = JSON.parse(journalLines[1]!) as Record<string, unknown>;
+    expect(receipt['kind']).toBe('COVERAGE_ACCOUNTING');
+    delete receipt['classificationEvidence'];
+    journalLines[1] = JSON.stringify(receipt);
+    writeFileSync(journalPath, `${journalLines.join('\n')}\n`);
+
+    expect(() => reopenCoreRuntime(runtimeOptions(rootDir))).toThrow(DurableStoreCorruptError);
+  });
+
   for (const window of CRASH_WINDOWS) {
     it(
       `re-derives state from durable truth after a real process kill at '${window}'`,

@@ -35,7 +35,7 @@ import {
   type DurableControlFact,
   type DurableControlFactLog,
 } from '@xdownload/core-scheduler';
-import type { SeamJournal, SeamJournalEntry } from '@xdownload/core-seam';
+import type { SeamJournal, SeamJournalAppendResult, SeamJournalEntry } from '@xdownload/core-seam';
 
 const BUDGET_FACT_KINDS: ReadonlySet<string> = new Set(['budgetReserved', 'budgetConsumed']);
 
@@ -57,6 +57,63 @@ function appendDurableLine(path: string, line: string): void {
   } finally {
     closeSync(fd);
   }
+}
+
+function appendDurableSeamLine(path: string, line: string): SeamJournalAppendResult {
+  let fd: number;
+  try {
+    fd = openSync(path, 'a');
+  } catch (error) {
+    return {
+      status: 'NOT_COMMITTED',
+      error: `open failed before append: ${String(error)}`,
+    };
+  }
+
+  let outcome: SeamJournalAppendResult = {
+    status: 'UNCERTAIN',
+    error: 'append did not reach a durable commit point',
+  };
+  try {
+    const bytes = Buffer.from(`${line}\n`, 'utf8');
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = writeSync(fd, bytes, offset, bytes.length - offset, null);
+      if (written <= 0) {
+        throw new Error('write returned zero bytes');
+      }
+      offset += written;
+    }
+    try {
+      fsyncSync(fd);
+      outcome = { status: 'COMMITTED' };
+    } catch (error) {
+      outcome = {
+        status: 'UNCERTAIN',
+        error: `fsync failed after write; durability cannot be proven: ${String(error)}`,
+      };
+    }
+  } catch (error) {
+    outcome = {
+      status: 'UNCERTAIN',
+      error: `write failed after append began; partial durable state is possible: ${String(error)}`,
+    };
+  } finally {
+    try {
+      closeSync(fd);
+    } catch (error) {
+      if (outcome.status !== 'COMMITTED') {
+        outcome = {
+          status: 'UNCERTAIN',
+          error: `${outcome.error}; close also failed: ${String(error)}`,
+        };
+      }
+      // If fsync already completed successfully, close failure cannot revoke
+      // that durable commit. Preserve COMMITTED and let higher-level runtime
+      // lifecycle surface the handle-close problem separately if needed.
+    }
+  }
+  return outcome;
 }
 
 function readDurableLines(path: string): readonly string[] {
@@ -203,18 +260,38 @@ export class FileBackedSeamJournal implements SeamJournal {
           `seam journal contains a line that is not valid JSON: ${String(error)}`,
         );
       }
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        !('envelope' in parsed) ||
-        !('response' in parsed) ||
-        !('payloadDigest' in parsed)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new DurableStoreCorruptError(path, 'seam journal entry must be an object');
+      }
+      const record = parsed as Record<string, unknown>;
+      if (record['kind'] === 'COVERAGE_ACCOUNTING') {
+        if (
+          typeof record['aggregateId'] !== 'string' ||
+          record['aggregateId'].length === 0 ||
+          typeof record['accounting'] !== 'object' ||
+          record['accounting'] === null ||
+          Array.isArray(record['accounting']) ||
+          !Array.isArray(record['classificationEvidence'])
+        ) {
+          throw new DurableStoreCorruptError(
+            path,
+            'seam coverage receipt is missing identity, accounting object, or classification-evidence array',
+          );
+        }
+      } else if (
+        (record['kind'] !== undefined && record['kind'] !== 'COMMAND') ||
+        typeof record['envelope'] !== 'object' ||
+        record['envelope'] === null ||
+        typeof record['response'] !== 'object' ||
+        record['response'] === null ||
+        typeof record['payloadDigest'] !== 'string'
       ) {
         throw new DurableStoreCorruptError(
           path,
           'seam journal entry is missing required accepted-command fields',
         );
       }
+      // Semantic receipt validation occurs during seam replay, also fail-closed.
       entries.push(parsed as SeamJournalEntry);
     }
     return new FileBackedSeamJournal(path, entries);
@@ -224,13 +301,20 @@ export class FileBackedSeamJournal implements SeamJournal {
     return this.#path;
   }
 
-  append(entry: SeamJournalEntry): void {
-    appendDurableLine(this.#path, JSON.stringify(entry));
-    this.#entries.push(entry);
+  append(entry: SeamJournalEntry): SeamJournalAppendResult {
+    const outcome = appendDurableSeamLine(this.#path, JSON.stringify(entry));
+    if (outcome.status === 'COMMITTED') {
+      this.#entries.push(entry);
+    }
+    return outcome;
   }
 
   replayAll(): readonly SeamJournalEntry[] {
-    return [...this.#entries];
+    // Re-read the durable file rather than trusting only the in-process cache.
+    // This is required for append-outcome reconciliation: write/fsync/close can
+    // throw after bytes became visible/durable but before #entries.push().
+    // openExisting applies the same structural fail-closed decoder.
+    return [...FileBackedSeamJournal.openExisting(this.#path).#entries];
   }
 }
 

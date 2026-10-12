@@ -10,8 +10,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { createEvidenceLedger, evidenceRecord } from '@xdownload/domain-contracts';
 import {
   createCoreSeamServer,
+  createInMemorySeamJournal,
   EXPECTED_PEER,
   foreignPeer,
   peer,
@@ -27,8 +29,8 @@ import {
   CORE_SEAM_SCHEMA_ID,
 } from './helpers.ts';
 
-function server() {
-  const result = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
+function server(journal?: ReturnType<typeof createInMemorySeamJournal>) {
+  const result = createCoreSeamServer({ expectedPeer: EXPECTED_PEER, journal });
   if (!result.ok) {
     throw new Error('server construction failed');
   }
@@ -485,5 +487,715 @@ describe('additive PRD §27 exposure on the read projection', () => {
     };
     // Wire round-trip: the additive presence facts arrive intact.
     expect(confirmedWire.projection['selectedMemberCount']).toBe(3);
+  });
+});
+
+describe('unsnapshotted single-resource receipt binding', () => {
+  it('rejects identities that are not the immutable contract target', () => {
+    const s = server(createInMemorySeamJournal());
+    submitSingle(s);
+    const accounting = {
+      authorizationContextRef: 'authctx/local-001',
+      coverageTarget: {
+        scopeKind: 'single_resource',
+        scopeIdentityKey: 'single_resource:target-file-001',
+      },
+      requested: ['target-forged-001'],
+      authAccessible: ['target-forged-001'],
+      authInaccessible: [],
+      resolved: ['target-forged-001'],
+      selected: ['target-forged-001'],
+      validated: ['target-forged-001'],
+      accounted: ['target-forged-001'],
+      counts: {
+        requested: 1,
+        accounted: 1,
+        authAccessible: 1,
+        authInaccessible: 0,
+        selected: 1,
+        validated: 1,
+      },
+    };
+    const rejected = s.recordCoverageAccounting('contract-single-001', accounting as never);
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) expect(rejected.diagnostics[0]?.code).toBe('SCOPE_MUTATION');
+    const projection = s.inspectProjection('contract-single-001') as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(Object.hasOwn(projection, 'resolvedMemberCount')).toBe(false);
+
+    const scoped = server(createInMemorySeamJournal());
+    submitSingle(scoped);
+    const wrongScope = {
+      ...accounting,
+      requested: ['target-file-001'],
+      authAccessible: ['target-file-001'],
+      resolved: ['target-file-001'],
+      selected: ['target-file-001'],
+      validated: ['target-file-001'],
+      accounted: ['target-file-001'],
+      coverageTarget: {
+        ...accounting.coverageTarget,
+        scopeIdentityKey: 'single_resource:target-other-001',
+      },
+    };
+    const scopeRejected = scoped.recordCoverageAccounting(
+      'contract-single-001',
+      wrongScope as never,
+    );
+    expect(scopeRejected.ok).toBe(false);
+    if (!scopeRejected.ok) expect(scopeRejected.diagnostics[0]?.code).toBe('SCOPE_MUTATION');
+  });
+});
+
+describe('durable Core CoverageAccounting receipt for PRD §27', () => {
+  function accountingFixture() {
+    const requested = Array.from(
+      { length: 18 },
+      (_, index) => `member-${String(index + 1).padStart(3, '0')}`,
+    );
+    const accessible = requested.slice(0, 16);
+    const inaccessible = requested.slice(16);
+    const ledger = createEvidenceLedger();
+    for (const [index, memberId] of inaccessible.entries()) {
+      const admitted = ledger.append(
+        evidenceRecord({
+          evidenceId: `evidence-auth-${String(index + 1).padStart(3, '0')}` as never,
+          claimType: 'AUTHORIZATION',
+          claimSubject: { kind: 'MEMBER', ref: memberId },
+          sourceType: 'INDEPENDENT_VALIDATOR',
+          provenance: {
+            sourceIdentity: 'independent-auth-validator-001',
+            executionContext: {
+              toolsUsed: ['independent-auth-validator'],
+              authorizationContextRef: 'authctx/local-001',
+              budgetRefs: [],
+            },
+          },
+          independenceFromDiscovery: 'INDEPENDENT',
+          scope: {
+            domain: 'AUTHORIZATION',
+            contractRef: 'contract-collection-001',
+            snapshotRef: 'snapshot-001',
+          },
+          certaintyClass: 'DECISIVE',
+        }),
+      );
+      if (!admitted.ok) throw new Error('invalid independent authorization fixture');
+    }
+    const coverageTarget = {
+      collectionIdentity: 'collection/playlist-001',
+      scopeKind: 'entire_supported_collection',
+      scopeIdentityKey: 'entire_supported_collection:collection/playlist-001',
+      snapshotVersion: 1,
+    };
+    return {
+      requested,
+      accessible,
+      ledger,
+      coverageTarget,
+      accounting: {
+        coverageTarget,
+        authorizationContextRef: 'authctx/local-001',
+        requested,
+        authAccessible: accessible,
+        authInaccessible: inaccessible.map((memberId, index) => ({
+          memberId,
+          classificationEvidenceId: `evidence-auth-${String(index + 1).padStart(3, '0')}`,
+          independentlyAccounted: true,
+        })),
+        resolved: requested,
+        selected: accessible,
+        validated: accessible,
+        accounted: requested,
+        counts: {
+          requested: 18,
+          accounted: 18,
+          authAccessible: 16,
+          authInaccessible: 2,
+          selected: 16,
+          validated: 16,
+        },
+      },
+    };
+  }
+
+  function seedAccountingLineage(
+    s: ReturnType<typeof server>,
+    requested: readonly string[],
+    accessible: readonly string[],
+    coverageTarget: Record<string, unknown>,
+  ): void {
+    const submit = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: 'contract-collection-001',
+          payload: rawCollectionContract(),
+        }),
+      ),
+    );
+    expect(submit.outcome).toBe('ACCEPTED');
+    const confirm = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'CONFIRM_SNAPSHOT',
+          aggregateId: 'contract-collection-001',
+          expectedRevision: 1,
+          payload: rawSnapshot({
+            requestedMemberBasis: { kind: 'EXPLICIT_IDENTITIES', memberIds: requested },
+            authAccessibleBasis: { kind: 'EXPLICIT_IDENTITIES', memberIds: accessible },
+            selectedMemberIds: accessible,
+            selectionClaims: [
+              {
+                kind: 'BATCH',
+                confirmationType: 'CONFIRM_SELECTION',
+                memberRefs: accessible,
+              },
+            ],
+            coverageTarget,
+          }),
+        }),
+      ),
+    );
+    expect(confirm.outcome).toBe('ACCEPTED');
+  }
+
+  it('publishes 18 requested / 16 accessible / 18 resolved from identity sets, never guessed counts', () => {
+    const journal = createInMemorySeamJournal();
+    const s = server(journal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+
+    const recorded = s.recordCoverageAccounting(
+      'contract-collection-001',
+      fixture.accounting as never,
+      fixture.ledger,
+    );
+    expect(recorded.ok).toBe(true);
+    if (recorded.ok) expect(recorded.value.converged).toBe(false);
+
+    const view = s.inspectProjection('contract-collection-001') as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(view['requestedMemberCount']).toBe(18);
+    expect(view['authAccessibleMemberCount']).toBe(16);
+    expect(view['resolvedMemberCount']).toBe(18);
+    expect(view['selectedMemberCount']).toBe(16);
+  });
+
+  it('survives restart on the same Core journal and identical replay converges', () => {
+    const journal = createInMemorySeamJournal();
+    const fixture = accountingFixture();
+    const first = server(journal);
+    seedAccountingLineage(first, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    const recorded = first.recordCoverageAccounting(
+      'contract-collection-001',
+      fixture.accounting as never,
+      fixture.ledger,
+    );
+    expect(recorded.ok).toBe(true);
+
+    const restarted = server(journal);
+    const view = restarted.inspectProjection('contract-collection-001') as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(view['requestedMemberCount']).toBe(18);
+    expect(view['authAccessibleMemberCount']).toBe(16);
+    expect(view['resolvedMemberCount']).toBe(18);
+
+    const duplicate = restarted.recordCoverageAccounting(
+      'contract-collection-001',
+      fixture.accounting as never,
+      fixture.ledger,
+    );
+    expect(duplicate.ok).toBe(true);
+    if (duplicate.ok) expect(duplicate.value.converged).toBe(true);
+  });
+
+  it('fails closed on conflicting, out-of-scope and non-durable accounting publication', () => {
+    const fixture = accountingFixture();
+
+    const noJournal = server();
+    seedAccountingLineage(noJournal, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    const notDurable = noJournal.recordCoverageAccounting(
+      'contract-collection-001',
+      fixture.accounting as never,
+      fixture.ledger,
+    );
+    expect(notDurable.ok).toBe(false);
+    if (!notDurable.ok) {
+      expect(notDurable.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+    }
+
+    const journal = createInMemorySeamJournal();
+    const s = server(journal);
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    expect(
+      s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ).ok,
+    ).toBe(true);
+
+    const conflict = s.recordCoverageAccounting(
+      'contract-collection-001',
+      {
+        ...fixture.accounting,
+        parentCollectionCoverage: {
+          collectionIdentity: 'collection/playlist-001',
+          status: 'VERIFIED_COMPLETE',
+        },
+      } as never,
+      fixture.ledger,
+    );
+    expect(conflict.ok).toBe(false);
+    if (!conflict.ok) {
+      expect(conflict.diagnostics[0]?.code).toBe('IDEMPOTENCY_CONFLICT');
+    }
+
+    const outside = server(createInMemorySeamJournal());
+    seedAccountingLineage(outside, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    const escaped = outside.recordCoverageAccounting(
+      'contract-collection-001',
+      {
+        ...fixture.accounting,
+        resolved: [...fixture.requested, 'member-999'],
+      } as never,
+      fixture.ledger,
+    );
+    expect(escaped.ok).toBe(false);
+    if (!escaped.ok) expect(escaped.diagnostics[0]?.code).toBe('SCOPE_MUTATION');
+  });
+
+  it('rejects unbound or inconsistent coverage accounting receipt claims', () => {
+    const fixture = accountingFixture();
+    const underAccounted = {
+      ...fixture.accounting,
+      accounted: fixture.accessible,
+      counts: { ...fixture.accounting.counts, accounted: 16 },
+    };
+    const invalidCases = [
+      { ...fixture.accounting, authorizationContextRef: undefined },
+      {
+        ...fixture.accounting,
+        authInaccessible: fixture.accounting.authInaccessible.map((member) => ({
+          memberId: member.memberId,
+          independentlyAccounted: true,
+        })),
+      },
+      underAccounted,
+      { ...fixture.accounting, resolved: fixture.accessible },
+    ];
+    for (const invalid of invalidCases) {
+      const s = server(createInMemorySeamJournal());
+      seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+      const rejected = s.recordCoverageAccounting(
+        'contract-collection-001',
+        invalid as never,
+        fixture.ledger,
+      );
+      expect(rejected.ok).toBe(false);
+      const view = s.inspectProjection('contract-collection-001') as unknown as Record<
+        string,
+        unknown
+      >;
+      expect(Object.prototype.hasOwnProperty.call(view, 'resolvedMemberCount')).toBe(false);
+    }
+  });
+
+  it('returns typed rejection for malformed receipt shapes, not an uncaught exception', () => {
+    const fixture = accountingFixture();
+    const invalidShapes: readonly unknown[] = [
+      null,
+      [],
+      {},
+      { ...fixture.accounting, authInaccessible: null },
+      { ...fixture.accounting, authInaccessible: 'not-an-array' },
+      { ...fixture.accounting, authInaccessible: [null] },
+      { ...fixture.accounting, counts: null },
+    ];
+    for (const invalid of invalidShapes) {
+      const s = server(createInMemorySeamJournal());
+      seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+      expect(() =>
+        s.recordCoverageAccounting('contract-collection-001', invalid as never, fixture.ledger),
+      ).not.toThrow();
+      const rejected = s.recordCoverageAccounting(
+        'contract-collection-001',
+        invalid as never,
+        fixture.ledger,
+      );
+      expect(rejected.ok).toBe(false);
+      if (!rejected.ok) expect(rejected.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
+    }
+  });
+
+  it('rejects oracle-grade evidence with a mismatched authorization domain or context', () => {
+    const fixture = accountingFixture();
+    const sourceRecords = fixture.ledger.records();
+    const invalidLedgers = [
+      {
+        ...fixture.ledger,
+        records: () =>
+          sourceRecords.map((record) => ({
+            ...record,
+            scope: { ...record.scope, domain: 'COVERAGE' },
+          })),
+      },
+      {
+        ...fixture.ledger,
+        records: () =>
+          sourceRecords.map((record) => ({
+            ...record,
+            provenance: {
+              ...record.provenance,
+              executionContext: { authorizationContextRef: 'authctx/foreign-001' },
+            },
+          })),
+      },
+    ];
+    for (const ledger of invalidLedgers) {
+      const s = server(createInMemorySeamJournal());
+      seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+      const rejected = s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        ledger as never,
+      );
+      expect(rejected.ok).toBe(false);
+      if (!rejected.ok) expect(rejected.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+      const view = s.inspectProjection('contract-collection-001') as unknown as Record<
+        string,
+        unknown
+      >;
+      expect(Object.prototype.hasOwnProperty.call(view, 'resolvedMemberCount')).toBe(false);
+    }
+  });
+
+  it('rejects replay when persisted classification evidence contains unreferenced witnesses', () => {
+    const backing = createInMemorySeamJournal();
+    const fixture = accountingFixture();
+    const first = server(backing);
+    seedAccountingLineage(first, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    expect(
+      first.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ).ok,
+    ).toBe(true);
+
+    const entries = backing.replayAll().map((entry) => {
+      if (entry.kind !== 'COVERAGE_ACCOUNTING') return entry;
+      const source = fixture.ledger.records()[0]!;
+      return {
+        ...entry,
+        classificationEvidence: [
+          ...entry.classificationEvidence,
+          { ...source, evidenceId: 'evidence-auth-extra-001' as never },
+        ],
+      };
+    });
+    const tamperedJournal = {
+      append: backing.append,
+      replayAll: () => entries,
+    };
+    const replayed = createCoreSeamServer({
+      expectedPeer: EXPECTED_PEER,
+      journal: tamperedJournal,
+    });
+    expect(replayed.ok).toBe(false);
+    if (!replayed.ok) {
+      expect(
+        replayed.diagnostics.some(
+          (item) =>
+            item.path === 'classificationEvidence' && item.message.includes('exactly match'),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('converges as committed when the journal reports its durable commit point', () => {
+    const backing = createInMemorySeamJournal();
+    const committedJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        return backing.append(entry);
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(committedJournal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+
+    const recorded = s.recordCoverageAccounting(
+      'contract-collection-001',
+      fixture.accounting as never,
+      fixture.ledger,
+    );
+    expect(recorded.ok).toBe(true);
+    expect(s.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
+
+    const reopened = server(backing);
+    expect(reopened.inspectProjection('contract-collection-001')?.requestedMemberCount).toBe(18);
+    expect(reopened.inspectProjection('contract-collection-001')?.authAccessibleMemberCount).toBe(
+      16,
+    );
+    expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
+  });
+
+  it('treats an unexpected throw after durable commit as uncertainty, never as rejection', () => {
+    const backing = createInMemorySeamJournal();
+    const ackLostJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        backing.append(entry);
+        if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          throw new Error('simulated acknowledgement loss after commit');
+        }
+        return { status: 'COMMITTED' as const };
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(ackLostJournal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+
+    expect(() =>
+      s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-collection-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    const fencedQuery = s.handleFrame(
+      JSON.stringify(rawQuery({ aggregateId: 'contract-collection-001' })),
+    );
+    expect(fencedQuery.outcome).toBe('REJECTED');
+    expect(fencedQuery.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
+
+    const reopened = server(backing);
+    expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
+  });
+
+  it('does not return a false rejection when the journal reports UNCERTAIN durability', () => {
+    const backing = createInMemorySeamJournal();
+    const uncertainJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          return {
+            status: 'UNCERTAIN' as const,
+            error: 'simulated fsync failure after write',
+          };
+        }
+        return backing.append(entry);
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(uncertainJournal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    expect(() =>
+      s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-collection-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    const directWrite = s.recordFailedMembers('contract-collection-001', ['member-001']);
+    expect(directWrite.ok).toBe(false);
+    if (!directWrite.ok) expect(directWrite.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+  });
+
+  it.each(['UNCERTAIN', 'NOT_COMMITTED'] as const)(
+    'poisons the current authority after command post-apply durability %s',
+    (durabilityStatus) => {
+      const backing = createInMemorySeamJournal();
+      let commandAppendCount = 0;
+      const journal = {
+        append(entry: Parameters<typeof backing.append>[0]) {
+          if (entry.kind !== 'COMMAND') return backing.append(entry);
+          commandAppendCount += 1;
+          if (commandAppendCount === 1) return backing.append(entry);
+          return durabilityStatus === 'UNCERTAIN'
+            ? { status: 'UNCERTAIN' as const, error: 'simulated command fsync uncertainty' }
+            : { status: 'NOT_COMMITTED' as const, error: 'simulated command precommit failure' };
+        },
+        replayAll: () => backing.replayAll(),
+      };
+      const s = server(journal);
+      submitSingle(s);
+
+      expect(() =>
+        s.handleFrame(
+          JSON.stringify(
+            rawCommand({
+              commandType: 'CANCEL_LINEAGE',
+              aggregateId: 'contract-single-001',
+              expectedRevision: 1,
+            }),
+          ),
+        ),
+      ).toThrow(/fenced; reopen\/recovery required/);
+
+      expect(() => s.inspectProjection('contract-single-001')).toThrow(
+        /fenced; reopen\/recovery required/,
+      );
+      expect(() => s.acceptedCommandCount).toThrow(/fenced; reopen\/recovery required/);
+      const read = s.handleFrame(JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })));
+      expect(read.outcome).toBe('REJECTED');
+      expect(read.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
+      const retry = s.handleFrame(
+        JSON.stringify(
+          rawCommand({
+            commandType: 'CANCEL_LINEAGE',
+            aggregateId: 'contract-single-001',
+            expectedRevision: 1,
+          }),
+        ),
+      );
+      expect(retry.outcome).toBe('REJECTED');
+      expect(retry.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
+
+      const reopened = server(backing);
+      const view = reopened.inspectProjection('contract-single-001');
+      expect(view?.lineage.status).toBe('ACTIVE');
+    },
+  );
+
+  it('poisons after command acknowledgement loss and recovers the durably committed command only on reopen', () => {
+    const backing = createInMemorySeamJournal();
+    let commandAppendCount = 0;
+    const ackLostJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind !== 'COMMAND') return backing.append(entry);
+        commandAppendCount += 1;
+        backing.append(entry);
+        if (commandAppendCount === 2) {
+          throw new Error('simulated command acknowledgement loss after durable commit');
+        }
+        return { status: 'COMMITTED' as const };
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(ackLostJournal);
+    submitSingle(s);
+
+    expect(() =>
+      s.handleFrame(
+        JSON.stringify(
+          rawCommand({
+            commandType: 'CANCEL_LINEAGE',
+            aggregateId: 'contract-single-001',
+            expectedRevision: 1,
+          }),
+        ),
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-single-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    expect(() => s.acceptedCommandCount).toThrow(/fenced; reopen\/recovery required/);
+
+    const reopened = server(backing);
+    const view = reopened.inspectProjection('contract-single-001');
+    expect(view?.lineage.status).toBe('CANCELLED');
+    expect(reopened.acceptedCommandCount).toBe(2);
+  });
+
+  it('fences coverage authority on malformed/legacy journal outcomes after apply', () => {
+    const fixture = accountingFixture();
+    const backing = createInMemorySeamJournal();
+    const malformed = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind === 'COVERAGE_ACCOUNTING') return undefined as never;
+        return backing.append(entry);
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(malformed);
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+
+    expect(() =>
+      s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-collection-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    const reopened = server(backing);
+    expect(
+      reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount,
+    ).toBeUndefined();
+  });
+
+  it('fences command authority on malformed journal outcome after apply', () => {
+    const backing = createInMemorySeamJournal();
+    let commands = 0;
+    const malformed = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind === 'COMMAND' && ++commands === 2) {
+          return { status: 'UNKNOWN' } as never;
+        }
+        return backing.append(entry);
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(malformed);
+    submitSingle(s);
+    expect(() =>
+      s.handleFrame(
+        JSON.stringify(
+          rawCommand({
+            commandType: 'CANCEL_LINEAGE',
+            aggregateId: 'contract-single-001',
+            expectedRevision: 1,
+          }),
+        ),
+      ),
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-single-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    expect(server(backing).inspectProjection('contract-single-001')?.lineage.status).toBe('ACTIVE');
+  });
+
+  it('rolls back and rejects only when the journal proves NOT_COMMITTED', () => {
+    const backing = createInMemorySeamJournal();
+    const failedJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          return { status: 'NOT_COMMITTED' as const, error: 'simulated open failure' };
+        }
+        return backing.append(entry);
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(failedJournal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    const recorded = s.recordCoverageAccounting(
+      'contract-collection-001',
+      fixture.accounting as never,
+      fixture.ledger,
+    );
+    expect(recorded.ok).toBe(false);
+    const view = s.inspectProjection('contract-collection-001') as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(Object.prototype.hasOwnProperty.call(view, 'resolvedMemberCount')).toBe(false);
   });
 });
