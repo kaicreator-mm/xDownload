@@ -43,5 +43,12 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Format F06 target for diagnostic patch
+        run: |
+          pnpm exec prettier --write packages/core-seam/src/server.ts
+          echo '---FORMAT-DIFF-BEGIN---'
+          git diff -- packages/core-seam/src/server.ts
+          echo '---FORMAT-DIFF-END---'
+
       - name: Run aggregate gate
         run: pnpm ci:verify
