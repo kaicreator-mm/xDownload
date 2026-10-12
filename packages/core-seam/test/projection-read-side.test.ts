@@ -1093,7 +1093,9 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
       /fenced; reopen\/recovery required/,
     );
     const reopened = server(backing);
-    expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBeUndefined();
+    expect(
+      reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount,
+    ).toBeUndefined();
   });
 
   it('fences command authority on malformed journal outcome after apply', () => {
