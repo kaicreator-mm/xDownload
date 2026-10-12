@@ -902,7 +902,9 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
 
     const reopened = server(backing);
     expect(reopened.inspectProjection('contract-collection-001')?.requestedMemberCount).toBe(18);
-    expect(reopened.inspectProjection('contract-collection-001')?.authAccessibleMemberCount).toBe(16);
+    expect(reopened.inspectProjection('contract-collection-001')?.authAccessibleMemberCount).toBe(
+      16,
+    );
     expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
   });
 
