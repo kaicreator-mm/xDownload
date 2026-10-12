@@ -877,6 +877,50 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
     }
   });
 
+  it('rejects replay when persisted classification evidence contains unreferenced witnesses', () => {
+    const backing = createInMemorySeamJournal();
+    const fixture = accountingFixture();
+    const first = server(backing);
+    seedAccountingLineage(first, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    expect(
+      first.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ).ok,
+    ).toBe(true);
+
+    const entries = backing.replayAll().map((entry) => {
+      if (entry.kind !== 'COVERAGE_ACCOUNTING') return entry;
+      const source = fixture.ledger.records()[0]!;
+      return {
+        ...entry,
+        classificationEvidence: [
+          ...entry.classificationEvidence,
+          { ...source, evidenceId: 'evidence-auth-extra-001' as never },
+        ],
+      };
+    });
+    const tamperedJournal = {
+      append: backing.append,
+      replayAll: () => entries,
+    };
+    const replayed = createCoreSeamServer({
+      expectedPeer: EXPECTED_PEER,
+      journal: tamperedJournal,
+    });
+    expect(replayed.ok).toBe(false);
+    if (!replayed.ok) {
+      expect(
+        replayed.diagnostics.some(
+          (item) =>
+            item.path === 'classificationEvidence' &&
+            item.message.includes('exactly match'),
+        ),
+      ).toBe(true);
+    }
+  });
+
   it('converges as committed when the journal reports its durable commit point', () => {
     const backing = createInMemorySeamJournal();
     const committedJournal = {
