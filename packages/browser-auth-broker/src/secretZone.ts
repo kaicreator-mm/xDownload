@@ -179,7 +179,7 @@ function cyclicStructureDiagnostic(path: string): BrokerDiagnostic {
   );
 }
 
-/** Sentinel audit: does the value contain the sentinel material anywhere? */
+/** Sentinel audit: search both object keys and values, including nested graphs. */
 export function auditContainsSecretSentinel(value: unknown, sentinel: string): boolean {
   return auditSentinelMaterial(value, sentinel, new WeakSet<object>());
 }
@@ -212,8 +212,10 @@ function auditSentinelMaterial(
       return false;
     }
     ancestors.add(value);
-    const hit = Object.values(value).some((child) =>
-      auditSentinelMaterial(child, sentinel, ancestors),
+    // Object keys are also data at exit sinks: never let a sentinel in a
+    // property name bypass the guard while its value looks innocuous (#79).
+    const hit = Object.entries(value).some(([key, child]) =>
+      key.includes(sentinel) || auditSentinelMaterial(child, sentinel, ancestors),
     );
     ancestors.delete(value);
     return hit;
