@@ -136,12 +136,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   }
 
   function recoveryFenceDiagnostic(): SeamDiagnostic {
-    return seamDiagnostic(
-      'ADMISSION_REJECTED',
-      'runtime',
-      recoveryFenceMessage(),
-      'L2-§6.8',
-    );
+    return seamDiagnostic('ADMISSION_REJECTED', 'runtime', recoveryFenceMessage(), 'L2-§6.8');
   }
 
   // Restart replay: re-apply every durably accepted command through the same
