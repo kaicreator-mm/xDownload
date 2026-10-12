@@ -46,6 +46,8 @@ export interface LineageProjectionView {
   readonly status: LineageState['status'];
   readonly cancelOrder?: number;
   readonly failedMemberCount: number;
+  /** Core-owned identities, never inferred from failed counts by surfaces. */
+  readonly failedMemberIds: readonly string[];
   readonly retriedMemberIds: readonly string[];
 }
 
@@ -69,6 +71,10 @@ export interface SeamProjectionView {
    * result is projected; when unknown the key is absent entirely.
    */
   readonly validatedSuccessCount?: number;
+  /** Actual immutable requested members when the contract determines them. */
+  readonly requestedMemberCount?: number;
+  /** Core-owned action semantics, present only for an authoritative terminal. */
+  readonly needsUserAction?: boolean;
 }
 
 /**
@@ -112,6 +118,7 @@ export function projectAggregate(
       status: lineage.status,
       cancelOrder: lineage.cancelOrder,
       failedMemberCount: lineage.failedMembers.length,
+      failedMemberIds: [...lineage.failedMembers],
       retriedMemberIds: [...lineage.retriedMembers],
     },
     terminal: lineage.terminal,
@@ -124,7 +131,22 @@ export function projectAggregate(
       : { selectedMemberCount: lineage.snapshot.selectedMemberIds.length }),
     ...(lineage.terminal === undefined
       ? {}
-      : { validatedSuccessCount: lineage.terminal.validationSummary.passedCount }),
+      : {
+          validatedSuccessCount: lineage.terminal.validationSummary.passedCount,
+          ...(lineage.terminal.stopReason === 'AUTH_REQUIRED' ||
+          lineage.terminal.stopReason === 'AUTH_FAILED'
+            ? { needsUserAction: true }
+            : lineage.terminal.requestFulfillment === 'COMPLETE' &&
+                lineage.terminal.stopReason === 'NONE'
+              ? { needsUserAction: false }
+              : {}),
+        }),
+    ...(contract.requestedScope.kind === 'single_resource'
+      ? { requestedMemberCount: 1 }
+      : contract.requestedScope.kind === 'explicit_member_set' ||
+          contract.requestedScope.kind === 'selected_collection_members'
+        ? { requestedMemberCount: contract.requestedScope.memberIds.length }
+        : {}),
   };
   return deepFreeze(view);
 }
