@@ -565,7 +565,10 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
           claimType: 'AUTHORIZATION',
           claimSubject: { kind: 'MEMBER', ref: memberId },
           sourceType: 'INDEPENDENT_VALIDATOR',
-          provenance: { sourceIdentity: 'independent-auth-validator-001' },
+          provenance: {
+            sourceIdentity: 'independent-auth-validator-001',
+            executionContext: { authorizationContextRef: 'authctx/local-001' },
+          },
           independenceFromDiscovery: 'INDEPENDENT',
           scope: {
             domain: 'AUTHORIZATION',
