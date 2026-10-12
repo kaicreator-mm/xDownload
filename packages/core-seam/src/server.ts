@@ -125,7 +125,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   let recoveryFenceReason: string | undefined;
 
   function recoveryFenceMessage(): string {
-    return `Core seam authority is fenced; reopen/recovery required${recoveryFenceReason === undefined ? '' : `: ${recoveryFenceReason}`}`;
+    return `Core seam authority is fenced; reopen/recovery required${
+      recoveryFenceReason === undefined ? '' : `: ${recoveryFenceReason}`
+    }`;
   }
 
   function poisonForRecovery(reason: string): never {
