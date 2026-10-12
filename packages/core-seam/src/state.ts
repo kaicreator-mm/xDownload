@@ -12,6 +12,9 @@
 
 import type {
   AcquisitionContract,
+  type CoverageAccounting,
+  type CoverageAccountingInput,
+  type EvidenceRecord,
   MemberId,
   SelectionSnapshot,
   TerminalResult,
@@ -37,6 +40,11 @@ export interface LineageState {
   failedMembers: MemberId[];
   /** Members whose explicit retry has been authorized through the seam. */
   retriedMembers: MemberId[];
+  /**
+   * Canonical Core-only requested/auth/resolved accounting. It is admitted
+   * only through the trusted internal receipt path and rebuilt on replay.
+   */
+  coverageAccounting?: CoverageAccounting;
 }
 
 export function createLineageState(): LineageState {
@@ -71,12 +79,26 @@ export function createSeamAuthorityState(): SeamAuthorityState {
   };
 }
 
-/** One durably accepted command + its response; replay input after restart. */
-export interface SeamJournalEntry {
+/** One durably accepted surface command + its response. Legacy wire shape is preserved. */
+export interface AcceptedCommandJournalEntry {
   readonly envelope: CommandEnvelope;
   readonly response: SeamResponse;
   readonly payloadDigest: string;
 }
+
+/**
+ * Core-only durable coverage-accounting receipt. This is never a seam command:
+ * surfaces cannot submit it. Replay revalidates the input/evidence against the
+ * already-restored immutable contract + snapshot before publishing counts.
+ */
+export interface CoverageAccountingJournalEntry {
+  readonly internalFactKind: 'COVERAGE_ACCOUNTING_V1';
+  readonly aggregateId: string;
+  readonly input: CoverageAccountingInput;
+  readonly evidenceRecords: readonly EvidenceRecord[];
+}
+
+export type SeamJournalEntry = AcceptedCommandJournalEntry | CoverageAccountingJournalEntry;
 
 /**
  * Persistence port for accepted commands. T004 ships only the port and an
