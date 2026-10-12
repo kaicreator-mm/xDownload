@@ -288,8 +288,24 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     }
     const response = acceptedResponse(envelope, outcome.value.revision);
     const record: AcceptedCommand = { envelope, response, payloadDigest: digest };
+    if (journal !== undefined) {
+      let durability;
+      try {
+        durability = journal.append({ kind: 'COMMAND', envelope, response, payloadDigest: digest });
+      } catch (error) {
+        throw new Error(
+          `accepted command durability outcome is uncertain; runtime recovery required: ${String(
+            error,
+          )}`,
+        );
+      }
+      if (durability.status !== 'COMMITTED') {
+        throw new Error(
+          `accepted command did not reach a proven durable commit point (${durability.status}); runtime recovery required: ${durability.error}`,
+        );
+      }
+    }
     state.accepted.set(envelope.requestId, record);
-    journal?.append({ kind: 'COMMAND', envelope, response, payloadDigest: digest });
     return response;
   }
 
@@ -381,42 +397,31 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         accounting,
         classificationEvidence,
       };
+      let durability;
       try {
-        journal.append(receiptEntry);
+        durability = journal.append(receiptEntry);
       } catch (error) {
-        // An append exception is not proof of non-commit: write/fsync/close or
-        // a transport acknowledgement can fail after the entry reached the
-        // durable journal. Reconcile against the journal's durable replay
-        // view before returning any rejection, otherwise a rejected-now
-        // receipt could revive after restart.
-        let committedAfterError: boolean;
-        try {
-          const expected = stableStringify(receiptEntry);
-          committedAfterError = journal
-            .replayAll()
-            .some((entry) => stableStringify(entry) === expected);
-        } catch (reconcileError) {
-          // The commit outcome is genuinely unknowable. Do not lie by
-          // returning ADMISSION_REJECTED: stop the trusted publication path
-          // so restart/recovery can re-establish durable truth.
-          throw new Error(
-            `coverage receipt durability outcome is uncertain; runtime recovery required: append=${String(
-              error,
-            )}; reconcile=${String(reconcileError)}`,
-          );
-        }
-        if (committedAfterError) {
-          // Lost acknowledgement after durable commit: converge as committed.
-          return applied;
-        }
-        // The durable replay view proves absence, so rollback and reject.
+        throw new Error(
+          `coverage receipt durability outcome is uncertain; runtime recovery required: ${String(
+            error,
+          )}`,
+        );
+      }
+      if (durability.status === 'UNCERTAIN') {
+        throw new Error(
+          `coverage receipt durability outcome is uncertain; runtime recovery required: ${durability.error}`,
+        );
+      }
+      if (durability.status === 'NOT_COMMITTED') {
+        // This outcome is safe to reject because the journal implementation
+        // explicitly proves no durable authority was created.
         const lineage = state.lineages.get(aggregateId);
         if (lineage !== undefined) lineage.coverageAccounting = undefined;
         return seamFail([
           seamDiagnostic(
             'ADMISSION_REJECTED',
             'journal',
-            'coverage receipt append failed and durable replay proves the receipt absent',
+            `coverage receipt was not durably committed: ${durability.error}`,
             'L2-§6.8',
           ),
         ]);
