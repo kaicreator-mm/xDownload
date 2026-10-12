@@ -270,11 +270,12 @@ export class FileBackedSeamJournal implements SeamJournal {
           record['aggregateId'].length === 0 ||
           typeof record['accounting'] !== 'object' ||
           record['accounting'] === null ||
-          Array.isArray(record['accounting'])
+          Array.isArray(record['accounting']) ||
+          !Array.isArray(record['classificationEvidence'])
         ) {
           throw new DurableStoreCorruptError(
             path,
-            'seam coverage receipt is missing identity or accounting object',
+            'seam coverage receipt is missing identity, accounting object, or classification-evidence array',
           );
         }
       } else if (
