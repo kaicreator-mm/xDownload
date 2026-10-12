@@ -35,7 +35,11 @@ import {
   type DurableControlFact,
   type DurableControlFactLog,
 } from '@xdownload/core-scheduler';
-import type { SeamJournal, SeamJournalEntry } from '@xdownload/core-seam';
+import type {
+  SeamJournal,
+  SeamJournalAppendResult,
+  SeamJournalEntry,
+} from '@xdownload/core-seam';
 
 const BUDGET_FACT_KINDS: ReadonlySet<string> = new Set(['budgetReserved', 'budgetConsumed']);
 
@@ -57,6 +61,60 @@ function appendDurableLine(path: string, line: string): void {
   } finally {
     closeSync(fd);
   }
+}
+
+function appendDurableSeamLine(path: string, line: string): SeamJournalAppendResult {
+  let fd: number;
+  try {
+    fd = openSync(path, 'a');
+  } catch (error) {
+    return { status: 'NOT_COMMITTED', error: `open failed before append: ${String(error)}` };
+  }
+
+  let outcome: SeamJournalAppendResult = {
+    status: 'UNCERTAIN',
+    error: 'append did not reach a durable commit point',
+  };
+  try {
+    const bytes = Buffer.from(`${line}\n`, 'utf8');
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = writeSync(fd, bytes, offset, bytes.length - offset, null);
+      if (written <= 0) {
+        throw new Error('write returned zero bytes');
+      }
+      offset += written;
+    }
+    try {
+      fsyncSync(fd);
+      outcome = { status: 'COMMITTED' };
+    } catch (error) {
+      outcome = {
+        status: 'UNCERTAIN',
+        error: `fsync failed after write; durability cannot be proven: ${String(error)}`,
+      };
+    }
+  } catch (error) {
+    outcome = {
+      status: 'UNCERTAIN',
+      error: `write failed after append began; partial durable state is possible: ${String(error)}`,
+    };
+  } finally {
+    try {
+      closeSync(fd);
+    } catch (error) {
+      if (outcome.status !== 'COMMITTED') {
+        outcome = {
+          status: 'UNCERTAIN',
+          error: `${outcome.error}; close also failed: ${String(error)}`,
+        };
+      }
+      // If fsync already completed successfully, close failure cannot revoke
+      // that durable commit. Preserve COMMITTED and let higher-level runtime
+      // lifecycle surface the handle-close problem separately if needed.
+    }
+  }
+  return outcome;
 }
 
 function readDurableLines(path: string): readonly string[] {
@@ -243,9 +301,12 @@ export class FileBackedSeamJournal implements SeamJournal {
     return this.#path;
   }
 
-  append(entry: SeamJournalEntry): void {
-    appendDurableLine(this.#path, JSON.stringify(entry));
-    this.#entries.push(entry);
+  append(entry: SeamJournalEntry): SeamJournalAppendResult {
+    const outcome = appendDurableSeamLine(this.#path, JSON.stringify(entry));
+    if (outcome.status === 'COMMITTED') {
+      this.#entries.push(entry);
+    }
+    return outcome;
   }
 
   replayAll(): readonly SeamJournalEntry[] {
