@@ -25,11 +25,17 @@
 
 import {
   assertContractTransition,
+  buildCoverageAccounting,
   createDomainGateway,
+  createEvidenceLedger,
+  identitySetEquals,
   makeMemberId,
   type AcquisitionContract,
+  type CoverageAccounting,
+  type CoverageAccountingInput,
   type DomainGateway,
   type DomainValidationResult,
+  type EvidenceRecord,
   type MemberId,
   type TerminalResultContext,
 } from '@xdownload/domain-contracts';
@@ -62,10 +68,11 @@ import {
   createLineageState,
   createSeamAuthorityState,
   type AcceptedCommand,
+  type AcceptedCommandJournalEntry,
+  type CoverageAccountingJournalEntry,
   type LineageState,
   type SeamAuthorityState,
   type SeamJournal,
-  type SeamJournalEntry,
 } from './state.ts';
 
 export interface CoreSeamServerOptions {
@@ -89,6 +96,15 @@ export interface CoreSeamServer {
    * Core-owned (C12).
    */
   recordFailedMembers(aggregateId: string, memberIds: readonly string[]): SeamResult<void>;
+  /**
+   * Core-only accounting admission. This is intentionally not representable
+   * as a wire command: surfaces can read these facts but cannot author them.
+   */
+  recordCoverageAccounting(
+    aggregateId: string,
+    input: CoverageAccountingInput,
+    evidenceRecords: readonly EvidenceRecord[],
+  ): SeamResult<CoverageAccounting>;
   /** Read-only projection view; the same value a READ_PROJECTION query returns. */
   inspectProjection(aggregateId: string): SeamProjectionView | undefined;
   /** Accepted-command count (concern-test observation; not a wire surface). */
@@ -108,20 +124,24 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   const journal = options.journal;
   const gateway: DomainGateway = createDomainGateway();
 
-  // Restart replay: re-apply every durably accepted command through the same
-  // deterministic authority path, gate-bypassed (they were gated at
-  // acceptance). Any replay failure is journal corruption → fail closed.
+  // Restart replay: surface commands and Core-only accounting receipts both
+  // re-enter the same deterministic semantic paths used live. Any corrupt or
+  // cross-bound receipt fails the whole reopen closed.
   if (journal !== undefined) {
     for (const entry of journal.replayAll()) {
-      const restored = restoreAcceptedCommand(state, gateway, entry);
+      const internal = 'internalFactKind' in entry;
+      const restored = internal
+        ? restoreCoverageAccountingReceipt(state, entry)
+        : restoreAcceptedCommand(state, gateway, entry);
       if (!restored.ok) {
+        const subject = internal ? entry.aggregateId : entry.envelope.requestId;
         return {
           ok: false,
           diagnostics: [
             seamDiagnostic(
               'ENVELOPE_MALFORMED',
               'journal',
-              `journal replay failed for request '${entry.envelope.requestId}'; failing closed`,
+              `journal replay failed for '${subject}'; failing closed`,
             ),
             ...restored.diagnostics,
           ],
@@ -309,9 +329,35 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     return seamOk(undefined);
   }
 
+  function recordCoverageAccounting(
+    aggregateId: string,
+    input: CoverageAccountingInput,
+    evidenceRecords: readonly EvidenceRecord[],
+  ): SeamResult<CoverageAccounting> {
+    // Canonical JSON clone prevents caller mutation after admission and makes
+    // the durable receipt exactly what replay later revalidates.
+    const receipt = JSON.parse(
+      stableStringify({
+        internalFactKind: 'COVERAGE_ACCOUNTING_V1',
+        aggregateId,
+        input,
+        evidenceRecords,
+      }),
+    ) as CoverageAccountingJournalEntry;
+    const applied = applyCoverageAccountingReceipt(state, receipt);
+    if (!applied.ok) {
+      return applied;
+    }
+    if (applied.value.changed) {
+      journal?.append(receipt);
+    }
+    return seamOk(applied.value.accounting);
+  }
+
   const server: CoreSeamServer = {
     handleFrame,
     recordFailedMembers,
+    recordCoverageAccounting,
     inspectProjection(aggregateId: string) {
       return projectAggregate(state, aggregateId);
     },
@@ -367,6 +413,271 @@ function bindCorrelation(envelope: CommandEnvelope): SeamResult<void> {
 
 function domainFailure<T>(result: DomainValidationResult<T>): SeamResult<T> {
   return result.ok ? seamOk(result.value) : seamFail(domainDiagnosticsToSeam(result.diagnostics));
+}
+
+interface AppliedCoverageAccounting {
+  readonly accounting: CoverageAccounting;
+  readonly changed: boolean;
+}
+
+function decodeReceiptMemberIds(
+  raw: readonly string[],
+  path: string,
+): SeamResult<readonly MemberId[]> {
+  const decoded: MemberId[] = [];
+  for (const value of raw) {
+    const member = makeMemberId(value);
+    if (!member.ok) {
+      return seamFail(domainDiagnosticsToSeam(member.diagnostics));
+    }
+    decoded.push(member.value);
+  }
+  return seamOk(decoded);
+}
+
+function applyCoverageAccountingReceipt(
+  state: SeamAuthorityState,
+  entry: CoverageAccountingJournalEntry,
+): SeamResult<AppliedCoverageAccounting> {
+  const aggregate = state.aggregates.get(entry.aggregateId);
+  const lineage = state.lineages.get(entry.aggregateId);
+  if (aggregate === undefined || lineage === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'AGGREGATE_NOT_FOUND',
+        'coverageAccounting.aggregateId',
+        'coverage accounting receipt references an unknown aggregate',
+      ),
+    ]);
+  }
+  if (lineage.status !== 'ACTIVE') {
+    return seamFail([
+      seamDiagnostic(
+        'LATE_COMMAND',
+        'coverageAccounting.lineageStatus',
+        'coverage accounting is immutable after cancel/terminal authority; late receipt rejected',
+        'L2-§11',
+      ),
+    ]);
+  }
+  const snapshot = lineage.snapshot;
+  if (snapshot === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'coverageAccounting.snapshot',
+        'coverage accounting requires the confirmed immutable selection snapshot',
+        'PRD-§17/§19',
+      ),
+    ]);
+  }
+  if (stableStringify(entry.input.coverageTarget) !== stableStringify(snapshot.coverageTarget)) {
+    return seamFail([
+      seamDiagnostic(
+        'SCOPE_MUTATION',
+        'coverageAccounting.coverageTarget',
+        'coverage target must exactly match the confirmed snapshot coverage target',
+        'PRD-§17',
+      ),
+    ]);
+  }
+  if (
+    entry.input.authorizationContextRef !== snapshot.authorizationContextRef ||
+    entry.input.authorizationContextRef !== aggregate.contract.authorizationContextRef
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'CORRELATION_BINDING_REJECTED',
+        'coverageAccounting.authorizationContextRef',
+        'authorization provenance must match both immutable contract and confirmed snapshot',
+        'PRD-§17/§19',
+      ),
+    ]);
+  }
+  if (snapshot.requestedMemberBasis.kind !== 'EXPLICIT_IDENTITIES') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'coverageAccounting.requestedMemberIds',
+        'requested member counts remain unknown unless the snapshot freezes explicit requested identities',
+        'PRD-§17',
+      ),
+    ]);
+  }
+  if (snapshot.authAccessibleBasis.kind !== 'EXPLICIT_IDENTITIES') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'coverageAccounting.authAccessibleMemberIds',
+        'auth-accessible counts remain unknown unless the snapshot freezes explicit accessible identities',
+        'PRD-§17',
+      ),
+    ]);
+  }
+
+  const requested = decodeReceiptMemberIds(
+    entry.input.requestedMemberIds as readonly string[],
+    'coverageAccounting.requestedMemberIds',
+  );
+  if (!requested.ok) return requested;
+  const resolved = decodeReceiptMemberIds(
+    entry.input.resolvedMemberIds as readonly string[],
+    'coverageAccounting.resolvedMemberIds',
+  );
+  if (!resolved.ok) return resolved;
+  const accessible = decodeReceiptMemberIds(
+    entry.input.authAccessibleMemberIds as readonly string[],
+    'coverageAccounting.authAccessibleMemberIds',
+  );
+  if (!accessible.ok) return accessible;
+  const selected = decodeReceiptMemberIds(
+    entry.input.selectedMemberIds as readonly string[],
+    'coverageAccounting.selectedMemberIds',
+  );
+  if (!selected.ok) return selected;
+  const validated = decodeReceiptMemberIds(
+    entry.input.validatedMemberIds as readonly string[],
+    'coverageAccounting.validatedMemberIds',
+  );
+  if (!validated.ok) return validated;
+
+  if (!identitySetEquals(requested.value, snapshot.requestedMemberBasis.memberIds)) {
+    return seamFail([
+      seamDiagnostic(
+        'SCOPE_MUTATION',
+        'coverageAccounting.requestedMemberIds',
+        'requested identity set differs from the immutable snapshot basis',
+        'PRD-§17',
+      ),
+    ]);
+  }
+  if (!identitySetEquals(accessible.value, snapshot.authAccessibleBasis.memberIds)) {
+    return seamFail([
+      seamDiagnostic(
+        'SCOPE_MUTATION',
+        'coverageAccounting.authAccessibleMemberIds',
+        'auth-accessible identity set differs from the confirmed snapshot basis',
+        'PRD-§17',
+      ),
+    ]);
+  }
+  if (!identitySetEquals(selected.value, snapshot.selectedMemberIds)) {
+    return seamFail([
+      seamDiagnostic(
+        'SCOPE_MUTATION',
+        'coverageAccounting.selectedMemberIds',
+        'selected identity set differs from the frozen snapshot selection',
+        'PRD-§19',
+      ),
+    ]);
+  }
+
+  const inaccessible = [];
+  for (const [index, member] of entry.input.authInaccessibleMembers.entries()) {
+    const memberId = makeMemberId(member.memberId);
+    if (!memberId.ok) {
+      return seamFail(domainDiagnosticsToSeam(memberId.diagnostics));
+    }
+    if (member.classificationEvidenceId === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'MISSING_REQUIRED_FIELD',
+          `coverageAccounting.authInaccessibleMembers[${String(index)}].classificationEvidenceId`,
+          'auth-inaccessible identities require explicit independent authorization evidence',
+          'PRD-§19',
+        ),
+      ]);
+    }
+    inaccessible.push({
+      memberId: memberId.value,
+      classificationEvidenceId: member.classificationEvidenceId,
+    });
+  }
+
+  const ledger = createEvidenceLedger();
+  for (const record of entry.evidenceRecords) {
+    const admitted = ledger.append(record);
+    if (!admitted.ok) {
+      return seamFail(domainDiagnosticsToSeam(admitted.diagnostics));
+    }
+  }
+
+  const canonicalInput: CoverageAccountingInput = {
+    coverageTarget: snapshot.coverageTarget,
+    requestedMemberIds: requested.value,
+    resolvedMemberIds: resolved.value,
+    authAccessibleMemberIds: accessible.value,
+    authInaccessibleMembers: inaccessible,
+    selectedMemberIds: selected.value,
+    validatedMemberIds: validated.value,
+    authorizationContextRef: snapshot.authorizationContextRef,
+  };
+  const built = buildCoverageAccounting(canonicalInput, ledger);
+  if (!built.ok) {
+    return seamFail(domainDiagnosticsToSeam(built.diagnostics));
+  }
+
+  for (const member of built.value.authInaccessible) {
+    if (!member.independentlyAccounted || member.classificationEvidenceId === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'coverageAccounting.authInaccessibleMembers',
+          `member '${member.memberId}' lacks independent authorization evidence`,
+          'PRD-§19',
+        ),
+      ]);
+    }
+    const evidence = ledger
+      .records()
+      .find((record) => record.evidenceId === member.classificationEvidenceId);
+    if (
+      evidence === undefined ||
+      evidence.claimType !== 'AUTHORIZATION' ||
+      evidence.claimSubject.kind !== 'MEMBER' ||
+      evidence.claimSubject.ref !== member.memberId ||
+      evidence.scope.domain !== 'AUTHORIZATION' ||
+      evidence.scope.contractRef !== aggregate.contract.contractId ||
+      evidence.scope.snapshotRef !== snapshot.snapshotId ||
+      evidence.provenance.executionContext?.authorizationContextRef !==
+        snapshot.authorizationContextRef
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'CORRELATION_BINDING_REJECTED',
+          'coverageAccounting.authInaccessibleMembers',
+          `authorization evidence for member '${member.memberId}' is not bound to this contract/snapshot/auth context`,
+          'PRD-§19',
+        ),
+      ]);
+    }
+  }
+
+  if (lineage.coverageAccounting !== undefined) {
+    if (stableStringify(lineage.coverageAccounting) === stableStringify(built.value)) {
+      return seamOk({ accounting: lineage.coverageAccounting, changed: false });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'coverageAccounting',
+        'coverage accounting is append-once for one immutable snapshot; conflicting rewrite rejected',
+        'L2-§10',
+      ),
+    ]);
+  }
+
+  lineage.coverageAccounting = built.value;
+  aggregate.revision += 1;
+  return seamOk({ accounting: built.value, changed: true });
+}
+
+function restoreCoverageAccountingReceipt(
+  state: SeamAuthorityState,
+  entry: CoverageAccountingJournalEntry,
+): SeamResult<void> {
+  const restored = applyCoverageAccountingReceipt(state, entry);
+  return restored.ok ? seamOk(undefined) : restored;
 }
 
 function requireLineage(
@@ -840,7 +1151,7 @@ function decodeTerminalCommand(payload: unknown): SeamResult<TerminalCommand> {
 function restoreAcceptedCommand(
   state: SeamAuthorityState,
   gateway: DomainGateway,
-  entry: SeamJournalEntry,
+  entry: AcceptedCommandJournalEntry,
 ): SeamResult<void> {
   const applied = applyCommand(state, gateway, entry.envelope);
   if (!applied.ok) {
