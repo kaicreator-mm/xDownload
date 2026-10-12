@@ -274,7 +274,7 @@ export function freezeSuccessorJourneyOracle(
     ),
   );
 
-  const base =
+  const base: Omit<FrozenSuccessorJourneyOracle, 'oracleDigest'> =
     input.journeyId === 'CJ-08'
       ? {
           oracleId: input.oracleId,
