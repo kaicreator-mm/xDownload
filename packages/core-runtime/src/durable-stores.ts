@@ -203,13 +203,27 @@ export class FileBackedSeamJournal implements SeamJournal {
           `seam journal contains a line that is not valid JSON: ${String(error)}`,
         );
       }
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        !('envelope' in parsed) ||
-        !('response' in parsed) ||
-        !('payloadDigest' in parsed)
-      ) {
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new DurableStoreCorruptError(path, 'seam journal entry must be an object');
+      }
+      if ('internalFactKind' in parsed) {
+        const record = parsed as Record<string, unknown>;
+        if (
+          record['internalFactKind'] !== 'COVERAGE_ACCOUNTING_V1' ||
+          typeof record['aggregateId'] !== 'string' ||
+          typeof record['input'] !== 'object' ||
+          record['input'] === null ||
+          !Array.isArray(record['evidenceRecords'])
+        ) {
+          throw new DurableStoreCorruptError(
+            path,
+            'seam journal contains a malformed Core coverage-accounting receipt',
+          );
+        }
+        entries.push(parsed as SeamJournalEntry);
+        continue;
+      }
+      if (!('envelope' in parsed) || !('response' in parsed) || !('payloadDigest' in parsed)) {
         throw new DurableStoreCorruptError(
           path,
           'seam journal entry is missing required accepted-command fields',
