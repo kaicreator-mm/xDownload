@@ -71,8 +71,12 @@ export interface SeamProjectionView {
    * result is projected; when unknown the key is absent entirely.
    */
   readonly validatedSuccessCount?: number;
-  /** Actual immutable requested members when the contract determines them. */
+  /** Actual immutable requested members when Core has a proven identity basis. */
   readonly requestedMemberCount?: number;
+  /** Proven auth-accessible requested identities; never inferred from selected. */
+  readonly authAccessibleMemberCount?: number;
+  /** Proven resolved requested identities; never inferred from validated/accounted. */
+  readonly resolvedMemberCount?: number;
   /** Core-owned action semantics, present only for an authoritative terminal. */
   readonly needsUserAction?: boolean;
 }
@@ -141,12 +145,18 @@ export function projectAggregate(
               ? { needsUserAction: false }
               : {}),
         }),
-    ...(contract.requestedScope.kind === 'single_resource'
-      ? { requestedMemberCount: 1 }
-      : contract.requestedScope.kind === 'explicit_member_set' ||
-          contract.requestedScope.kind === 'selected_collection_members'
-        ? { requestedMemberCount: contract.requestedScope.memberIds.length }
-        : {}),
+    ...(lineage.coverageAccounting !== undefined
+      ? {
+          requestedMemberCount: lineage.coverageAccounting.requested.length,
+          authAccessibleMemberCount: lineage.coverageAccounting.authAccessible.length,
+          resolvedMemberCount: lineage.coverageAccounting.resolved.length,
+        }
+      : contract.requestedScope.kind === 'single_resource'
+        ? { requestedMemberCount: 1 }
+        : contract.requestedScope.kind === 'explicit_member_set' ||
+            contract.requestedScope.kind === 'selected_collection_members'
+          ? { requestedMemberCount: contract.requestedScope.memberIds.length }
+          : {}),
   };
   return deepFreeze(view);
 }
