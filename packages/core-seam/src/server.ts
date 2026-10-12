@@ -730,6 +730,24 @@ function applyCoverageAccountingReceipt(
     }
     evidenceById.set(decoded.value.evidenceId, decoded.value);
   }
+  const requiredEvidenceIds = new Set(
+    authInaccessible
+      .filter((member) => member.independentlyAccounted)
+      .map((member) => member.classificationEvidenceId as string),
+  );
+  if (
+    evidenceById.size !== requiredEvidenceIds.size ||
+    [...evidenceById.keys()].some((evidenceId) => !requiredEvidenceIds.has(evidenceId))
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'classificationEvidence',
+        'classification evidence set must exactly match the receipt-referenced independent authorization witnesses',
+        'PRD-§19',
+      ),
+    ]);
+  }
   for (const raw of authInaccessible) {
     const item = raw as {
       memberId: string;
