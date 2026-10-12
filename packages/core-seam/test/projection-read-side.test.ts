@@ -927,7 +927,15 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
         fixture.accounting as never,
         fixture.ledger,
       ),
-    ).toThrow(/durability outcome is uncertain/);
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-collection-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    const fencedQuery = s.handleFrame(
+      JSON.stringify(rawQuery({ aggregateId: 'contract-collection-001' })),
+    );
+    expect(fencedQuery.outcome).toBe('REJECTED');
+    expect(fencedQuery.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
 
     const reopened = server(backing);
     expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
@@ -956,8 +964,66 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
         fixture.accounting as never,
         fixture.ledger,
       ),
-    ).toThrow(/durability outcome is uncertain/);
+    ).toThrow(/fenced; reopen\/recovery required/);
+    expect(() => s.inspectProjection('contract-collection-001')).toThrow(
+      /fenced; reopen\/recovery required/,
+    );
+    const directWrite = s.recordFailedMembers('contract-collection-001', ['member-001']);
+    expect(directWrite.ok).toBe(false);
+    if (!directWrite.ok) expect(directWrite.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
   });
+
+  it.each(['UNCERTAIN', 'NOT_COMMITTED'] as const)(
+    'poisons the current authority after command post-apply durability %s',
+    (durabilityStatus) => {
+      const backing = createInMemorySeamJournal();
+      let commandAppendCount = 0;
+      const journal = {
+        append(entry: Parameters<typeof backing.append>[0]) {
+          if (entry.kind !== 'COMMAND') return backing.append(entry);
+          commandAppendCount += 1;
+          if (commandAppendCount === 1) return backing.append(entry);
+          return durabilityStatus === 'UNCERTAIN'
+            ? { status: 'UNCERTAIN' as const, error: 'simulated command fsync uncertainty' }
+            : { status: 'NOT_COMMITTED' as const, error: 'simulated command precommit failure' };
+        },
+        replayAll: () => backing.replayAll(),
+      };
+      const s = server(journal);
+      submitSingle(s);
+
+      expect(() =>
+        s.handleFrame(
+          JSON.stringify(
+            rawCommand({
+              commandType: 'CANCEL_LINEAGE',
+              aggregateId: 'contract-single-001',
+              expectedRevision: 1,
+            }),
+          ),
+        ),
+      ).toThrow(/fenced; reopen\/recovery required/);
+
+      expect(() => s.inspectProjection('contract-single-001')).toThrow(
+        /fenced; reopen\/recovery required/,
+      );
+      const retry = s.handleFrame(
+        JSON.stringify(
+          rawCommand({
+            commandType: 'CANCEL_LINEAGE',
+            aggregateId: 'contract-single-001',
+            expectedRevision: 1,
+          }),
+        ),
+      );
+      expect(retry.outcome).toBe('REJECTED');
+      expect(retry.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
+
+      const reopened = server(backing);
+      const view = reopened.inspectProjection('contract-single-001');
+      expect(view?.lineage.status).toBe('ACTIVE');
+    },
+  );
 
   it('rolls back and rejects only when the journal proves NOT_COMMITTED', () => {
     const backing = createInMemorySeamJournal();
