@@ -816,6 +816,8 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
       {},
       { ...fixture.accounting, authInaccessible: null },
       { ...fixture.accounting, authInaccessible: 'not-an-array' },
+      { ...fixture.accounting, authInaccessible: [null] },
+      { ...fixture.accounting, counts: null },
     ];
     for (const invalid of invalidShapes) {
       const s = server(createInMemorySeamJournal());
@@ -873,6 +875,60 @@ describe('durable Core CoverageAccounting receipt for PRD §27', () => {
       >;
       expect(Object.prototype.hasOwnProperty.call(view, 'resolvedMemberCount')).toBe(false);
     }
+  });
+
+  it('converges as committed when append throws after the durable entry is already visible', () => {
+    const backing = createInMemorySeamJournal();
+    const ackLostJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        backing.append(entry);
+        if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          throw new Error('simulated acknowledgement loss after commit');
+        }
+      },
+      replayAll: () => backing.replayAll(),
+    };
+    const s = server(ackLostJournal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+
+    const recorded = s.recordCoverageAccounting(
+      'contract-collection-001',
+      fixture.accounting as never,
+      fixture.ledger,
+    );
+    expect(recorded.ok).toBe(true);
+    expect(s.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
+
+    const reopened = server(backing);
+    expect(reopened.inspectProjection('contract-collection-001')?.requestedMemberCount).toBe(18);
+    expect(reopened.inspectProjection('contract-collection-001')?.authAccessibleMemberCount).toBe(16);
+    expect(reopened.inspectProjection('contract-collection-001')?.resolvedMemberCount).toBe(18);
+  });
+
+  it('does not return a false rejection when append outcome cannot be reconciled', () => {
+    const backing = createInMemorySeamJournal();
+    const uncertainJournal = {
+      append(entry: Parameters<typeof backing.append>[0]) {
+        if (entry.kind === 'COVERAGE_ACCOUNTING') {
+          throw new Error('simulated uncertain durable append');
+        }
+        backing.append(entry);
+      },
+      replayAll() {
+        throw new Error('simulated durable replay unavailable');
+      },
+    };
+    const s = server(uncertainJournal);
+    const fixture = accountingFixture();
+    seedAccountingLineage(s, fixture.requested, fixture.accessible, fixture.coverageTarget);
+    expect(() =>
+      s.recordCoverageAccounting(
+        'contract-collection-001',
+        fixture.accounting as never,
+        fixture.ledger,
+      ),
+    ).toThrow(/durability outcome is uncertain/);
   });
 
   it('does not expose receipt counts if the durable journal append fails', () => {
