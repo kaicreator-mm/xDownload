@@ -12,7 +12,7 @@
  * with explicit `.ts` import extensions — the repository convention).
  */
 
-import { closeSync, fsyncSync, openSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, fsyncSync, openSync, renameSync, writeFileSync, writeSync } from 'node:fs';
 import {
   AuthoritativeLedgerWriter,
   FilesystemArtifactStore,
@@ -80,14 +80,17 @@ function main(): void {
     if (args.window !== window) {
       return false;
     }
-    // Signal the injected boundary, then stay alive until hard-killed.
-    const markerFd = openSync(args.markerPath, 'w');
+    // Publish the marker atomically after durable contents are complete:
+    // the parent polls file existence and must never observe an empty file.
+    const stagingPath = `${args.markerPath}.tmp`;
+    const markerFd = openSync(stagingPath, 'wx');
     try {
       writeSync(markerFd, window);
       fsyncSync(markerFd);
     } finally {
       closeSync(markerFd);
     }
+    renameSync(stagingPath, args.markerPath);
     setInterval(() => {
       // keep the event loop alive; the parent SIGKILLs us here
     }, 60_000);
