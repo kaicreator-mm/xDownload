@@ -162,6 +162,7 @@ async function credentialedFetch(
   status: number;
   finalUrl: string;
   contentType: string | undefined;
+  contentLength: number | undefined;
   bytes: Uint8Array;
 }> {
   const response = await fetch(url, {
@@ -173,10 +174,13 @@ async function credentialedFetch(
     return credentialedFetch(new URL(location, url).toString(), cookie);
   }
   const buffer = new Uint8Array(await response.arrayBuffer());
+  const lengthHeader = response.headers.get('content-length');
+  const parsedLength = lengthHeader === null ? NaN : Number(lengthHeader);
   return {
     status: response.status,
     finalUrl: response.url,
     contentType: response.headers.get('content-type') ?? undefined,
+    contentLength: Number.isInteger(parsedLength) && parsedLength >= 0 ? parsedLength : undefined,
     bytes: buffer,
   };
 }
@@ -354,24 +358,31 @@ describe('#95 real-path S2 integration (packaged processes)', () => {
     };
   }
 
-  function s2AcquireMessage(input: {
-    readonly bytes: Uint8Array;
-    readonly finalUrl: string;
-    readonly status: number;
-    readonly contentType?: string;
-    readonly requestId: string;
-    readonly sessionCookieValue?: string;
-  }): Record<string, unknown> {
-    // The session cookie NEVER enters this payload — it stayed in the
+  /**
+   * Drive one S2 acquisition over the real NM wire exactly as the shipped
+   * service worker does (F04 chunked delivery): S2_ACQUIRE meta (byteCount
+   * only when the server declared Content-Length) → S2_ACQUIRE_CHUNK slabs of
+   * 786_432 raw bytes (1_048_576 base64 chars, quantum-aligned, padding only
+   * in the final slab) → S2_ACQUIRE_END. Returns the terminal host response.
+   */
+  async function sendS2Acquisition(
+    session: NmSession,
+    input: {
+      readonly bytes: Uint8Array;
+      readonly finalUrl: string;
+      readonly status: number;
+      readonly contentType?: string;
+      readonly contentLength?: number;
+      readonly requestId: string;
+      readonly expectedSha256?: string;
+      readonly sessionCookieValue?: string;
+    },
+  ): Promise<Record<string, unknown>> {
+    // The session cookie NEVER enters any frame — it stayed in the
     // authorized fetch below (browser-zone simulation).
     void input.sessionCookieValue;
     const origin = attachment.origin;
-    const chunks: string[] = [];
-    const whole = Buffer.from(input.bytes).toString('base64');
-    for (let index = 0; index < whole.length; index += 3072) {
-      chunks.push(whole.slice(index, index + 3072));
-    }
-    return {
+    session.send({
       kind: 'S2_ACQUIRE',
       requestId: input.requestId,
       s2: {
@@ -390,18 +401,38 @@ describe('#95 real-path S2 integration (packaged processes)', () => {
           originLocatorUri: `${origin}/s2/private-attachment.bin`,
           provenanceBinding: 'SELECTED_RESOURCE_PROVENANCE',
           declaredRedirectHosts: [new URL(origin).host],
-          expectedSha256: ORACLE_SHA,
+          ...(input.expectedSha256 === undefined ? {} : { expectedSha256: input.expectedSha256 }),
           expectedContentTypePrefix: 'application/octet-stream',
-          expectedTotalBytes: input.bytes.length,
         },
         browserResponse: {
           finalUrl: input.finalUrl,
           ...(input.contentType === undefined ? {} : { contentType: input.contentType }),
+          ...(input.contentLength === undefined ? {} : { contentLength: input.contentLength }),
           status: input.status,
         },
-        bytes: chunks,
+        ...(input.contentLength === undefined ? {} : { byteCount: input.contentLength }),
       },
-    };
+    });
+    const accepted = await session.next();
+    expect(accepted['kind']).toBe('S2_ACQUIRE_ACCEPTED');
+    // 786_432 raw bytes → exactly 1_048_576 base64 chars (the NM chunk bound).
+    const NM_SLAB_BYTES = 786_432;
+    let sequence = 0;
+    for (let offset = 0; offset < input.bytes.length; offset += NM_SLAB_BYTES) {
+      const slab = input.bytes.subarray(offset, offset + NM_SLAB_BYTES);
+      session.send({
+        kind: 'S2_ACQUIRE_CHUNK',
+        requestId: input.requestId,
+        seq: sequence,
+        data: Buffer.from(slab).toString('base64'),
+      });
+      const ack = await session.next();
+      expect(ack['kind']).toBe('S2_CHUNK_ACK');
+      expect(ack['seq']).toBe(sequence);
+      sequence += 1;
+    }
+    session.send({ kind: 'S2_ACQUIRE_END', requestId: input.requestId });
+    return session.next();
   }
 
   it('positive journey: cookie-authenticated bytes → NM → Core acceptance == oracle bytes', async () => {
@@ -423,16 +454,18 @@ describe('#95 real-path S2 integration (packaged processes)', () => {
 
     const session = openNmHost();
     try {
-      session.send(
-        s2AcquireMessage({
-          bytes: acquired.bytes,
-          finalUrl: acquired.finalUrl,
-          status: acquired.status,
-          contentType: acquired.contentType,
-          requestId: 'realpath-positive-001',
-        }),
-      );
-      const response = await session.next();
+      // The independently generated oracle digest is declared up front (the
+      // publisher-known anchor strengthening Target validation — never
+      // derived from the delivered bytes, C34).
+      const response = await sendS2Acquisition(session, {
+        bytes: acquired.bytes,
+        finalUrl: acquired.finalUrl,
+        status: acquired.status,
+        contentType: acquired.contentType,
+        contentLength: acquired.contentLength,
+        requestId: 'realpath-positive-001',
+        expectedSha256: ORACLE_SHA,
+      });
       expect(response['kind']).toBe('S2_RESULT');
       const terminal = response['terminal'] as Record<string, unknown>;
       expect(terminal['requestFulfillment']).toBe('COMPLETE');
@@ -478,16 +511,16 @@ describe('#95 real-path S2 integration (packaged processes)', () => {
 
     const session = openNmHost();
     try {
-      session.send(
-        s2AcquireMessage({
-          bytes: denied.bytes,
-          finalUrl: denied.finalUrl,
-          status: denied.status,
-          contentType: denied.contentType,
-          requestId: 'realpath-auth-001',
-        }),
-      );
-      const response = await session.next();
+      // Default path (F01): no digest is declared — the truthful
+      // AUTH_REQUIRED terminal must come from the observed status alone.
+      const response = await sendS2Acquisition(session, {
+        bytes: denied.bytes,
+        finalUrl: denied.finalUrl,
+        status: denied.status,
+        contentType: denied.contentType,
+        contentLength: denied.contentLength,
+        requestId: 'realpath-auth-001',
+      });
       expect(response['kind']).toBe('S2_RESULT');
       const terminal = response['terminal'] as Record<string, unknown>;
       expect(terminal['requestFulfillment']).not.toBe('COMPLETE');

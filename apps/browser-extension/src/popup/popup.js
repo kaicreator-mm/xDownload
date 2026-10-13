@@ -7,10 +7,20 @@
  * journey).
  *
  * Flow: scrape the current page's anchor links (activeTab scripting) →
- * render one row per http(s) attachment link with a declared-digest field
- * → Download click = the explicit user decision → the service worker runs
- * the installed S2 journey → this page polls the truthful journey state
- * and renders the verbatim Core terminal result.
+ * render one row per http(s) attachment link → Download click = the
+ * explicit user decision → the service worker runs the installed S2
+ * journey → this page polls the truthful journey state and renders the
+ * verbatim Core terminal result.
+ *
+ * R1 (PR #96 review F01/F03):
+ * - no checksum is required: the explicit selection observed on the current
+ *   page is the target anchor (PRD §31 CJ-02). A digest the page/publisher
+ *   made known can be entered optionally and only STRENGTHENS Core-side
+ *   target validation — it never gates an ordinary selection, and the
+ *   downloaded bytes' own hash is never used as the oracle (C34);
+ * - a cross-origin attachment (provenance-bound CDN member observed on the
+ *   page) is admissible: the click requests the scoped host permission for
+ *   exactly that origin (never a blanket grant); denial fails truthfully.
  */
 (() => {
   'use strict';
@@ -91,9 +101,10 @@
     const selection = {
       kind: 'S2_SELECT_ATTACHMENT',
       tabId: row.dataset.tabId ? Number(row.dataset.tabId) : -1,
+      pageUrl: row.dataset.pageUrl || '',
       linkUrl: row.dataset.href,
       linkText: row.dataset.text || '',
-      expectedSha256: digest,
+      ...(digest ? { expectedSha256: digest } : {}),
       ...(contentTypePrefix ? { contentTypePrefix } : {}),
     };
     let response = null;
@@ -116,6 +127,7 @@
     li.dataset.href = item.href;
     li.dataset.text = item.text;
     li.dataset.tabId = String(tab.id);
+    li.dataset.pageUrl = tab.url || '';
 
     const link = document.createElement('div');
     link.className = 'link';
@@ -124,7 +136,7 @@
 
     const digest = document.createElement('input');
     digest.type = 'text';
-    digest.placeholder = 'expected SHA-256 (hex, required — frozen target anchor)';
+    digest.placeholder = 'known SHA-256 (optional — strengthens target verification)';
     li.appendChild(digest);
 
     const contentType = document.createElement('input');
@@ -135,16 +147,42 @@
 
     const button = document.createElement('button');
     button.textContent = 'Download with xDownload';
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
+      // Optional digest: when entered it must be a canonical SHA-256; the
+      // journey never requires it (F01).
       const value = digest.value.trim().toLowerCase();
-      if (!/^[0-9a-f]{64}$/.test(value)) {
+      if (value !== '' && !/^[0-9a-f]{64}$/.test(value)) {
         setState(
           'FAILED',
-          'the declared SHA-256 must be 64 hex chars (frozen validation contract)',
+          'the declared SHA-256, when entered, must be 64 hex chars (or leave the field empty)',
         );
         return;
       }
-      void startDownload(li, value, contentType.value.trim() || undefined);
+      // F03: a cross-origin selected member needs the scoped host permission
+      // for exactly its own origin, requested inside this explicit user
+      // gesture. A denial is a truthful refusal, never a silent widening.
+      try {
+        const pageOrigin = new URL(tab.url).origin;
+        const linkOrigin = new URL(item.href).origin;
+        if (linkOrigin !== pageOrigin) {
+          const granted = await chrome.permissions.request({ origins: [`${linkOrigin}/*`] });
+          if (!granted) {
+            setState(
+              'FAILED',
+              `scoped host permission for ${linkOrigin} was not granted; the cross-origin attachment was not acquired`,
+            );
+            return;
+          }
+        }
+      } catch (error) {
+        setState('FAILED', `scoped host permission request failed: ${String(error)}`);
+        return;
+      }
+      void startDownload(
+        li,
+        value === '' ? undefined : value,
+        contentType.value.trim() || undefined,
+      );
     });
     li.appendChild(button);
     list.appendChild(li);
@@ -170,7 +208,7 @@
       for (const item of links) {
         renderRow(tab, item);
       }
-      setState('RUNNING', 'Select an attachment, declare its digest, then Download.');
+      setState('RUNNING', 'Select an attachment, then Download. A known SHA-256 is optional.');
     } catch (error) {
       setState('FAILED', `page scan failed: ${String(error)}`);
     }

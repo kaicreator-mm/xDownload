@@ -9,6 +9,15 @@
  *   Core-derived COMPLETE terminal projection;
  * - submit-accepted is never download-success: digest/format/target/auth
  *   failures return truthful FAILED terminals with failed-member facts;
+ * - R1/F01: the declared digest is OPTIONAL — the default no-digest path
+ *   completes on provenance-bound target validation, a malformed declared
+ *   digest still rejects, and a digest is never derived from the delivered
+ *   bytes (C34);
+ * - R1/F02: Format validation ALWAYS runs — the default no-prefix path is
+ *   format-validated (HTML masquerade negatives fail truthfully);
+ * - R1/F04: the delivered stream may cross as bounded chunk commands with
+ *   all-or-nothing staging, replay-safe across restart, capped at the
+ *   declared 64 MiB bound;
  * - the command fails closed for non-browser surfaces, malformed payloads,
  *   unknown fields, missing aggregates and compositions without the executor;
  * - idempotent duplicate submission converges; journal replay after
@@ -18,7 +27,7 @@
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createCoreSeamServer, type SeamResponse } from '@xdownload/core-seam';
-import { reopenCoreRuntime } from '../src/index.ts';
+import { createS2ChunkStaging, reopenCoreRuntime } from '../src/index.ts';
 import {
   closeRuntime,
   commandEnvelope,
@@ -68,12 +77,16 @@ const ORIGIN = 'http://127.0.0.1:43181';
 function s2Payload(input: {
   readonly bytes: Uint8Array;
   readonly expectedSha256?: string;
+  readonly withDigest?: boolean;
   readonly finalUrl?: string;
   readonly status?: number;
   readonly contentType?: string;
+  readonly contentLength?: number;
   readonly withFormat?: boolean;
+  readonly chunk?: { readonly index: number; readonly count: number };
   readonly extra?: Record<string, unknown>;
 }): Record<string, unknown> {
+  const withDigest = input.withDigest !== false;
   return {
     snapshotId: 'snapshot-s2-delivered-001',
     memberId: 'member-s2-file-001',
@@ -84,7 +97,7 @@ function s2Payload(input: {
       originLocatorUri: `${ORIGIN}/s2/private-attachment.bin`,
       provenanceBinding: 'SELECTED_RESOURCE_PROVENANCE',
       declaredRedirectHosts: ['127.0.0.1:43181'],
-      expectedSha256: input.expectedSha256 ?? sha256(input.bytes),
+      ...(withDigest ? { expectedSha256: input.expectedSha256 ?? sha256(input.bytes) } : {}),
       ...(input.withFormat === false
         ? {}
         : { expectedContentTypePrefix: 'application/octet-stream' }),
@@ -92,9 +105,11 @@ function s2Payload(input: {
     browserResponse: {
       finalUrl: input.finalUrl ?? `${ORIGIN}/s2/private-attachment.bin`,
       contentType: input.contentType ?? 'application/octet-stream',
+      ...(input.contentLength === undefined ? {} : { contentLength: input.contentLength }),
       status: input.status ?? 200,
     },
     bytes: base64Chunks(input.bytes),
+    ...(input.chunk === undefined ? {} : { chunk: input.chunk }),
     ...(input.extra === undefined ? {} : input.extra),
   };
 }
@@ -397,6 +412,415 @@ describe('#95 EXECUTE_S2_ACQUISITION — Core-side delivered-bytes flow', () => 
       expect(reopened.writer.reader.workItems().length).toBe(1);
     } finally {
       closeRuntime(reopened);
+    }
+  });
+});
+
+describe('#95 R1/F01 — the declared digest is optional, never the admission gate', () => {
+  it('the default no-digest selection completes: target truth is the pre-registered selection provenance', () => {
+    const dir = makeTempDir('s2-r1-nodigest');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(4096);
+      const response = executeS2(runtime, s2Payload({ bytes, withDigest: false }));
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe(
+        'ALL_PASSED',
+      );
+      const artifact = runtime.store.readFinalBytes('artifact:s2-delivered-001');
+      expect(artifact === undefined ? '' : sha256(artifact)).toBe(sha256(bytes));
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('a declared digest is still enforced when present (strengthening keeps its teeth)', () => {
+    const dir = makeTempDir('s2-r1-digest-kept');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(1024);
+      const response = executeS2(
+        runtime,
+        s2Payload({ bytes, expectedSha256: sha256(attachmentBytes(2048)) }),
+      );
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).not.toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe('FAILED');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('a malformed declared digest rejects the payload (fail closed)', () => {
+    const dir = makeTempDir('s2-r1-baddigest');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const payload = s2Payload({ bytes: attachmentBytes(64), withDigest: false });
+      (payload['delivery'] as Record<string, unknown>)['expectedSha256'] = 'not-a-digest';
+      const response = executeS2(runtime, payload);
+      expect(response.outcome).toBe('REJECTED');
+      expect(response.diagnostics?.[0]?.code).toBe('ENVELOPE_MALFORMED');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+});
+
+describe('#95 R1/F02 — Format validation always runs (default path included)', () => {
+  it('the default no-prefix path still rejects login/error HTML masquerading as the attachment', () => {
+    const dir = makeTempDir('s2-r1-format-html');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const html = new TextEncoder().encode('<!doctype html><html><body>Sign in…</body></html>');
+      const response = executeS2(
+        runtime,
+        s2Payload({ bytes: html, withDigest: false, withFormat: false, contentType: 'text/html' }),
+      );
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).not.toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe('FAILED');
+      expect(runtime.writer.reader.workItems().length).toBe(1);
+      expect(
+        runtime.recovery.classify(runtime.writer.reader.workItems()[0]!.workItemId).lifecycleClass,
+      ).toBe('TERMINAL_FAILED');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('body-sniffed HTML is rejected even when the declared content-type looks binary (masquerade depth)', () => {
+    const dir = makeTempDir('s2-r1-format-sniff');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const html = new TextEncoder().encode('  <HTML><head></head><body>error</body></html>');
+      const response = executeS2(
+        runtime,
+        s2Payload({
+          bytes: html,
+          withDigest: false,
+          withFormat: false,
+          contentType: 'application/octet-stream',
+        }),
+      );
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).not.toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe('FAILED');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('a declared content-type prefix is still enforced when present', () => {
+    const dir = makeTempDir('s2-r1-format-prefix');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(512);
+      const response = executeS2(
+        runtime,
+        s2Payload({ bytes, withDigest: false, contentType: 'application/pdf' }),
+      );
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).not.toBe('COMPLETE');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('the browser-observed Content-Length is the independent transfer oracle: drift fails truthfully', () => {
+    const dir = makeTempDir('s2-r1-transfer-drift');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(2048);
+      const response = executeS2(
+        runtime,
+        s2Payload({ bytes, withDigest: false, contentLength: 4096 }),
+      );
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).not.toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe('FAILED');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('a consistent observed Content-Length passes transfer validation', () => {
+    const dir = makeTempDir('s2-r1-transfer-ok');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(2048);
+      const response = executeS2(
+        runtime,
+        s2Payload({ bytes, withDigest: false, contentLength: bytes.length }),
+      );
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      expect((view['terminal'] as Record<string, unknown>)['requestFulfillment']).toBe('COMPLETE');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+});
+
+describe('#95 R1/F04 — bounded chunked delivery across the frozen seam frame bound', () => {
+  /** Drive one chunked S2 acquisition; each chunk command carries one slab. */
+  function executeChunked(
+    runtime: CoreRuntime,
+    bytes: Uint8Array,
+    slabSize: number,
+    options?: { readonly upto?: number },
+  ): SeamResponse {
+    const slabs: Uint8Array[] = [];
+    for (let offset = 0; offset < bytes.length; offset += slabSize) {
+      slabs.push(bytes.subarray(offset, Math.min(bytes.length, offset + slabSize)));
+    }
+    const count = slabs.length;
+    let last: SeamResponse | undefined;
+    const upto = options?.upto ?? count;
+    for (let index = 0; index < upto; index += 1) {
+      const payload = s2Payload({
+        bytes: slabs[index]!,
+        withDigest: false,
+        chunk: { index, count },
+      });
+      last = executeS2(runtime, payload, requestId(), 'BROWSER_EXTENSION', 1 + index);
+      expect(last.outcome).toBe('ACCEPTED');
+    }
+    if (last === undefined) {
+      throw new Error('empty chunked execution');
+    }
+    return last;
+  }
+
+  it('a multi-slab stream assembles into one canonical lifecycle and one accepted artifact', () => {
+    const dir = makeTempDir('s2-r1-chunked-ok');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(9000); // 3 slabs of 3072 raw → 3 chunk commands
+      const response = executeChunked(runtime, bytes, 3072);
+      expect(response.outcome).toBe('ACCEPTED');
+      expect(response.currentRevision).toBe(4); // submit + 3 chunks
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe(
+        'ALL_PASSED',
+      );
+      expect(runtime.writer.reader.workItems().length).toBe(1);
+      const artifact = runtime.store.readFinalBytes('artifact:s2-delivered-001');
+      expect(artifact === undefined ? '' : sha256(artifact)).toBe(sha256(bytes));
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('a stream larger than the retired 512 KiB hard cap completes (the declared bound is 64 MiB)', () => {
+    const dir = makeTempDir('s2-r1-beyond-cap');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(700 * 1024); // beyond the old 512 KiB cap
+      const response = executeChunked(runtime, bytes, 256 * 1024);
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      expect((view['terminal'] as Record<string, unknown>)['requestFulfillment']).toBe('COMPLETE');
+      const artifact = runtime.store.readFinalBytes('artifact:s2-delivered-001');
+      expect(artifact === undefined ? '' : sha256(artifact)).toBe(sha256(bytes));
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('an interrupted stream stages nothing durable; restart replay rebuilds staging and the completing chunk executes once', () => {
+    const dir = makeTempDir('s2-r1-chunked-replay');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    submitS2Contract(runtime);
+    const bytes = attachmentBytes(9000);
+    // Two of three slabs arrive, then the process "restarts".
+    executeChunked(runtime, bytes, 3072, { upto: 2 });
+    expect(runtime.writer.reader.workItems().length).toBe(0);
+    closeRuntime(runtime);
+
+    const reopened = reopenCoreRuntime({ rootDir: dir, expectedPeer: EXPECTED_PEER });
+    try {
+      // Journal replay staged the first two slabs; nothing durable exists yet.
+      expect(reopened.writer.reader.workItems().length).toBe(0);
+      const slab = bytes.subarray(6144);
+      const final = executeS2(
+        reopened,
+        s2Payload({ bytes: slab, withDigest: false, chunk: { index: 2, count: 3 } }),
+        requestId(),
+        'BROWSER_EXTENSION',
+        3,
+      );
+      expect(final.outcome).toBe('ACCEPTED');
+      const view = readProjection(reopened).projection as Record<string, unknown>;
+      expect((view['terminal'] as Record<string, unknown>)['requestFulfillment']).toBe('COMPLETE');
+      expect(reopened.writer.reader.workItems().length).toBe(1);
+      const artifact = reopened.store.readFinalBytes('artifact:s2-delivered-001');
+      expect(artifact === undefined ? '' : sha256(artifact)).toBe(sha256(bytes));
+    } finally {
+      closeRuntime(reopened);
+    }
+  });
+
+  it('chunk framing fails closed: index out of range, shape violations and unknown fields reject', () => {
+    const dir = makeTempDir('s2-r1-chunk-shape');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const bytes = attachmentBytes(2048);
+      const badIndex = executeS2(
+        runtime,
+        s2Payload({ bytes, withDigest: false, chunk: { index: 3, count: 3 } }),
+      );
+      expect(badIndex.outcome).toBe('REJECTED');
+      expect(badIndex.diagnostics?.[0]?.code).toBe('ENVELOPE_MALFORMED');
+      const badShape = executeS2(
+        runtime,
+        s2Payload({ bytes, withDigest: false, extra: { chunk: { index: 0 } } }),
+      );
+      expect(badShape.outcome).toBe('REJECTED');
+      // Nothing was staged or executed durably.
+      expect(runtime.writer.reader.workItems().length).toBe(0);
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('a mid-stream count change and conflicting re-delivery of an index reject; identical re-delivery converges', () => {
+    const dir = makeTempDir('s2-r1-chunk-conflict');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const slab0 = attachmentBytes(3072);
+      const first = executeS2(
+        runtime,
+        s2Payload({ bytes: slab0, withDigest: false, chunk: { index: 0, count: 2 } }),
+        requestId(),
+        'BROWSER_EXTENSION',
+        1,
+      );
+      expect(first.outcome).toBe('ACCEPTED');
+      // Byte-identical re-delivery of the staged slab (new requestId):
+      // convergent no-op, still staged, nothing durable yet.
+      const redelivered = executeS2(
+        runtime,
+        s2Payload({ bytes: slab0, withDigest: false, chunk: { index: 0, count: 2 } }),
+        requestId(),
+        'BROWSER_EXTENSION',
+        2,
+      );
+      expect(redelivered.outcome).toBe('ACCEPTED');
+      expect(runtime.writer.reader.workItems().length).toBe(0);
+      // Conflicting bytes for the same staged index reject fail-closed.
+      const conflict = executeS2(
+        runtime,
+        s2Payload({
+          bytes: attachmentBytes(3072).map((v) => (v + 1) & 0xff),
+          withDigest: false,
+          chunk: { index: 0, count: 2 },
+        }),
+        requestId(),
+        'BROWSER_EXTENSION',
+        3,
+      );
+      expect(conflict.outcome).toBe('REJECTED');
+      // A mid-stream count change rejects as well.
+      const countChanged = executeS2(
+        runtime,
+        s2Payload({ bytes: slab0, withDigest: false, chunk: { index: 1, count: 5 } }),
+        requestId(),
+        'BROWSER_EXTENSION',
+        3,
+      );
+      expect(countChanged.outcome).toBe('REJECTED');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('chunked delivery of an HTML masquerade still fails Format validation on completion (layer truth at the assembled stream)', () => {
+    const dir = makeTempDir('s2-r1-chunked-format');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    try {
+      submitS2Contract(runtime);
+      const html = new TextEncoder().encode('<!doctype html><html><body>login</body></html>');
+      const response = executeChunked(runtime, html, 20);
+      expect(response.outcome).toBe('ACCEPTED');
+      const view = readProjection(runtime).projection as Record<string, unknown>;
+      const terminal = view['terminal'] as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).not.toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe('FAILED');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+});
+
+describe('#95 R1/F04 — staged-stream bound (declared 64 MiB ceiling)', () => {
+  it('staging rejects the slab that would cross the declared bound, before buffering further', () => {
+    const staging = createS2ChunkStaging();
+    const slab = new Uint8Array(8 * 1024 * 1024); // 8 MiB slabs
+    let result: ReturnType<typeof staging.stage> | undefined;
+    // 8 slabs stage (64 MiB exactly); the 9th crosses the declared bound.
+    for (let index = 0; index < 9; index += 1) {
+      result = staging.stage({ key: 'effect:test', index, count: 10, bytes: slab });
+      if (!result.ok) {
+        break;
+      }
+    }
+    expect(result).toBeDefined();
+    expect(result!.ok).toBe(false);
+    if (result !== undefined && !result.ok) {
+      expect(result.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+      expect(result.diagnostics[0]?.message).toContain('67108864');
+    }
+    // The failed stream's staging was dropped: a fresh stream restarts cleanly.
+    const fresh = staging.stage({
+      key: 'effect:test',
+      index: 0,
+      count: 1,
+      bytes: new Uint8Array(4),
+    });
+    expect(fresh.ok).toBe(true);
+    if (fresh.ok) {
+      expect(fresh.value.status).toBe('COMPLETE');
     }
   });
 });

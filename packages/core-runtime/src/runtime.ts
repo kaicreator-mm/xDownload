@@ -42,7 +42,7 @@ import {
   type RecoveryClassification,
 } from '@xdownload/persistence-ledger';
 import { createTerminalResultStore, type TerminalResultStore } from '@xdownload/domain-contracts';
-import { executeS2DeliveredAcquisition } from './s2-delivered.ts';
+import { createS2ChunkStaging, executeS2DeliveredAcquisition } from './s2-delivered.ts';
 import type { FlowRuntime } from './flow.ts';
 import {
   durableLayout,
@@ -111,6 +111,10 @@ function bindSeam(
   journal: SeamJournal,
   flowRuntime: FlowRuntime,
 ): CoreSeamServer {
+  // #95 R1/F04: chunked delivered streams stage inside the composition so
+  // journal replay during seam construction rebuilds staged truth through
+  // the same store before the completing chunk re-executes.
+  const s2ChunkStaging = createS2ChunkStaging();
   const result = createCoreSeamServer({
     expectedPeer,
     journal,
@@ -121,11 +125,15 @@ function bindSeam(
     // replay during seam construction can re-apply accepted S2 commands.
     s2DeliveredAcquisition: {
       execute: (input) =>
-        executeS2DeliveredAcquisition(flowRuntime, {
-          aggregateId: input.aggregateId,
-          contract: input.contract,
-          payload: input.payload,
-        }),
+        executeS2DeliveredAcquisition(
+          flowRuntime,
+          {
+            aggregateId: input.aggregateId,
+            contract: input.contract,
+            payload: input.payload,
+          },
+          s2ChunkStaging,
+        ),
     },
   });
   if (!result.ok) {

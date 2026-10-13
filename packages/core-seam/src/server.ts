@@ -92,18 +92,25 @@ export interface CoreSeamServerOptions {
  * Core-DERIVED terminal result value; it still passes the same projector
  * gate as `PROJECT_TERMINAL_RESULT` before becoming lineage authority — the
  * executor can never assert an unvalidated terminal.
+ *
+ * STAGED (#95 R1/F04): one slab of a chunked delivered stream was staged and
+ * no terminal truth exists yet — the lineage stays open for the remaining
+ * chunks. Only a TERMINAL outcome projects terminal authority.
  */
-export interface S2DeliveredAcquisitionExecution {
-  /** Terminal result value (domain-decoded through the projector gate). */
-  readonly terminal: unknown;
-  /** Projector evidence context fields a surface command could also carry. */
-  readonly context: Pick<
-    TerminalResultContext,
-    'selectedValidationOutcomes' | 'coverageEvidence' | 'knownAuthInaccessibleRequestedCount'
-  >;
-  /** Members whose execution failed truthfully (recorded for the retry domain). */
-  readonly failedMemberIds: readonly string[];
-}
+export type S2DeliveredAcquisitionExecution =
+  | {
+      readonly kind: 'TERMINAL';
+      /** Terminal result value (domain-decoded through the projector gate). */
+      readonly terminal: unknown;
+      /** Projector evidence context fields a surface command could also carry. */
+      readonly context: Pick<
+        TerminalResultContext,
+        'selectedValidationOutcomes' | 'coverageEvidence' | 'knownAuthInaccessibleRequestedCount'
+      >;
+      /** Members whose execution failed truthfully (recorded for the retry domain). */
+      readonly failedMemberIds: readonly string[];
+    }
+  | { readonly kind: 'STAGED' };
 
 /** Narrow executor port for the one browser-delivered S2 acquisition command. */
 export interface S2DeliveredAcquisitionExecutor {
@@ -1399,6 +1406,7 @@ const S2_PAYLOAD_KEYS: readonly string[] = [
   'delivery',
   'browserResponse',
   'bytes',
+  'chunk',
 ];
 
 /** Idempotent failed-member fact mutation shared by the trusted port and S2 execution. */
@@ -1508,6 +1516,14 @@ function applyExecuteS2Acquisition(
   });
   if (!executed.ok) {
     return executed;
+  }
+  if (executed.value.kind === 'STAGED') {
+    // Chunked delivered stream in progress (F04): the slab was staged, no
+    // terminal truth exists yet — bump the revision (the chunk command is a
+    // durably journaled authority input) and keep the lineage open.
+    const revision = aggregate.revision + 1;
+    aggregate.revision = revision;
+    return seamOk({ revision });
   }
   if (executed.value.failedMemberIds.length > 0) {
     const decodedFailed: MemberId[] = [];

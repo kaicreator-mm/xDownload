@@ -6,6 +6,7 @@
   "permissions": ["activeTab", "scripting", "nativeMessaging", "notifications"],
   "host_permissions": [],
   "optional_permissions": [],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
   "background": {
     "service_worker": "background.service-worker.js",
     "type": "module"
