@@ -116,7 +116,15 @@ export const ARTIFACTS: readonly ArtifactSpec[] = [
     outDir: 'extension',
     outFile: 'background.service-worker.js',
     platform: 'browser',
-    allowlist: ['manifest.json', 'background.service-worker.js'],
+    // #95: the shipped artifact must carry the reachable installed S2 journey
+    // (action popup entrypoint + notification icon) — no more, no less.
+    allowlist: [
+      'manifest.json',
+      'background.service-worker.js',
+      'popup.html',
+      'popup.js',
+      'icon128.png',
+    ],
     withShebang: false,
   },
   {

@@ -43,8 +43,15 @@ export {
   resumeLineage,
   type DirectFlowInput,
   type DirectFlowOutcome,
+  type FlowRuntime,
   type HlsFlowInput,
   type HlsFlowOutcome,
   type LineageProjectionInput,
   type LineageSeed,
+  type ProjectionRuntime,
 } from './flow.ts';
+export {
+  decodeS2DeliveredPayload,
+  executeS2DeliveredAcquisition,
+  type S2DeliveredAcquisitionPayload,
+} from './s2-delivered.ts';

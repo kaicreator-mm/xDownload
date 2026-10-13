@@ -2,13 +2,23 @@
   "manifest_version": 3,
   "name": "xDownload Browser Integration",
   "version": "0.1.0",
-  "description": "T010 browser observation and scoped authorization handoff. Observations are provenance-bound evidence inputs; authorization is brokered by the local native host with opaque AuthorizationContextRef only.",
-  "permissions": ["activeTab", "scripting", "nativeMessaging"],
+  "description": "xDownload Browser Integration. Observations are provenance-bound evidence inputs; the explicit current-page attachment (S2) journey runs from the action popup through the local native host to the single local Core authority with opaque AuthorizationContextRef only.",
+  "permissions": ["activeTab", "scripting", "nativeMessaging", "notifications"],
   "host_permissions": [],
   "optional_permissions": [],
   "background": {
     "service_worker": "background.service-worker.js",
     "type": "module"
   },
-  "content_scripts": []
+  "content_scripts": [],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "xDownload S2 attachment",
+    "default_icon": {
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "128": "icon128.png"
+  }
 }

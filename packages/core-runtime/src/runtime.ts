@@ -42,6 +42,8 @@ import {
   type RecoveryClassification,
 } from '@xdownload/persistence-ledger';
 import { createTerminalResultStore, type TerminalResultStore } from '@xdownload/domain-contracts';
+import { executeS2DeliveredAcquisition } from './s2-delivered.ts';
+import type { FlowRuntime } from './flow.ts';
 import {
   durableLayout,
   DurableStoreCorruptError,
@@ -104,8 +106,28 @@ function composePersistence(layout: DurableLayout): {
   return { writer, store, recovery };
 }
 
-function bindSeam(expectedPeer: ExpectedPeerScope, journal: SeamJournal): CoreSeamServer {
-  const result = createCoreSeamServer({ expectedPeer, journal });
+function bindSeam(
+  expectedPeer: ExpectedPeerScope,
+  journal: SeamJournal,
+  flowRuntime: FlowRuntime,
+): CoreSeamServer {
+  const result = createCoreSeamServer({
+    expectedPeer,
+    journal,
+    // #95: the one narrowly typed execution command is served by the Core
+    // runtime's own delivered-bytes flow over this same authoritative
+    // composition (writer/scheduler/store) — a second authority never
+    // exists. The executor runs over the durable pieces directly so journal
+    // replay during seam construction can re-apply accepted S2 commands.
+    s2DeliveredAcquisition: {
+      execute: (input) =>
+        executeS2DeliveredAcquisition(flowRuntime, {
+          aggregateId: input.aggregateId,
+          contract: input.contract,
+          payload: input.payload,
+        }),
+    },
+  });
   if (!result.ok) {
     // Journal replay failed: durable seam truth is corrupt → fail closed.
     throw new CoreRuntimeCompositionError(
@@ -127,13 +149,21 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const factLog = FileBackedControlFactLog.createFresh(layout.factLogPath);
   const journal = FileBackedSeamJournal.createFresh(layout.journalPath);
   const { writer, store, recovery } = composePersistence(layout);
+  const scheduler = new CoreScheduler(factLog);
+  const terminalStore = createTerminalResultStore();
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(options.expectedPeer, journal),
-    scheduler: new CoreScheduler(factLog),
+    seam: bindSeam(options.expectedPeer, journal, {
+      scheduler,
+      writer,
+      store,
+      recovery,
+      terminalStore,
+    }),
+    scheduler,
     writer,
     store,
     recovery,
-    terminalStore: createTerminalResultStore(),
+    terminalStore,
     layout,
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze([]),
@@ -171,13 +201,21 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const classifications = writer.reader
     .workItems()
     .map((workItem) => recovery.classify(workItem.workItemId));
+  const scheduler = new CoreScheduler(factLog);
+  const terminalStore = createTerminalResultStore();
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(options.expectedPeer, journal),
-    scheduler: new CoreScheduler(factLog),
+    seam: bindSeam(options.expectedPeer, journal, {
+      scheduler,
+      writer,
+      store,
+      recovery,
+      terminalStore,
+    }),
+    scheduler,
     writer,
     store,
     recovery,
-    terminalStore: createTerminalResultStore(),
+    terminalStore,
     layout,
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze(classifications),

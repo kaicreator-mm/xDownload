@@ -65,12 +65,12 @@ describe('session establishment', () => {
 });
 
 describe('protocol flow: gate -> broker -> truthful responses', () => {
-  it('end-to-end: issue with decision, use with exact tuple, expiry truth, revoke truth', () => {
+  it('end-to-end: issue with decision, use with exact tuple, expiry truth, revoke truth', async () => {
     const { clock, session } = sessionWith();
     if (!session.ok) throw new Error('session not established');
     const host = session.value;
 
-    const issued = host.handleMessage({
+    const issued = await host.handleMessage({
       kind: 'AUTH_ISSUE',
       requestId: 'r1',
       binding: BASE_BINDING,
@@ -81,7 +81,7 @@ describe('protocol flow: gate -> broker -> truthful responses', () => {
     if (!issued.ok || issued.value.kind !== 'ISSUED') throw new Error('issue must succeed');
     const ref = issued.value.ref;
 
-    const used = host.handleMessage({
+    const used = await host.handleMessage({
       kind: 'AUTH_USE',
       requestId: 'r2',
       ref,
@@ -92,7 +92,7 @@ describe('protocol flow: gate -> broker -> truthful responses', () => {
       throw new Error('exact-tuple use must grant');
 
     clock.advanceMs(1001);
-    const expired = host.handleMessage({
+    const expired = await host.handleMessage({
       kind: 'AUTH_USE',
       requestId: 'r3',
       ref,
@@ -103,10 +103,10 @@ describe('protocol flow: gate -> broker -> truthful responses', () => {
     expect(expired.value.outcome).toBe('AUTH_REQUIRED');
     expect(expired.value.reasons.map((d) => d.code)).toContain('CAPABILITY_EXPIRED');
 
-    const revoked = host.handleMessage({ kind: 'AUTH_REVOKE', requestId: 'r4', ref });
+    const revoked = await host.handleMessage({ kind: 'AUTH_REVOKE', requestId: 'r4', ref });
     if (!revoked.ok || revoked.value.kind !== 'REVOKED') throw new Error('revoke must succeed');
 
-    const afterRevoke = host.handleMessage({
+    const afterRevoke = await host.handleMessage({
       kind: 'AUTH_USE',
       requestId: 'r5',
       ref,
@@ -118,24 +118,24 @@ describe('protocol flow: gate -> broker -> truthful responses', () => {
     expect(afterRevoke.value.outcome).toBe('AUTH_FAILED');
   });
 
-  it('frame-level flow: oversized host-bound frames are rejected before dispatch', () => {
+  it('frame-level flow: oversized host-bound frames are rejected before dispatch', async () => {
     const { session } = sessionWith();
     if (!session.ok) throw new Error('session not established');
     const big = encodeFrame({ blob: 'x'.repeat(2048) }, 1024);
     expect(big.ok).toBe(false); // encode side refuses
     const frame = new Uint8Array(4);
     new DataView(frame.buffer).setUint32(0, 4096, true); // declares 4 KiB > 1 KiB bound
-    const decoded = session.value.handleFrame(frame);
+    const decoded = await session.value.handleFrame(frame);
     expect(decoded.ok).toBe(false);
     if (!decoded.ok) {
       expect(decoded.diagnostics.map((d) => d.code)).toContain('NATIVE_MESSAGE_OVERSIZED');
     }
   });
 
-  it('unknown authoritative fields in broker commands fail closed', () => {
+  it('unknown authoritative fields in broker commands fail closed', async () => {
     const { session } = sessionWith();
     if (!session.ok) throw new Error('session not established');
-    const response = session.value.handleMessage({
+    const response = await session.value.handleMessage({
       kind: 'AUTH_USE',
       requestId: 'r6',
       ref: 'authctx/test/x@0',
@@ -148,11 +148,11 @@ describe('protocol flow: gate -> broker -> truthful responses', () => {
     }
   });
 
-  it('binding misuse through the host protocol denies with typed reasons', () => {
+  it('binding misuse through the host protocol denies with typed reasons', async () => {
     const { session } = sessionWith();
     if (!session.ok) throw new Error('session not established');
     const host = session.value;
-    const issued = host.handleMessage({
+    const issued = await host.handleMessage({
       kind: 'AUTH_ISSUE',
       requestId: 'r7',
       binding: BASE_BINDING,
@@ -160,7 +160,7 @@ describe('protocol flow: gate -> broker -> truthful responses', () => {
       issueDecisionToken: ISSUE_DECISION,
     });
     if (!issued.ok || issued.value.kind !== 'ISSUED') throw new Error('issue must succeed');
-    const wrongOrigin = host.handleMessage({
+    const wrongOrigin = await host.handleMessage({
       kind: 'AUTH_USE',
       requestId: 'r8',
       ref: issued.value.ref,

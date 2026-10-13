@@ -66,3 +66,11 @@ export {
   type ContinuationJustification,
   type ContinuationLaneDecision,
 } from './continuation-lane.ts';
+export {
+  createInstalledS2Lane,
+  isS2LaneResponse,
+  s2IdentityFor,
+  type InstalledS2LaneConfig,
+  type S2LaneRejectionStage,
+  type S2LaneResponse,
+} from './s2-installed-lane.ts';

@@ -78,6 +78,48 @@ export interface CoreSeamServerOptions {
   readonly expectedPeer: ExpectedPeerScope;
   /** Accepted-command journal; enables restart replay. Production port is T005. */
   readonly journal?: SeamJournal;
+  /**
+   * Core-internal executor for `EXECUTE_S2_ACQUISITION` (#95). Implemented by
+   * the Core runtime composition over its canonical durable lifecycle; never
+   * by a surface. Absent → the command fails closed (and journal replay of a
+   * durably accepted S2 execution fails composition, never silently skips).
+   */
+  readonly s2DeliveredAcquisition?: S2DeliveredAcquisitionExecutor;
+}
+
+/**
+ * The execution outcome the Core-side S2 executor returns. `terminal` is the
+ * Core-DERIVED terminal result value; it still passes the same projector
+ * gate as `PROJECT_TERMINAL_RESULT` before becoming lineage authority — the
+ * executor can never assert an unvalidated terminal.
+ */
+export interface S2DeliveredAcquisitionExecution {
+  /** Terminal result value (domain-decoded through the projector gate). */
+  readonly terminal: unknown;
+  /** Projector evidence context fields a surface command could also carry. */
+  readonly context: Pick<
+    TerminalResultContext,
+    'selectedValidationOutcomes' | 'coverageEvidence' | 'knownAuthInaccessibleRequestedCount'
+  >;
+  /** Members whose execution failed truthfully (recorded for the retry domain). */
+  readonly failedMemberIds: readonly string[];
+}
+
+/** Narrow executor port for the one browser-delivered S2 acquisition command. */
+export interface S2DeliveredAcquisitionExecutor {
+  /**
+   * Execute one delivered-bytes S2 acquisition for an EXISTING aggregate.
+   * The contract comes from seam authority state — never from the payload
+   * (scope drift is impossible by construction). The payload is raw; the
+   * executor owns the strict fail-closed decode. A truthful execution
+   * failure (digest/format/target) returns a FAILED terminal, not a
+   * rejection; malformed input rejects.
+   */
+  execute(input: {
+    readonly aggregateId: string;
+    readonly contract: AcquisitionContract;
+    readonly payload: unknown;
+  }): SeamResult<S2DeliveredAcquisitionExecution>;
 }
 
 export interface CoreSeamServer {
@@ -152,7 +194,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
               entry.accounting,
               entry.classificationEvidence,
             )
-          : restoreAcceptedCommand(state, gateway, entry);
+          : restoreAcceptedCommand(state, gateway, entry, options.s2DeliveredAcquisition);
       if (!restored.ok) {
         const subject =
           entry.kind === 'COVERAGE_ACCOUNTING'
@@ -301,7 +343,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       );
     }
     // Authority-affecting path: domain decode + semantic gates + state apply.
-    const outcome = applyCommand(state, gateway, envelope);
+    const outcome = applyCommand(state, gateway, envelope, options.s2DeliveredAcquisition);
     if (!outcome.ok) {
       return rejected(envelope.requestId, outcome.diagnostics, currentRevision);
     }
@@ -375,10 +417,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       }
       decoded.push(memberId.value);
     }
-    for (const memberId of decoded) {
-      if (!lineage.failedMembers.includes(memberId)) {
-        lineage.failedMembers.push(memberId);
-      }
+    const mutated = recordFailedMembersByIds(state, aggregateId, decoded);
+    if (!mutated.ok) {
+      return mutated;
     }
     return seamOk(undefined);
   }
@@ -989,6 +1030,7 @@ function applyCommand(
   state: SeamAuthorityState,
   gateway: DomainGateway,
   envelope: CommandEnvelope,
+  s2Executor: S2DeliveredAcquisitionExecutor | undefined,
 ): SeamResult<AppliedCommand> {
   switch (envelope.commandType) {
     case 'SUBMIT_CONTRACT':
@@ -1001,6 +1043,8 @@ function applyCommand(
       return applyRetryFailedMembers(state, envelope);
     case 'PROJECT_TERMINAL_RESULT':
       return applyProjectTerminalResult(state, gateway, envelope);
+    case 'EXECUTE_S2_ACQUISITION':
+      return applyExecuteS2Acquisition(state, gateway, envelope, s2Executor);
   }
 }
 
@@ -1346,6 +1390,162 @@ function applyProjectTerminalResult(
   return seamOk({ revision });
 }
 
+/** Closed top-level payload fields of EXECUTE_S2_ACQUISITION (executor owns the deep decode). */
+const S2_PAYLOAD_KEYS: readonly string[] = [
+  'snapshotId',
+  'memberId',
+  'artifactId',
+  'authorizationContextRef',
+  'delivery',
+  'browserResponse',
+  'bytes',
+];
+
+/** Idempotent failed-member fact mutation shared by the trusted port and S2 execution. */
+function recordFailedMembersByIds(
+  state: SeamAuthorityState,
+  aggregateId: string,
+  memberIds: readonly MemberId[],
+): SeamResult<void> {
+  const lineage = state.lineages.get(aggregateId);
+  if (lineage === undefined) {
+    return seamFail([
+      seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no lineage exists for this id'),
+    ]);
+  }
+  for (const memberId of memberIds) {
+    if (!lineage.failedMembers.includes(memberId)) {
+      lineage.failedMembers.push(memberId);
+    }
+  }
+  return seamOk(undefined);
+}
+
+/**
+ * `EXECUTE_S2_ACQUISITION` (#95): execute one browser-delivered single-
+ * resource acquisition through the Core-owned durable lifecycle and derive
+ * its terminal truth. The contract is read from seam authority state — the
+ * payload can never rewrite scope/target. The terminal passes the SAME
+ * projector gate as `PROJECT_TERMINAL_RESULT`; a truthful execution failure
+ * returns a FAILED terminal (the command is accepted, the download failed).
+ */
+function applyExecuteS2Acquisition(
+  state: SeamAuthorityState,
+  gateway: DomainGateway,
+  envelope: CommandEnvelope,
+  executor: S2DeliveredAcquisitionExecutor | undefined,
+): SeamResult<AppliedCommand> {
+  if (executor === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S2 delivered-acquisition executor; EXECUTE_S2_ACQUISITION fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  // The delivered-bytes lane exists for the browser surface only: the bytes'
+  // provenance is a page-authorized browser fetch, and only the browser lane
+  // carries that provenance through the native broker.
+  if (envelope.peer.surface !== 'BROWSER_EXTENSION') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'EXECUTE_S2_ACQUISITION is admissible only from the BROWSER_EXTENSION surface',
+        'L2-§6.4',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status === 'TERMINAL') {
+    return seamFail([
+      seamDiagnostic(
+        'LATE_COMMAND',
+        'lineage.status',
+        'lineage is already terminal; terminal truth is never rewritten',
+        'L2-§11',
+      ),
+    ]);
+  }
+  // Wire-boundary shape gate: closed top-level fields before the executor's
+  // own strict decode (defense in depth; the executor re-validates).
+  if (
+    typeof envelope.payload !== 'object' ||
+    envelope.payload === null ||
+    Array.isArray(envelope.payload)
+  ) {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'payload', 'S2 acquisition payload must be an object'),
+    ]);
+  }
+  const record = envelope.payload as Record<string, unknown>;
+  const unknown = Object.keys(record).filter((key) => !S2_PAYLOAD_KEYS.includes(key));
+  if (unknown.length > 0) {
+    return seamFail(
+      unknown.map((key) =>
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          `payload.${key}`,
+          'unknown field on S2 acquisition command',
+        ),
+      ),
+    );
+  }
+  const executed = executor.execute({
+    aggregateId: envelope.aggregateId,
+    contract: aggregate.contract,
+    payload: envelope.payload,
+  });
+  if (!executed.ok) {
+    return executed;
+  }
+  if (executed.value.failedMemberIds.length > 0) {
+    const decodedFailed: MemberId[] = [];
+    for (const raw of executed.value.failedMemberIds) {
+      const memberId = makeMemberId(raw);
+      if (!memberId.ok) {
+        return seamFail(domainDiagnosticsToSeam(memberId.diagnostics));
+      }
+      decodedFailed.push(memberId.value);
+    }
+    const recorded = recordFailedMembersByIds(state, envelope.aggregateId, decodedFailed);
+    if (!recorded.ok) {
+      return recorded;
+    }
+  }
+  const selectedMemberCount =
+    lineage.snapshot !== undefined
+      ? lineage.snapshot.selectedMemberIds.length
+      : aggregate.contract.intentType === 'SINGLE_RESOURCE'
+        ? 1
+        : 0;
+  const context: TerminalResultContext = {
+    intentType: aggregate.contract.intentType,
+    scopeKind: aggregate.contract.requestedScope.kind,
+    selectedMemberCount,
+    ...executed.value.context,
+  };
+  const decoded = gateway.projectTerminalResult(executed.value.terminal, context);
+  if (!decoded.ok) {
+    return domainFailure(decoded);
+  }
+  lineage.terminal = decoded.value;
+  lineage.status = 'TERMINAL';
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
 const TERMINAL_PAYLOAD_KEYS: readonly string[] = [
   'result',
   'selectedValidationOutcomes',
@@ -1495,8 +1695,9 @@ function restoreAcceptedCommand(
   state: SeamAuthorityState,
   gateway: DomainGateway,
   entry: AcceptedCommandJournalEntry,
+  s2Executor: S2DeliveredAcquisitionExecutor | undefined,
 ): SeamResult<void> {
-  const applied = applyCommand(state, gateway, entry.envelope);
+  const applied = applyCommand(state, gateway, entry.envelope, s2Executor);
   if (!applied.ok) {
     return applied;
   }

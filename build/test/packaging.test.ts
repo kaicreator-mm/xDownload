@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   auditDist,
   globMatches,
@@ -110,9 +110,13 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
       JSON.stringify({
         manifest_version: 3,
         background: { service_worker: 'background.service-worker.js', type: 'module' },
+        action: { default_popup: 'popup.html' },
+        icons: { '128': 'icon128.png' },
       }),
     ],
     ['extension/background.service-worker.js', BUNDLE_STUB],
+    ['extension/popup.html', '<!doctype html><script src="popup.js"></script>'],
+    ['extension/popup.js', 'export const stub = true;' + String.fromCharCode(10)],
     ['native-host/xdownload-broker-host.js', BUNDLE_STUB],
     ['native-host/broker-config.json', JSON.stringify({ allowedOrigins: [ORIGIN] })],
     ['native-host/com.xdownload.broker.template.json', renderHostManifestTemplate([ORIGIN])],
@@ -127,6 +131,14 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, content, 'utf8');
   }
+  // A minimal valid 1x1 PNG so the icon presence check is byte-real.
+  fs.writeFileSync(
+    path.join(distRoot, 'extension', 'icon128.png'),
+    Buffer.from(
+      '89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415408d763f8cfc000000301010018dd8db00000000049454e44ae426082',
+      'hex',
+    ),
+  );
   const identityDir = path.join(distRoot, 'identity');
   fs.mkdirSync(identityDir, { recursive: true });
   for (const id of ['cli', 'core', 'extension', 'native-host']) {
@@ -425,5 +437,79 @@ describe('native host manifest generation', () => {
         allowedOrigins: ['chrome-extension://*/*'],
       }),
     ).toThrow(/exact chrome-extension/);
+  });
+});
+
+// ------------------------------------------- #95 installed S2 journey reachability
+
+describe('#95 installed S2 journey reachability (real package build)', () => {
+  // One real build shared by the section (the same orchestrator `pnpm build`
+  // runs; the audit already fails closed inside it).
+  let distRoot: string;
+
+  beforeAll(async () => {
+    distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xdownload-s2-reach-'));
+    const { runPackageBuild } = await import('../package.ts');
+    await runPackageBuild(distRoot);
+  });
+
+  afterAll(() => {
+    fs.rmSync(distRoot, { recursive: true, force: true });
+  });
+
+  it('ships the reachable production S2 entrypoint (popup decision → connectNative → S2_ACQUIRE)', () => {
+    // Static reachability regression for finding #94: the shipped bundle must
+    // contain a PRODUCTION connectNative caller driven by the shipped user
+    // decision path — not just an exported descriptor.
+    const bundle = fs.readFileSync(
+      path.join(distRoot, 'extension', 'background.service-worker.js'),
+      'utf8',
+    );
+    expect(bundle).toContain('connectNative');
+    expect(bundle).toContain('S2_SELECT_ATTACHMENT');
+    expect(bundle).toContain('S2_ACQUIRE');
+    expect(bundle).toContain('user-confirm:');
+    expect(bundle).toMatch(/credentials:\s*["']include["']/u);
+    // The popup surface ships and the manifest binds it.
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(distRoot, 'extension', 'manifest.json'), 'utf8'),
+    ) as { action?: { default_popup?: string }; permissions?: string[] };
+    expect(manifest.action?.default_popup).toBe('popup.html');
+    expect(manifest.permissions).toContain('nativeMessaging');
+    for (const asset of ['popup.html', 'popup.js', 'icon128.png']) {
+      expect(fs.existsSync(path.join(distRoot, 'extension', asset))).toBe(true);
+    }
+    const popup = fs.readFileSync(path.join(distRoot, 'extension', 'popup.js'), 'utf8');
+    expect(popup).toContain('S2_SELECT_ATTACHMENT');
+    expect(popup).toContain('expectedSha256');
+  });
+
+  it('ships the native-host side of the S2 chain (scoped capability + single Core seam submission)', () => {
+    const host = fs.readFileSync(
+      path.join(distRoot, 'native-host', 'xdownload-broker-host.js'),
+      'utf8',
+    );
+    expect(host).toContain('S2_ACQUIRE');
+    expect(host).toContain('EXECUTE_S2_ACQUISITION');
+    expect(host).toContain('BROWSER_EXTENSION');
+    expect(host).toContain('user-confirm:');
+  });
+
+  it('ships a Core host that owns the delivered-bytes execution (no second authority)', () => {
+    const core = fs.readFileSync(path.join(distRoot, 'core', 'xdownload-core-host.js'), 'utf8');
+    expect(core).toContain('EXECUTE_S2_ACQUISITION');
+    expect(core).toMatch(/peer\.surface\s*!==\s*["']BROWSER_EXTENSION["']/u);
+  });
+
+  it('emits no credential-shaped material in the extension or native-host artifacts', () => {
+    for (const artifact of [
+      'extension/background.service-worker.js',
+      'extension/popup.js',
+      'native-host/xdownload-broker-host.js',
+    ]) {
+      const text = fs.readFileSync(path.join(distRoot, artifact), 'utf8');
+      expect(text).not.toMatch(/AKIA[0-9A-Z]{16}/u);
+      expect(text).not.toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/u);
+    }
   });
 });

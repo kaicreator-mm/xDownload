@@ -30,6 +30,14 @@ export interface NativeHostSessionOptions {
   readonly allowedOrigins: AllowedOrigins;
   readonly broker: AuthBroker;
   readonly maxInboundFrameBytes?: number;
+  /**
+   * #95 installed S2 lane. When present, `S2_ACQUIRE` commands execute the
+   * browser-delivered acquisition journey (scoped capability + single Core
+   * authority seam submission). Absent → the command fails closed with a
+   * typed rejection; the broker-only behavior of existing deployments is
+   * unchanged.
+   */
+  readonly s2Lane?: S2LaneHandler;
 }
 
 export type BrokerCommand =
@@ -47,7 +55,40 @@ export type BrokerCommand =
       readonly binding: unknown;
     }
   | { readonly kind: 'AUTH_REVOKE'; readonly requestId: string; readonly ref: unknown }
-  | { readonly kind: 'AUTH_INSPECT'; readonly requestId: string; readonly ref: unknown };
+  | { readonly kind: 'AUTH_INSPECT'; readonly requestId: string; readonly ref: unknown }
+  | {
+      readonly kind: 'S2_ACQUIRE';
+      readonly requestId: string;
+      readonly command: unknown;
+    };
+
+/**
+ * Structurally decoded `S2_ACQUIRE` command (closed top-level shape only —
+ * semantic decode, authorization and Core submission live in the injected
+ * installed-lane implementation, never in the broker session).
+ */
+export interface S2AcquireCommandShape {
+  readonly kind: 'S2_ACQUIRE';
+  readonly requestId: string;
+  readonly payload: Record<string, unknown>;
+}
+
+/** Async installed-S2 lane handler (#95). See `s2-installed-lane.ts`. */
+export interface S2LaneHandler {
+  handle(command: S2AcquireCommandShape): Promise<BrokerResponse>;
+}
+
+/**
+ * Structural diagnostic of the installed S2 lane: broker and seam diagnostic
+ * vocabularies both carry (code, path, message) truthfully; the lane never
+ * normalizes one into the other's closed code set.
+ */
+export interface S2LaneDiagnostic {
+  readonly code: string;
+  readonly path: string;
+  readonly message: string;
+  readonly invariant?: string;
+}
 
 export type BrokerResponse =
   | {
@@ -74,6 +115,21 @@ export type BrokerResponse =
       readonly kind: 'REJECTED';
       readonly requestId: string;
       readonly reasons: readonly BrokerDiagnostic[];
+    }
+  | {
+      /** #95 installed S2 lane: the truthful Core terminal projection. */
+      readonly kind: 'S2_RESULT';
+      readonly requestId: string;
+      readonly contractId: string;
+      readonly terminal: unknown;
+      readonly authorizationContextRef: string;
+    }
+  | {
+      /** #95 installed S2 lane: typed stage-labelled rejection (fail closed). */
+      readonly kind: 'S2_REJECTED';
+      readonly requestId: string;
+      readonly stage: string;
+      readonly reasons: readonly S2LaneDiagnostic[];
     };
 
 const COMMAND_KEYS_BY_KIND: Readonly<Record<string, readonly string[]>> = {
@@ -81,7 +137,17 @@ const COMMAND_KEYS_BY_KIND: Readonly<Record<string, readonly string[]>> = {
   AUTH_USE: ['kind', 'requestId', 'ref', 'binding'],
   AUTH_REVOKE: ['kind', 'requestId', 'ref'],
   AUTH_INSPECT: ['kind', 'requestId', 'ref'],
+  S2_ACQUIRE: ['kind', 'requestId', 's2'],
 };
+
+const S2_PAYLOAD_KEYS: readonly string[] = [
+  'handoff',
+  'decisionToken',
+  'ttlMs',
+  'delivery',
+  'browserResponse',
+  'bytes',
+];
 
 /** Decode an inbound broker command with unknown-field rejection (fail closed). */
 export function decodeBrokerCommand(payload: unknown): BrokerResult<BrokerCommand> {
@@ -149,6 +215,37 @@ export function decodeBrokerCommand(payload: unknown): BrokerResult<BrokerComman
       issueDecisionToken: record['issueDecisionToken'],
     });
   }
+  if (kind === 'S2_ACQUIRE') {
+    const s2Payload = record['s2'];
+    if (typeof s2Payload !== 'object' || s2Payload === null || Array.isArray(s2Payload)) {
+      return brokerFail([
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'command.s2',
+          'S2 acquire payload must be an object',
+        ),
+      ]);
+    }
+    const s2Record = s2Payload as Record<string, unknown>;
+    const s2Unknown = Object.keys(s2Record).filter((key) => !S2_PAYLOAD_KEYS.includes(key));
+    if (s2Unknown.length > 0) {
+      return brokerFail(
+        s2Unknown.map((key) =>
+          brokerDiagnostic(
+            'UNKNOWN_FIELD',
+            `command.s2.${key}`,
+            'unknown field on S2 acquire payload; fail closed',
+            'L2-inv11',
+          ),
+        ),
+      );
+    }
+    return brokerOk({
+      kind: 'S2_ACQUIRE',
+      requestId,
+      command: s2Record,
+    });
+  }
   if (kind === 'AUTH_USE') {
     return brokerOk({
       kind: 'AUTH_USE',
@@ -165,10 +262,14 @@ export function decodeBrokerCommand(payload: unknown): BrokerResult<BrokerComman
 
 export interface NativeHostSession {
   readonly callerOrigin: string;
-  /** Handle one decoded Native Messaging payload. */
-  handleMessage(payload: unknown): BrokerResult<BrokerResponse>;
+  /** Handle one decoded Native Messaging payload (async for the S2 lane). */
+  handleMessage(
+    payload: unknown,
+  ): BrokerResult<BrokerResponse> | Promise<BrokerResult<BrokerResponse>>;
   /** Handle one raw frame (length prefix + payload) with the inbound size bound. */
-  handleFrame(frame: Uint8Array): BrokerResult<BrokerResponse>;
+  handleFrame(
+    frame: Uint8Array,
+  ): BrokerResult<BrokerResponse> | Promise<BrokerResult<BrokerResponse>>;
 }
 
 export function establishNativeHostSession(
@@ -190,6 +291,28 @@ export function establishNativeHostSession(
       if (!command.ok) {
         return brokerFail(command.diagnostics);
       }
+      if (command.value.kind === 'S2_ACQUIRE') {
+        if (options.s2Lane === undefined) {
+          return brokerOk({
+            kind: 'REJECTED',
+            requestId: command.value.requestId,
+            reasons: [
+              brokerDiagnostic(
+                'S2_LANE_UNAVAILABLE',
+                'command.kind',
+                'this native host was not configured with the installed S2 lane; fail closed',
+              ),
+            ],
+          });
+        }
+        return options.s2Lane
+          .handle({
+            kind: 'S2_ACQUIRE',
+            requestId: command.value.requestId,
+            payload: command.value.command as Record<string, unknown>,
+          })
+          .then((response) => brokerOk(response));
+      }
       return dispatchCommand(command.value, options.broker);
     },
     handleFrame(frame) {
@@ -203,7 +326,10 @@ export function establishNativeHostSession(
   return brokerOk(Object.freeze(session));
 }
 
-function dispatchCommand(command: BrokerCommand, broker: AuthBroker): BrokerResult<BrokerResponse> {
+function dispatchCommand(
+  command: Exclude<BrokerCommand, { readonly kind: 'S2_ACQUIRE' }>,
+  broker: AuthBroker,
+): BrokerResult<BrokerResponse> {
   if (command.kind === 'AUTH_ISSUE') {
     const issued = broker.issue({
       binding: command.binding as CapabilityBinding,
@@ -295,6 +421,9 @@ export function serveNativeHostSession(
   maxInboundFrameBytes = 64 * 1024 * 1024,
 ): void {
   let buffer = Buffer.alloc(0);
+  // Responses are written strictly in inbound frame order: the async S2 lane
+  // must never reorder Native Messaging replies relative to broker commands.
+  let inFlight: Promise<void> = Promise.resolve();
   io.input.on('data', (chunk: Buffer | string) => {
     buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
     while (buffer.length >= 4) {
@@ -308,12 +437,16 @@ export function serveNativeHostSession(
       }
       const frame = new Uint8Array(buffer.subarray(0, 4 + declared));
       buffer = buffer.subarray(4 + declared);
-      const response = session.handleFrame(frame);
-      writeResponse(io.output, response);
+      inFlight = inFlight.then(async () => {
+        const response = await session.handleFrame(frame);
+        writeResponse(io.output, response);
+      });
     }
   });
   io.input.on('end', () => {
-    io.output.end();
+    void inFlight.then(() => {
+      io.output.end();
+    });
   });
 }
 

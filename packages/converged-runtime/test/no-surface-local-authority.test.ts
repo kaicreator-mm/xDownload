@@ -70,12 +70,15 @@ describe('T017 no-surface-local-authority', () => {
     // per-surface command discriminant is not even representable in the
     // binder's typed API (CommandType) and the seam envelope decoder rejects
     // it fail-closed — no per-surface vocabulary can exist in the glue.
+    // EXECUTE_S2_ACQUISITION (#95) is the one narrowly typed Core-executed
+    // acquisition command; surfaces still only submit it, never own its truth.
     expect(COMMAND_TYPES).toEqual([
       'SUBMIT_CONTRACT',
       'CONFIRM_SNAPSHOT',
       'CANCEL_LINEAGE',
       'RETRY_FAILED_MEMBERS',
       'PROJECT_TERMINAL_RESULT',
+      'EXECUTE_S2_ACQUISITION',
     ]);
     const decoded = decodeSeamEnvelope({
       schemaIdentity: { schema: 'xdownload.core-seam', version: '1.0.0' },
