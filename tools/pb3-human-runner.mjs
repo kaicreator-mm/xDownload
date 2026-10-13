@@ -33,7 +33,7 @@ async function serve(root,bundle){
  const state=()=>({protocol_digest:bundle.digest,current,runs:[...all].map(([id,s])=>({run_id:id,status:s.status,active_user_ms:s.active+(s.status==='ACTIVE'?tick()-s.begin:0),external_manual_actions:s.actions,outcome:s.outcome||null}))});
  const options=bundle.m.run_roster.map(r=>'<option value="'+enc(r.run_id)+'">'+enc(r.run_id)+' ('+enc(r.workflow)+')</option>').join('');
  const page='<!doctype html><meta charset="utf-8"><title>PB3 Human Console</title><style>body{font:17px/1.5 system-ui;max-width:850px;margin:24px auto;padding:12px}button,select{font:inherit;padding:9px;margin:5px}pre{white-space:pre-wrap;background:#eee;padding:12px}</style><h2>PB3 Human Measurement</h2><p>Human-only controls. Pause during passive download/processing waits. Agent automation must not click these controls.</p><p>Protocol: '+bundle.digest+'</p><select id="run">'+options+'</select><div><button onclick="send(\'start\')">Start</button><button onclick="send(\'pause\')">Pause passive wait</button><button onclick="send(\'resume\')">Resume</button><button onclick="send(\'action\')">+1 external manual action</button></div><select id="outcome"><option>SUCCESS_REPORTED</option><option>FAILED</option><option>ABANDONED</option><option>UNKNOWN</option><option>NOT_EXECUTED</option></select><button onclick="send(\'finish\')">Finish</button><p>Use +1 for CLI/keyboard/manual actions that the scenario web page does not log. Do not double-count. Reported success is NOT oracle verification.</p><pre id="status"></pre><script>async function send(kind){const r=await fetch("/api",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({kind,run_id:document.querySelector("#run").value,outcome:document.querySelector("#outcome").value})});const v=await r.json();if(!r.ok)alert(v.error);refresh()}async function refresh(){document.querySelector("#status").textContent=JSON.stringify(await (await fetch("/state")).json(),null,2)}refresh();setInterval(refresh,2000)</script>';
- const server=createServer(async(req,res)=>{const reply=(code,obj)=>{res.writeHead(code,{'content-type':'application/json','cache-control':'no-store'});res.end(json(obj));};try{
+ const server=createServer(async(req,res)=>{const reply=(code,obj,cookie)=>{res.writeHead(code,{'content-type':'application/json','cache-control':'no-store',...(cookie?{'set-cookie':cookie}:{})});res.end(json(obj));};try{
   const u=new URL(req.url||'/','http://127.0.0.1:'+port);
   if(req.method==='GET'&&u.pathname==='/'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});res.end(page);return;}
   if(req.method==='GET'&&u.pathname==='/state'){reply(200,state());return;}
@@ -42,7 +42,7 @@ async function serve(root,bundle){
   const {kind,run_id,outcome}=await body(req),r=bundle.m.run_roster.find(x=>x.run_id===run_id);
   if(!r){reply(400,{error:'unregistered run'});return;}
   let s=all.get(run_id);
-  if(kind==='start'&&!current&&!s){s={status:'ACTIVE',begin:tick(),active:0,actions:0};all.set(run_id,s);current=run_id;await append({event:'start',run_id,task_id:r.task_id,workflow:r.workflow});reply(200,state());return;}
+  if(kind==='start'&&!current&&!s){s={status:'ACTIVE',begin:tick(),active:0,actions:0};all.set(run_id,s);current=run_id;await append({event:'start',run_id,task_id:r.task_id,workflow:r.workflow});reply(200,state(),'pb3_run='+encodeURIComponent(run_id)+'; Path=/; SameSite=Lax');return;}
   if(!s||current!==run_id){reply(409,{error:'no active matching run'});return;}
   if(kind==='pause'&&s.status==='ACTIVE'){s.active+=tick()-s.begin;s.status='PAUSED';await append({event:'pause',run_id,active_user_ms:s.active});reply(200,state());return;}
   if(kind==='resume'&&s.status==='PAUSED'){s.status='ACTIVE';s.begin=tick();await append({event:'resume',run_id});reply(200,state());return;}
@@ -51,7 +51,7 @@ async function serve(root,bundle){
     if(s.status==='ACTIVE')s.active+=tick()-s.begin;s.status='FINISHED';s.outcome=outcome;current=null;
     await append({event:'finish',run_id,active_user_ms:s.active,external_manual_actions:s.actions,reported_outcome:outcome,verified:'PENDING'});
     await writeFile(join(evidence,'human-observations.json'),json({schema:'xdownload.pb3.observations.v1',protocol_digest:bundle.digest,corpus_kind:'CONTROLLED_HTTP_LAB',gate_verdict:'NOT_ISSUED',runs:[...all].filter(([_,v])=>v.status==='FINISHED').map(([id,v])=>({run_id:id,active_user_ms:v.active,external_manual_actions:v.actions,reported_outcome:v.outcome,verified:'PENDING'}))}));
-    reply(200,state());return;
+    reply(200,state(),'pb3_run=; Path=/; Max-Age=0; SameSite=Lax');return;
   }
   reply(409,{error:'invalid state transition'});
  }catch(e){reply(500,{error:String(e)});}});
