@@ -249,6 +249,7 @@ describe('no-digest Target basis: requested-locator provenance (#101 R1/F01, C34
     );
     expect(targetEvidence).toBeDefined();
     expect(targetEvidence?.provenance.sourceIdentity).toContain('REQUESTED_LOCATOR_PROVENANCE');
+    expect(targetEvidence?.certaintyClass).toBe('PROBATIVE');
   });
 
   it('a digest-anchored download names the PUBLISHED_SHA256 basis in its evidence', async () => {
@@ -272,6 +273,7 @@ describe('no-digest Target basis: requested-locator provenance (#101 R1/F01, C34
         record.claimType === 'RESOURCE_IDENTITY' && record.sourceType === 'INDEPENDENT_VALIDATOR',
     );
     expect(targetEvidence?.provenance.sourceIdentity).toContain('PUBLISHED_SHA256');
+    expect(targetEvidence?.certaintyClass).toBe('DECISIVE');
   });
 
   it('a redirect to an undeclared host cannot silently pass without a digest (C29/C34)', async () => {
