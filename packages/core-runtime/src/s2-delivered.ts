@@ -813,15 +813,35 @@ export function executeS2DeliveredAcquisition(
     ),
   );
 
-  // Replay/restart reconcile: the identical durable lineage already exists
-  // (journal replay after restart re-applies the accepted command). The flow
-  // re-derives truth from durable state only — never re-charges budgets and
-  // never re-stages bytes. Any staged chunk residue of the completed stream
-  // is dropped so replay never leaks staging memory.
+  // Replay/restart reconcile: the durable ledger may already contain the
+  // accepted effect before its seam journal is replayed. For a chunked stream,
+  // the earlier journal entries are STAGED commands, not terminal commands:
+  // projecting terminal on the first one would make the next entry LATE and
+  // permanently fence this otherwise-valid Core root on reopen (#98).
+  //
+  // Rebuild only the EPHEMERAL stream-completion counter from accepted journal
+  // bytes. Until the completing chunk arrives, return STAGED so replay
+  // advances the exact original per-command revision. Once complete, derive
+  // terminal truth from the existing durable work item (never re-execute or
+  // re-charge the accepted acquisition). The staging bytes are discarded.
   const existing = runtime.writer.reader
     .workItems()
     .find((workItem) => workItem.effectId === effectId);
   if (existing !== undefined) {
+    if (payload.chunk !== undefined) {
+      const replayed = staging.stage({
+        key: effectId,
+        index: payload.chunk.index,
+        count: payload.chunk.count,
+        bytes: byteDecode.value,
+      });
+      if (!replayed.ok) {
+        return replayed;
+      }
+      if (replayed.value.status === 'STAGED') {
+        return seamOk({ kind: 'STAGED' });
+      }
+    }
     staging.discard(effectId);
     return projectS2Terminal(runtime, {
       contract: input.contract,
