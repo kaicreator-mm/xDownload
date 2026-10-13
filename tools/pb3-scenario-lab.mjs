@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
 
@@ -24,6 +25,8 @@ const html=(t,b,id)=>'<!doctype html><meta charset="utf-8"><title>'+t+'</title><
 (id?'<script>document.addEventListener("click",e=>{const a=e.target.closest("a,button,input[type=submit]");if(a)fetch("/__pb3__/event",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({kind:"human_click",task_id:"'+id+'",label:(a.innerText||a.value||a.id||a.tagName).slice(0,120),path:location.pathname})}).catch(()=>{});});</script>':'');
 const cookies=h=>Object.fromEntries((h||'').split(';').map(x=>x.trim().split('=')).filter(x=>x.length===2));
 const body=r=>new Promise((ok,bad)=>{const x=[];let n=0;r.on('data',c=>{n+=c.length;if(n>1048576){bad(new Error('body too large'));r.destroy();}else x.push(c);});r.on('end',()=>ok(Buffer.concat(x)));r.on('error',bad);});
+const ff=(args)=>{const r=spawnSync('ffmpeg',args,{encoding:'utf8'});if(r.error)throw new Error('ffmpeg unavailable: '+r.error.message);if(r.status!==0)throw new Error('ffmpeg failed: '+(r.stderr||'').slice(-2000));};
+const fileRecord=async(root,p)=>{const b=await readFile(join(root,p));return{path:p.replaceAll('\\','/'),bytes:b.length,sha256:sha(b)};};
 
 async function prepare(a){
   const out=resolve(req(a,'out')),operator=req(a,'operator'),host=a.get('host')||'127.0.0.1',port=Number(a.get('port')||PORT);
@@ -31,13 +34,22 @@ async function prepare(a){
   const o={schema:'xdownload.pb3.oracle.v1',bundle:'pb3-controlled-local-v1',generated_without_xdownload_output:true,S1:{},S2:{},S3:{},S4:{},S5:{},S6:{},S6NAV:{}};
   o.S1.file=await put(join(out,'assets'),'s1/report.bin',bytes(65536,'PB3:S1'));
   o.S2.attachment=await put(join(out,'assets'),'s2/private-attachment.bin',bytes(81920,'PB3:S2'));
+  await mk(join(out,'assets','s3'));
+  const mediaSpecs=[['trailer.mp4',2,'blue'],['presentation-main.mp4',8,'green'],['sponsor.mp4',3,'red']];
   o.S3.candidates=[];
-  for(const [n,s] of [['trailer.mp4','PB3:S3:trailer'],['presentation-main.mp4','PB3:S3:main'],['sponsor.mp4','PB3:S3:sponsor']])o.S3.candidates.push(await put(join(out,'assets'),'s3/'+n,mp4(s)));
+  for(const [n,d,c] of mediaSpecs){
+    const p=join(out,'assets','s3',n);
+    ff(['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','color=c='+c+':s=320x180:r=24','-t',String(d),'-c:v','mpeg4','-q:v','5','-movflags','+faststart',p]);
+    o.S3.candidates.push(await fileRecord(join(out,'assets'),'s3/'+n));
+  }
   o.S3.expected='presentation-main.mp4';
-  o.S4.segments=[]; const seg=[];
-  for(let i=1;i<=6;i++){const n='seg-'+String(i).padStart(2,'0')+'.ts';o.S4.segments.push(await put(join(out,'assets'),'s4/'+n,bytes(32768,'PB3:S4:'+n)));seg.push('#EXTINF:4.000,',n);}
-  const pl=['#EXTM3U','#EXT-X-VERSION:3','#EXT-X-TARGETDURATION:4','#EXT-X-MEDIA-SEQUENCE:0',...seg,'#EXT-X-ENDLIST',''].join('\n');
-  o.S4.playlist=await put(join(out,'assets'),'s4/master.m3u8',Buffer.from(pl));o.S4.duration_seconds=24;o.S4.natural_end=true;
+  await mk(join(out,'assets','s4'));
+  const hlsOut=join(out,'assets','s4','master.m3u8');
+  ff(['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','testsrc2=s=320x180:r=24','-t','12','-c:v','mpeg2video','-g','48','-sc_threshold','0','-f','hls','-hls_time','2','-hls_playlist_type','vod','-hls_segment_filename',join(out,'assets','s4','seg-%02d.ts'),hlsOut]);
+  o.S4.playlist=await fileRecord(join(out,'assets'),'s4/master.m3u8');
+  o.S4.segments=[];
+  for(const n of (await readdir(join(out,'assets','s4'))).filter(x=>/^seg-\d\d\.ts$/.test(x)).sort())o.S4.segments.push(await fileRecord(join(out,'assets'),'s4/'+n));
+  o.S4.duration_seconds=12;o.S4.natural_end=true;o.S4.generated_by='ffmpeg-controlled-local';
   const collection=async(prefix,count)=>{const r=[];for(let i=1;i<=count;i++){const n=prefix+'-'+String(i).padStart(2,'0')+'.bin';r.push({id:prefix+'-member-'+String(i).padStart(2,'0'),...(await put(join(out,'assets'),prefix+'/'+n,bytes(24576+i,'PB3:'+prefix+':'+i)))});}return r;};
   o.S5.members=await collection('s5',6);o.S5.expected_count=6;o.S5.continuation_scope='NONE';
   o.S6.members=await collection('s6',16);o.S6.expected_count=16;o.S6.pages=2;o.S6.natural_end=true;
