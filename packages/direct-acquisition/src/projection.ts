@@ -249,7 +249,14 @@ function typedLayerEvidence(
         provenance: { sourceIdentity },
         independenceFromDiscovery: 'INDEPENDENT',
         scope: { domain: 'SINGLE_RESOURCE_TRANSFER', contractRef: input.request.contractId },
-        certaintyClass: 'DECISIVE',
+        // A requested URL/redirect provenance check is probative of which
+        // selected resource was acquired, not decisive publisher-byte truth.
+        // Keep the independently published SHA case decisive (C34).
+        certaintyClass:
+          outcome.layer === 'target' &&
+          targetBasisOf(input.request) === 'REQUESTED_LOCATOR_PROVENANCE'
+            ? 'PROBATIVE'
+            : 'DECISIVE',
       }),
     });
   }
