@@ -289,7 +289,15 @@ describe('#95 installed S2 lane (native host composition)', () => {
     });
     expect(session.ok).toBe(true);
     if (!session.ok) throw new Error('unreachable');
-    const response = await session.value.handleMessage(s2Acquire({ bytes: attachmentBytes(8) }));
+    // R1/F04 wire shape: metadata frame without inline bytes (bytes cross as
+    // bounded chunk frames); the lane is simply not configured here.
+    const wireMeta = s2Acquire({ bytes: attachmentBytes(8) })['s2'] as Record<string, unknown>;
+    delete wireMeta['bytes'];
+    const response = await session.value.handleMessage({
+      kind: 'S2_ACQUIRE',
+      requestId: 's2-nm-0001',
+      s2: { ...wireMeta, byteCount: 8 },
+    });
     expect(response.ok).toBe(true);
     if (!response.ok) throw new Error('unreachable');
     // Deployment-level typed rejection: the lane is simply not configured.
@@ -300,10 +308,7 @@ describe('#95 installed S2 lane (native host composition)', () => {
     const unknownField = await session.value.handleMessage({
       kind: 'S2_ACQUIRE',
       requestId: 'r',
-      s2: {
-        ...(s2Acquire({ bytes: attachmentBytes(8) })['s2'] as Record<string, unknown>),
-        shell: 'exec',
-      },
+      s2: { ...wireMeta, shell: 'exec' },
     });
     expect(unknownField.ok).toBe(false);
     if (unknownField.ok) throw new Error('unreachable');
@@ -380,6 +385,61 @@ describe('#95 installed S2 lane (native host composition)', () => {
       const terminal = response.terminal as Record<string, unknown>;
       expect(terminal['requestFulfillment']).not.toBe('COMPLETE');
       expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe('FAILED');
+    } finally {
+      await core.stop();
+    }
+  });
+
+  it('R1/F01: the default journey declares no digest and still completes (selection provenance is the target anchor)', async () => {
+    const core = await startedCore();
+    try {
+      const lane = createInstalledS2Lane({
+        broker: createAuthBroker(),
+        core: { host: core.host, port: core.port, installId: 'install-001', userId: 'user-001' },
+      });
+      const bytes = attachmentBytes(2048);
+      const payload = s2Acquire({ bytes })['s2'] as Record<string, unknown>;
+      const delivery = payload['delivery'] as Record<string, unknown>;
+      delete delivery['expectedSha256'];
+      delete delivery['expectedContentTypePrefix'];
+      delete delivery['expectedTotalBytes'];
+      const response = await lane.handle({ kind: 'S2_ACQUIRE', requestId: 'journey-r1', payload });
+      expect(response.kind).toBe('S2_RESULT');
+      if (response.kind !== 'S2_RESULT') throw new Error('unreachable');
+      const terminal = response.terminal as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).toBe('COMPLETE');
+      expect((terminal['validationSummary'] as Record<string, unknown>)['status']).toBe(
+        'ALL_PASSED',
+      );
+    } finally {
+      await core.stop();
+    }
+  });
+
+  it('R1/F04: a 1.5 MiB attachment crosses as bounded chunk commands and completes (the retired 512 KiB / single-frame bound is gone)', async () => {
+    const core = await startedCore();
+    try {
+      const lane = createInstalledS2Lane({
+        broker: createAuthBroker(),
+        core: { host: core.host, port: core.port, installId: 'install-001', userId: 'user-001' },
+      });
+      const bytes = attachmentBytes(1_500_000);
+      const payload = s2Acquire({ bytes })['s2'] as Record<string, unknown>;
+      const delivery = payload['delivery'] as Record<string, unknown>;
+      delete delivery['expectedSha256'];
+      delete delivery['expectedTotalBytes'];
+      const response = await lane.handle({ kind: 'S2_ACQUIRE', requestId: 'journey-big', payload });
+      expect(response.kind).toBe('S2_RESULT');
+      if (response.kind !== 'S2_RESULT') throw new Error('unreachable');
+      const terminal = response.terminal as Record<string, unknown>;
+      expect(terminal['requestFulfillment']).toBe('COMPLETE');
+      // Durable truth: exactly one accepted artifact with byte-identical content.
+      const workItems = core.runtime.writer.reader.workItems();
+      expect(workItems.length).toBe(1);
+      const artifact = core.runtime.store.readFinalBytes(
+        `artifact:s2:${createHash('sha256').update(`t42|f0|${ORIGIN}|obs-s2-0001\n${ORIGIN}/s2/private-attachment.bin`).digest('hex').slice(0, 24)}`,
+      );
+      expect(artifact === undefined ? '' : sha256(artifact)).toBe(sha256(bytes));
     } finally {
       await core.stop();
     }

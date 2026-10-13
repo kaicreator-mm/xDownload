@@ -51,7 +51,9 @@ export {
   type ProjectionRuntime,
 } from './flow.ts';
 export {
+  createS2ChunkStaging,
   decodeS2DeliveredPayload,
   executeS2DeliveredAcquisition,
+  MAX_S2_DELIVERED_BYTES,
   type S2DeliveredAcquisitionPayload,
 } from './s2-delivered.ts';

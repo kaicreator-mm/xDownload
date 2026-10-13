@@ -56,7 +56,10 @@ const S2_BUDGET_PROFILE = {
   },
   transfer: {
     domain: 'transfer',
-    maxBytes: 768_432,
+    // #95 R1/F04: the declared v0.1.0 S2 delivered-acquisition bound
+    // (64 MiB) — consistent with the browser lane's MAX_S2_ATTACHMENT_BYTES
+    // and Core's MAX_S2_DELIVERED_BYTES; charged once at staging.
+    maxBytes: 67_108_864,
     maxSegments: 1,
     maxActiveTransferMs: 600_000,
     maxRetryTransferRequests: 2,
@@ -72,6 +75,17 @@ const SCHEMA = { schema: 'xdownload.domain-contracts', version: '1.0.0' } as con
 const MAX_TTL_MS = 600_000;
 const DEFAULT_PROJECTION_WAIT_MS = 10_000;
 const PROJECTION_POLL_MS = 100;
+
+/**
+ * #95 R1/F04: seam-frame shaping of the delivered byte stream. The frozen
+ * seam wire bounds (L2 §12: maxPayloadBytes 786,432, maxStringFieldLength
+ * 4096) cap one command, so the delivered stream crosses as bounded chunk
+ * commands of 224 seam strings (224 × 3072 = 688,128 base64 chars ≈ 688 KiB
+ * of payload per command, safely below the frozen payload bound). Chunk
+ * commands are journaled like any accepted command; the Core executor
+ * restarts the durable lifecycle only once the declared stream is complete.
+ */
+const S2_SEAM_CHUNKS_PER_COMMAND = 224;
 
 export interface InstalledS2LaneConfig {
   readonly broker: AuthBroker;
@@ -497,24 +511,38 @@ export function createInstalledS2Lane(config: InstalledS2LaneConfig): S2LaneHand
         if (submitted.outcome !== 'ACCEPTED') {
           return laneFail(command.requestId, 'CORE_SUBMIT', submitted.diagnostics ?? []);
         }
-        const executed = await surface.submitCanonicalCommand({
-          commandType: 'EXECUTE_S2_ACQUISITION',
-          aggregateId: contractId,
-          requestId: `s2-execute-${command.requestId}`.slice(0, 128),
-          expectedRevision: 1,
-          correlation: { contractId, snapshotId },
-          payload: {
-            snapshotId,
-            memberId,
-            artifactId,
-            authorizationContextRef: ref,
-            delivery: acquire.delivery,
-            browserResponse: acquire.browserResponse,
-            bytes: acquire.bytes,
-          },
-        });
-        if (executed.outcome !== 'ACCEPTED') {
-          return laneFail(command.requestId, 'CORE_EXECUTE', executed.diagnostics ?? []);
+        // F04: the delivered stream crosses the frozen seam frame bound as a
+        // bounded sequence of chunk commands (revision-ordered, journaled);
+        // Core starts the durable lifecycle on the completing chunk.
+        const slabCount = Math.max(1, Math.ceil(acquire.bytes.length / S2_SEAM_CHUNKS_PER_COMMAND));
+        for (let index = 0; index < slabCount; index += 1) {
+          const slab = acquire.bytes.slice(
+            index * S2_SEAM_CHUNKS_PER_COMMAND,
+            (index + 1) * S2_SEAM_CHUNKS_PER_COMMAND,
+          );
+          const executed = await surface.submitCanonicalCommand({
+            commandType: 'EXECUTE_S2_ACQUISITION',
+            aggregateId: contractId,
+            requestId: `s2-execute-${command.requestId.slice(0, 96)}-${String(index)}`.slice(
+              0,
+              128,
+            ),
+            expectedRevision: 1 + index,
+            correlation: { contractId, snapshotId },
+            payload: {
+              snapshotId,
+              memberId,
+              artifactId,
+              authorizationContextRef: ref,
+              delivery: acquire.delivery,
+              browserResponse: acquire.browserResponse,
+              bytes: slab,
+              chunk: { index, count: slabCount },
+            },
+          });
+          if (executed.outcome !== 'ACCEPTED') {
+            return laneFail(command.requestId, 'CORE_EXECUTE', executed.diagnostics ?? []);
+          }
         }
         // Terminal truth: bounded poll of the authoritative projection.
         const projection = await pollTerminalProjection(

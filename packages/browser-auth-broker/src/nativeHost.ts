@@ -22,6 +22,7 @@ import {
   brokerFail,
   brokerOk,
   type BrokerDiagnostic,
+  type BrokerDiagnosticCode,
   type BrokerResult,
 } from './result.ts';
 
@@ -60,7 +61,19 @@ export type BrokerCommand =
       readonly kind: 'S2_ACQUIRE';
       readonly requestId: string;
       readonly command: unknown;
-    };
+    }
+  | {
+      /**
+       * #95 R1/F04: one bounded byte slab of a chunked S2 delivery. Bytes
+       * never ride the S2_ACQUIRE frame itself; the session reassembles the
+       * stream and invokes the lane only after S2_ACQUIRE_END verifies it.
+       */
+      readonly kind: 'S2_ACQUIRE_CHUNK';
+      readonly requestId: string;
+      readonly seq: number;
+      readonly data: string;
+    }
+  | { readonly kind: 'S2_ACQUIRE_END'; readonly requestId: string };
 
 /**
  * Structurally decoded `S2_ACQUIRE` command (closed top-level shape only —
@@ -130,7 +143,32 @@ export type BrokerResponse =
       readonly requestId: string;
       readonly stage: string;
       readonly reasons: readonly S2LaneDiagnostic[];
+    }
+  | {
+      /** #95 R1/F04: the S2 acquisition metadata frame was accepted; byte chunks may follow. */
+      readonly kind: 'S2_ACQUIRE_ACCEPTED';
+      readonly requestId: string;
+    }
+  | {
+      /** #95 R1/F04: one byte chunk was staged in order. */
+      readonly kind: 'S2_CHUNK_ACK';
+      readonly requestId: string;
+      readonly seq: number;
     };
+
+/**
+ * #95 R1/F04 bounds of the chunked S2 delivery over Native Messaging: one
+ * chunk frame carries at most 768 KiB of raw bytes (1,048,576 base64 chars),
+ * and one assembled acquisition never exceeds the declared v0.1.0 S2 bound
+ * of 64 MiB. The bound is enforced while staging, before the assembled
+ * stream is buffered for the lane.
+ */
+export const S2_NM_CHUNK_MAX_CHARS = 1_048_576;
+export const MAX_S2_ASSEMBLY_BYTES = 64 * 1024 * 1024;
+/** Seam-string bound of the Core payload the lane consumes (≤4096 chars). */
+const S2_SEAM_CHUNK_CHARS = 3072;
+/** Bounded number of concurrent S2 assemblies per host process. */
+const MAX_PENDING_S2_ASSEMBLIES = 4;
 
 const COMMAND_KEYS_BY_KIND: Readonly<Record<string, readonly string[]>> = {
   AUTH_ISSUE: ['kind', 'requestId', 'binding', 'ttlMs', 'issueDecisionToken'],
@@ -138,15 +176,20 @@ const COMMAND_KEYS_BY_KIND: Readonly<Record<string, readonly string[]>> = {
   AUTH_REVOKE: ['kind', 'requestId', 'ref'],
   AUTH_INSPECT: ['kind', 'requestId', 'ref'],
   S2_ACQUIRE: ['kind', 'requestId', 's2'],
+  S2_ACQUIRE_CHUNK: ['kind', 'requestId', 'seq', 'data'],
+  S2_ACQUIRE_END: ['kind', 'requestId'],
 };
 
+// #95 R1/F04: bytes cross as bounded S2_ACQUIRE_CHUNK frames, never inline;
+// the S2_ACQUIRE frame carries the declared total when the browser observed
+// a Content-Length.
 const S2_PAYLOAD_KEYS: readonly string[] = [
   'handoff',
   'decisionToken',
   'ttlMs',
   'delivery',
   'browserResponse',
-  'bytes',
+  'byteCount',
 ];
 
 /** Decode an inbound broker command with unknown-field rejection (fail closed). */
@@ -240,11 +283,59 @@ export function decodeBrokerCommand(payload: unknown): BrokerResult<BrokerComman
         ),
       );
     }
+    const byteCount = s2Record['byteCount'];
+    if (
+      byteCount !== undefined &&
+      (typeof byteCount !== 'number' ||
+        !Number.isInteger(byteCount) ||
+        byteCount < 1 ||
+        byteCount > MAX_S2_ASSEMBLY_BYTES)
+    ) {
+      return brokerFail([
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'command.s2.byteCount',
+          `byteCount, when declared, must be an integer in 1..${String(MAX_S2_ASSEMBLY_BYTES)} (the declared v0.1.0 S2 bound)`,
+        ),
+      ]);
+    }
     return brokerOk({
       kind: 'S2_ACQUIRE',
       requestId,
       command: s2Record,
     });
+  }
+  if (kind === 'S2_ACQUIRE_CHUNK') {
+    const seq = record['seq'];
+    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) {
+      return brokerFail([
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'command.seq',
+          'chunk seq must be a non-negative integer',
+        ),
+      ]);
+    }
+    const data = record['data'];
+    if (
+      typeof data !== 'string' ||
+      data.length === 0 ||
+      data.length > S2_NM_CHUNK_MAX_CHARS ||
+      data.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/u.test(data)
+    ) {
+      return brokerFail([
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'command.data',
+          'chunk data must be quantum-aligned canonical base64 within the declared chunk bound',
+        ),
+      ]);
+    }
+    return brokerOk({ kind: 'S2_ACQUIRE_CHUNK', requestId, seq, data });
+  }
+  if (kind === 'S2_ACQUIRE_END') {
+    return brokerOk({ kind: 'S2_ACQUIRE_END', requestId });
   }
   if (kind === 'AUTH_USE') {
     return brokerOk({
@@ -284,6 +375,21 @@ export function establishNativeHostSession(
     return brokerFail(allowed.diagnostics);
   }
   const maxBytes = options.maxInboundFrameBytes ?? 64 * 1024 * 1024;
+  // #95 R1/F04: in-flight chunked S2 deliveries, keyed by requestId. The
+  // lane runs only after S2_ACQUIRE_END verifies the assembled stream.
+  const assemblies = new Map<string, S2Assembly>();
+  const laneUnavailable = (requestId: string): BrokerResult<BrokerResponse> =>
+    brokerOk({
+      kind: 'REJECTED',
+      requestId,
+      reasons: [
+        brokerDiagnostic(
+          'S2_LANE_UNAVAILABLE',
+          'command.kind',
+          'this native host was not configured with the installed S2 lane; fail closed',
+        ),
+      ],
+    });
   const session: NativeHostSession = {
     callerOrigin: callerOrigin.value,
     handleMessage(payload) {
@@ -293,23 +399,29 @@ export function establishNativeHostSession(
       }
       if (command.value.kind === 'S2_ACQUIRE') {
         if (options.s2Lane === undefined) {
-          return brokerOk({
-            kind: 'REJECTED',
-            requestId: command.value.requestId,
-            reasons: [
-              brokerDiagnostic(
-                'S2_LANE_UNAVAILABLE',
-                'command.kind',
-                'this native host was not configured with the installed S2 lane; fail closed',
-              ),
-            ],
-          });
+          return laneUnavailable(command.value.requestId);
+        }
+        return brokerOk(beginS2Assembly(assemblies, command.value));
+      }
+      if (command.value.kind === 'S2_ACQUIRE_CHUNK') {
+        if (options.s2Lane === undefined) {
+          return laneUnavailable(command.value.requestId);
+        }
+        return brokerOk(stageS2Chunk(assemblies, command.value));
+      }
+      if (command.value.kind === 'S2_ACQUIRE_END') {
+        if (options.s2Lane === undefined) {
+          return laneUnavailable(command.value.requestId);
+        }
+        const assembled = completeS2Assembly(assemblies, command.value.requestId);
+        if (!assembled.ok) {
+          return brokerOk(assembled.response);
         }
         return options.s2Lane
           .handle({
             kind: 'S2_ACQUIRE',
             requestId: command.value.requestId,
-            payload: command.value.command as Record<string, unknown>,
+            payload: assembled.payload,
           })
           .then((response) => brokerOk(response));
       }
@@ -326,8 +438,166 @@ export function establishNativeHostSession(
   return brokerOk(Object.freeze(session));
 }
 
+// ------------------------------------------------------ S2 chunked delivery
+
+interface S2Assembly {
+  readonly command: Record<string, unknown>;
+  readonly declaredByteCount: number | undefined;
+  readonly chunks: string[];
+  receivedBytes: number;
+}
+
+function rejectedS2(
+  requestId: string,
+  code: BrokerDiagnosticCode,
+  path: string,
+  message: string,
+): BrokerResponse {
+  return {
+    kind: 'REJECTED',
+    requestId,
+    reasons: [brokerDiagnostic(code, path, message)],
+  };
+}
+
+function beginS2Assembly(
+  assemblies: Map<string, S2Assembly>,
+  command: { readonly requestId: string; readonly command: unknown },
+): BrokerResponse {
+  if (assemblies.has(command.requestId)) {
+    return rejectedS2(
+      command.requestId,
+      'MALFORMED_REQUIRED_FIELD',
+      'command.requestId',
+      'an S2 acquisition with this requestId is already in progress; fail closed',
+    );
+  }
+  if (assemblies.size >= MAX_PENDING_S2_ASSEMBLIES) {
+    return rejectedS2(
+      command.requestId,
+      'MALFORMED_REQUIRED_FIELD',
+      'command.requestId',
+      'too many concurrent S2 acquisitions in this host process; fail closed',
+    );
+  }
+  const meta = command.command as Record<string, unknown>;
+  assemblies.set(command.requestId, {
+    command: meta,
+    declaredByteCount: meta['byteCount'] as number | undefined,
+    chunks: [],
+    receivedBytes: 0,
+  });
+  return { kind: 'S2_ACQUIRE_ACCEPTED', requestId: command.requestId };
+}
+
+/** Decoded byte length of a quantum-aligned canonical base64 chunk. */
+function decodedChunkBytes(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return (data.length / 4) * 3 - padding;
+}
+
+function stageS2Chunk(
+  assemblies: Map<string, S2Assembly>,
+  command: { readonly requestId: string; readonly seq: number; readonly data: string },
+): BrokerResponse {
+  const assembly = assemblies.get(command.requestId);
+  if (assembly === undefined) {
+    return rejectedS2(
+      command.requestId,
+      'MALFORMED_REQUIRED_FIELD',
+      'command.requestId',
+      'no S2 acquisition is in progress for this requestId; fail closed',
+    );
+  }
+  if (command.seq !== assembly.chunks.length) {
+    return rejectedS2(
+      command.requestId,
+      'MALFORMED_REQUIRED_FIELD',
+      'command.seq',
+      'chunk sequence must be strictly contiguous from 0; fail closed',
+    );
+  }
+  const received = assembly.receivedBytes + decodedChunkBytes(command.data);
+  if (received > MAX_S2_ASSEMBLY_BYTES) {
+    assemblies.delete(command.requestId);
+    return rejectedS2(
+      command.requestId,
+      'MALFORMED_REQUIRED_FIELD',
+      'command.data',
+      `the assembled stream crosses the declared v0.1.0 S2 bound of ${String(MAX_S2_ASSEMBLY_BYTES)} bytes; fail closed`,
+    );
+  }
+  assembly.chunks.push(command.data);
+  assembly.receivedBytes = received;
+  return { kind: 'S2_CHUNK_ACK', requestId: command.requestId, seq: command.seq };
+}
+
+type S2AssemblyCompletion =
+  | { readonly ok: true; readonly payload: Record<string, unknown> }
+  | { readonly ok: false; readonly response: BrokerResponse };
+
+function completeS2Assembly(
+  assemblies: Map<string, S2Assembly>,
+  requestId: string,
+): S2AssemblyCompletion {
+  const assembly = assemblies.get(requestId);
+  assemblies.delete(requestId);
+  if (assembly === undefined) {
+    return {
+      ok: false,
+      response: rejectedS2(
+        requestId,
+        'MALFORMED_REQUIRED_FIELD',
+        'command.requestId',
+        'no S2 acquisition is in progress for this requestId; fail closed',
+      ),
+    };
+  }
+  if (
+    assembly.chunks.length === 0 ||
+    assembly.receivedBytes === 0 ||
+    (assembly.declaredByteCount !== undefined &&
+      assembly.receivedBytes !== assembly.declaredByteCount)
+  ) {
+    return {
+      ok: false,
+      response: rejectedS2(
+        requestId,
+        'MALFORMED_REQUIRED_FIELD',
+        'command.requestId',
+        'the assembled byte stream does not match the declared byte count; fail closed',
+      ),
+    };
+  }
+  // Stream integrity: padding may appear only in the final chunk.
+  for (let index = 0; index < assembly.chunks.length - 1; index += 1) {
+    if (assembly.chunks[index]!.endsWith('=')) {
+      return {
+        ok: false,
+        response: rejectedS2(
+          requestId,
+          'MALFORMED_REQUIRED_FIELD',
+          'command.requestId',
+          'base64 padding inside a non-final chunk; the stream is not canonical',
+        ),
+      };
+    }
+  }
+  const whole = assembly.chunks.join('');
+  const bytes: string[] = [];
+  for (let index = 0; index < whole.length; index += S2_SEAM_CHUNK_CHARS) {
+    bytes.push(whole.slice(index, index + S2_SEAM_CHUNK_CHARS));
+  }
+  return { ok: true, payload: { ...assembly.command, bytes } };
+}
+
 function dispatchCommand(
-  command: Exclude<BrokerCommand, { readonly kind: 'S2_ACQUIRE' }>,
+  command: Exclude<
+    BrokerCommand,
+    | { readonly kind: 'S2_ACQUIRE' }
+    | { readonly kind: 'S2_ACQUIRE_CHUNK' }
+    | { readonly kind: 'S2_ACQUIRE_END' }
+  >,
   broker: AuthBroker,
 ): BrokerResult<BrokerResponse> {
   if (command.kind === 'AUTH_ISSUE') {

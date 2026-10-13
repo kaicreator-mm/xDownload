@@ -40,10 +40,10 @@ import {
   type NativeMessagingChannel,
 } from '@xdownload/browser-auth-broker';
 import {
+  createS2SlabEncoder,
   decodeInternalS2Message,
   isHttpUrl,
   MAX_S2_ATTACHMENT_BYTES,
-  toBase64Chunks,
   type S2Selection,
 } from './s2-glue.ts';
 
@@ -62,7 +62,13 @@ declare const fetch: (
   readonly status: number;
   readonly url: string;
   readonly headers: { get(name: string): string | null };
-  arrayBuffer(): Promise<ArrayBuffer>;
+  /** F04: the streamed body — the attachment is never buffered whole. */
+  readonly body: {
+    getReader(): {
+      read(): Promise<{ readonly done: boolean; readonly value?: Uint8Array }>;
+      cancel(): Promise<void>;
+    };
+  } | null;
 }>;
 
 const NATIVE_HOST_NAME = 'com.xdownload.broker';
@@ -73,6 +79,23 @@ const BROKER_ALLOWED_ORIGINS: readonly string[] = [
 ];
 
 let observationCounter = 0;
+
+declare const crypto: { getRandomValues(array: Uint32Array): void };
+
+/**
+ * Durable-identity-safe journey id. A bare SW-lifetime counter resets to zero
+ * on every MV3 service-worker restart and would re-issue a journaled seam
+ * idempotency identity (`s2-execute-s2-journey-…`) from an earlier journey
+ * with a different payload — the seam correctly rejects that as a
+ * conflicting duplicate, refusing a legitimate new journey (surfaced by the
+ * R1 browser E2E: SW restart between two journeys on the same tab). The
+ * time+random components make every journey identity unique across restarts.
+ */
+function newJourneyId(tabId: number): string {
+  const random = new Uint32Array(1);
+  crypto.getRandomValues(random);
+  return `s2-t${tabId}-${Date.now().toString(36)}-${random[0]!.toString(36)}`;
+}
 
 // ---------------------------------------------------------------- journeys
 
@@ -99,10 +122,24 @@ function notify(title: string, message: string): void {
     .catch(() => undefined);
 }
 
+type NativePort = ReturnType<typeof chrome.runtime.connectNative>;
+
 /**
  * Run the installed S2 journey for one explicit user selection:
- * observation → credentialed byte fetch (browser zone) → Native Messaging
- * S2_ACQUIRE → verbatim Core terminal projection.
+ * observation → credentialed streamed byte fetch (browser zone) → bounded
+ * chunked Native Messaging delivery → verbatim Core terminal projection.
+ *
+ * R1 repairs:
+ * - F01: no declared digest is required; the selection's observed provenance
+ *   (page URL + anchor, re-verified against the live tab) is the target
+ *   anchor, and a declared digest only strengthens it;
+ * - F03: a cross-origin selected member (CDN) is admissible — it was
+ *   positively observed on the page and the user granted the scoped host
+ *   permission at selection time; the declared delivery scope stays bounded
+ *   to the page host and the selected link host (never widened blindly);
+ * - F04: the attachment is streamed (never buffered whole) and crosses NM
+ *   as bounded chunk frames; the declared v0.1.0 bound is enforced BEFORE
+ *   unconsumed buffering (Content-Length pre-check, then while streaming).
  */
 async function runS2Journey(selection: S2Selection, observationId: string): Promise<void> {
   const state: S2JourneyState = {
@@ -117,23 +154,32 @@ async function runS2Journey(selection: S2Selection, observationId: string): Prom
     state.failure = { stage, detail };
     notify('xDownload S2 — failed', `${stage}: ${detail}`);
   };
+  let port: NativePort | undefined;
 
   try {
-    // 1. The page origin authority: the privileged context's own tab state.
+    // 1. The page origin authority: the privileged context's own tab state,
+    // grounded in the selection's observed page URL (a navigated-away tab
+    // voids the selection provenance and fails closed).
     const tab = await chrome.tabs.get(selection.tabId);
     const tabUrl = tab.url;
     if (typeof tabUrl !== 'string' || !isHttpUrl(tabUrl)) {
       fail('ORIGIN_AUTHORITY', 'the active tab exposes no trustworthy http(s) origin');
       return;
     }
-    const pageOrigin = new URL(tabUrl).origin;
-    const linkOrigin = new URL(selection.linkUrl).origin;
-    if (linkOrigin !== pageOrigin) {
-      // v0.1.0 journey scope: the explicit attachment is on the observed page
-      // origin; a cross-origin locator is refused, never silently followed.
-      fail('ORIGIN_MISMATCH', 'the selected attachment is not on the observed page origin');
+    if (tabUrl !== selection.pageUrl) {
+      fail(
+        'ORIGIN_AUTHORITY',
+        'the page navigated after the selection; the observed selection provenance no longer matches the tab',
+      );
       return;
     }
+    const pageOrigin = new URL(tabUrl).origin;
+    // F03: the declared delivery scope is exactly the observed page host plus
+    // the observed selected-link host (a provenance-bound CDN member). Core
+    // rejects any final URL outside this bounded declared set (C29).
+    const declaredHosts = Array.from(
+      new Set([new URL(pageOrigin).host, new URL(selection.linkUrl).host]),
+    );
 
     // 2. Gated observation → provenance-bound record → redacted handoff.
     const observationRaw = {
@@ -169,11 +215,23 @@ async function runS2Journey(selection: S2Selection, observationId: string): Prom
     // only observation material that crosses toward the broker.
     const redactedHandoff = redactForSink(handoff.value);
 
-    // 3. Credentialed byte acquisition in the browser zone (activeTab).
-    const response = await fetch(selection.linkUrl, {
-      credentials: 'include',
-      redirect: 'follow',
-    });
+    // 3. Credentialed byte acquisition in the browser zone (activeTab plus,
+    //    for a cross-origin selection, the user-granted scoped host
+    //    permission). The body streams; the declared bound is enforced before
+    //    unconsumed buffering.
+    let response;
+    try {
+      response = await fetch(selection.linkUrl, {
+        credentials: 'include',
+        redirect: 'follow',
+      });
+    } catch (error) {
+      fail(
+        'ATTACHMENT_FETCH',
+        `the authorized fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
     if (response.status !== 200) {
       fail(
         'ATTACHMENT_FETCH',
@@ -181,54 +239,36 @@ async function runS2Journey(selection: S2Selection, observationId: string): Prom
       );
       return;
     }
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    if (bytes.length === 0) {
-      fail('ATTACHMENT_FETCH', 'the attachment response carried zero bytes');
-      return;
-    }
-    if (bytes.length > MAX_S2_ATTACHMENT_BYTES) {
+    const contentLengthHeader = response.headers.get('content-length');
+    const parsedLength = contentLengthHeader === null ? NaN : Number(contentLengthHeader);
+    const declaredLength =
+      Number.isInteger(parsedLength) && parsedLength >= 0 ? parsedLength : undefined;
+    if (declaredLength !== undefined && declaredLength > MAX_S2_ATTACHMENT_BYTES) {
       fail(
         'ATTACHMENT_BOUND',
-        `attachment of ${String(bytes.length)} bytes exceeds the declared v0.1.0 delivered-acquisition bound ${String(MAX_S2_ATTACHMENT_BYTES)}`,
+        `the server declares ${String(declaredLength)} bytes, exceeding the declared v0.1.0 S2 bound of ${String(MAX_S2_ATTACHMENT_BYTES)} — the body was never read`,
       );
       return;
     }
+    if (declaredLength === 0) {
+      fail('ATTACHMENT_FETCH', 'the attachment response declared zero bytes');
+      return;
+    }
+    if (response.body === null) {
+      fail('ATTACHMENT_FETCH', 'the attachment response exposes no readable body stream');
+      return;
+    }
 
-    // 4. Native Messaging S2_ACQUIRE → the native host's privileged lane.
-    const s2Acquire = {
-      kind: 'S2_ACQUIRE',
-      requestId: `s2-journey-${observationId}`,
-      s2: {
-        handoff: redactedHandoff,
-        decisionToken: `user-confirm:${observationId}`,
-        ttlMs: 60_000,
-        delivery: {
-          locatorUri: selection.linkUrl,
-          originLocatorUri: selection.linkUrl,
-          provenanceBinding: 'SELECTED_RESOURCE_PROVENANCE',
-          declaredRedirectHosts: [new URL(pageOrigin).host],
-          expectedSha256: selection.expectedSha256,
-          ...(selection.contentTypePrefix === undefined
-            ? {}
-            : { expectedContentTypePrefix: selection.contentTypePrefix }),
-          expectedTotalBytes: bytes.length,
-        },
-        browserResponse: {
-          finalUrl: response.url,
-          ...(response.headers.get('content-type') === null
-            ? {}
-            : { contentType: response.headers.get('content-type') ?? undefined }),
-          status: response.status,
-        },
-        bytes: toBase64Chunks(bytes),
-      },
-    };
-
-    const port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
+    // 4. Native Messaging chunked delivery → the native host's privileged
+    //    lane. Metadata first, then bounded byte slabs as the body streams,
+    //    then the completion frame; the lane runs after the host verifies
+    //    the assembled stream.
+    const requestId = `s2-journey-${observationId}`;
+    port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
+    const openPort = port;
     let settled = false;
     const finish = new Promise<void>((resolve) => {
-      port.onDisconnect.addListener(() => {
+      openPort.onDisconnect.addListener(() => {
         if (settled) {
           return;
         }
@@ -236,12 +276,29 @@ async function runS2Journey(selection: S2Selection, observationId: string): Prom
         fail('NATIVE_HOST', 'the native host disconnected without a terminal result');
         resolve();
       });
-      port.onMessage.addListener((message: unknown) => {
+      openPort.onMessage.addListener((message: unknown) => {
         if (settled || typeof message !== 'object' || message === null) {
           return;
         }
         const record = message as Record<string, unknown>;
-        if (record['requestId'] !== s2Acquire.requestId) {
+        // Chunk acknowledgements carry the journey requestId but are not
+        // terminal; keep waiting for the lane's verdict.
+        if (record['kind'] === 'S2_ACQUIRE_ACCEPTED' || record['kind'] === 'S2_CHUNK_ACK') {
+          return;
+        }
+        if (record['kind'] === 'TRANSPORT_REJECTED') {
+          settled = true;
+          const reasons = Array.isArray(record['reasons'])
+            ? (record['reasons'] as readonly { readonly message?: string }[])
+                .map((reason) => reason.message ?? '')
+                .join('; ')
+                .slice(0, 300)
+            : '';
+          fail('NATIVE_HOST', reasons || 'the native host rejected the S2 frames');
+          resolve();
+          return;
+        }
+        if (record['requestId'] !== requestId) {
           return;
         }
         settled = true;
@@ -283,10 +340,85 @@ async function runS2Journey(selection: S2Selection, observationId: string): Prom
         resolve();
       });
     });
-    port.postMessage(s2Acquire);
+    openPort.postMessage({
+      kind: 'S2_ACQUIRE',
+      requestId,
+      s2: {
+        handoff: redactedHandoff,
+        decisionToken: `user-confirm:${observationId}`,
+        ttlMs: 60_000,
+        delivery: {
+          locatorUri: selection.linkUrl,
+          originLocatorUri: selection.linkUrl,
+          provenanceBinding: 'SELECTED_RESOURCE_PROVENANCE',
+          declaredRedirectHosts: declaredHosts,
+          ...(selection.expectedSha256 === undefined
+            ? {}
+            : { expectedSha256: selection.expectedSha256 }),
+          ...(selection.contentTypePrefix === undefined
+            ? {}
+            : { expectedContentTypePrefix: selection.contentTypePrefix }),
+        },
+        browserResponse: {
+          finalUrl: response.url,
+          ...(response.headers.get('content-type') === null
+            ? {}
+            : { contentType: response.headers.get('content-type') ?? undefined }),
+          ...(declaredLength === undefined ? {} : { contentLength: declaredLength }),
+          status: response.status,
+        },
+        ...(declaredLength === undefined ? {} : { byteCount: declaredLength }),
+      },
+    });
+    const reader = response.body.getReader();
+    const encoder = createS2SlabEncoder();
+    let sequence = 0;
+    const sendSlab = (slab: string): void => {
+      openPort.postMessage({
+        kind: 'S2_ACQUIRE_CHUNK',
+        requestId,
+        seq: sequence,
+        data: slab,
+      });
+      sequence += 1;
+    };
+    for (;;) {
+      const read = await reader.read();
+      if (read.done) {
+        break;
+      }
+      const value = read.value;
+      if (value === undefined || value.length === 0) {
+        continue;
+      }
+      if (encoder.totalBytes + value.length > MAX_S2_ATTACHMENT_BYTES) {
+        void reader.cancel();
+        fail(
+          'ATTACHMENT_BOUND',
+          `the attachment body crossed the declared v0.1.0 S2 bound of ${String(MAX_S2_ATTACHMENT_BYTES)} bytes — streaming stopped before the excess was buffered`,
+        );
+        return;
+      }
+      for (const slab of encoder.push(value)) {
+        sendSlab(slab);
+      }
+    }
+    if (encoder.totalBytes === 0) {
+      fail('ATTACHMENT_FETCH', 'the attachment response carried zero bytes');
+      return;
+    }
+    const finalSlab = encoder.flush();
+    if (finalSlab !== undefined) {
+      sendSlab(finalSlab);
+    }
+    openPort.postMessage({ kind: 'S2_ACQUIRE_END', requestId });
     await finish;
   } catch (error) {
     fail('JOURNEY', error instanceof Error ? error.message : 'unexpected journey failure');
+  } finally {
+    // The host process exits with the port; an incomplete chunked assembly
+    // never outlives the journey.
+    port?.disconnect();
   }
 }
 
@@ -307,7 +439,7 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
       return false;
     }
     const selection = decoded.value;
-    const observationId = `s2-t${selection.tabId}-${(observationCounter += 1)}`;
+    const observationId = newJourneyId(selection.tabId);
     void runS2Journey(selection, observationId);
     sendResponse({ ok: true, observationId });
     return false;

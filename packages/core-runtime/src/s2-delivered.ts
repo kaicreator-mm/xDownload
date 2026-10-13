@@ -11,7 +11,7 @@
  * (register → dispatch → attempt → effect truth → staged → materialized →
  * finalized → accepted → scheduler acceptance → projection).
  *
- * Truthfulness rules (issue #95):
+ * Truthfulness rules (issue #95, R1):
  * - a malformed payload REJECTS (nothing executes);
  * - a truthful execution failure (digest/format/target/auth) ACCEPTS the
  *   command and returns a FAILED terminal — submit-accepted is never
@@ -19,6 +19,21 @@
  * - the terminal projection is Core-derived through the T007 projector with
  *   a deterministic recordedAt (the durable work-item creation timestamp), so
  *   journal replay after restart re-derives identical authority state.
+ *
+ * R1 repairs (PR #96 review findings F01/F02/F04):
+ * - F01: `delivery.expectedSha256` is OPTIONAL. The target anchor is the
+ *   programmatically established, pre-registered selection provenance (the
+ *   observed page member + declared delivery hosts); a declared digest only
+ *   STRENGTHENS target validation, it is never the admission gate. The hash
+ *   of the just-delivered bytes is never used as an independent oracle (C34).
+ * - F02: Format validation ALWAYS runs (HTML-masquerade rejection plus
+ *   declared content-type consistency when a prefix exists); the layer set
+ *   recorded into acceptance is always transfer+format+target.
+ * - F04: delivered bytes may arrive as a bounded chunk stream
+ *   (`payload.chunk = {index,count}`) so one acquisition is not squeezed into
+ *   a single frozen seam frame; staged bytes are capped per acquisition at
+ *   MAX_S2_DELIVERED_BYTES and the stream is all-or-nothing (the durable
+ *   lifecycle starts only when the declared stream is complete).
  */
 
 import { lineageKeyOf } from '@xdownload/core-scheduler';
@@ -36,7 +51,11 @@ import {
   type LocatorProvenanceBinding,
   type ResourceLocator,
 } from '@xdownload/domain-contracts';
-import { isSha256Hex, type ValidationLayerOutcome } from '@xdownload/direct-acquisition';
+import {
+  isSha256Hex,
+  validateFormat,
+  type ValidationLayerOutcome,
+} from '@xdownload/direct-acquisition';
 import {
   seamDiagnostic,
   seamFail,
@@ -65,17 +84,35 @@ export interface S2DeliveredAcquisitionPayload {
     readonly originLocatorUri: string;
     readonly provenanceBinding: LocatorProvenanceBinding;
     readonly declaredRedirectHosts: readonly string[];
-    readonly expectedSha256: string;
+    /**
+     * Optional independent content anchor declared BEFORE the bytes existed
+     * (e.g. a publisher-known digest). It only strengthens Target validation;
+     * it is never required and never derived from the delivered bytes (C34).
+     */
+    readonly expectedSha256?: string;
     readonly expectedContentTypePrefix?: string;
     readonly expectedTotalBytes?: number;
   };
   readonly browserResponse: {
     readonly finalUrl: string;
     readonly contentType?: string;
+    /**
+     * The browser-observed Content-Length of the final response, when the
+     * server declared one — the independent transfer oracle the delivered
+     * byte count is checked against.
+     */
+    readonly contentLength?: number;
     readonly status: number;
   };
   /** base64 chunks exactly as they crossed the seam (≤4096 chars each). */
   readonly bytes: readonly string[];
+  /**
+   * Chunked-delivery framing (F04): when present, `bytes` carries slab
+   * `index` of `count`; the durable lifecycle starts only once every slab of
+   * the declared stream was staged. Absent → the payload is the complete
+   * single-frame delivery (the v1 legacy shape, kept for journal replay).
+   */
+  readonly chunk?: { readonly index: number; readonly count: number };
 }
 
 const DELIVERY_KEYS: readonly string[] = [
@@ -87,7 +124,7 @@ const DELIVERY_KEYS: readonly string[] = [
   'expectedContentTypePrefix',
   'expectedTotalBytes',
 ];
-const RESPONSE_KEYS: readonly string[] = ['finalUrl', 'contentType', 'status'];
+const RESPONSE_KEYS: readonly string[] = ['finalUrl', 'contentType', 'contentLength', 'status'];
 const PROVENANCE_BINDING_KINDS: readonly LocatorProvenanceBinding[] = [
   'DECLARED_DELIVERY_EDGE',
   'SELECTED_RESOURCE_PROVENANCE',
@@ -95,6 +132,18 @@ const PROVENANCE_BINDING_KINDS: readonly LocatorProvenanceBinding[] = [
 ];
 const MAX_REDIRECT_HOSTS = 8;
 const MAX_S2_IDENTITY_LENGTH = 256;
+
+/**
+ * Declared v0.1.0 S2 delivered-acquisition bound (F04): one explicit
+ * attachment may carry at most 64 MiB across its chunk stream. The bound is
+ * derived from the actual lane budgets (native-host assembly, lane transfer
+ * budget, Core staging), enforced BEFORE unconsumed buffering at every hop,
+ * and recorded in docs/implementation/v0.1.0/S2_DELIVERED_ACQUISITION_LIMITS.md.
+ * It must equal the browser lane's MAX_S2_ATTACHMENT_BYTES (s2-glue.ts).
+ */
+export const MAX_S2_DELIVERED_BYTES = 64 * 1024 * 1024;
+/** Bound on the declared chunk count of one delivered stream (512 KiB slabs). */
+export const MAX_S2_CHUNK_COUNT = 1024;
 
 function rejectUnknown(
   record: Record<string, unknown>,
@@ -149,15 +198,40 @@ function requireHttpUrl(value: string, at: string): SeamResult<URL> {
   return seamOk(parsed);
 }
 
+const BASE64_CHUNK_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/u;
+
 function decodeBase64Chunks(chunks: readonly unknown[]): SeamResult<Uint8Array> {
   const parts: Buffer[] = [];
-  for (const chunk of chunks) {
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
     if (typeof chunk !== 'string' || chunk.length === 0 || chunk.length > 4096) {
       return seamFail([
         seamDiagnostic(
           'ENVELOPE_MALFORMED',
           'payload.bytes',
           'each chunk must be a non-empty base64 string of at most 4096 chars',
+        ),
+      ]);
+    }
+    // Strict stream semantics: every chunk is canonical base64, only the
+    // final chunk may carry padding, and non-final chunks are quantum-aligned
+    // — per-chunk decode then equals whole-stream decode (no lenient-parser
+    // byte drift between the lane and Core).
+    if (!BASE64_CHUNK_PATTERN.test(chunk)) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'payload.bytes',
+          'each chunk must be canonical base64 (padding only at the stream end)',
+        ),
+      ]);
+    }
+    if (index < chunks.length - 1 && (chunk.length % 4 !== 0 || chunk.endsWith('='))) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'payload.bytes',
+          'non-final chunks must be quantum-aligned base64 without padding',
         ),
       ]);
     }
@@ -192,6 +266,7 @@ export function decodeS2DeliveredPayload(
       'delivery',
       'browserResponse',
       'bytes',
+      'chunk',
     ],
     'payload',
   );
@@ -295,18 +370,26 @@ export function decodeS2DeliveredPayload(
     }
     declaredRedirectHosts.push(host);
   }
-  const expectedSha256 = requireString(deliveryRecord, 'expectedSha256', 'payload.delivery');
-  if (!expectedSha256.ok) {
-    return expectedSha256;
-  }
-  if (!isSha256Hex(expectedSha256.value)) {
-    return seamFail([
-      seamDiagnostic(
-        'ENVELOPE_MALFORMED',
-        'payload.delivery.expectedSha256',
-        'expected a hex SHA-256 digest',
-      ),
-    ]);
+  // F01: the digest is an OPTIONAL strengthening anchor. When declared it
+  // must be a well-formed hex SHA-256; when absent, Target validation rests
+  // on the pre-registered selection provenance alone (never on a hash of the
+  // just-delivered bytes — C34).
+  let expectedSha256: string | undefined;
+  if (deliveryRecord['expectedSha256'] !== undefined) {
+    const digest = requireString(deliveryRecord, 'expectedSha256', 'payload.delivery');
+    if (!digest.ok) {
+      return digest;
+    }
+    if (!isSha256Hex(digest.value)) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'payload.delivery.expectedSha256',
+          'expected a hex SHA-256 digest',
+        ),
+      ]);
+    }
+    expectedSha256 = digest.value;
   }
   let expectedContentTypePrefix: string | undefined;
   if (deliveryRecord['expectedContentTypePrefix'] !== undefined) {
@@ -361,6 +444,20 @@ export function decodeS2DeliveredPayload(
     }
     contentType = type.value;
   }
+  let contentLength: number | undefined;
+  if (responseRecord['contentLength'] !== undefined) {
+    const declared = responseRecord['contentLength'];
+    if (typeof declared !== 'number' || !Number.isInteger(declared) || declared < 0) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'payload.browserResponse.contentLength',
+          'expected a non-negative integer',
+        ),
+      ]);
+    }
+    contentLength = declared;
+  }
   const status = responseRecord['status'];
   if (typeof status !== 'number' || !Number.isInteger(status) || status < 100 || status > 599) {
     return seamFail([
@@ -385,6 +482,41 @@ export function decodeS2DeliveredPayload(
   if (!bytes.ok) {
     return bytes;
   }
+  let chunk: { readonly index: number; readonly count: number } | undefined;
+  if (record['chunk'] !== undefined) {
+    const rawChunk = record['chunk'];
+    if (typeof rawChunk !== 'object' || rawChunk === null || Array.isArray(rawChunk)) {
+      return seamFail([
+        seamDiagnostic('ENVELOPE_MALFORMED', 'payload.chunk', 'chunk framing must be an object'),
+      ]);
+    }
+    const chunkRecord = rawChunk as Record<string, unknown>;
+    const chunkShaped = rejectUnknown(chunkRecord, ['index', 'count'], 'payload.chunk');
+    if (!chunkShaped.ok) {
+      return chunkShaped;
+    }
+    const index = chunkRecord['index'];
+    const count = chunkRecord['count'];
+    if (
+      typeof index !== 'number' ||
+      !Number.isInteger(index) ||
+      typeof count !== 'number' ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > MAX_S2_CHUNK_COUNT ||
+      index < 0 ||
+      index >= count
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'payload.chunk',
+          `chunk framing must be integer index/count with 0 ≤ index < count ≤ ${String(MAX_S2_CHUNK_COUNT)}`,
+        ),
+      ]);
+    }
+    chunk = { index, count };
+  }
   return seamOk({
     snapshotId: record['snapshotId'] as string,
     memberId: record['memberId'] as string,
@@ -395,16 +527,18 @@ export function decodeS2DeliveredPayload(
       originLocatorUri: originLocatorUri.value,
       provenanceBinding: provenanceBinding.value as LocatorProvenanceBinding,
       declaredRedirectHosts,
-      expectedSha256: expectedSha256.value,
+      ...(expectedSha256 === undefined ? {} : { expectedSha256 }),
       ...(expectedContentTypePrefix === undefined ? {} : { expectedContentTypePrefix }),
       ...(expectedTotalBytes === undefined ? {} : { expectedTotalBytes }),
     },
     browserResponse: {
       finalUrl: finalUrl.value,
       ...(contentType === undefined ? {} : { contentType }),
+      ...(contentLength === undefined ? {} : { contentLength }),
       status,
     },
     bytes: rawBytes as string[],
+    ...(chunk === undefined ? {} : { chunk }),
   });
 }
 
@@ -421,20 +555,43 @@ interface S2ValidationVerdict {
   readonly passed: boolean;
   readonly failure?: S2FailureCategory;
   readonly stopFacts: Readonly<Record<string, boolean>>;
+  /**
+   * The frozen §28 S2 layer set (transfer+format+target) recorded into
+   * acceptance when the verdict passed — every layer actually ran.
+   */
+  readonly layers: readonly ValidationLayerOutcome[];
 }
 
+/**
+ * Delivered-bytes validation (PRD §22/§28 S2, R1):
+ * - Transfer: the browser-observed response facts are the independent
+ *   transfer oracle — the delivered byte count must match the observed
+ *   Content-Length (when the server declared one) and any size declared at
+ *   selection time; a seam-side byte drift is a truthful CORRUPT_BYTES.
+ * - Target: the observed final URL must stay inside the declared delivery
+ *   scope (the positively grounded selected member plus its declared
+ *   redirect/CDN hosts — C29); when an independently declared digest exists
+ *   it is additionally enforced. The delivered bytes' own hash is never the
+ *   target oracle (C34).
+ * - Format: ALWAYS evaluated — login/error HTML masquerading as target
+ *   content is rejected, and a declared content-type prefix is enforced when
+ *   present. The format layer is never silently skipped (F02).
+ */
 function validateDeliveredAcquisition(input: {
   readonly payload: S2DeliveredAcquisitionPayload;
   readonly bytes: Uint8Array;
 }): S2ValidationVerdict {
   const { payload } = input;
+  const failed = (
+    failure: S2FailureCategory,
+    stopFacts: Readonly<Record<string, boolean>>,
+  ): S2ValidationVerdict => ({ passed: false, failure, stopFacts, layers: [] });
   if (payload.browserResponse.status !== 200) {
     const auth = payload.browserResponse.status === 401 || payload.browserResponse.status === 403;
-    return {
-      passed: false,
-      failure: auth ? 'AUTH_REQUIRED' : 'NETWORK_FAILURE',
-      stopFacts: auth ? { authRequired: true } : { noProgress: true },
-    };
+    return failed(
+      auth ? 'AUTH_REQUIRED' : 'NETWORK_FAILURE',
+      auth ? { authRequired: true } : { noProgress: true },
+    );
   }
   const allowed = new Set<string>([
     ...payload.delivery.declaredRedirectHosts,
@@ -443,42 +600,137 @@ function validateDeliveredAcquisition(input: {
   ]);
   const finalHost = new URL(payload.browserResponse.finalUrl).host;
   if (!allowed.has(finalHost)) {
-    return {
-      passed: false,
-      failure: 'REDIRECT_SCOPE_EXPANSION',
-      stopFacts: { targetChanged: true },
-    };
+    return failed('REDIRECT_SCOPE_EXPANSION', { targetChanged: true });
   }
-  const digest = sha256Hex(input.bytes);
-  if (digest !== payload.delivery.expectedSha256) {
-    return { passed: false, failure: 'CORRUPT_BYTES', stopFacts: { validationFailed: true } };
+  if (
+    payload.browserResponse.contentLength !== undefined &&
+    payload.browserResponse.contentLength !== input.bytes.length
+  ) {
+    return failed('CORRUPT_BYTES', { validationFailed: true });
   }
   if (
     payload.delivery.expectedTotalBytes !== undefined &&
     payload.delivery.expectedTotalBytes !== input.bytes.length
   ) {
-    return { passed: false, failure: 'CORRUPT_BYTES', stopFacts: { validationFailed: true } };
+    return failed('CORRUPT_BYTES', { validationFailed: true });
   }
-  if (
-    payload.delivery.expectedContentTypePrefix !== undefined &&
-    (payload.browserResponse.contentType === undefined ||
-      !payload.browserResponse.contentType.startsWith(payload.delivery.expectedContentTypePrefix))
-  ) {
-    return { passed: false, failure: 'FORMAT_REJECTED', stopFacts: { validationFailed: true } };
+  if (payload.delivery.expectedSha256 !== undefined) {
+    const digest = sha256Hex(input.bytes);
+    if (digest !== payload.delivery.expectedSha256) {
+      return failed('CORRUPT_BYTES', { validationFailed: true });
+    }
   }
-  return { passed: true, stopFacts: {} };
+  const format = validateFormat({
+    contentType: payload.browserResponse.contentType,
+    bodyPrefix: input.bytes.subarray(0, 512),
+    ...(payload.delivery.expectedContentTypePrefix === undefined
+      ? {}
+      : { expectedContentTypePrefix: payload.delivery.expectedContentTypePrefix }),
+  });
+  if (!format.passed) {
+    return failed('FORMAT_REJECTED', { validationFailed: true });
+  }
+  return {
+    passed: true,
+    stopFacts: {},
+    layers: [
+      { layer: 'transfer', passed: true },
+      { layer: 'format', passed: true },
+      { layer: 'target', passed: true },
+    ],
+  };
 }
 
-/** Validation-layer truth of a delivered acquisition whose verdict passed. */
-function deliveredValidations(
-  expectedContentTypePrefix: string | undefined,
-): readonly ValidationLayerOutcome[] {
-  const layers: ValidationLayerOutcome[] = [{ layer: 'transfer', passed: true }];
-  if (expectedContentTypePrefix !== undefined) {
-    layers.push({ layer: 'format', passed: true });
-  }
-  layers.push({ layer: 'target', passed: true });
-  return layers;
+/**
+ * Bounded per-acquisition staging of a chunked delivered stream (F04).
+ * State lives as long as the owning seam composition: journaled chunk
+ * commands replay through the same store on restart, so the staged truth is
+ * rebuilt deterministically before the completing chunk re-executes.
+ */
+export interface S2ChunkStagingStore {
+  /**
+   * Stage one decoded slab. Returns 'COMPLETE' with the assembled bytes once
+   * every declared chunk arrived exactly once; conflicting re-delivery of an
+   * index with different bytes rejects (byte-identical re-delivery is a
+   * convergent no-op); crossing the declared MAX_S2_DELIVERED_BYTES bound
+   * rejects before the stream is buffered further.
+   */
+  readonly stage: (input: {
+    readonly key: string;
+    readonly index: number;
+    readonly count: number;
+    readonly bytes: Uint8Array;
+  }) => SeamResult<
+    { readonly status: 'STAGED' } | { readonly status: 'COMPLETE'; readonly bytes: Uint8Array }
+  >;
+  /** Drop any staged state for the key (terminal or abandoned stream). */
+  readonly discard: (key: string) => void;
+}
+
+export function createS2ChunkStaging(): S2ChunkStagingStore {
+  const staged = new Map<
+    string,
+    { readonly count: number; readonly slabs: (Uint8Array | undefined)[]; total: number }
+  >();
+  return {
+    stage(input) {
+      let entry = staged.get(input.key);
+      if (entry === undefined) {
+        entry = { count: input.count, slabs: Array.from({ length: input.count }), total: 0 };
+        staged.set(input.key, entry);
+      }
+      if (entry.count !== input.count) {
+        return seamFail([
+          seamDiagnostic(
+            'ENVELOPE_MALFORMED',
+            'payload.chunk.count',
+            'the declared chunk count changed mid-stream; the stream is not trustworthy',
+          ),
+        ]);
+      }
+      const prior = entry.slabs[input.index];
+      if (prior !== undefined) {
+        if (
+          prior.length === input.bytes.length &&
+          Buffer.compare(prior as Buffer, input.bytes as Buffer) === 0
+        ) {
+          // Byte-identical re-delivery: convergent no-op (idempotent retry).
+          return seamOk({ status: 'STAGED' });
+        }
+        return seamFail([
+          seamDiagnostic(
+            'ENVELOPE_MALFORMED',
+            'payload.chunk.index',
+            'conflicting bytes re-delivered for an already staged chunk index',
+          ),
+        ]);
+      }
+      if (entry.total + input.bytes.length > MAX_S2_DELIVERED_BYTES) {
+        staged.delete(input.key);
+        return seamFail([
+          seamDiagnostic(
+            'ADMISSION_REJECTED',
+            'payload.chunk',
+            `the declared stream crosses the v0.1.0 S2 delivered-acquisition bound of ${String(MAX_S2_DELIVERED_BYTES)} bytes`,
+            'PRD-§28 S2',
+          ),
+        ]);
+      }
+      entry.slabs[input.index] = input.bytes;
+      entry.total += input.bytes.length;
+      if (entry.slabs.some((slab) => slab === undefined)) {
+        return seamOk({ status: 'STAGED' });
+      }
+      staged.delete(input.key);
+      return seamOk({
+        status: 'COMPLETE',
+        bytes: new Uint8Array(Buffer.concat(entry.slabs as Uint8Array[])),
+      });
+    },
+    discard(key) {
+      staged.delete(key);
+    },
+  };
 }
 
 /** True when the durable lifecycle for the work item reached accepted+verified bytes. */
@@ -492,6 +744,12 @@ function memberValidatedFromDurable(runtime: FlowRuntime, workItemId: string): b
  * lifecycle. The contract comes from seam authority state; scope/target can
  * never be rewritten by the payload. Returns the Core-derived terminal for
  * the projector gate, never a surface-asserted one.
+ *
+ * Chunked delivery (F04): a payload carrying `chunk` stages its slab and
+ * returns STAGED without touching the lifecycle; the completing chunk runs
+ * the canonical path over the assembled bytes. The staging store is owned by
+ * the runtime composition so journal replay rebuilds staged truth
+ * deterministically.
  */
 export function executeS2DeliveredAcquisition(
   runtime: FlowRuntime,
@@ -500,6 +758,7 @@ export function executeS2DeliveredAcquisition(
     readonly contract: AcquisitionContract;
     readonly payload: unknown;
   },
+  staging: S2ChunkStagingStore,
 ): SeamResult<S2DeliveredAcquisitionExecution> {
   const decoded = decodeS2DeliveredPayload(input.payload);
   if (!decoded.ok) {
@@ -548,22 +807,22 @@ export function executeS2DeliveredAcquisition(
   if (!byteDecode.ok) {
     return byteDecode;
   }
-  const bytes = byteDecode.value;
   const effectId = unwrapOrThrow(
     makeEffectId(
       `effect:${input.contract.contractId}:${payload.snapshotId}:${input.contract.requestedTarget}`,
     ),
   );
-  const commandId = `s2-delivered:${input.contract.contractId}:${payload.snapshotId}:${payload.memberId}`;
 
   // Replay/restart reconcile: the identical durable lineage already exists
   // (journal replay after restart re-applies the accepted command). The flow
   // re-derives truth from durable state only — never re-charges budgets and
-  // never re-stages bytes.
+  // never re-stages bytes. Any staged chunk residue of the completed stream
+  // is dropped so replay never leaks staging memory.
   const existing = runtime.writer.reader
     .workItems()
     .find((workItem) => workItem.effectId === effectId);
   if (existing !== undefined) {
+    staging.discard(effectId);
     return projectS2Terminal(runtime, {
       contract: input.contract,
       payload,
@@ -578,6 +837,29 @@ export function executeS2DeliveredAcquisition(
     });
   }
 
+  // F04 chunked delivery: stage this slab and stop short of the lifecycle
+  // until the declared stream is complete (all-or-nothing — a partial stream
+  // never produces durable artifact truth).
+  let bytes: Uint8Array;
+  if (payload.chunk !== undefined) {
+    const staged = staging.stage({
+      key: effectId,
+      index: payload.chunk.index,
+      count: payload.chunk.count,
+      bytes: byteDecode.value,
+    });
+    if (!staged.ok) {
+      return staged;
+    }
+    if (staged.value.status === 'STAGED') {
+      return seamOk({ kind: 'STAGED' });
+    }
+    bytes = staged.value.bytes;
+  } else {
+    bytes = byteDecode.value;
+  }
+
+  const commandId = `s2-delivered:${input.contract.contractId}:${payload.snapshotId}:${payload.memberId}`;
   const { submission, workItemId } = registerLineage(
     runtime,
     {
@@ -647,7 +929,7 @@ export function executeS2DeliveredAcquisition(
       runtime,
       workItemId,
       payload.artifactId,
-      acceptanceValidationOf(deliveredValidations(payload.delivery.expectedContentTypePrefix)),
+      acceptanceValidationOf(verdict.layers),
     );
     if (lifecycle.error !== undefined) {
       runtime.writer.recordTerminalFailure(workItemId, lifecycle.error.code);
@@ -715,6 +997,7 @@ function projectS2Terminal(
     );
   }
   return seamOk({
+    kind: 'TERMINAL',
     terminal: projected.value.result,
     context: {
       selectedValidationOutcomes: [

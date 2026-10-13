@@ -37,6 +37,7 @@ export default tseslint.config(
         String: 'readonly',
         Number: 'readonly',
         Math: 'readonly',
+        URL: 'readonly',
       },
     },
   },
