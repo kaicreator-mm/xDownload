@@ -12,7 +12,10 @@ T008 direct HTTP, T009 HLS, T011 collection and T016/T017 composed-flow unit-tes
 
 ```mermaid
 flowchart LR
-  A["#103: L2/T004 successor authority review"] --> B["#101/S1: Core direct-execution + packaged CLI"]
+  A["#103: L2/T004 successor authority review"] --> V["T004 Core-seam 1.1.0/legacy compatibility gate"]
+  V --> X["T008: optional SHA/locator Target gate"]
+  X --> Y["T007: resolution independent of acceptance + provenance-blocked projector"]
+  Y --> B["#101/S1: Core direct-execution + packaged CLI"]
   B --> C["S3: media selection + validation, installed path"]
   B --> D["S4: Core HLS VOD execution, installed path"]
   B --> E["S5: current-page member collection, continuation NONE"]
@@ -28,6 +31,13 @@ flowchart LR
 ```
 
 After #103's exact-SHA review and formal S1 successor adoption, **each S3/S4/S5/S6 carrier independently requires its own named L2 successor authority review (fresh exact-SHA) before that carrier's implementation begins**. Only after S3 and S4 public contract decisions are approved may their independent Core implementation concerns run in separate worktrees; S5→S6 still has ordered membership/continuation dependencies. The S1 command is not blanket permission for any other opcode or media/browser workflow. No monolithic multi-surface PR, second Core authority, raw cookie export, or direct-internal-module surrogate for a packaged user event. Dispatched agents must inspect all previous research/test assets, adopt file-level code, and skip new generic demos.
+
+### F06/F07 mandatory repair slices (no false DAG task completion)
+
+- **T004 command compatibility (F06)** is the first contract implementation dependency: source must use `xdownload.core-seam@1.1.0` for `EXECUTE_S1_DIRECT_ACQUISITION`, gate the new opcode on minor >=1, retain the published 1.0 vocabulary, have an old-Core read-only version preflight before any S1 submission and fail closed on incompatible durable journals. Test old CLI/new Core, new CLI/old Core, downgrade and forward replay; retain the existing response vocabulary. An old 1.0 Core accepting a 1.1 request's major number is NOT evidence that it supports the new opcode.
+- **T008 validation correction (F07-a)** must allow omitted publisher SHA in normal URL-only S1 while checking every requested locator/redirect edge and real Transfer/Format/Target; no computed hash becomes independent publisher evidence. This is implemented in proposed PR #102 but needs exact-HEAD independent review and installed-host verification.
+- **T007 projection correction (F07-b/c)** must separate durable *target resolution* from *validated artifact acceptance*, and add a separately reviewable, provenance-unproven S1 blocker/fulfillment path. Do not fabricate accepted members to force RESOLVED. Test all three normative successor tuples (no digest success, unproven identity, publisher digest mismatch), all five fields, validation evidence and one durable ledger. These are **new bounded implementation concerns** if PR #102 does not already supply the required projector facts; add an isolated T007 PR before S1 Product closure.
+- **Requalification (F06/F07)**: exact-SHA source review, clean real installed CLI/Core S1 positive+negative including version mismatch and crash replay, then all affected T019/T020/T021/T023 validation on the **eventual integrated candidate**. A proposed document or green unit tests alone does not qualify the path. No frozen Task DAG rewrite or invented task completion.
 
 ## Gate truth
 
