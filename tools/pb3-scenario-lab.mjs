@@ -6,8 +6,8 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
 
-const HEAD='5f70de80310d9ecd8a486a34d3ab7d67877a0fde';
-const TREE='7828bf12eb57b73c7ce38d7f30ed5939925d60d7';
+const HEAD='973740ea5fbd58ec8be95fcb67fb042e6839cea6';
+const TREE='8dd0b1ba99b1eca86b407a53536585eb553e0c25';
 const PLAN_ID='g0-plan/v0.1.0-primary';
 const PLAN_DIGEST='44f437a2dea560cecd5341e87f6a8d0bae1af53b552abac51a4d5db2addf0b15';
 const PORT=43181;
