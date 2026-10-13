@@ -653,9 +653,9 @@ describe('#95 R1/F04 — bounded chunked delivery across the frozen seam frame b
     const requests: string[] = [];
     for (let index = 0; index < 3; index += 1) {
       const slab = bytes.subarray(
-          index * 3072,
-          Math.min(bytes.length, (index + 1) * 3072),
-        );
+        index * 3072,
+        Math.min(bytes.length, (index + 1) * 3072),
+      );
       const req = requestId();
       requests.push(req);
       const response = executeS2(
