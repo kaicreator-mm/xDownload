@@ -22,6 +22,7 @@ import {
   serveNativeHostSession,
   type AllowedOrigins,
 } from '@xdownload/browser-auth-broker';
+import { createInstalledS2Lane } from '@xdownload/browser-collection-workflow';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -29,6 +30,15 @@ import { pathToFileURL } from 'node:url';
 
 export interface BrokerConfig {
   readonly allowedOrigins: AllowedOrigins;
+  /** #95: the ONE Core authority seam target; absent → S2 lane fails closed. */
+  readonly core:
+    | {
+        readonly host: string;
+        readonly port: number;
+        readonly installId: string;
+        readonly userId: string;
+      }
+    | undefined;
 }
 
 export function parseBrokerConfig(text: string): BrokerConfig {
@@ -41,9 +51,42 @@ export function parseBrokerConfig(text: string): BrokerConfig {
   if (!Array.isArray(origins) || origins.length === 0) {
     // Mirrors the broker's own rule: an empty allow list rejects every
     // caller; a config without one fails closed the same way.
-    return { allowedOrigins: [] };
+    return { allowedOrigins: [], core: undefined };
   }
-  return { allowedOrigins: origins.filter((entry): entry is string => typeof entry === 'string') };
+  const rawCore = record['core'];
+  let core: BrokerConfig['core'];
+  if (rawCore === undefined || rawCore === null) {
+    core = undefined;
+  } else if (typeof rawCore === 'object' && !Array.isArray(rawCore)) {
+    const coreRecord = rawCore as Record<string, unknown>;
+    const host = coreRecord['host'];
+    const port = coreRecord['port'];
+    const installId = coreRecord['installId'];
+    const userId = coreRecord['userId'];
+    if (
+      typeof host !== 'string' ||
+      host !== '127.0.0.1' ||
+      typeof port !== 'number' ||
+      !Number.isInteger(port) ||
+      port <= 0 ||
+      port > 65535 ||
+      typeof installId !== 'string' ||
+      installId.length === 0 ||
+      typeof userId !== 'string' ||
+      userId.length === 0
+    ) {
+      throw new Error(
+        'broker config core section must be { host: "127.0.0.1", port, installId, userId } (loopback only)',
+      );
+    }
+    core = { host, port, installId, userId };
+  } else {
+    throw new Error('broker config core section must be an object when present');
+  }
+  return {
+    allowedOrigins: origins.filter((entry): entry is string => typeof entry === 'string'),
+    core,
+  };
 }
 
 export function loadBrokerConfig(configPath: string): BrokerConfig {
@@ -73,8 +116,11 @@ export async function runBrokerHost(argv: readonly string[]): Promise<number> {
     return 2;
   }
   let allowedOrigins: AllowedOrigins;
+  let core: BrokerConfig['core'];
   try {
-    allowedOrigins = loadBrokerConfig(configPath).allowedOrigins;
+    const loaded = loadBrokerConfig(configPath);
+    allowedOrigins = loaded.allowedOrigins;
+    core = loaded.core;
   } catch (error) {
     process.stderr.write(
       `xdownload-broker-host: broker config unreadable: ${error instanceof Error ? error.message : 'error'}\n`,
@@ -82,11 +128,22 @@ export async function runBrokerHost(argv: readonly string[]): Promise<number> {
     return 2;
   }
   // Session establishment enforces the exact allow-listed caller origin
-  // from the browser-passed argv (T010 semantics, unmodified).
+  // from the browser-passed argv (T010 semantics, unmodified). The S2 lane
+  // is composed only when the ONE Core authority target is configured; a
+  // broker-only deployment keeps S2_ACQUIRE failing closed.
+  const broker = createAuthBroker();
   const session = establishNativeHostSession({
     argv,
     allowedOrigins,
-    broker: createAuthBroker(),
+    broker,
+    ...(core === undefined
+      ? {}
+      : {
+          s2Lane: createInstalledS2Lane({
+            broker,
+            core,
+          }),
+        }),
   });
   if (!session.ok) {
     process.stderr.write(

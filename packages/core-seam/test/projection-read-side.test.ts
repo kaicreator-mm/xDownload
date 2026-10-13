@@ -151,9 +151,14 @@ describe('projections are read-only values', () => {
 
 describe('no surface-owned budget/result state is creatable via commands', () => {
   it('the wire command vocabulary is closed and contains no budget/result mutation discriminant', () => {
+    // EXECUTE_S2_ACQUISITION (#95) is the one narrowly typed execution
+    // command: it triggers the Core-owned durable acquisition lifecycle and
+    // its terminal truth still passes the projector gate — no surface-owned
+    // budget/result mutation exists.
     expect([...COMMAND_TYPES].sort()).toStrictEqual([
       'CANCEL_LINEAGE',
       'CONFIRM_SNAPSHOT',
+      'EXECUTE_S2_ACQUISITION',
       'PROJECT_TERMINAL_RESULT',
       'RETRY_FAILED_MEMBERS',
       'SUBMIT_CONTRACT',

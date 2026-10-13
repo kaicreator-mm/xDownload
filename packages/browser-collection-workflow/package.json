@@ -9,7 +9,9 @@
   "dependencies": {
     "@xdownload/browser-auth-broker": "workspace:*",
     "@xdownload/browser-observation": "workspace:*",
+    "@xdownload/converged-runtime": "workspace:*",
     "@xdownload/core-runtime": "workspace:*",
+    "@xdownload/core-seam": "workspace:*",
     "@xdownload/direct-acquisition": "workspace:*",
     "@xdownload/discovery-recipe": "workspace:*",
     "@xdownload/domain-contracts": "workspace:*",

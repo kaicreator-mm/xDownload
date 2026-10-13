@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>xDownload S2</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        width: 380px;
+        margin: 8px;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 4px 0 8px;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: 220px;
+        overflow-y: auto;
+      }
+      li {
+        margin: 6px 0;
+        padding: 6px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+      }
+      .link {
+        word-break: break-all;
+        margin-bottom: 4px;
+      }
+      .label {
+        color: #555;
+      }
+      input[type='text'] {
+        width: 100%;
+        box-sizing: border-box;
+        margin: 3px 0;
+        font-family: monospace;
+        font-size: 11px;
+      }
+      button {
+        padding: 3px 10px;
+      }
+      .state {
+        margin: 8px 0 0;
+        padding: 6px;
+        border-radius: 6px;
+        white-space: pre-wrap;
+      }
+      .state.RUNNING {
+        background: #eef;
+      }
+      .state.COMPLETE {
+        background: #efe;
+      }
+      .state.FAILED {
+        background: #fee;
+      }
+      .state.UNKNOWN {
+        background: #f2f2f2;
+      }
+      .error {
+        color: #b00;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>xDownload — explicit current-page attachment (S2)</h1>
+    <p class="label">
+      The declared SHA-256 is the frozen target-identity anchor: Core validates the delivered bytes
+      against it before acceptance (PRD §28 S2).
+    </p>
+    <ul id="attachments"></ul>
+    <div id="state" class="state UNKNOWN">Scanning the current page…</div>
+    <script src="popup.js"></script>
+  </body>
+</html>

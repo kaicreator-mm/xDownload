@@ -79,6 +79,19 @@ import type {
   RecoveryClassification,
 } from '@xdownload/persistence-ledger';
 import type { CoreRuntime } from './runtime.ts';
+
+/**
+ * Structural runtime subsets the flows actually consume (#95): the S2
+ * delivered-acquisition executor is composed BEFORE the seam server exists
+ * (journal replay inside `createCoreSeamServer` may already execute S2
+ * commands over the durable pieces), so flow functions accept the pieces
+ * they use instead of the fully composed runtime.
+ */
+export type FlowRuntime = Pick<
+  CoreRuntime,
+  'scheduler' | 'writer' | 'store' | 'recovery' | 'terminalStore'
+>;
+export type ProjectionRuntime = FlowRuntime & { readonly seam?: CoreRuntime['seam'] };
 import {
   CoreRuntimeBudgetBridge,
   schedulerHlsTransferLedger,
@@ -151,7 +164,7 @@ function seedToSubmitInput(seed: LineageSeed): LineageSubmitInput {
 
 /** Register one lineage in BOTH canonical stores (scheduler + durable ledger). */
 export function registerLineage(
-  runtime: CoreRuntime,
+  runtime: Pick<CoreRuntime, 'scheduler' | 'writer'>,
   seed: LineageSeed,
   options: { readonly commandId: string; readonly memberId: string },
 ): { readonly submission: LineageSubmission; readonly workItemId: string } {
@@ -265,11 +278,11 @@ function directEffectOutcome(outcome: DirectTransferOutcome): {
   return { outcome: 'FAILED', failureCategory: outcome.reason };
 }
 
-function attemptIdFor(workItemId: string): string {
+export function attemptIdFor(workItemId: string): string {
   return `${workItemId}#attempt-1`;
 }
 
-function acceptanceValidationOf(
+export function acceptanceValidationOf(
   validations: DirectTransferOutcome['validations'],
 ): AcceptanceValidation {
   const passed = validations.filter((check) => check.passed).length;
@@ -392,8 +405,8 @@ export async function executeDirectAcquisition(
  * (replay/restart) resumes from where the durable truth already is, and the
  * idempotent upstream transitions converge instead of re-executing.
  */
-function completeArtifactLifecycle(
-  runtime: CoreRuntime,
+export function completeArtifactLifecycle(
+  runtime: Pick<CoreRuntime, 'store' | 'writer'>,
   workItemId: string,
   artifactId: string,
   validation: AcceptanceValidation,
@@ -635,7 +648,7 @@ export interface LineageProjectionInput {
  * (never by glue).
  */
 export function projectLineageResult(
-  runtime: CoreRuntime,
+  runtime: ProjectionRuntime,
   input: LineageProjectionInput,
 ): DomainValidationResult<ProjectedTerminalResult> {
   const view = runtime.scheduler.lineageView(input.lineageKey);
@@ -743,6 +756,7 @@ export function projectLineageResult(
   if (!checked.ok) return checked;
   if (
     input.accounting !== undefined &&
+    runtime.seam !== undefined &&
     runtime.seam.inspectProjection(input.contractId) !== undefined
   ) {
     // Only an already registered Core seam lineage is eligible for a

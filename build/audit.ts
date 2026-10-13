@@ -220,6 +220,13 @@ export function manifestReferencedFiles(manifest: Record<string, unknown>): read
         }
       }
     }
+    // #95: the action popup page is a first-class manifest reference. Its
+    // local script assets are chased by the caller (which owns the package
+    // directory); web_accessible_resources is deliberately not used.
+    const popup = (action as Record<string, unknown>)['default_popup'];
+    if (typeof popup === 'string' && popup.length > 0) {
+      referenced.push(popup);
+    }
   }
   const icons = manifest['icons'];
   if (typeof icons === 'object' && icons !== null) {
@@ -241,7 +248,25 @@ function auditExtensionManifestMatch(extensionDir: string): readonly AuditViolat
     ];
   }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
-  const referenced = manifestReferencedFiles(manifest);
+  const referenced = [...manifestReferencedFiles(manifest)];
+  // #95: chase the action popup's local <script src> exactly one level so an
+  // extension-internal popup script ships without becoming web-accessible.
+  const popup = (manifest['action'] as { readonly default_popup?: unknown } | undefined)?.[
+    'default_popup'
+  ];
+  if (
+    typeof popup === 'string' &&
+    popup.length > 0 &&
+    fs.existsSync(path.join(extensionDir, popup))
+  ) {
+    const html = fs.readFileSync(path.join(extensionDir, popup), 'utf8');
+    for (const match of html.matchAll(/<script[^>]*src="([^"]+)"/gu)) {
+      const src = match[1];
+      if (src !== undefined && !/^[a-z]+:/iu.test(src)) {
+        referenced.push(src);
+      }
+    }
+  }
   const emitted = listArtifactFiles(extensionDir)
     .map((full) => path.relative(extensionDir, full).split(path.sep).join('/'))
     .sort();

@@ -26,7 +26,10 @@ export type BrokerBoundaryCode =
   | 'PARTITION_CONTEXT_STRIPPED'
   | 'SCOPE_BINDING_MISMATCH'
   | 'SECRET_IN_SINK'
-  | 'CYCLIC_STRUCTURE';
+  | 'CYCLIC_STRUCTURE'
+  | 'S2_LANE_UNAVAILABLE'
+  | 'S2_LANE_REJECTED'
+  | 'CORE_UNREACHABLE';
 
 /** Local codes plus the canonical diagnostic codes reused verbatim. */
 export type BrokerDiagnosticCode = BrokerBoundaryCode | DiagnosticCode;

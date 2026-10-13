@@ -21,4 +21,23 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // #95: the shipped extension popup is a plain-JS browser page (packaged
+    // verbatim); its browser globals are real by design.
+    files: ['apps/browser-extension/src/popup/**/*.js'],
+    languageOptions: {
+      globals: {
+        chrome: 'readonly',
+        document: 'readonly',
+        window: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setTimeout: 'readonly',
+        Date: 'readonly',
+        String: 'readonly',
+        Number: 'readonly',
+        Math: 'readonly',
+      },
+    },
+  },
 );

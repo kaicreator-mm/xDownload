@@ -175,6 +175,15 @@ importers:
       '@xdownload/browser-auth-broker':
         specifier: workspace:*
         version: link:packages/browser-auth-broker
+      '@xdownload/browser-collection-workflow':
+        specifier: workspace:*
+        version: link:packages/browser-collection-workflow
+      '@xdownload/browser-observation':
+        specifier: workspace:*
+        version: link:packages/browser-observation
+      '@xdownload/converged-runtime':
+        specifier: workspace:*
+        version: link:packages/converged-runtime
       '@xdownload/core-runtime':
         specifier: workspace:*
         version: link:packages/core-runtime
@@ -271,9 +280,15 @@ importers:
       '@xdownload/browser-observation':
         specifier: workspace:*
         version: link:../browser-observation
+      '@xdownload/converged-runtime':
+        specifier: workspace:*
+        version: link:../converged-runtime
       '@xdownload/core-runtime':
         specifier: workspace:*
         version: link:../core-runtime
+      '@xdownload/core-seam':
+        specifier: workspace:*
+        version: link:../core-seam
       '@xdownload/direct-acquisition':
         specifier: workspace:*
         version: link:../direct-acquisition

@@ -91,6 +91,15 @@ function writeStaticAssets(distDir: string): void {
   const manifestSource = path.join(REPO_ROOT, 'apps/browser-extension/manifest.json');
   fs.mkdirSync(path.join(distDir, 'extension'), { recursive: true });
   fs.copyFileSync(manifestSource, path.join(distDir, 'extension', 'manifest.json'));
+  // #95 installed S2 journey surfaces: the action popup (explicit user
+  // selection + truthful result rendering) and its notification icon, copied
+  // verbatim from the consumed app sources.
+  for (const popupAsset of ['popup.html', 'popup.js', 'icon128.png']) {
+    fs.copyFileSync(
+      path.join(REPO_ROOT, 'apps/browser-extension/src/popup', popupAsset),
+      path.join(distDir, 'extension', popupAsset),
+    );
+  }
 
   // Native host: broker config (allowed_origins) + manifest template + bin
   // launchers. No Linux/macOS registration material is emitted — those
