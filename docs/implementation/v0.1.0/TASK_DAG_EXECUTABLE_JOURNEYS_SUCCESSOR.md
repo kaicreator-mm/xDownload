@@ -27,11 +27,11 @@ flowchart LR
   K --> L["T024–T028: freeze to release"]
 ```
 
-After #103 contract approval, the independent **Core S3** and **Core S4** implementation concerns may run in separate worktrees when their public contracts are fixed, while S5/S6 have ordered continuation constraints. No monolithic multi-surface PR, second Core authority, raw cookie export, or direct-internal-module surrogate for a packaged user event. Dispatched agents must inspect all previous research/test assets, adopt file-level code, and skip new generic demos.
+After #103's exact-SHA review and formal S1 successor adoption, **each S3/S4/S5/S6 carrier independently requires its own named L2 successor authority review (fresh exact-SHA) before that carrier's implementation begins**. Only after S3 and S4 public contract decisions are approved may their independent Core implementation concerns run in separate worktrees; S5→S6 still has ordered membership/continuation dependencies. The S1 command is not blanket permission for any other opcode or media/browser workflow. No monolithic multi-surface PR, second Core authority, raw cookie export, or direct-internal-module surrogate for a packaged user event. Dispatched agents must inspect all previous research/test assets, adopt file-level code, and skip new generic demos.
 
 ## Gate truth
 
-- T019 predecessor-004 is **PREEMPTED** while packaged non-S2 tasks are unavailable; rerunning the full candidate on a known-incomplete build wastes the gate.
+- **T019 = frozen DAG task T019, issue #38**, whose immutable predecessors are **T003, T017, T018** (frozen Task DAG task table). Controller dispatch `xdownload-v0.1.0-T019-successor-validator-004` was **PREEMPTED** in #38 comment 6150187750 while packaged non-S2 journeys remained unavailable; this dispatch identifier is not a frozen task and no new T019 PASS is claimed.
 - On any reviewed source merge the candidate exact HEAD/TREE changes, and **T019, T020, T021, T023 must requalify** at the new version subject. Preserve old results, never transfer them.
 - #100 must prove actual user input/gesture/CLI invocation → selected scope/provenance → Core accepted work item → durable artifact → canonical terminal for each required S1–S6 path.
 - #81 generates hidden independent scenario/oracle/manifests programmatically and freezes before exposure; the **human does not enter SHA or member lists**. Controlled HTTP lab alone cannot qualify real natural-corpus G0.
