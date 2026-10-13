@@ -17,7 +17,7 @@ async function openBundle(root){
  const m=JSON.parse(mb);
  const ob=await readFile(join(root,'oracle.json')),tb=await readFile(join(root,'tasks.json'));
  if(sha(ob)!==m.scenario.oracle_sha256||sha(tb)!==m.scenario.tasks_sha256)throw Error('Oracle/task digest drift');
- if(m.candidate.head!=='5f70de80310d9ecd8a486a34d3ab7d67877a0fde')throw Error('Candidate drift');
+ if(m.candidate.head!=='973740ea5fbd58ec8be95fcb67fb042e6839cea6')throw Error('Candidate drift');
  if(m.run_roster?.length!==16||m.scenario.corpus_kind!=='CONTROLLED_HTTP_LAB')throw Error('Pre-registration missing');
  return {m,o:JSON.parse(ob),tasks:JSON.parse(tb),digest:sha(mb)};
 }
