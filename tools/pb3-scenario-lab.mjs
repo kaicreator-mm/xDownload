@@ -29,6 +29,7 @@ const fileRecord=async(root,p)=>{const b=await readFile(join(root,p));return{pat
 
 async function prepare(a){
   const out=resolve(req(a,'out')),operator=req(a,'operator'),host=a.get('host')||'127.0.0.1',port=Number(a.get('port')||PORT);
+  try{if((await readdir(out)).length)throw new Error('PB3 PREPARE REFUSED: output directory already contains data; never overwrite a frozen bundle');}catch(e){if(e.code!=='ENOENT')throw e;}
   await mk(join(out,'assets')); await mk(join(out,'evidence'));
   const o={schema:'xdownload.pb3.oracle.v1',bundle:'pb3-controlled-local-v1',generated_without_xdownload_output:true,S1:{},S2:{},S3:{},S4:{},S5:{},S6:{},S6NAV:{}};
   o.S1.file=await put(join(out,'assets'),'s1/report.bin',bytes(65536,'PB3:S1'));
@@ -104,9 +105,9 @@ async function serve(a){
   const log=async e=>writeFile(join(dir,'evidence','requests.jsonl'),JSON.stringify({ts:new Date().toISOString(),...e})+'\n',{flag:'a'});
   const asset=async(p,res,ct='application/octet-stream')=>{const b=await readFile(join(dir,'assets',p));res.writeHead(200,{'content-type':ct,'content-length':String(b.length),'cache-control':'no-store'});res.end(b);};
   const server=createServer(async(r,res)=>{try{
-    const u=new URL(r.url||'/', 'http://'+(r.headers.host||host+':'+port)),role=cookies(r.headers.cookie).pb3_session||'anonymous';await log({kind:'http_request',method:r.method||'GET',path:u.pathname,role});
+    const u=new URL(r.url||'/', 'http://'+(r.headers.host||host+':'+port)),ck=cookies(r.headers.cookie),role=ck.pb3_session||'anonymous',run_id=ck.pb3_run||null;await log({kind:'http_request',method:r.method||'GET',path:u.pathname,role,run_id});
     if(u.pathname==='/__pb3__/health'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,candidate:m.candidate,bundle:m.scenario.bundle_id}));return;}
-    if(u.pathname==='/__pb3__/event'&&r.method==='POST'){let e={};try{e=JSON.parse((await body(r)).toString());}catch{}await log({kind:'ui_event',role,...e});res.writeHead(204);res.end();return;}
+    if(u.pathname==='/__pb3__/event'&&r.method==='POST'){let e={};try{e=JSON.parse((await body(r)).toString());}catch{}await log({kind:'ui_event',role,run_id,...e});res.writeHead(204);res.end();return;}
     if(u.pathname==='/login'&&r.method==='GET'){res.writeHead(200,{'content-type':'text/html'});res.end(html('PB3 Local Login','<form method="post"><input name="username"><input type="password" name="password"><button>Sign in</button></form>','AUTH'));return;}
     if(u.pathname==='/login'&&r.method==='POST'){const f=new URLSearchParams((await body(r)).toString()),user=f.get('username'),pass=f.get('password');let rr=null;if(user==='pb3-full'&&pass==='pb3-full-local-only')rr='full';if(user==='pb3-limited'&&pass==='pb3-limited-local-only')rr='limited';if(!rr){res.writeHead(403);res.end('invalid local PB3 credentials');return;}await log({kind:'login_success',role:rr});res.writeHead(302,{location:'/', 'set-cookie':'pb3_session='+rr+'; Path=/; HttpOnly; SameSite=Lax'});res.end();return;}
     if(u.pathname==='/'){res.writeHead(200,{'content-type':'text/html'});res.end(html('PB3 Scenario Lab','<ul><li><a href="/s1/report.bin">S1</a></li><li><a href="/s2/page">S2</a></li><li><a href="/s3/page">S3</a></li><li><a href="/s4/page">S4</a></li><li><a href="/s5/page">S5</a></li><li><a href="/s6/page/1">S6</a></li><li><a href="/s6nav/page/1">S6NAV</a></li></ul><p>session='+role+'</p>','INDEX'));return;}
