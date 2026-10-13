@@ -30,7 +30,10 @@ import {
   closeCoreRuntime,
   CoreRuntimeCompositionError,
   createCoreRuntime,
+  reopenCoreRuntime,
 } from '@xdownload/core-runtime';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -180,7 +183,15 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
     userId: options.userId,
     allowedSurfaces: ['CLI', 'DESKTOP_UI', 'BROWSER_EXTENSION'],
   };
-  const runtime = createCoreRuntime({ rootDir: options.rootDir, expectedPeer });
+  // Restart is a first-class installed path: an existing durable root is
+  // REOPENED from durable truth only (fact log + seam journal replay +
+  // ledger recovery + S1 intent reconcile), never re-initialized — a second
+  // launch over the same root that clobbered durable truth would destroy
+  // exactly the recovery evidence this host exists to protect.
+  const existing = existsSync(join(options.rootDir, 'seam-journal.jsonl'));
+  const runtime = existing
+    ? reopenCoreRuntime({ rootDir: options.rootDir, expectedPeer })
+    : createCoreRuntime({ rootDir: options.rootDir, expectedPeer });
   const transport = createLoopbackServerTransport({ host: options.host, port: options.port });
   const target = await transport.start({
     onFrame: (connection, frame) => {

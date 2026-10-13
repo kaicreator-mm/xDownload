@@ -1,0 +1,126 @@
+{
+  "suite": "windows-s1-direct-download",
+  "executedAt": "2026-10-13T17:35:25.022Z",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26300",
+    "node": "24.21.0",
+    "executable": "C:\\Users\\15549\\AppData\\Local\\fnm_multishells\\28532_1791912894281\\node.exe"
+  },
+  "checks": [
+    {
+      "id": "packaged-core-host-ready",
+      "status": "PASS",
+      "detail": "packaged Core host composed the authoritative runtime on loopback port 60408"
+    },
+    {
+      "id": "packaged-cli-download-complete",
+      "status": "PASS",
+      "detail": "packaged CLI download → one Core-accepted work item → real HTTP transfer → COMPLETE terminal from the Core projection (submission ACK was not success)",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "download",
+        "--url",
+        "http://127.0.0.1:60406/file.bin",
+        "--sha256",
+        "31a1f9dea0169551092d05e8bf4a446228c8c3eb4c9b713c66adcb7fd53c89be",
+        "--timeout-ms",
+        "45000",
+        "--poll-ms",
+        "100",
+        "--port",
+        "60408",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-c3d9b781-6bb9-42\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-c3d9b781-6bb9-42\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "durable-bytes-sha256-verified",
+      "status": "PASS",
+      "detail": "exactly one origin request; durable artifact s1artifact-c3d9b781-6bb9-42.bin is byte-identical (262144 bytes, SHA-256 match)"
+    },
+    {
+      "id": "digest-mismatch-truthful-failure",
+      "status": "PASS",
+      "detail": "wrong declared digest → Core-derived non-COMPLETE terminal, CLI exit 4 — never a fabricated success",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "download",
+        "--url",
+        "http://127.0.0.1:60406/file.bin",
+        "--sha256",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        "--timeout-ms",
+        "45000",
+        "--poll-ms",
+        "100",
+        "--port",
+        "60408",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 4,
+      "expectedExitCode": 4,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-5ebaa23c-5848-4b\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-5ebaa23c-5848-4b\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "unreachable-origin-truthful-failure",
+      "status": "PASS",
+      "detail": "connection-refused origin → Core-derived non-COMPLETE terminal, CLI exit 4",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "download",
+        "--url",
+        "http://127.0.0.1:1/file.bin",
+        "--sha256",
+        "31a1f9dea0169551092d05e8bf4a446228c8c3eb4c9b713c66adcb7fd53c89be",
+        "--timeout-ms",
+        "45000",
+        "--poll-ms",
+        "100",
+        "--port",
+        "60408",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 4,
+      "expectedExitCode": 4,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-76b2fc79-5a42-4c\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-76b2fc79-5a42-4c\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "core-restart-terminal-rederived",
+      "status": "PASS",
+      "detail": "after a Core-host restart the identical COMPLETE terminal re-derives from durable truth with no re-download (origin requests stayed 2)",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "status",
+        "--contract",
+        "contract-s1-c3d9b781-6bb9-42",
+        "--port",
+        "51887",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-c3d9b781-6bb9-42\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-c3d9b781-6bb9-42\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    }
+  ],
+  "overall": "PASS"
+}

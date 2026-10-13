@@ -29,6 +29,7 @@ import {
   canServeAsIndependentValidationOracle,
   decodeEvidenceRecord,
   makeMemberId,
+  makeSnapshotId,
   type AcquisitionContract,
   type CoverageAccounting,
   type EvidenceLedger,
@@ -36,6 +37,7 @@ import {
   type DomainGateway,
   type DomainValidationResult,
   type MemberId,
+  type TerminalResult,
   type TerminalResultContext,
 } from '@xdownload/domain-contracts';
 import {
@@ -85,6 +87,44 @@ export interface CoreSeamServerOptions {
    * durably accepted S2 execution fails composition, never silently skips).
    */
   readonly s2DeliveredAcquisition?: S2DeliveredAcquisitionExecutor;
+  /**
+   * Core-internal beginner for `EXECUTE_S1_DIRECT_ACQUISITION` (#101 first
+   * slice). The command's synchronous authority apply only registers one
+   * durable execution intent (journaled with the command); the runtime
+   * begins the real HTTP transfer strictly AFTER the accepted-command
+   * journal commit through this port, and completes the lineage terminal
+   * through `recordExecutedTerminal` (re-derived from durable truth on
+   * restart replay — a submission ACK is never acquisition success).
+   * Absent → the command fails closed.
+   */
+  readonly s1DirectAcquisition?: S1DirectAcquisitionBeginner;
+}
+
+/**
+ * Post-commit driver for one registered S1 direct execution. Implemented by
+ * the Core runtime composition over the canonical durable direct flow; never
+ * by a surface. Fire-and-forget: the runtime owns the lifecycle and reports
+ * completion through `recordExecutedTerminal`; a thrown/rejected drive must
+ * leave the intent registered so a later reconcile can re-drive it.
+ */
+export interface S1DirectAcquisitionBeginner {
+  begin(input: {
+    readonly aggregateId: string;
+    readonly contract: AcquisitionContract;
+    readonly payload: unknown;
+  }): void;
+}
+
+/** One registered S1 direct execution intent (rebuilt from the journaled command on replay). */
+export interface S1ExecutionIntent {
+  readonly aggregateId: string;
+  readonly requestId: string;
+  readonly payload: unknown;
+}
+
+/** Intent joined with the seam-authority contract for runtime reconcile/drive. */
+export interface PendingS1Execution extends S1ExecutionIntent {
+  readonly contract: AcquisitionContract;
 }
 
 /**
@@ -155,6 +195,24 @@ export interface CoreSeamServer {
   ): SeamResult<{ readonly converged: boolean }>;
   /** Read-only projection view; the same value a READ_PROJECTION query returns. */
   inspectProjection(aggregateId: string): SeamProjectionView | undefined;
+  /**
+   * Core-internal (never a wire command): registered S1 direct execution
+   * intents awaiting drive/completion. The runtime reconciles these against
+   * durable ledger truth after composition and on restart; each non-terminal
+   * intent is re-driven through the canonical direct flow so terminal truth
+   * is re-derived deterministically (no re-download of an accepted artifact).
+   */
+  pendingS1Executions(): readonly PendingS1Execution[];
+  /**
+   * Core-internal (never a wire command): record the Core-derived terminal
+   * result for one executed S1 lineage. The value MUST be the verbatim
+   * projector output (the same gate `PROJECT_TERMINAL_RESULT` passes); the
+   * seam stores it as lineage authority without a second projection. Not
+   * journaled: replay re-derives the identical terminal from durable truth
+   * via the intent reconcile. A second completion on a terminal lineage is
+   * a typed LATE rejection (terminal truth is never rewritten).
+   */
+  recordExecutedTerminal(aggregateId: string, terminal: TerminalResult): SeamResult<void>;
   /** Accepted-command count (concern-test observation; not a wire surface). */
   readonly acceptedCommandCount: number;
 }
@@ -171,6 +229,11 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   const state: SeamAuthorityState = createSeamAuthorityState();
   const journal = options.journal;
   const gateway: DomainGateway = createDomainGateway();
+  // #101: registered S1 direct execution intents, keyed by aggregate. The
+  // intent is authority state rebuilt deterministically from the journaled
+  // EXECUTE_S1_DIRECT_ACQUISITION command on replay; the runtime reconciles
+  // non-terminal intents against durable ledger truth after composition.
+  const s1Intents = new Map<string, S1ExecutionIntent>();
   let recoveryFenceReason: string | undefined;
 
   function recoveryFenceMessage(): string {
@@ -201,7 +264,14 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
               entry.accounting,
               entry.classificationEvidence,
             )
-          : restoreAcceptedCommand(state, gateway, entry, options.s2DeliveredAcquisition);
+          : restoreAcceptedCommand(
+              state,
+              gateway,
+              entry,
+              options.s2DeliveredAcquisition,
+              options.s1DirectAcquisition,
+              s1Intents,
+            );
       if (!restored.ok) {
         const subject =
           entry.kind === 'COVERAGE_ACCOUNTING'
@@ -350,7 +420,14 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       );
     }
     // Authority-affecting path: domain decode + semantic gates + state apply.
-    const outcome = applyCommand(state, gateway, envelope, options.s2DeliveredAcquisition);
+    const outcome = applyCommand(
+      state,
+      gateway,
+      envelope,
+      options.s2DeliveredAcquisition,
+      options.s1DirectAcquisition,
+      s1Intents,
+    );
     if (!outcome.ok) {
       return rejected(envelope.requestId, outcome.diagnostics, currentRevision);
     }
@@ -383,6 +460,16 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       }
     }
     state.accepted.set(envelope.requestId, record);
+    // #101: an accepted S1 execution command only registered its intent
+    // (apply); the external HTTP effect starts strictly AFTER the
+    // accepted-command journal commit — never between apply and durability.
+    if (envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION') {
+      options.s1DirectAcquisition?.begin({
+        aggregateId: envelope.aggregateId,
+        contract: state.aggregates.get(envelope.aggregateId)!.contract,
+        payload: envelope.payload,
+      });
+    }
     return response;
   }
 
@@ -530,6 +617,50 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         throw new Error(recoveryFenceMessage());
       }
       return projectAggregate(state, aggregateId);
+    },
+    pendingS1Executions() {
+      if (recoveryFenceReason !== undefined) {
+        throw new Error(recoveryFenceMessage());
+      }
+      const pending: PendingS1Execution[] = [];
+      for (const intent of s1Intents.values()) {
+        const aggregate = state.aggregates.get(intent.aggregateId);
+        if (aggregate !== undefined) {
+          pending.push({ ...intent, contract: aggregate.contract });
+        }
+      }
+      return pending;
+    },
+    recordExecutedTerminal(aggregateId: string, terminal: TerminalResult) {
+      if (recoveryFenceReason !== undefined) {
+        return seamFail([recoveryFenceDiagnostic()]);
+      }
+      const aggregate = state.aggregates.get(aggregateId);
+      const lineage = state.lineages.get(aggregateId);
+      if (aggregate === undefined || lineage === undefined) {
+        return seamFail([
+          seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+        ]);
+      }
+      if (lineage.status === 'TERMINAL') {
+        return seamFail([
+          seamDiagnostic(
+            'LATE_COMMAND',
+            'lineage.status',
+            'lineage is already terminal; terminal truth is never rewritten',
+            'L2-§11',
+          ),
+        ]);
+      }
+      // The value is the verbatim Core-derived projector output (the same
+      // gate PROJECT_TERMINAL_RESULT passes); storage is authority handoff,
+      // not a second projection. Not journaled: restart replay re-derives
+      // the identical terminal from durable truth via the intent reconcile.
+      lineage.terminal = terminal;
+      lineage.status = 'TERMINAL';
+      const revision = aggregate.revision + 1;
+      aggregate.revision = revision;
+      return seamOk(undefined);
     },
     get acceptedCommandCount() {
       if (recoveryFenceReason !== undefined) {
@@ -1038,6 +1169,8 @@ function applyCommand(
   gateway: DomainGateway,
   envelope: CommandEnvelope,
   s2Executor: S2DeliveredAcquisitionExecutor | undefined,
+  s1Beginner: S1DirectAcquisitionBeginner | undefined,
+  s1Intents: Map<string, S1ExecutionIntent>,
 ): SeamResult<AppliedCommand> {
   switch (envelope.commandType) {
     case 'SUBMIT_CONTRACT':
@@ -1052,6 +1185,8 @@ function applyCommand(
       return applyProjectTerminalResult(state, gateway, envelope);
     case 'EXECUTE_S2_ACQUISITION':
       return applyExecuteS2Acquisition(state, gateway, envelope, s2Executor);
+    case 'EXECUTE_S1_DIRECT_ACQUISITION':
+      return applyExecuteS1DirectAcquisition(state, envelope, s1Beginner, s1Intents);
   }
 }
 
@@ -1562,6 +1697,284 @@ function applyExecuteS2Acquisition(
   return seamOk({ revision });
 }
 
+/** Closed top-level payload fields of EXECUTE_S1_DIRECT_ACQUISITION (the runtime owns the deep decode). */
+const S1_PAYLOAD_KEYS: readonly string[] = ['snapshotId', 'memberId', 'artifactId', 'delivery'];
+
+/**
+ * `EXECUTE_S1_DIRECT_ACQUISITION` (#101 first slice): register one Core-
+ * executed direct single-resource acquisition for an ALREADY-ACCEPTED
+ * contract. The synchronous authority apply records exactly one durable
+ * execution intent (the command journals before any external effect); the
+ * runtime begins the real HTTP transfer strictly AFTER the accepted-command
+ * journal commit and completes the lineage through `recordExecutedTerminal`
+ * with a Core-derived projector terminal — never a surface-asserted one, and
+ * never conflating submission ACK with acquisition success.
+ */
+function applyExecuteS1DirectAcquisition(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  beginner: S1DirectAcquisitionBeginner | undefined,
+  s1Intents: Map<string, S1ExecutionIntent>,
+): SeamResult<AppliedCommand> {
+  if (beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S1 direct-acquisition driver; EXECUTE_S1_DIRECT_ACQUISITION fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  // The Core-executed direct lane serves the CLI surface (curl-like S1).
+  if (envelope.peer.surface !== 'CLI') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'EXECUTE_S1_DIRECT_ACQUISITION is admissible only from the CLI surface',
+        'L2-§6.4',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S1 direct-acquisition command');
+  }
+  // Contract gates from seam authority state — the payload can never widen
+  // the accepted contract (the S1 lane serves single-resource direct
+  // contracts only).
+  if (
+    aggregate.contract.intentType !== 'SINGLE_RESOURCE' ||
+    aggregate.contract.requestedScope.kind !== 'single_resource'
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'contract.intentType',
+        'the S1 direct-acquisition executor serves SINGLE_RESOURCE contracts only',
+        'PRD-§28 S1',
+      ),
+    ]);
+  }
+  if (s1Intents.has(envelope.aggregateId)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'aggregateId',
+        'an S1 direct execution is already registered for this lineage; duplicate registration rejects (the registered intent reconciles from durable truth)',
+        'L2-§6.8',
+      ),
+    ]);
+  }
+  const validated = validateS1IntentPayload(envelope.payload);
+  if (!validated.ok) {
+    return validated;
+  }
+  // The canonical composite effect identity must fit the 128-char id bound;
+  // an overflowing identity can never execute, so it rejects before any
+  // intent exists (no uncompletable intent may wedge the lineage).
+  const snapshotRaw = (envelope.payload as Record<string, unknown>)['snapshotId'];
+  const effectIdentity = `effect:${envelope.aggregateId}:${String(snapshotRaw)}:${aggregate.contract.requestedTarget}`;
+  if (effectIdentity.length > 128) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.snapshotId',
+        'the canonical composite effect identity exceeds the 128-char id bound',
+      ),
+    ]);
+  }
+  s1Intents.set(envelope.aggregateId, {
+    aggregateId: envelope.aggregateId,
+    requestId: envelope.requestId,
+    payload: envelope.payload,
+  });
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+const S1_MAX_IDENTITY_LENGTH = 256;
+/** Mirrored from persistence-ledger ARTIFACT_ID_PATTERN (seam has no ledger dependency). */
+const S1_ARTIFACT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
+const S1_SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const S1_MAX_REDIRECT_HOSTS = 8;
+
+/**
+ * Strict fail-closed validation of the S1 execution payload at the authority
+ * boundary. A malformed payload REJECTS before any intent exists, so a bad
+ * frame can never wedge a lineage with an uncompletable intent; the runtime
+ * driver re-validates downstream (defense in depth).
+ */
+function validateS1IntentPayload(payload: unknown): SeamResult<void> {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'payload', 'S1 acquisition payload must be an object'),
+    ]);
+  }
+  const record = payload as Record<string, unknown>;
+  const unknown = Object.keys(record).filter((key) => !S1_PAYLOAD_KEYS.includes(key));
+  if (unknown.length > 0) {
+    return seamFail(
+      unknown.map((key) =>
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          `payload.${key}`,
+          'unknown field on S1 acquisition command',
+        ),
+      ),
+    );
+  }
+  if (!makeSnapshotId(typeof record['snapshotId'] === 'string' ? record['snapshotId'] : '').ok) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.snapshotId',
+        'not a canonical snapshot identity',
+      ),
+    ]);
+  }
+  if (!makeMemberId(typeof record['memberId'] === 'string' ? record['memberId'] : '').ok) {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'payload.memberId', 'not a canonical member identity'),
+    ]);
+  }
+  if (
+    typeof record['artifactId'] !== 'string' ||
+    !S1_ARTIFACT_ID_PATTERN.test(record['artifactId'])
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.artifactId',
+        'not a canonical artifact identity',
+      ),
+    ]);
+  }
+  const delivery = record['delivery'];
+  if (typeof delivery !== 'object' || delivery === null || Array.isArray(delivery)) {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'payload.delivery', 'delivery must be an object'),
+    ]);
+  }
+  const deliveryRecord = delivery as Record<string, unknown>;
+  const deliveryKeys = [
+    'locatorUri',
+    'declaredRedirectHosts',
+    'expectedSha256',
+    'expectedContentTypePrefix',
+    'expectedTotalBytes',
+  ];
+  const unknownDelivery = Object.keys(deliveryRecord).filter((key) => !deliveryKeys.includes(key));
+  if (unknownDelivery.length > 0) {
+    return seamFail(
+      unknownDelivery.map((key) =>
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          `payload.delivery.${key}`,
+          'unknown field on S1 delivery',
+        ),
+      ),
+    );
+  }
+  const locator = requireS1HttpUrl(deliveryRecord['locatorUri'], 'payload.delivery.locatorUri');
+  if (!locator.ok) {
+    return locator;
+  }
+  const hosts = deliveryRecord['declaredRedirectHosts'];
+  if (!Array.isArray(hosts) || hosts.length === 0 || hosts.length > S1_MAX_REDIRECT_HOSTS) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.delivery.declaredRedirectHosts',
+        `expected 1..${String(S1_MAX_REDIRECT_HOSTS)} declared hosts`,
+      ),
+    ]);
+  }
+  for (const host of hosts) {
+    if (typeof host !== 'string' || host.length === 0 || host.length > 255 || /[/\\]/.test(host)) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'payload.delivery.declaredRedirectHosts',
+          'each entry must be a plain host string',
+        ),
+      ]);
+    }
+  }
+  const digest = deliveryRecord['expectedSha256'];
+  if (typeof digest !== 'string' || !S1_SHA256_PATTERN.test(digest)) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.delivery.expectedSha256',
+        'expected a lowercase hex SHA-256 digest',
+      ),
+    ]);
+  }
+  if (
+    deliveryRecord['expectedContentTypePrefix'] !== undefined &&
+    (typeof deliveryRecord['expectedContentTypePrefix'] !== 'string' ||
+      (deliveryRecord['expectedContentTypePrefix'] as string).length === 0 ||
+      (deliveryRecord['expectedContentTypePrefix'] as string).length > S1_MAX_IDENTITY_LENGTH)
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.delivery.expectedContentTypePrefix',
+        'expected a non-empty string within the declared identity bound',
+      ),
+    ]);
+  }
+  const declared = deliveryRecord['expectedTotalBytes'];
+  if (
+    declared !== undefined &&
+    (typeof declared !== 'number' || !Number.isInteger(declared) || declared < 0)
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.delivery.expectedTotalBytes',
+        'expected a non-negative integer',
+      ),
+    ]);
+  }
+  return seamOk(undefined);
+}
+
+function requireS1HttpUrl(value: unknown, at: string): SeamResult<void> {
+  if (typeof value !== 'string' || value.length === 0 || value.length > S1_MAX_IDENTITY_LENGTH) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        at,
+        `expected an absolute http(s) URL of at most ${String(S1_MAX_IDENTITY_LENGTH)} chars`,
+      ),
+    ]);
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return seamFail([seamDiagnostic('ENVELOPE_MALFORMED', at, 'expected an absolute http(s) URL')]);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', at, 'only http(s) locators are admissible'),
+    ]);
+  }
+  return seamOk(undefined);
+}
+
 const TERMINAL_PAYLOAD_KEYS: readonly string[] = [
   'result',
   'selectedValidationOutcomes',
@@ -1712,8 +2125,10 @@ function restoreAcceptedCommand(
   gateway: DomainGateway,
   entry: AcceptedCommandJournalEntry,
   s2Executor: S2DeliveredAcquisitionExecutor | undefined,
+  s1Beginner: S1DirectAcquisitionBeginner | undefined,
+  s1Intents: Map<string, S1ExecutionIntent>,
 ): SeamResult<void> {
-  const applied = applyCommand(state, gateway, entry.envelope, s2Executor);
+  const applied = applyCommand(state, gateway, entry.envelope, s2Executor, s1Beginner, s1Intents);
   if (!applied.ok) {
     return applied;
   }

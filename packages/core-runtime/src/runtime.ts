@@ -42,6 +42,7 @@ import {
   type RecoveryClassification,
 } from '@xdownload/persistence-ledger';
 import { createTerminalResultStore, type TerminalResultStore } from '@xdownload/domain-contracts';
+import type { AcquisitionContract } from '@xdownload/domain-contracts';
 import { createS2ChunkStaging, executeS2DeliveredAcquisition } from './s2-delivered.ts';
 import type { FlowRuntime } from './flow.ts';
 import {
@@ -51,6 +52,7 @@ import {
   FileBackedSeamJournal,
   type DurableLayout,
 } from './durable-stores.ts';
+import { driveS1DirectExecution } from './s1-direct.ts';
 
 export { durableLayout, DurableStoreCorruptError, FileBackedControlFactLog, FileBackedSeamJournal };
 export type { DurableLayout };
@@ -115,6 +117,19 @@ function bindSeam(
   // journal replay during seam construction rebuilds staged truth through
   // the same store before the completing chunk re-executes.
   const s2ChunkStaging = createS2ChunkStaging();
+  // #101: the seam hands the S1 driver the seam completion ports once
+  // constructed (chicken-and-egg resolved with a holder populated before
+  // any frame or reconcile can run).
+  const seamHolder: { current?: CoreSeamServer } = {};
+  const drive = (
+    seam: CoreSeamServer,
+    input: { aggregateId: string; contract: AcquisitionContract; payload: unknown },
+  ): void => {
+    void driveS1DirectExecution({ ...flowRuntime, seam }, input).catch(() => {
+      // The intent stays registered; the next composition reconcile
+      // re-drives it from durable truth. No terminal is ever invented.
+    });
+  };
   const result = createCoreSeamServer({
     expectedPeer,
     journal,
@@ -135,6 +150,18 @@ function bindSeam(
           s2ChunkStaging,
         ),
     },
+    // #101 first slice: the CLI-surface S1 direct execution command only
+    // registers a durable intent at apply; the real HTTP transfer begins
+    // strictly after the accepted-command journal commit and completes via
+    // recordExecutedTerminal (Core-derived projector terminal).
+    s1DirectAcquisition: {
+      begin: (input) => {
+        const seam = seamHolder.current;
+        if (seam !== undefined) {
+          drive(seam, input);
+        }
+      },
+    },
   });
   if (!result.ok) {
     // Journal replay failed: durable seam truth is corrupt → fail closed.
@@ -144,7 +171,28 @@ function bindSeam(
         .join(', ')}`,
     );
   }
+  seamHolder.current = result.value;
   return result.value;
+}
+
+/**
+ * Reconcile registered S1 direct execution intents against durable truth.
+ * Restart replay re-registers every journaled intent but never restores the
+ * (unjournaled) in-memory terminal, so every non-terminal intent is
+ * re-driven: the driver reconciles from the durable work item (no
+ * re-download of an accepted artifact) and re-derives the identical
+ * terminal through the projector.
+ */
+function reconcileS1Executions(runtime: CoreRuntime): void {
+  for (const pending of runtime.seam.pendingS1Executions()) {
+    const view = runtime.seam.inspectProjection(pending.aggregateId);
+    if (view === undefined || view.lineage.status !== 'ACTIVE') {
+      continue;
+    }
+    void driveS1DirectExecution(runtime, pending).catch(() => {
+      // Intent stays registered for the next reconcile; nothing invented.
+    });
+  }
 }
 
 /**
@@ -176,6 +224,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze([]),
   });
+  reconcileS1Executions(runtime);
   return runtime;
 }
 
@@ -228,6 +277,9 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze(classifications),
   });
+  // Restart reconcile: replay re-registered every S1 intent but never the
+  // unjournaled terminal — re-drive non-terminal intents from durable truth.
+  reconcileS1Executions(runtime);
   return runtime;
 }
 

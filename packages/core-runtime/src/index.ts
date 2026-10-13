@@ -57,3 +57,10 @@ export {
   MAX_S2_DELIVERED_BYTES,
   type S2DeliveredAcquisitionPayload,
 } from './s2-delivered.ts';
+export {
+  decodeS1DirectPayload,
+  driveS1DirectExecution,
+  type S1DirectDelivery,
+  type S1DirectExecutionPayload,
+  type S1DriveRuntime,
+} from './s1-direct.ts';

@@ -42,13 +42,17 @@ export type SeamMessageKind = 'command' | 'query' | 'response';
  * budget-ledger or result-state mutation command: budget/result state is
  * Core-owned (T005/T006/T007 lanes) and no surface command can touch it.
  *
- * `EXECUTE_S2_ACQUISITION` is the one narrowly typed execution command
- * (#95): it carries one browser-delivered single-resource S2 acquisition
- * (bytes acquired under the page's authorized browser context; raw session
- * material never crosses). Execution, validation, acceptance and terminal
- * truth stay Core-owned; the terminal projection is derived by Core through
- * the same projector gate as `PROJECT_TERMINAL_RESULT`, never asserted by
- * the submitting surface.
+ * `EXECUTE_S2_ACQUISITION` (#95) carries one browser-delivered single-
+ * resource S2 acquisition (bytes acquired under the page's authorized
+ * browser context; raw session material never crosses).
+ *
+ * `EXECUTE_S1_DIRECT_ACQUISITION` (#101 first slice) carries the delivery
+ * facts (locator, independently known digest, declared redirect hosts) for
+ * one ALREADY-ACCEPTED single-resource direct contract; the Core itself
+ * performs the HTTP transfer behind the frozen acquisition port. Like S2,
+ * execution, validation, acceptance and terminal truth stay Core-owned and
+ * the terminal projection passes the same projector gate as
+ * `PROJECT_TERMINAL_RESULT`, never asserted by the submitting surface.
  */
 export const COMMAND_TYPES = [
   'SUBMIT_CONTRACT',
@@ -57,6 +61,7 @@ export const COMMAND_TYPES = [
   'RETRY_FAILED_MEMBERS',
   'PROJECT_TERMINAL_RESULT',
   'EXECUTE_S2_ACQUISITION',
+  'EXECUTE_S1_DIRECT_ACQUISITION',
 ] as const;
 
 export type CommandType = (typeof COMMAND_TYPES)[number];

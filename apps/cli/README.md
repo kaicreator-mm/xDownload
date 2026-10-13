@@ -31,12 +31,23 @@ every frame (no local admission path).
 | Command  | Seam message         | Notes                                                          |
 | -------- | -------------------- | -------------------------------------------------------------- |
 | `submit` | `SUBMIT_CONTRACT`    | JSON payload via `--file`/`--stdin`; acceptance by default     |
+| `download` | `SUBMIT_CONTRACT` + `EXECUTE_S1_DIRECT_ACQUISITION` | S1 direct file download: the CLI builds the canonical contract from `--url`/`--sha256` (no hand-authored JSON), Core executes the real HTTP transfer and derives the terminal; bounded `--wait` renders it |
 | `status` | `READ_PROJECTION`    | Machine-readable PRD §27 status document                       |
 | `wait`   | `READ_PROJECTION`    | Bounded polling until a terminal result is projected           |
 | `cancel` | `CANCEL_LINEAGE`     | Requires explicit `--expected-revision`                        |
 | `retry`  | `RETRY_FAILED_MEMBERS` | Explicit `--members` list only; the CLI computes no membership |
 | `confirm`| `CONFIRM_SNAPSHOT`   | JSON snapshot payload via `--file`/`--stdin`                   |
 | `batch`  | `SUBMIT_CONTRACT` xN | JSONL input; per-item identity/correlation and per-item result |
+
+`download` (S1, PRD §28) requires an independently known `--sha256`; the digest
+is enforced by Core-side validation, never by the CLI. `--content-type-prefix`,
+`--total-bytes` and repeated `--redirect-host` strengthen delivery validation;
+the locator's own host is always admissible. Each invocation mints one fresh
+contract identity — a completed or failed download is immutable truth, and
+re-invocation is a new acquisition. The execution command's acceptance is not
+success either: the CLI polls `READ_PROJECTION` and exits `0` only for a
+Core-derived `COMPLETE` terminal, `4` for any other terminal, `6` when the
+bounded wait elapses.
 
 `PROJECT_TERMINAL_RESULT` is deliberately not exposed: terminal result truth
 is Core-owned (T007); a user surface never authors results. Tests drive that

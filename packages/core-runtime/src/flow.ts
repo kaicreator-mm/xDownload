@@ -194,7 +194,7 @@ export function registerLineage(
 
 /** Durable `USER_CANCELLED` in both canonical stores (idempotent upstream). */
 export function cancelLineage(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   lineageKey: LineageKey,
   source: CancelSource,
   workItemId: string,
@@ -205,7 +205,7 @@ export function cancelLineage(
 
 /** Explicit authorized retry/resume in both canonical stores (no automatic reopen). */
 export function resumeLineage(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   lineageKey: LineageKey,
   workItemId: string,
   request: ResumeRequest & { readonly retryCommandId: string },
@@ -300,7 +300,7 @@ export function acceptanceValidationOf(
  * artifact → scheduler acceptance at the cutoff decision point.
  */
 export async function executeDirectAcquisition(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   input: DirectFlowInput,
 ): Promise<DirectFlowOutcome> {
   const { submission, workItemId } = registerLineage(runtime, input, {
@@ -516,7 +516,7 @@ function concatenateTransferredBytes(
  * budget ledger behind the pipeline's `TransferLedger` port; artifact
  * persistence and acceptance follow the same single-writer path as direct.
  */
-export function executeHlsAcquisition(runtime: CoreRuntime, input: HlsFlowInput): HlsFlowOutcome {
+export function executeHlsAcquisition(runtime: FlowRuntime, input: HlsFlowInput): HlsFlowOutcome {
   const { submission, workItemId } = registerLineage(runtime, input, {
     commandId: input.commandId,
     memberId: input.memberId,
