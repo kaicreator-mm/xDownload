@@ -66,6 +66,35 @@ async function prepare(a){
   ]};
   const tb=Buffer.from(json(tasks));await writeFile(join(out,'tasks.json'),tb);
   const m={schema:'xdownload.t022.pb3-manifest.v2',campaign_id:'PB3',authority:{issue:81,controller_comment:6138124484,g0_plan_id:PLAN_ID,g0_plan_digest:PLAN_DIGEST},candidate:{head:HEAD,tree:TREE,mutation_allowed:false},scenario:{bundle_id:'pb3-controlled-local-v1',origin,oracle_sha256:sha(ob),tasks_sha256:sha(tb),generator:'tools/pb3-scenario-lab.mjs',independent_of_xdownload_output:true},operator:{human_operator_ref:operator,ai_role:'LOGGING_INSTRUMENTATION_ONLY'},baselines:{browser:'Chrome for Testing 120.0.6099.109',ytdlp:'2026.09.27.232945',substitution_allowed:false},measurement:{sample_unit:'ONE_END_TO_END_USER_ACQUISITION_TASK',same_task_same_scope_same_auth:true,active_user_time:'human active interaction only; exclude passive transfer/process wait and scripted sleeps',manual_actions:'human click/type/submit/select/confirm/navigation/retry/recovery only',confirmation_burden_included:true,rerun_is_new_sample:false,oracle_hidden_from_operator:true},planned_tasks:['S1','S2','S3','S4','S5','S6','S6NAV'],comparisons:{G1a:'S5/S6 manual per-resource vs xDownload batch',G1b:'S6NAV manual continuation vs xDownload declared continuation',G1c:'S3 manual/raw selection vs xDownload semantic/ASSISTED selection including confirmation'},freeze:{created_at:new Date().toISOString(),results_seen_before_freeze:false,manifest_sha256:null}};
+  m.scenario.corpus_kind='CONTROLLED_HTTP_LAB';
+  m.scenario.natural_corpus_claim=false;
+  m.baselines.phase_a_materialization_sha256='b17c344ca331cc7d5badec47d27e89abe0288de612eac11720e886b55e42d22b';
+  m.baselines.chrome_zip_sha256='8ed684af3a6362f47042cd4f3cf2688ddbf06c2bb3f4658f1cee2dbcb8ba5799';
+  m.baselines.chrome_exe_sha256='c04f5670618097a008a853bd475344a535d7911ee9ab9c9b0cba5da6ef6ed4cf';
+  m.baselines.ytdlp_exe_sha256='997c00e8f8ed91431b1ddaeeae519743602beb0b6df0903194a2632e57df1b31';
+  m.baselines.selection_rule='PHASE_A_DETERMINISTIC';
+  m.run_roster=[
+    {run_id:'PB3-S1-B1',task_id:'S1',workflow:'baseline',baseline_id:'baseline/browser-native-download@chrome-120-manual-save'},
+    {run_id:'PB3-S1-B2',task_id:'S1',workflow:'baseline',baseline_id:'baseline/yt-dlp@nightly-2026-09'},
+    {run_id:'PB3-S1-X1',task_id:'S1',workflow:'xdownload'},
+    {run_id:'PB3-S2-B1',task_id:'S2',workflow:'baseline',baseline_id:'baseline/browser-native-download@chrome-120-manual-save'},
+    {run_id:'PB3-S2-X1',task_id:'S2',workflow:'xdownload'},
+    {run_id:'PB3-S3-B1',task_id:'S3',workflow:'baseline',baseline_id:'baseline/browser-native-download@chrome-120-manual-save'},
+    {run_id:'PB3-S3-B2',task_id:'S3',workflow:'baseline',baseline_id:'baseline/yt-dlp@nightly-2026-09'},
+    {run_id:'PB3-S3-X1',task_id:'S3',workflow:'xdownload'},
+    {run_id:'PB3-S4-B1',task_id:'S4',workflow:'baseline',baseline_id:'baseline/browser-native-download@chrome-120-manual-save'},
+    {run_id:'PB3-S4-X1',task_id:'S4',workflow:'xdownload'},
+    {run_id:'PB3-S5-B1',task_id:'S5',workflow:'baseline',baseline_id:'baseline/browser-native-download@chrome-120-manual-save'},
+    {run_id:'PB3-S5-X1',task_id:'S5',workflow:'xdownload'},
+    {run_id:'PB3-S6-B1',task_id:'S6',workflow:'baseline',baseline_id:'baseline/browser-native-download@chrome-120-manual-save'},
+    {run_id:'PB3-S6-X1',task_id:'S6',workflow:'xdownload'},
+    {run_id:'PB3-S6NAV-B1',task_id:'S6NAV',workflow:'baseline',baseline_id:'baseline/browser-native-download@chrome-120-manual-save'},
+    {run_id:'PB3-S6NAV-X1',task_id:'S6NAV',workflow:'xdownload'}
+  ];
+  m.denominator={unique_tasks:7,planned_runs:m.run_roster.length,rerun_does_not_create_sample:true,aggregate_by_task_once:true};
+  m.exclusions={unknown:'retain unless independent truth itself unavailable',out_of_scope:'exclude symmetrically and report',abandoned:'noncompletion',external_cancel:'exclude only if pre-recorded unrelated and symmetric',rerun:'same task identity',no_fake_evidence:'no model/self or simulated human interactions'};
+  m.measurement.human_active_timing='operator-controlled start/pause/resume/finish; passive waits excluded; manual actions need operator audit';
+  m.measurement.gate_claims='controlled lab cannot alone prove natural-corpus G0 product value';
   const mb=Buffer.from(json(m));await writeFile(join(out,'manifest-pb3.json'),mb);await writeFile(join(out,'SHA256SUMS.txt'),sha(mb)+'  manifest-pb3.json\n'+sha(ob)+'  oracle.json\n'+sha(tb)+'  tasks.json\n');await writeFile(join(out,'evidence','requests.jsonl'),'');
   console.log('PB3_BUNDLE='+out);console.log('PB3_MANIFEST_SHA256='+sha(mb));console.log('PB3_ORACLE_SHA256='+sha(ob));console.log('PB3_ORIGIN='+origin);
 }
