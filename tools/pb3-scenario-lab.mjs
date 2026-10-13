@@ -16,7 +16,6 @@ const sha=b=>createHash('sha256').update(b).digest('hex');
 const stable=v=>Array.isArray(v)?v.map(stable):(v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v);
 const json=v=>JSON.stringify(stable(v),null,2)+'\n';
 const bytes=(n,seed)=>{const s=createHash('sha256').update(seed).digest();const b=Buffer.alloc(n);for(let i=0;i<n;i++)b[i]=(s[i%s.length]+i*17)&255;return b;};
-const mp4=seed=>{const b=bytes(98304,seed);Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109]).copy(b);return b;};
 const amap=a=>{const m=new Map();for(let i=0;i<a.length;i++){if(!a[i].startsWith('--'))continue;const k=a[i].slice(2),n=a[i+1];if(n&&!n.startsWith('--')){m.set(k,n);i++;}else m.set(k,'true');}return m;};
 const req=(m,k)=>{const v=m.get(k);if(!v)throw new Error('missing --'+k);return v;};
 const mk=async p=>mkdir(p,{recursive:true});
