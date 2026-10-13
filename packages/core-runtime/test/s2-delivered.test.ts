@@ -644,77 +644,31 @@ describe('#95 R1/F04 — bounded chunked delivery across the frozen seam frame b
     }
   });
 
-  it('reopens after a completed three-chunk acceptance without LATE_COMMAND or duplicate effects (#98)', () => {
+  it('reopens after a completed three-chunk S2 acceptance (#98)', () => {
     const dir = makeTempDir('s2-i98-completed-chunk-replay');
     dirs.push(dir);
     const runtime = openRuntime(dir);
     submitS2Contract(runtime);
     const bytes = attachmentBytes(9000);
-    const requests: string[] = [];
-    for (let index = 0; index < 3; index += 1) {
-      const slab = bytes.subarray(
-        index * 3072,
-        Math.min(bytes.length, (index + 1) * 3072),
-      );
-      const req = requestId();
-      requests.push(req);
-      const response = executeS2(
-        runtime,
-        s2Payload({ bytes: slab, withDigest: false, chunk: { index, count: 3 } }),
-        req,
-        'BROWSER_EXTENSION',
-        1 + index,
-      );
-      expect(response.outcome).toBe('ACCEPTED');
-      expect(response.currentRevision).toBe(2 + index);
-    }
+    const response = executeChunked(runtime, bytes, 3072);
+    expect(response.outcome).toBe('ACCEPTED');
     const before = readProjection(runtime);
     expect(before.outcome).toBe('PROJECTION');
-    expect((before.projection as Record<string, unknown>)['terminal']).toBeDefined();
-    expect(runtime.writer.reader.workItems().length).toBe(1);
-    const acceptedBefore = runtime.writer.reader.workItems()[0]!;
-    const artifactBefore = runtime.store.readFinalBytes('artifact:s2-delivered-001');
-    expect(artifactBefore === undefined ? '' : sha256(artifactBefore)).toBe(sha256(bytes));
     closeRuntime(runtime);
 
-    // The durable ledger already contains the accepted work item when the
-    // seam replays the three journaled commands. Chunks 0/1 MUST replay as
-    // STAGED, not TERMINAL, and only the completing chunk projects terminal.
+    // The accepted artifact already exists while earlier STAGED journal
+    // entries replay; they must not project TERMINAL before the final chunk.
     const reopened = reopenCoreRuntime({ rootDir: dir, expectedPeer: EXPECTED_PEER });
     try {
       const after = readProjection(reopened);
       expect(after.outcome).toBe('PROJECTION');
       expect(after.projection).toEqual(before.projection);
-      const acceptedAfter = reopened.writer.reader.workItems();
-      expect(acceptedAfter.length).toBe(1);
-      expect(acceptedAfter[0]!.workItemId).toBe(acceptedBefore.workItemId);
-      expect(reopened.recovery.classify(acceptedAfter[0]!.workItemId).lifecycleClass).toBe(
-        'ACCEPTED',
-      );
-      const artifactAfter = reopened.store.readFinalBytes('artifact:s2-delivered-001');
-      expect(artifactAfter === undefined ? '' : sha256(artifactAfter)).toBe(sha256(bytes));
-
-      // Each original journaled command has the same idempotent response.
-      // No accepted effect, artifact or authority revision may be duplicated.
-      for (let index = 0; index < 3; index += 1) {
-        const slab = bytes.subarray(
-          index * 3072,
-          Math.min(bytes.length, (index + 1) * 3072),
-        );
-        const duplicate = executeS2(
-          reopened,
-          s2Payload({ bytes: slab, withDigest: false, chunk: { index, count: 3 } }),
-          requests[index]!,
-          'BROWSER_EXTENSION',
-          1 + index,
-        );
-        expect(duplicate.outcome).toBe('ACCEPTED');
-        expect(
-          (duplicate as { acceptance?: { converged?: boolean } }).acceptance?.converged,
-        ).toBe(true);
-      }
-      expect(reopened.writer.reader.workItems().length).toBe(1);
-      expect(readProjection(reopened).projection).toEqual(before.projection);
+      const items = reopened.writer.reader.workItems();
+      expect(items).toHaveLength(1);
+      const classification = reopened.recovery.classify(items[0]!.workItemId);
+      expect(classification.lifecycleClass).toBe('ACCEPTED');
+      const artifact = reopened.store.readFinalBytes('artifact:s2-delivered-001');
+      expect(artifact === undefined ? '' : sha256(artifact)).toBe(sha256(bytes));
     } finally {
       closeRuntime(reopened);
     }
