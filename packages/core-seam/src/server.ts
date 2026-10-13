@@ -315,7 +315,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
               entry.classificationEvidence,
             )
           : entry.kind === 'TARGET_EVIDENCE'
-            ? applyTargetEvidenceReceipt(state, entry.aggregateId, entry.receipt)
+            ? applyTargetEvidenceReceipt(state, entry.aggregateId, entry.receipt, s1Intents)
             : restoreAcceptedCommand(
                 state,
                 gateway,
@@ -796,7 +796,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
           ),
         ]);
       }
-      const applied = applyTargetEvidenceReceipt(state, aggregateId, receipt);
+      const applied = applyTargetEvidenceReceipt(state, aggregateId, receipt, s1Intents);
       if (!applied.ok) {
         return applied;
       }
@@ -1868,6 +1868,7 @@ function applyTargetEvidenceReceipt(
   state: SeamAuthorityState,
   aggregateId: string,
   raw: unknown,
+  s1Intents: ReadonlyMap<string, S1ExecutionIntent>,
 ): SeamResult<{ readonly converged: boolean; readonly receipt: TargetEvidenceReceipt }> {
   const aggregate = state.aggregates.get(aggregateId);
   const lineage = state.lineages.get(aggregateId);
@@ -1885,6 +1886,47 @@ function applyTargetEvidenceReceipt(
     return decoded;
   }
   const receipt = decoded.value;
+  // The internal evidence port is trusted to report genuine accepted bytes,
+  // but its identity MUST still bind to this exact accepted S1 intent.
+  // Otherwise a well-shaped receipt from another aggregate (or a tampered
+  // journal entry) could be replayed as this aggregate's Target truth.
+  const intent = s1Intents.get(aggregateId);
+  const rawIntent = intent?.payload;
+  const payload =
+    typeof rawIntent === 'object' && rawIntent !== null && !Array.isArray(rawIntent)
+      ? (rawIntent as Record<string, unknown>)
+      : undefined;
+  const rawDelivery = payload?.['delivery'];
+  const delivery =
+    typeof rawDelivery === 'object' && rawDelivery !== null && !Array.isArray(rawDelivery)
+      ? (rawDelivery as Record<string, unknown>)
+      : undefined;
+  const expectedEffectId =
+    payload !== undefined && typeof payload['snapshotId'] === 'string'
+      ? `effect:${aggregateId}:${payload['snapshotId']}:${aggregate.contract.requestedTarget}`
+      : undefined;
+  const expectedBasis =
+    delivery === undefined
+      ? undefined
+      : delivery['expectedSha256'] === undefined
+        ? 'REQUESTED_LOCATOR_PROVENANCE'
+        : 'PUBLISHED_SHA256';
+  if (
+    aggregate.contract.intentType !== 'SINGLE_RESOURCE' ||
+    intent === undefined ||
+    receipt.artifactId !== payload?.['artifactId'] ||
+    receipt.effectId !== expectedEffectId ||
+    receipt.basis !== expectedBasis
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'CORRELATION_BINDING_REJECTED',
+        'targetEvidence',
+        'receipt artifact/effect/basis must match the durable S1 command intent of this aggregate',
+        'C31/C34',
+      ),
+    ]);
+  }
   if (lineage.targetEvidence !== undefined) {
     if (stableStringify(lineage.targetEvidence) === stableStringify(receipt)) {
       return seamOk({ converged: true, receipt });
