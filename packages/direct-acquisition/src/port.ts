@@ -68,8 +68,16 @@ export interface DirectTransferRequest {
   readonly selectedMemberId: MemberId;
   /** Provenance-bound delivery locator for the frozen logical target. */
   readonly binding: LocatorBinding<LogicalTargetId>;
-  /** Frozen target identity anchor: required SHA-256 of the complete bytes. */
-  readonly expectedSha256: string;
+  /**
+   * Optional frozen target identity anchor: the independently published
+   * SHA-256 of the complete bytes. When supplied, a digest mismatch fails
+   * the transfer (C09). When absent, the Target claim rests on the
+   * `REQUESTED_LOCATOR_PROVENANCE` basis (user-selected locator + declared
+   * redirect graph); the computed artifact digest is durably recorded for
+   * later corruption detection and is never promoted to an independent
+   * target oracle (C34).
+   */
+  readonly expectedSha256?: string;
   /** Optional declared total size for Transfer Validation. */
   readonly expectedTotalBytes?: number;
   /** Optional declared content-type prefix for Format Validation. */
@@ -141,6 +149,19 @@ export type DirectTransferTerminalReason =
   | 'NO_PROGRESS'
   | 'UNSUPPORTED_RESPONSE';
 
+/** The evidence basis of the Target validation claim for one attempt (C34). */
+export type TargetIdentityBasis = 'PUBLISHED_SHA256' | 'REQUESTED_LOCATOR_PROVENANCE';
+
+/**
+ * The Target claim's evidence basis for a request: a publisher-digest
+ * identity anchor when the request declared one, otherwise the conservative
+ * provenance basis over the user-selected locator + declared redirect graph
+ * (C34 — a computed digest is never promoted to the independent oracle).
+ */
+export function targetBasisOf(request: { readonly expectedSha256?: string }): TargetIdentityBasis {
+  return request.expectedSha256 === undefined ? 'REQUESTED_LOCATOR_PROVENANCE' : 'PUBLISHED_SHA256';
+}
+
 /**
  * Terminal outcome of one direct-transfer attempt. `allApplicableValidationPassed`
  * is a derived convenience flag only; canonical terminal truth is the
@@ -165,6 +186,13 @@ export interface DirectTransferOutcome {
   readonly observedIdentity: RepresentationIdentity;
   /** True when the frozen target's resource actually responded (2xx). */
   readonly targetResolved: boolean;
+  /**
+   * The Target claim's evidence basis: a publisher-digest identity anchor
+   * when the request declared one, otherwise the conservative provenance
+   * basis over the user-selected locator + declared redirect graph (C34 —
+   * a computed digest is never promoted to the independent oracle).
+   */
+  readonly targetBasis: TargetIdentityBasis;
 }
 
 /**

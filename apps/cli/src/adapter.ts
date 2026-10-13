@@ -592,7 +592,10 @@ async function runDownload(
     delivery: {
       locatorUri: input.url,
       declaredRedirectHosts: [...input.redirectHosts],
-      expectedSha256: input.expectedSha256,
+      // An independently published digest is optional (#101 R1/F01): when the
+      // operator has one it is enforced (mismatch fails); omitted, the Target
+      // claim rests on the declared delivery graph (C34 provenance basis).
+      ...(input.expectedSha256 === undefined ? {} : { expectedSha256: input.expectedSha256 }),
       ...(input.expectedContentTypePrefix === undefined
         ? {}
         : { expectedContentTypePrefix: input.expectedContentTypePrefix }),

@@ -191,8 +191,6 @@ describe('CLI download (S1 presentation)', () => {
 
   it('typed usage errors reject before any envelope is built', async () => {
     const seam: RunningSeam = await startSeam();
-    const missingSha = await runCli(['download', '--url', URL], seam.target);
-    expect(missingSha.exitCode).toBe(1);
     const badSha = await runCli(['download', '--url', URL, '--sha256', 'nope'], seam.target);
     expect(badSha.exitCode).toBe(1);
     const badUrl = await runCli(
@@ -200,6 +198,32 @@ describe('CLI download (S1 presentation)', () => {
       seam.target,
     );
     expect(badUrl.exitCode).toBe(1);
+  });
+
+  it('an ordinary download needs no --sha256 (#101 R1/F01): the payload omits the field', async () => {
+    const holder: { server?: CoreSeamServer } = {};
+    const calls: { aggregateId: string; payload: unknown }[] = [];
+    const seam: RunningSeam = await startSeam(undefined, {
+      s1Beginner: {
+        begin: (input) => {
+          calls.push({ aggregateId: input.aggregateId, payload: input.payload });
+          holder.server?.recordExecutedTerminal(input.aggregateId, s1Terminal() as never);
+        },
+      },
+    });
+    wire(seam.server, holder);
+
+    const run = await runCli(
+      ['download', '--url', URL, '--timeout-ms', '2000', '--poll-ms', '25'],
+      seam.target,
+    );
+    expect(run.exitCode).toBe(0);
+    expect(calls).toHaveLength(1);
+    const delivery = (calls[0]!.payload as { delivery: Record<string, unknown> }).delivery;
+    // The omitted digest is presented as an omitted field (the seam's closed
+    // payload gate rejects nothing else; C34 provenance basis is Core-side).
+    expect('expectedSha256' in delivery).toBe(false);
+    expect(delivery['locatorUri']).toBe(URL);
   });
 
   it('each invocation mints a fresh acquisition identity (immutable completed truth)', async () => {

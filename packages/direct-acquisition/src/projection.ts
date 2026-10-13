@@ -30,6 +30,7 @@ import type {
   DirectTransferTerminalReason,
   ValidationLayerOutcome,
 } from './port.ts';
+import { targetBasisOf } from './port.ts';
 
 export interface ProjectionInput {
   readonly request: DirectTransferRequest;
@@ -228,6 +229,14 @@ function typedLayerEvidence(
         : outcome.layer === 'media'
           ? 'MEDIA'
           : 'RESOURCE_IDENTITY';
+    // C34: the Target evidence names its identity basis explicitly — a
+    // publisher-byte digest anchor or the conservative requested-locator
+    // provenance basis — so downstream consumers can never mistake a
+    // provenance-bound claim for a publisher-digest identity.
+    const sourceIdentity =
+      outcome.layer === 'target'
+        ? `xdownload/target-validator:${targetBasisOf(input.request)}`
+        : `xdownload/${outcome.layer}-validator`;
     records.push({
       layer: outcome.layer,
       record: evidenceRecord({
@@ -237,7 +246,7 @@ function typedLayerEvidence(
         claimType,
         claimSubject: { kind: 'LOGICAL_TARGET', ref: input.request.binding.identity },
         sourceType: 'INDEPENDENT_VALIDATOR',
-        provenance: { sourceIdentity: `xdownload/${outcome.layer}-validator` },
+        provenance: { sourceIdentity },
         independenceFromDiscovery: 'INDEPENDENT',
         scope: { domain: 'SINGLE_RESOURCE_TRANSFER', contractRef: input.request.contractId },
         certaintyClass: 'DECISIVE',

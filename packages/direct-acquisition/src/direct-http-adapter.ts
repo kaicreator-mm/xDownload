@@ -33,6 +33,7 @@ import type {
   TransferBudgetLedgerPort,
   ValidationLayerOutcome,
 } from './port.ts';
+import { targetBasisOf } from './port.ts';
 
 const MAX_REDIRECT_HOPS = 5;
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
@@ -320,6 +321,12 @@ export class DirectHttpAdapter {
       bytes,
       expectedSha256: request.expectedSha256,
       expectedTotalBytes: request.expectedTotalBytes,
+      // Provenance-basis Target facts (C34): the bytes' actual serving URI is
+      // the realized chain's last hop; the claim is bound to the declared
+      // delivery graph rooted at the user-selected locator.
+      servedUri: locatorChain[locatorChain.length - 1]?.locator.uri,
+      originUri: request.binding.locator.uri,
+      declaredRedirectHosts: request.allowedRedirectHosts,
     });
     const validations: ValidationLayerOutcome[] = [transferCheck, formatCheck, targetCheck];
     if (request.slice === 'S3') {
@@ -443,6 +450,7 @@ export class DirectHttpAdapter {
       locatorChain: state.locatorChain,
       observedIdentity: state.observedIdentity,
       targetResolved: state.targetResolved,
+      targetBasis: targetBasisOf(request),
     };
   }
 }
@@ -583,11 +591,11 @@ function followRedirect(
 }
 
 function validateRequestShape(request: DirectTransferRequest): DomainValidationResult<void> {
-  if (!isSha256Hex(request.expectedSha256)) {
+  if (request.expectedSha256 !== undefined && !isSha256Hex(request.expectedSha256)) {
     return rejectRequest(
       'MALFORMED_REQUIRED_FIELD',
       'expectedSha256',
-      'the frozen target identity anchor must be a lowercase hex sha-256 digest',
+      'the published target identity anchor must be a lowercase hex sha-256 digest',
     );
   }
   if (!makeContractId(request.contractId).ok) {

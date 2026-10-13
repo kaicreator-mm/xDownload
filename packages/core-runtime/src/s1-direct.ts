@@ -48,7 +48,12 @@ import {
 export interface S1DirectDelivery {
   readonly locatorUri: string;
   readonly declaredRedirectHosts: readonly string[];
-  readonly expectedSha256: string;
+  /**
+   * Optional independently published digest (#101 R1/F01): enforced as the
+   * target identity anchor when supplied; when absent the Target claim uses
+   * the REQUESTED_LOCATOR_PROVENANCE basis (C34 — no self-hash oracle).
+   */
+  readonly expectedSha256?: string;
   readonly expectedContentTypePrefix?: string;
   readonly expectedTotalBytes?: number;
 }
@@ -109,12 +114,12 @@ export function decodeS1DirectPayload(payload: unknown): SeamResult<S1DirectExec
     ]);
   }
   const digest = deliveryRecord['expectedSha256'];
-  if (typeof digest !== 'string' || !SHA256_PATTERN.test(digest)) {
+  if (digest !== undefined && (typeof digest !== 'string' || !SHA256_PATTERN.test(digest))) {
     return seamFail([
       seamDiagnostic(
         'ENVELOPE_MALFORMED',
         'payload.delivery.expectedSha256',
-        'must be a lowercase hex SHA-256 digest',
+        'expected an omitted field or a lowercase hex SHA-256 digest',
       ),
     ]);
   }

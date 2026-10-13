@@ -1,18 +1,18 @@
 {
   "suite": "windows-s1-direct-download",
-  "executedAt": "2026-10-13T17:35:25.022Z",
+  "executedAt": "2026-10-13T19:05:39.201Z",
   "environment": {
     "platform": "win32",
     "arch": "x64",
     "osRelease": "10.0.26300",
     "node": "24.21.0",
-    "executable": "C:\\Users\\15549\\AppData\\Local\\fnm_multishells\\28532_1791912894281\\node.exe"
+    "executable": "C:\\Users\\15549\\AppData\\Local\\fnm_multishells\\30516_1791918279200\\node.exe"
   },
   "checks": [
     {
       "id": "packaged-core-host-ready",
       "status": "PASS",
-      "detail": "packaged Core host composed the authoritative runtime on loopback port 60408"
+      "detail": "packaged Core host composed the authoritative runtime on loopback port 62303"
     },
     {
       "id": "packaged-cli-download-complete",
@@ -20,10 +20,10 @@
       "detail": "packaged CLI download → one Core-accepted work item → real HTTP transfer → COMPLETE terminal from the Core projection (submission ACK was not success)",
       "command": [
         "node",
-        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
         "download",
         "--url",
-        "http://127.0.0.1:60406/file.bin",
+        "http://127.0.0.1:62302/file.bin",
         "--sha256",
         "31a1f9dea0169551092d05e8bf4a446228c8c3eb4c9b713c66adcb7fd53c89be",
         "--timeout-ms",
@@ -31,7 +31,7 @@
         "--poll-ms",
         "100",
         "--port",
-        "60408",
+        "62303",
         "--install-id",
         "s1e2e-install",
         "--user-id",
@@ -39,12 +39,12 @@
       ],
       "exitCode": 0,
       "expectedExitCode": 0,
-      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-c3d9b781-6bb9-42\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-c3d9b781-6bb9-42\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-e4921b17-eac2-44\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-e4921b17-eac2-44\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
     },
     {
       "id": "durable-bytes-sha256-verified",
       "status": "PASS",
-      "detail": "exactly one origin request; durable artifact s1artifact-c3d9b781-6bb9-42.bin is byte-identical (262144 bytes, SHA-256 match)"
+      "detail": "exactly one origin request; durable artifact s1artifact-e4921b17-eac2-44.bin is byte-identical (262144 bytes, SHA-256 match)"
     },
     {
       "id": "digest-mismatch-truthful-failure",
@@ -52,10 +52,10 @@
       "detail": "wrong declared digest → Core-derived non-COMPLETE terminal, CLI exit 4 — never a fabricated success",
       "command": [
         "node",
-        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
         "download",
         "--url",
-        "http://127.0.0.1:60406/file.bin",
+        "http://127.0.0.1:62302/file.bin",
         "--sha256",
         "0000000000000000000000000000000000000000000000000000000000000000",
         "--timeout-ms",
@@ -63,7 +63,7 @@
         "--poll-ms",
         "100",
         "--port",
-        "60408",
+        "62303",
         "--install-id",
         "s1e2e-install",
         "--user-id",
@@ -71,7 +71,7 @@
       ],
       "exitCode": 4,
       "expectedExitCode": 4,
-      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-5ebaa23c-5848-4b\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-5ebaa23c-5848-4b\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-f71b5f00-0e2d-4b\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-f71b5f00-0e2d-4b\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
     },
     {
       "id": "unreachable-origin-truthful-failure",
@@ -79,7 +79,7 @@
       "detail": "connection-refused origin → Core-derived non-COMPLETE terminal, CLI exit 4",
       "command": [
         "node",
-        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
         "download",
         "--url",
         "http://127.0.0.1:1/file.bin",
@@ -90,7 +90,7 @@
         "--poll-ms",
         "100",
         "--port",
-        "60408",
+        "62303",
         "--install-id",
         "s1e2e-install",
         "--user-id",
@@ -98,7 +98,7 @@
       ],
       "exitCode": 4,
       "expectedExitCode": 4,
-      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-76b2fc79-5a42-4c\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-76b2fc79-5a42-4c\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-a44249d3-77cc-4e\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-a44249d3-77cc-4e\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
     },
     {
       "id": "core-restart-terminal-rederived",
@@ -106,12 +106,12 @@
       "detail": "after a Core-host restart the identical COMPLETE terminal re-derives from durable truth with no re-download (origin requests stayed 2)",
       "command": [
         "node",
-        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-gzSeu5\\cli\\xdownload-cli.js",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
         "status",
         "--contract",
-        "contract-s1-c3d9b781-6bb9-42",
+        "contract-s1-e4921b17-eac2-44",
         "--port",
-        "51887",
+        "62308",
         "--install-id",
         "s1e2e-install",
         "--user-id",
@@ -119,7 +119,156 @@
       ],
       "exitCode": 0,
       "expectedExitCode": 0,
-      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-c3d9b781-6bb9-42\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-c3d9b781-6bb9-42\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-e4921b17-eac2-44\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-e4921b17-eac2-44\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "packaged-cli-download-no-digest-complete",
+      "status": "PASS",
+      "detail": "ordinary download (--url only, no --sha256, no manual digest) → Core provenance-basis validation → COMPLETE terminal",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
+        "download",
+        "--url",
+        "http://127.0.0.1:62302/file.bin",
+        "--timeout-ms",
+        "45000",
+        "--poll-ms",
+        "100",
+        "--port",
+        "62308",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-49eebb07-0985-40\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-49eebb07-0985-40\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "no-digest-durable-bytes-independently-verified",
+      "status": "PASS",
+      "detail": "no-digest download left byte-identical durable artifact (harness-computed SHA-256 match) with exactly one origin request"
+    },
+    {
+      "id": "no-digest-restart-terminal-rederived",
+      "status": "PASS",
+      "detail": "after a Core-host restart the no-digest COMPLETE terminal re-derives from durable truth with no re-download (origin requests stayed 3)",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
+        "status",
+        "--contract",
+        "contract-s1-49eebb07-0985-40",
+        "--port",
+        "63381",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-49eebb07-0985-40\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-49eebb07-0985-40\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "no-digest-undeclared-redirect-fails-closed",
+      "status": "PASS",
+      "detail": "no-digest download redirected outside the declared delivery graph → truthful FAILED terminal (C29 cannot silently pass)",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
+        "download",
+        "--url",
+        "http://127.0.0.1:62302/redirect-away.bin",
+        "--timeout-ms",
+        "45000",
+        "--poll-ms",
+        "100",
+        "--port",
+        "63381",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 4,
+      "expectedExitCode": 4,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-df77768b-7ce2-4a\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-df77768b-7ce2-4a\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "no-digest-html-masquerade-fails-closed",
+      "status": "PASS",
+      "detail": "no-digest download of a text/html masquerade → truthful FAILED terminal (Format validation)",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
+        "download",
+        "--url",
+        "http://127.0.0.1:62302/page.html",
+        "--timeout-ms",
+        "45000",
+        "--poll-ms",
+        "100",
+        "--port",
+        "63381",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 4,
+      "expectedExitCode": 4,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-4ec3cfc1-060e-44\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-4ec3cfc1-060e-44\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "stalled-download-cancellation-truthful",
+      "status": "PASS",
+      "detail": "stalled download: bounded wait elapsed (exit 6); user cancel accepted; projection shows CANCELLED with no fabricated terminal",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
+        "cancel",
+        "--contract",
+        "contract-s1-7866e7d4-a9a9-42",
+        "--expected-revision",
+        "2",
+        "--port",
+        "63381",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-7866e7d4-a9a9-42\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"CANCELLED\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-7866e7d4-a9a9-42\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\"..."
+    },
+    {
+      "id": "retry-vocabulary-truthful",
+      "status": "PASS",
+      "detail": "retry on a cancelled lineage rejects (no invented failed-member domain, C12); retry after a terminal-failed download is LATE_COMMAND (terminal truth immutable)",
+      "command": [
+        "node",
+        "C:\\Users\\15549\\AppData\\Local\\Temp\\xdownload-s1e2e-LO7a3W\\cli\\xdownload-cli.js",
+        "retry",
+        "--contract",
+        "contract-s1-e4921b17-eac2-44",
+        "--expected-revision",
+        "3",
+        "--members",
+        "s1member-unknown",
+        "--port",
+        "63381",
+        "--install-id",
+        "s1e2e-install",
+        "--user-id",
+        "s1e2e-user"
+      ],
+      "exitCode": 2,
+      "expectedExitCode": 2,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.rejection\",\"schema\":\"1\",\"command\":\"retry\",\"outcome\":\"REJECTED\",\"request_id\":\"req-da5fe582-9f6e-432b-bb65-82b2c0229c91\",\"contract_id\":\"contract-s1-e4921b17-eac2-44\",\"current_revision\":3,\"diagnostics\":[{\"code\":\"LATE_COMMAND\",\"path\":\"lineage.status\",\"message\":\"lineage is TERMINAL; late retry command is recorded and rejected, terminal truth unchanged\",\"invariant\":\"L2-§11\"}]}\nretry: rejected by the seam (exit 2)\n"
     }
   ],
   "overall": "PASS"

@@ -47,11 +47,11 @@ export type SeamMessageKind = 'command' | 'query' | 'response';
  * browser context; raw session material never crosses).
  *
  * `EXECUTE_S1_DIRECT_ACQUISITION` (#101 first slice) carries the delivery
- * facts (locator, independently known digest, declared redirect hosts) for
- * one ALREADY-ACCEPTED single-resource direct contract; the Core itself
- * performs the HTTP transfer behind the frozen acquisition port. Like S2,
- * execution, validation, acceptance and terminal truth stay Core-owned and
- * the terminal projection passes the same projector gate as
+ * facts (locator, declared redirect hosts, optional independently published
+ * digest) for one ALREADY-ACCEPTED single-resource direct contract; the Core
+ * itself performs the HTTP transfer behind the frozen acquisition port. Like
+ * S2, execution, validation, acceptance and terminal truth stay Core-owned
+ * and the terminal projection passes the same projector gate as
  * `PROJECT_TERMINAL_RESULT`, never asserted by the submitting surface.
  */
 export const COMMAND_TYPES = [

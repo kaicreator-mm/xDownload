@@ -144,6 +144,24 @@ describe('EXECUTE_S1_DIRECT_ACQUISITION authority gates', () => {
     expect((projection.projection as Record<string, unknown>)['terminal']).toBeUndefined();
   });
 
+  it('accepts an intent whose delivery omits the digest (ordinary S1 download, #101 R1/F01)', () => {
+    const { beginner, calls } = makeBeginner();
+    const s = serverWith({ beginner });
+    submitSingle(s);
+    const noDigest = s1Payload();
+    delete (noDigest.delivery as Record<string, unknown>).expectedSha256;
+    const response = executeS1(s, { payload: noDigest, expectedRevision: 1 });
+    expect(response.outcome).toBe('ACCEPTED');
+    expect(calls).toHaveLength(1);
+    expect(s.pendingS1Executions()).toHaveLength(1);
+    expect(s.pendingS1Executions()[0]?.payload).toEqual(noDigest);
+    // The lineage stays open until the Core records the executed terminal.
+    const projection = s.handleFrame(
+      JSON.stringify(rawQuery({ aggregateId: 'contract-single-001' })),
+    );
+    expect((projection.projection as Record<string, unknown>)['terminal']).toBeUndefined();
+  });
+
   it('rejects malformed payloads before any intent exists', () => {
     const { beginner, calls } = makeBeginner();
     const s = serverWith({ beginner });

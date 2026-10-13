@@ -53,9 +53,16 @@ import {
   type DurableLayout,
 } from './durable-stores.ts';
 import { driveS1DirectExecution } from './s1-direct.ts';
+import {
+  createS1DriveSupervisor,
+  type S1DriveHealthEntry,
+  type S1DriveSupervisor,
+} from './s1-drive-supervisor.ts';
 
 export { durableLayout, DurableStoreCorruptError, FileBackedControlFactLog, FileBackedSeamJournal };
 export type { DurableLayout };
+export { createS1DriveSupervisor };
+export type { S1DriveHealthEntry, S1DriveSupervisor };
 
 /** Options for composing/reopening one authoritative Core Runtime. */
 export interface CoreRuntimeOptions {
@@ -63,6 +70,14 @@ export interface CoreRuntimeOptions {
   readonly rootDir: string;
   /** The only same-install/same-user peer scope the seam admits. */
   readonly expectedPeer: ExpectedPeerScope;
+  /**
+   * Optional observer for Core-internal S1 drive health transitions (#101
+   * R1/F03): a rejected/thrown drive is bounded-retried and its truthful
+   * degraded/exhausted state surfaced here (the core host relays it to
+   * stderr) instead of being silently swallowed. Diagnostics only — never
+   * terminal truth.
+   */
+  readonly onS1DriveHealth?: (entry: S1DriveHealthEntry) => void;
 }
 
 /** The composed authoritative Core Runtime (one instance per install). */
@@ -85,6 +100,14 @@ export interface CoreRuntime {
   readonly expectedPeer: ExpectedPeerScope;
   /** Recovery classification captured at composition/reopen time. */
   readonly recoveryAtComposition: readonly RecoveryClassification[];
+  /**
+   * Bounded observable S1 drive-health ledger (#101 R1/F03): the latest
+   * supervised-drive state per aggregate (degraded retries, drained
+   * recoveries, exhausted give-ups). Diagnostics only — lineage/terminal
+   * truth stays with the durable stores; a listed aggregate's intent stays
+   * registered and continues to reconcile (restart or future re-drive).
+   */
+  readonly s1DriveHealth: () => readonly S1DriveHealthEntry[];
 }
 
 export class CoreRuntimeCompositionError extends Error {
@@ -112,6 +135,7 @@ function bindSeam(
   expectedPeer: ExpectedPeerScope,
   journal: SeamJournal,
   flowRuntime: FlowRuntime,
+  supervisor: S1DriveSupervisor,
 ): CoreSeamServer {
   // #95 R1/F04: chunked delivered streams stage inside the composition so
   // journal replay during seam construction rebuilds staged truth through
@@ -121,13 +145,20 @@ function bindSeam(
   // constructed (chicken-and-egg resolved with a holder populated before
   // any frame or reconcile can run).
   const seamHolder: { current?: CoreSeamServer } = {};
+  // #101 R1/F03: a rejected/thrown drive is a supervised bounded-retry
+  // episode with an observable health record — never a silent swallow. The
+  // verbatim seam rejection becomes the episode's diagnostic message.
   const drive = (
     seam: CoreSeamServer,
     input: { aggregateId: string; contract: AcquisitionContract; payload: unknown },
   ): void => {
-    void driveS1DirectExecution({ ...flowRuntime, seam }, input).catch(() => {
-      // The intent stays registered; the next composition reconcile
-      // re-drives it from durable truth. No terminal is ever invented.
+    void supervisor.drive(input.aggregateId, async () => {
+      const result = await driveS1DirectExecution({ ...flowRuntime, seam }, input);
+      if (!result.ok) {
+        throw new Error(
+          `s1 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
     });
   };
   const result = createCoreSeamServer({
@@ -181,16 +212,23 @@ function bindSeam(
  * (unjournaled) in-memory terminal, so every non-terminal intent is
  * re-driven: the driver reconciles from the durable work item (no
  * re-download of an accepted artifact) and re-derives the identical
- * terminal through the projector.
+ * terminal through the projector. Drives run under the same supervisor as
+ * command-initiated drives (#101 R1/F03): failures are bounded-retried and
+ * surfaced in the runtime's health ledger, never swallowed.
  */
-function reconcileS1Executions(runtime: CoreRuntime): void {
+function reconcileS1Executions(runtime: CoreRuntime, supervisor: S1DriveSupervisor): void {
   for (const pending of runtime.seam.pendingS1Executions()) {
     const view = runtime.seam.inspectProjection(pending.aggregateId);
     if (view === undefined || view.lineage.status !== 'ACTIVE') {
       continue;
     }
-    void driveS1DirectExecution(runtime, pending).catch(() => {
-      // Intent stays registered for the next reconcile; nothing invented.
+    void supervisor.drive(pending.aggregateId, async () => {
+      const result = await driveS1DirectExecution(runtime, pending);
+      if (!result.ok) {
+        throw new Error(
+          `s1 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
     });
   }
 }
@@ -207,14 +245,20 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const { writer, store, recovery } = composePersistence(layout);
   const scheduler = new CoreScheduler(factLog);
   const terminalStore = createTerminalResultStore();
+  const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(options.expectedPeer, journal, {
-      scheduler,
-      writer,
-      store,
-      recovery,
-      terminalStore,
-    }),
+    seam: bindSeam(
+      options.expectedPeer,
+      journal,
+      {
+        scheduler,
+        writer,
+        store,
+        recovery,
+        terminalStore,
+      },
+      supervisor,
+    ),
     scheduler,
     writer,
     store,
@@ -223,8 +267,9 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     layout,
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze([]),
+    s1DriveHealth: supervisor.health,
   });
-  reconcileS1Executions(runtime);
+  reconcileS1Executions(runtime, supervisor);
   return runtime;
 }
 
@@ -260,14 +305,20 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     .map((workItem) => recovery.classify(workItem.workItemId));
   const scheduler = new CoreScheduler(factLog);
   const terminalStore = createTerminalResultStore();
+  const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(options.expectedPeer, journal, {
-      scheduler,
-      writer,
-      store,
-      recovery,
-      terminalStore,
-    }),
+    seam: bindSeam(
+      options.expectedPeer,
+      journal,
+      {
+        scheduler,
+        writer,
+        store,
+        recovery,
+        terminalStore,
+      },
+      supervisor,
+    ),
     scheduler,
     writer,
     store,
@@ -276,10 +327,11 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     layout,
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze(classifications),
+    s1DriveHealth: supervisor.health,
   });
   // Restart reconcile: replay re-registered every S1 intent but never the
   // unjournaled terminal — re-drive non-terminal intents from durable truth.
-  reconcileS1Executions(runtime);
+  reconcileS1Executions(runtime, supervisor);
   return runtime;
 }
 

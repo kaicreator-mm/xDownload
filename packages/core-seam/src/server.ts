@@ -1708,7 +1708,10 @@ const S1_PAYLOAD_KEYS: readonly string[] = ['snapshotId', 'memberId', 'artifactI
  * runtime begins the real HTTP transfer strictly AFTER the accepted-command
  * journal commit and completes the lineage through `recordExecutedTerminal`
  * with a Core-derived projector terminal — never a surface-asserted one, and
- * never conflating submission ACK with acquisition success.
+ * never conflating submission ACK with acquisition success. Delivery facts
+ * carry an optional independently published digest: supplied, it is enforced
+ * as the target identity anchor; omitted, the Target claim uses the
+ * conservative REQUESTED_LOCATOR_PROVENANCE basis (#101 R1/F01, C34).
  */
 function applyExecuteS1DirectAcquisition(
   state: SeamAuthorityState,
@@ -1911,13 +1914,19 @@ function validateS1IntentPayload(payload: unknown): SeamResult<void> {
       ]);
     }
   }
+  // Optional independently published digest (#101 R1/F01): when supplied it
+  // is enforced as the target identity anchor (a mismatch fails the
+  // download); when absent the Target claim rests on the conservative
+  // REQUESTED_LOCATOR_PROVENANCE basis (user-selected URI + declared
+  // redirect graph) and the computed artifact digest is recorded for
+  // corruption detection — never promoted to an independent oracle (C34).
   const digest = deliveryRecord['expectedSha256'];
-  if (typeof digest !== 'string' || !S1_SHA256_PATTERN.test(digest)) {
+  if (digest !== undefined && (typeof digest !== 'string' || !S1_SHA256_PATTERN.test(digest))) {
     return seamFail([
       seamDiagnostic(
         'ENVELOPE_MALFORMED',
         'payload.delivery.expectedSha256',
-        'expected a lowercase hex SHA-256 digest',
+        'expected an omitted field or a lowercase hex SHA-256 digest',
       ),
     ]);
   }

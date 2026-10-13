@@ -31,6 +31,7 @@ import {
   CoreRuntimeCompositionError,
   createCoreRuntime,
   reopenCoreRuntime,
+  type S1DriveHealthEntry,
 } from '@xdownload/core-runtime';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -189,9 +190,19 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
   // launch over the same root that clobbered durable truth would destroy
   // exactly the recovery evidence this host exists to protect.
   const existing = existsSync(join(options.rootDir, 'seam-journal.jsonl'));
-  const runtime = existing
-    ? reopenCoreRuntime({ rootDir: options.rootDir, expectedPeer })
-    : createCoreRuntime({ rootDir: options.rootDir, expectedPeer });
+  // #101 R1/F03: Core-internal S1 drive faults surface live on stderr as
+  // structured diagnostics (bounded retries, degraded/exhausted health) —
+  // a failed driver never disappears into a silent void.
+  const runtimeOptions = {
+    rootDir: options.rootDir,
+    expectedPeer,
+    onS1DriveHealth: (entry: S1DriveHealthEntry): void => {
+      process.stderr.write(
+        `${JSON.stringify({ document: 'xdownload.core-host.s1-drive-health', ...entry })}\n`,
+      );
+    },
+  };
+  const runtime = existing ? reopenCoreRuntime(runtimeOptions) : createCoreRuntime(runtimeOptions);
   const transport = createLoopbackServerTransport({ host: options.host, port: options.port });
   const target = await transport.start({
     onFrame: (connection, frame) => {

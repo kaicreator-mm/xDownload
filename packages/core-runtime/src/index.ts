@@ -23,9 +23,12 @@ export {
   closeCoreRuntime,
   CoreRuntimeCompositionError,
   createCoreRuntime,
+  createS1DriveSupervisor,
   reopenCoreRuntime,
   type CoreRuntime,
   type CoreRuntimeOptions,
+  type S1DriveHealthEntry,
+  type S1DriveSupervisor,
 } from './runtime.ts';
 export {
   CoreRuntimeBudgetBridge,

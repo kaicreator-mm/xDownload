@@ -71,7 +71,7 @@ export type ParsedInput =
       readonly kind: 'download';
       readonly target: TargetOptions;
       readonly url: string;
-      readonly expectedSha256: string;
+      readonly expectedSha256: string | undefined;
       readonly expectedContentTypePrefix: string | undefined;
       readonly expectedTotalBytes: number | undefined;
       readonly redirectHosts: readonly string[];
@@ -121,8 +121,8 @@ Usage: xdownload <command> [options]
 
 Commands:
   submit   Submit one acquisition contract (JSON payload; acceptance only unless --wait)
-  download S1 direct file download: Core-executed HTTP transfer to an
-           independently known SHA-256 (bounded --wait for terminal truth)
+  download S1 direct file download: Core-executed HTTP transfer with
+           declared-target validation (bounded --wait for terminal truth)
   status   Read the machine-readable status projection for one contract
   wait     Poll READ_PROJECTION until a terminal result is projected (bounded)
   cancel   Cancel a lineage (CANCEL_LINEAGE through the seam)
@@ -145,7 +145,13 @@ Payload options (submit/confirm/batch):
 Command options:
   submit:   --expected-revision <n> (default 0 = assert creation)
             --wait --timeout-ms <n> --poll-ms <n>
-  download: --url <http(s)://...> --sha256 <hex> (required, independently known)
+  download: --url <http(s)://...> [--sha256 <hex>]
+            --sha256: an independently published digest, when one exists;
+            supplied, a mismatch fails the download (C09). Omitted, the
+            Target claim rests on the declared delivery graph (the --url
+            host + --redirect-host entries); the artifact digest is still
+            computed and durably recorded for later corruption detection
+            (C34 — it is never promoted to a post-hoc identity oracle).
             [--content-type-prefix <p>] [--total-bytes <n>]
             [--redirect-host <host> ...] [--timeout-ms <n>] [--poll-ms <n>]
   status:   --contract <id>
@@ -273,9 +279,19 @@ function parseWaitWithDefault(values: ArgValues): WaitOptions {
 
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
 
-function parseSha256(values: ArgValues): string {
-  const raw = requireString(str(values, 'sha256'), 'sha256');
-  if (!SHA256_HEX_PATTERN.test(raw)) {
+/**
+ * The independently published digest is OPTIONAL (#101 R1/F01): an ordinary
+ * S1 download never requires the user to know a digest first. When supplied
+ * it is enforced (a mismatch fails the download, C09); when omitted the
+ * Target claim uses the conservative declared-delivery-graph provenance
+ * basis (C34).
+ */
+function parseSha256(values: ArgValues): string | undefined {
+  const raw = str(values, 'sha256');
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (raw.length === 0 || !SHA256_HEX_PATTERN.test(raw)) {
     throw new CliInputError('USAGE', '--sha256 must be a lowercase hex SHA-256 digest', [
       {
         code: 'ENVELOPE_MALFORMED',

@@ -13,6 +13,8 @@
  */
 
 import { createHash } from 'node:crypto';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { SeamResponse, SeamProjectionView } from '@xdownload/core-seam';
 import {
@@ -28,7 +30,7 @@ import {
   peer,
 } from './helpers.ts';
 import { ControlledHttpFixture } from './fixture-http.ts';
-import { reopenCoreRuntime } from '../src/index.ts';
+import { createCoreRuntime, reopenCoreRuntime } from '../src/index.ts';
 import { runtimeOptions } from './helpers.ts';
 
 const dirs: string[] = [];
@@ -57,6 +59,19 @@ function s1Payload(baseUri: string, digest: string, host: string): Record<string
       locatorUri: `${baseUri}/file.bin`,
       declaredRedirectHosts: [host],
       expectedSha256: digest,
+    },
+  };
+}
+
+/** No-digest delivery facts (#101 R1/F01): the ordinary S1 download shape. */
+function s1NoDigestPayload(baseUri: string, host: string): Record<string, unknown> {
+  return {
+    snapshotId: SNAPSHOT,
+    memberId: MEMBER,
+    artifactId: ARTIFACT,
+    delivery: {
+      locatorUri: `${baseUri}/file.bin`,
+      declaredRedirectHosts: [host],
     },
   };
 }
@@ -229,6 +244,231 @@ describe('S1 Core-executed direct acquisition (#101 first slice)', () => {
         expect(retry.diagnostics?.[0]?.code).toBe('LATE_COMMAND');
         const after = runtime.seam.inspectProjection(CONTRACT);
         expect(after?.terminal).toEqual(view.terminal);
+      } finally {
+        closeRuntime(runtime);
+      }
+    },
+  );
+
+  it(
+    'an ordinary download without any digest anchor completes on the provenance basis (#101 R1/F01, C34)',
+    { timeout: 60_000 },
+    async () => {
+      const rootDir = makeTempDir('s1-nodigest');
+      dirs.push(rootDir);
+      const fixture = new ControlledHttpFixture();
+      fixtures.push(fixture);
+      const baseUri = await fixture.start();
+      const bytes = new Uint8Array(Array.from({ length: 4096 }, (_, index) => (index * 17) % 251));
+      // The harness computes the digest independently for VERIFICATION only —
+      // the command payload never carries it (no manual/user digest anywhere).
+      const harnessDigest = createHash('sha256').update(bytes).digest('hex');
+      fixture.serveFile('/file.bin', { body: bytes, etag: '"s1nodigest"' });
+
+      const runtime = openRuntime(rootDir);
+      try {
+        expect(
+          seamCommand(runtime, {
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: CONTRACT,
+            payload: rawSingleResourceContract({ contractId: CONTRACT }),
+          }).outcome,
+        ).toBe('ACCEPTED');
+        expect(
+          seamCommand(runtime, {
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+            aggregateId: CONTRACT,
+            payload: s1NoDigestPayload(baseUri, new URL(baseUri).host),
+            expectedRevision: 1,
+          }).outcome,
+        ).toBe('ACCEPTED');
+
+        const view = await waitForTerminal(() => runtime.seam.inspectProjection(CONTRACT));
+        expect(view.terminal?.requestFulfillment).toBe('COMPLETE');
+        expect(view.terminal?.selectionAcquisition).toBe('COMPLETE');
+        expect(view.terminal?.stopReason).toBe('NONE');
+        expect(view.lineage.status).toBe('TERMINAL');
+        expect(fixture.requests).toHaveLength(1);
+
+        // The computed artifact digest is durably recorded for corruption
+        // detection — but nothing promoted it to an identity oracle; the
+        // truthful claim came from the declared delivery graph (C34).
+        const observation = runtime.store.observe(ARTIFACT);
+        expect(observation.phase).toBe('FINALIZED');
+        expect(observation.observedDigest).toBe(harnessDigest);
+        expect(observation.observedByteSize).toBe(bytes.length);
+        const workItem = runtime.writer.reader
+          .workItems()
+          .find((item) => item.contractId === CONTRACT);
+        const classification = runtime.recovery.classify(workItem!.workItemId);
+        expect(classification.lifecycleClass).toBe('ACCEPTED');
+        expect(classification.bytesVerified).toBe(true);
+        // No drive faults: the health ledger stays empty on the happy path.
+        expect(runtime.s1DriveHealth()).toHaveLength(0);
+      } finally {
+        closeRuntime(runtime);
+      }
+    },
+  );
+
+  it(
+    'without a digest, a redirect outside the declared delivery graph fails closed (C29 cannot silently pass, C34)',
+    { timeout: 60_000 },
+    async () => {
+      const rootDir = makeTempDir('s1-nodigest-redirect');
+      dirs.push(rootDir);
+      const fixture = new ControlledHttpFixture();
+      fixtures.push(fixture);
+      const baseUri = await fixture.start();
+      fixture.redirect('/file.bin', 'http://undeclared.example/file.bin');
+
+      const runtime = openRuntime(rootDir);
+      try {
+        expect(
+          seamCommand(runtime, {
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: CONTRACT,
+            payload: rawSingleResourceContract({ contractId: CONTRACT }),
+          }).outcome,
+        ).toBe('ACCEPTED');
+        expect(
+          seamCommand(runtime, {
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+            aggregateId: CONTRACT,
+            payload: s1NoDigestPayload(baseUri, new URL(baseUri).host),
+            expectedRevision: 1,
+          }).outcome,
+        ).toBe('ACCEPTED');
+
+        const view = await waitForTerminal(() => runtime.seam.inspectProjection(CONTRACT));
+        expect(view.terminal?.requestFulfillment).not.toBe('COMPLETE');
+        expect(view.lineage.status).toBe('TERMINAL');
+        expect(view.lineage.failedMemberIds).toContain(MEMBER);
+        // The undeclared host was never contacted.
+        expect(fixture.requests).toHaveLength(1);
+      } finally {
+        closeRuntime(runtime);
+      }
+    },
+  );
+
+  it(
+    'without a digest, a declared total-bytes mismatch truthfully fails (size evidence, not identity)',
+    { timeout: 60_000 },
+    async () => {
+      const rootDir = makeTempDir('s1-nodigest-size');
+      dirs.push(rootDir);
+      const fixture = new ControlledHttpFixture();
+      fixtures.push(fixture);
+      const baseUri = await fixture.start();
+      const bytes = new Uint8Array([9, 8, 7, 6]);
+      fixture.serveFile('/file.bin', { body: bytes });
+
+      const runtime = openRuntime(rootDir);
+      try {
+        expect(
+          seamCommand(runtime, {
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: CONTRACT,
+            payload: rawSingleResourceContract({ contractId: CONTRACT }),
+          }).outcome,
+        ).toBe('ACCEPTED');
+        const payload = s1NoDigestPayload(baseUri, new URL(baseUri).host);
+        (payload.delivery as Record<string, unknown>)['expectedTotalBytes'] = 4096;
+        expect(
+          seamCommand(runtime, {
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+            aggregateId: CONTRACT,
+            payload,
+            expectedRevision: 1,
+          }).outcome,
+        ).toBe('ACCEPTED');
+
+        const view = await waitForTerminal(() => runtime.seam.inspectProjection(CONTRACT));
+        expect(view.terminal?.requestFulfillment).not.toBe('COMPLETE');
+        expect(view.terminal?.stopReason).toBe('VALIDATION_FAILED');
+        expect(view.lineage.failedMemberIds).toContain(MEMBER);
+      } finally {
+        closeRuntime(runtime);
+      }
+    },
+  );
+
+  it(
+    'a Core-internal drive fault is bounded-retried and surfaced in the health ledger, never swallowed (#101 R1/F03)',
+    { timeout: 60_000 },
+    async () => {
+      const rootDir = makeTempDir('s1-drive-fault');
+      dirs.push(rootDir);
+      const fixture = new ControlledHttpFixture();
+      fixtures.push(fixture);
+      const baseUri = await fixture.start();
+      const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+      const digest = createHash('sha256').update(bytes).digest('hex');
+      fixture.serveFile('/file.bin', { body: bytes });
+
+      const healthEvents: string[] = [];
+      const runtime = createCoreRuntime({
+        ...runtimeOptions(rootDir),
+        onS1DriveHealth: (entry) => {
+          healthEvents.push(`${entry.outcome}:${entry.lastError}`);
+          if (entry.outcome === 'DEGRADED') {
+            // The fault clears after the first failed attempt (like a
+            // transient filesystem condition), so the bounded retry
+            // reconciles from durable truth and drains.
+            rmSync(join(rootDir, 'artifacts', 'staging', `${ARTIFACT}.part`), {
+              recursive: true,
+              force: true,
+            });
+          }
+        },
+      });
+      try {
+        // Deterministic Core-internal fault: a directory occupies the exact
+        // staged-bytes path of this artifact, so staging the downloaded
+        // bytes throws after the real transfer (infrastructure failure
+        // inside the drive).
+        mkdirSync(join(rootDir, 'artifacts', 'staging', `${ARTIFACT}.part`), {
+          recursive: true,
+        });
+        expect(
+          seamCommand(runtime, {
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: CONTRACT,
+            payload: rawSingleResourceContract({ contractId: CONTRACT }),
+          }).outcome,
+        ).toBe('ACCEPTED');
+        expect(
+          seamCommand(runtime, {
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+            aggregateId: CONTRACT,
+            payload: s1Payload(baseUri, digest, new URL(baseUri).host),
+            expectedRevision: 1,
+          }).outcome,
+        ).toBe('ACCEPTED');
+
+        // The drive faulted once (staging threw), surfaced immediately in the
+        // health ledger, then the bounded retry reconciled from durable truth
+        // (no re-download) and drained. Every transition was observable.
+        await waitForTerminal(() => runtime.seam.inspectProjection(CONTRACT));
+        const health = runtime.s1DriveHealth();
+        expect(health).toHaveLength(1);
+        expect(health[0]?.aggregateId).toBe(CONTRACT);
+        expect(health[0]?.outcome).toBe('DRAINED');
+        // The verbatim diagnostic of the failed attempt is preserved.
+        expect(health[0]?.lastError).toContain('s1artifact-001');
+        expect(health[0]?.attempts).toBe(2);
+        expect(healthEvents.filter((event) => event.startsWith('DEGRADED:'))).toHaveLength(1);
+        // The fault never became success: the truthful durable state (effect
+        // observed, bytes never staged) projects a non-COMPLETE UNKNOWN
+        // terminal — a fail-closed projection, not a fabricated COMPLETE and
+        // not an indefinite silent ACTIVE.
+        const view = runtime.seam.inspectProjection(CONTRACT);
+        expect(view?.lineage.status).toBe('TERMINAL');
+        expect(view?.terminal?.requestFulfillment).toBe('UNKNOWN');
+        expect(view?.terminal?.selectionAcquisition).toBe('NOT_STARTED');
+        // Exactly one origin transfer happened across the fault + reconcile.
+        expect(fixture.requests).toHaveLength(1);
       } finally {
         closeRuntime(runtime);
       }
