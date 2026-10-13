@@ -652,7 +652,10 @@ describe('#95 R1/F04 — bounded chunked delivery across the frozen seam frame b
     const bytes = attachmentBytes(9000);
     const requests: string[] = [];
     for (let index = 0; index < 3; index += 1) {
-      const slab = bytes.subarray(index * 3072, Math.min(bytes.length, (index + 1) * 3072));
+      const slab = bytes.subarray(
+          index * 3072,
+          Math.min(bytes.length, (index + 1) * 3072),
+        );
       const req = requestId();
       requests.push(req);
       const response = executeS2(
@@ -685,14 +688,19 @@ describe('#95 R1/F04 — bounded chunked delivery across the frozen seam frame b
       const acceptedAfter = reopened.writer.reader.workItems();
       expect(acceptedAfter.length).toBe(1);
       expect(acceptedAfter[0]!.workItemId).toBe(acceptedBefore.workItemId);
-      expect(reopened.recovery.classify(acceptedAfter[0]!.workItemId).lifecycleClass).toBe('ACCEPTED');
+      expect(reopened.recovery.classify(acceptedAfter[0]!.workItemId).lifecycleClass).toBe(
+        'ACCEPTED',
+      );
       const artifactAfter = reopened.store.readFinalBytes('artifact:s2-delivered-001');
       expect(artifactAfter === undefined ? '' : sha256(artifactAfter)).toBe(sha256(bytes));
 
       // Each original journaled command has the same idempotent response.
       // No accepted effect, artifact or authority revision may be duplicated.
       for (let index = 0; index < 3; index += 1) {
-        const slab = bytes.subarray(index * 3072, Math.min(bytes.length, (index + 1) * 3072));
+        const slab = bytes.subarray(
+          index * 3072,
+          Math.min(bytes.length, (index + 1) * 3072),
+        );
         const duplicate = executeS2(
           reopened,
           s2Payload({ bytes: slab, withDigest: false, chunk: { index, count: 3 } }),
@@ -701,7 +709,9 @@ describe('#95 R1/F04 — bounded chunked delivery across the frozen seam frame b
           1 + index,
         );
         expect(duplicate.outcome).toBe('ACCEPTED');
-        expect((duplicate as { acceptance?: { converged?: boolean } }).acceptance?.converged).toBe(true);
+        expect(
+          (duplicate as { acceptance?: { converged?: boolean } }).acceptance?.converged,
+        ).toBe(true);
       }
       expect(reopened.writer.reader.workItems().length).toBe(1);
       expect(readProjection(reopened).projection).toEqual(before.projection);
