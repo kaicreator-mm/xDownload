@@ -63,6 +63,7 @@ export {
 export {
   decodeS1DirectPayload,
   driveS1DirectExecution,
+  s1EffectIdentity,
   type S1DirectDelivery,
   type S1DirectExecutionPayload,
   type S1DriveRuntime,

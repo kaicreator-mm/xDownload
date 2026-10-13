@@ -63,7 +63,7 @@ import {
   type SeamResponse,
 } from './envelope.ts';
 import type { CommandRequestId } from './ids.ts';
-import { authorizePeer, type ExpectedPeerScope } from './peer.ts';
+import { authorizePeer, type ExpectedPeerScope, type PeerIdentity } from './peer.ts';
 import { projectAggregate, type SeamProjectionView } from './projection.ts';
 import {
   createLineageState,
@@ -73,7 +73,25 @@ import {
   type LineageState,
   type SeamAuthorityState,
   type SeamJournal,
+  type TargetEvidenceReceipt,
 } from './state.ts';
+
+/**
+ * Core-internal bridge for the durably committed user cancel order (#101
+ * P2-1). Implemented by the Core runtime composition; never by a surface.
+ * Fired strictly AFTER a `CANCEL_LINEAGE` command's accepted-command journal
+ * commit, so the bridge only ever connects *durably committed* cancellation
+ * authority into the canonical Core stores (scheduler + durable ledger) and
+ * the abort checkpoint of any in-flight S1 transfer. Absent → the seam's
+ * cancel stays a seam-authority fact only (legacy compositions).
+ */
+export interface S1LineageCancelBridge {
+  cancelled(input: {
+    readonly aggregateId: string;
+    /** The cancelling command's surface, for the durable cancel-fact provenance. */
+    readonly source: PeerIdentity['surface'];
+  }): void;
+}
 
 export interface CoreSeamServerOptions {
   /** The only same-install/same-user peer scope this seam admits. */
@@ -98,6 +116,15 @@ export interface CoreSeamServerOptions {
    * Absent → the command fails closed.
    */
   readonly s1DirectAcquisition?: S1DirectAcquisitionBeginner;
+  /**
+   * Core-internal bridge connecting the durably committed user cancel order
+   * into the canonical Core stores and the in-flight S1 transfer abort
+   * checkpoint (#101 P2-1). Fired after the CANCEL_LINEAGE journal commit;
+   * the bridge self-filters aggregates without a registered S1 execution, so
+   * other lanes (e.g. synchronous S2 delivery) are unaffected. Absent → the
+   * cancel remains a seam-authority fact only.
+   */
+  readonly s1LineageCancel?: S1LineageCancelBridge;
 }
 
 /**
@@ -213,6 +240,29 @@ export interface CoreSeamServer {
    * a typed LATE rejection (terminal truth is never rewritten).
    */
   recordExecutedTerminal(aggregateId: string, terminal: TerminalResult): SeamResult<void>;
+  /**
+   * Core-internal (never a wire command): close a CANCELLED lineage with its
+   * truthful Core-derived terminal (#101 P2-1). The value MUST be the
+   * verbatim projector output derived from durable truth AFTER the durable
+   * cancel is committed — the projector's ADR-013 cutoff decides COMPLETE
+   * (acceptance already stood before the cancel) vs USER_CANCELLED (cancel
+   * wins), so a cancellation closure can never fabricate a COMPLETED escape.
+   * Gates: the lineage must be CANCELLED (ACTIVE execution completions go
+   * through `recordExecutedTerminal`; terminal truth is never rewritten);
+   * not journaled — restart reconcile re-derives the identical closure.
+   */
+  closeCancelledLineage(aggregateId: string, terminal: TerminalResult): SeamResult<void>;
+  /**
+   * Trusted Core-runtime fact path (#101 P2-2): persist the secret-free typed
+   * Target evidence basis + certainty of one successful S1 record with its
+   * exact artifact/effect identity. Journaled for restart replay; identical
+   * receipts converge (never rewritten), conflicting receipts reject. No
+   * surface command can invoke this method.
+   */
+  recordTargetEvidence(
+    aggregateId: string,
+    receipt: TargetEvidenceReceipt,
+  ): SeamResult<{ readonly converged: boolean }>;
   /** Accepted-command count (concern-test observation; not a wire surface). */
   readonly acceptedCommandCount: number;
 }
@@ -264,19 +314,23 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
               entry.accounting,
               entry.classificationEvidence,
             )
-          : restoreAcceptedCommand(
-              state,
-              gateway,
-              entry,
-              options.s2DeliveredAcquisition,
-              options.s1DirectAcquisition,
-              s1Intents,
-            );
+          : entry.kind === 'TARGET_EVIDENCE'
+            ? applyTargetEvidenceReceipt(state, entry.aggregateId, entry.receipt)
+            : restoreAcceptedCommand(
+                state,
+                gateway,
+                entry,
+                options.s2DeliveredAcquisition,
+                options.s1DirectAcquisition,
+                s1Intents,
+              );
       if (!restored.ok) {
         const subject =
           entry.kind === 'COVERAGE_ACCOUNTING'
             ? `aggregate '${entry.aggregateId}'`
-            : `request '${entry.envelope.requestId}'`;
+            : entry.kind === 'TARGET_EVIDENCE'
+              ? `target evidence receipt for aggregate '${entry.aggregateId}'`
+              : `request '${entry.envelope.requestId}'`;
         return {
           ok: false,
           diagnostics: [
@@ -470,6 +524,17 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         payload: envelope.payload,
       });
     }
+    // #101 P2-1: a durably committed user cancel connects to the canonical
+    // Core stores and the in-flight S1 transfer abort checkpoint strictly
+    // AFTER the CANCEL_LINEAGE journal commit (the cancel bridge self-filters
+    // aggregates without a registered S1 execution; the idempotent-replay
+    // path above already returned and never re-fires).
+    if (envelope.commandType === 'CANCEL_LINEAGE') {
+      options.s1LineageCancel?.cancelled({
+        aggregateId: envelope.aggregateId,
+        source: envelope.peer.surface,
+      });
+    }
     return response;
   }
 
@@ -642,6 +707,21 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
           seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
         ]);
       }
+      if (lineage.status === 'CANCELLED') {
+        // #101 P2-1: a durably committed user cancel precedes any acceptance
+        // this terminal could claim — executed-terminal recording across the
+        // cutoff is rejected (the truthful cancellation closure goes through
+        // `closeCancelledLineage`; acceptance that already stood before the
+        // cancel is re-derived by the projector and closed there).
+        return seamFail([
+          seamDiagnostic(
+            'LATE_COMMAND',
+            'lineage.status',
+            'lineage is CANCELLED; an executed terminal cannot be recorded across the durable user-cancel cutoff (L2 §11.1 / ADR-013)',
+            'L2-inv20',
+          ),
+        ]);
+      }
       if (lineage.status === 'TERMINAL') {
         return seamFail([
           seamDiagnostic(
@@ -661,6 +741,108 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       const revision = aggregate.revision + 1;
       aggregate.revision = revision;
       return seamOk(undefined);
+    },
+    closeCancelledLineage(aggregateId: string, terminal: TerminalResult) {
+      if (recoveryFenceReason !== undefined) {
+        return seamFail([recoveryFenceDiagnostic()]);
+      }
+      const aggregate = state.aggregates.get(aggregateId);
+      const lineage = state.lineages.get(aggregateId);
+      if (aggregate === undefined || lineage === undefined) {
+        return seamFail([
+          seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+        ]);
+      }
+      if (lineage.status === 'TERMINAL') {
+        return seamFail([
+          seamDiagnostic(
+            'LATE_COMMAND',
+            'lineage.status',
+            'lineage is already terminal; terminal truth is never rewritten',
+            'L2-§11',
+          ),
+        ]);
+      }
+      if (lineage.status !== 'CANCELLED') {
+        return seamFail([
+          seamDiagnostic(
+            'ADMISSION_REJECTED',
+            'lineage.status',
+            'cancellation closure applies only to a CANCELLED lineage; an ACTIVE execution completes through recordExecutedTerminal',
+            'L2-§11.1',
+          ),
+        ]);
+      }
+      // Same authority handoff discipline as recordExecutedTerminal: verbatim
+      // projector output, no second projection, not journaled (restart
+      // reconcile re-derives the identical closure from durable truth).
+      lineage.terminal = terminal;
+      lineage.status = 'TERMINAL';
+      const revision = aggregate.revision + 1;
+      aggregate.revision = revision;
+      return seamOk(undefined);
+    },
+    recordTargetEvidence(aggregateId: string, receipt: TargetEvidenceReceipt) {
+      if (recoveryFenceReason !== undefined) {
+        return seamFail([recoveryFenceDiagnostic()]);
+      }
+      if (journal === undefined) {
+        return seamFail([
+          seamDiagnostic(
+            'ADMISSION_REJECTED',
+            'journal',
+            'durable Core journal is required before a target evidence receipt can be published',
+            'PRD-§17/§27',
+          ),
+        ]);
+      }
+      const applied = applyTargetEvidenceReceipt(state, aggregateId, receipt);
+      if (!applied.ok) {
+        return applied;
+      }
+      if (!applied.value.converged) {
+        let durability;
+        try {
+          durability = journal.append({
+            kind: 'TARGET_EVIDENCE',
+            aggregateId,
+            receipt: applied.value.receipt,
+          });
+        } catch (error) {
+          poisonForRecovery(
+            `target evidence receipt journal threw after in-memory authority apply; durability is uncertain: ${String(
+              error,
+            )}`,
+          );
+        }
+        if (
+          durability === null ||
+          typeof durability !== 'object' ||
+          !['COMMITTED', 'NOT_COMMITTED', 'UNCERTAIN'].includes(durability.status)
+        ) {
+          poisonForRecovery(
+            'target evidence receipt journal returned an invalid durability outcome',
+          );
+        }
+        if (durability.status === 'UNCERTAIN') {
+          poisonForRecovery(
+            `target evidence receipt durability is uncertain after in-memory authority apply: ${durability.error}`,
+          );
+        }
+        if (durability.status === 'NOT_COMMITTED') {
+          const lineage = state.lineages.get(aggregateId);
+          if (lineage !== undefined) lineage.targetEvidence = undefined;
+          return seamFail([
+            seamDiagnostic(
+              'ADMISSION_REJECTED',
+              'journal',
+              `target evidence receipt was not durably committed: ${durability.error}`,
+              'L2-§6.8',
+            ),
+          ]);
+        }
+      }
+      return applied;
     },
     get acceptedCommandCount() {
       if (recoveryFenceReason !== undefined) {
@@ -1562,6 +1744,162 @@ function recordFailedMembersByIds(
     }
   }
   return seamOk(undefined);
+}
+
+const TARGET_EVIDENCE_FIELDS: readonly string[] = [
+  'artifactId',
+  'effectId',
+  'artifactSha256',
+  'basis',
+  'certaintyClass',
+];
+const TARGET_EVIDENCE_BASIS_VALUES: readonly string[] = [
+  'PUBLISHED_SHA256',
+  'REQUESTED_LOCATOR_PROVENANCE',
+];
+const TARGET_EVIDENCE_CERTAINTY_VALUES: readonly string[] = ['DECISIVE', 'PROBATIVE'];
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
+
+/**
+ * Validate one secret-free typed Target evidence receipt (#101 P2-2, C34):
+ * exact artifact/effect identities, lowercase-hex digest, closed basis/
+ * certainty vocabularies and the frozen C34 pairing (a publisher-digest
+ * anchor is decisive; requested-locator provenance is probative only).
+ */
+function decodeTargetEvidenceReceipt(value: unknown): SeamResult<TargetEvidenceReceipt> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetEvidence',
+        'target evidence receipt must be an object',
+      ),
+    ]);
+  }
+  const record = value as Record<string, unknown>;
+  const unknown = Object.keys(record).filter((key) => !TARGET_EVIDENCE_FIELDS.includes(key));
+  if (unknown.length > 0) {
+    return seamFail(
+      unknown.map((key) =>
+        seamDiagnostic('ENVELOPE_MALFORMED', `targetEvidence.${key}`, 'unknown receipt field'),
+      ),
+    );
+  }
+  const missing = TARGET_EVIDENCE_FIELDS.filter((key) => record[key] === undefined);
+  if (missing.length > 0) {
+    return seamFail(
+      missing.map((key) =>
+        seamDiagnostic('ENVELOPE_MALFORMED', `targetEvidence.${key}`, 'receipt field is required'),
+      ),
+    );
+  }
+  for (const key of ['artifactId', 'effectId'] as const) {
+    const id = record[key];
+    if (typeof id !== 'string' || id.length === 0 || id.length > 128) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          `targetEvidence.${key}`,
+          'receipt identity must be a non-empty bounded string',
+        ),
+      ]);
+    }
+  }
+  const digest = record['artifactSha256'];
+  if (typeof digest !== 'string' || !SHA256_HEX_PATTERN.test(digest)) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetEvidence.artifactSha256',
+        'receipt digest must be a lowercase hex SHA-256 of the accepted bytes',
+      ),
+    ]);
+  }
+  const basis = record['basis'];
+  if (typeof basis !== 'string' || !TARGET_EVIDENCE_BASIS_VALUES.includes(basis)) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetEvidence.basis',
+        'receipt basis is a closed C34 vocabulary value',
+      ),
+    ]);
+  }
+  const certainty = record['certaintyClass'];
+  if (typeof certainty !== 'string' || !TARGET_EVIDENCE_CERTAINTY_VALUES.includes(certainty)) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetEvidence.certaintyClass',
+        'receipt certaintyClass is a closed vocabulary value',
+      ),
+    ]);
+  }
+  if (
+    (basis === 'PUBLISHED_SHA256' && certainty !== 'DECISIVE') ||
+    (basis === 'REQUESTED_LOCATOR_PROVENANCE' && certainty !== 'PROBATIVE')
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetEvidence.certaintyClass',
+        'C34 pairing violated: a publisher-digest anchor is DECISIVE, requested-locator provenance is PROBATIVE',
+        'C34',
+      ),
+    ]);
+  }
+  return seamOk({
+    artifactId: record['artifactId'] as string,
+    effectId: record['effectId'] as string,
+    artifactSha256: digest,
+    basis: basis as TargetEvidenceReceipt['basis'],
+    certaintyClass: certainty as TargetEvidenceReceipt['certaintyClass'],
+  });
+}
+
+/**
+ * Validate and apply one trusted Core-runtime Target evidence receipt.
+ * Identical receipts converge (restart replay never rewrites authority); a
+ * conflicting receipt for the same lineage rejects — the recorded identity
+ * basis is never rewritten. Internal authority fact: no surface revision is
+ * consumed (mirrors recordFailedMembers).
+ */
+function applyTargetEvidenceReceipt(
+  state: SeamAuthorityState,
+  aggregateId: string,
+  raw: unknown,
+): SeamResult<{ readonly converged: boolean; readonly receipt: TargetEvidenceReceipt }> {
+  const aggregate = state.aggregates.get(aggregateId);
+  const lineage = state.lineages.get(aggregateId);
+  if (aggregate === undefined || lineage === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'AGGREGATE_NOT_FOUND',
+        'aggregateId',
+        'no aggregate exists for this target evidence receipt',
+      ),
+    ]);
+  }
+  const decoded = decodeTargetEvidenceReceipt(raw);
+  if (!decoded.ok) {
+    return decoded;
+  }
+  const receipt = decoded.value;
+  if (lineage.targetEvidence !== undefined) {
+    if (stableStringify(lineage.targetEvidence) === stableStringify(receipt)) {
+      return seamOk({ converged: true, receipt });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetEvidence',
+        'a different target evidence receipt is already recorded for this lineage; the recorded basis is never rewritten',
+        'C34',
+      ),
+    ]);
+  }
+  lineage.targetEvidence = receipt;
+  return seamOk({ converged: false, receipt });
 }
 
 /**

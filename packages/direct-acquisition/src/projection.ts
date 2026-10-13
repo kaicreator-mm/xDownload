@@ -30,7 +30,7 @@ import type {
   DirectTransferTerminalReason,
   ValidationLayerOutcome,
 } from './port.ts';
-import { targetBasisOf } from './port.ts';
+import { targetBasisOf, targetCertaintyOf } from './port.ts';
 
 export interface ProjectionInput {
   readonly request: DirectTransferRequest;
@@ -110,6 +110,14 @@ export function projectOutcome(
       requestFulfillment = 'UNSATISFIED';
       selectionAcquisition = 'FAILED';
       stopReason = 'NO_PROGRESS';
+      break;
+    case 'USER_CANCELLED':
+      // The durable user-cancel cutoff is decided by the Core scheduler over
+      // committed fact order; the adapter only records the attempt's truthful
+      // stop: arrived bytes stay partial, never promoted to COMPLETED.
+      requestFulfillment = input.bytesReceived > 0 ? 'PARTIAL' : 'UNSATISFIED';
+      selectionAcquisition = input.bytesReceived > 0 ? 'PARTIAL' : 'CANCELLED';
+      stopReason = 'USER_CANCELLED';
       break;
     default:
       // Integrity failures: transfer finished but validation rejected.
@@ -253,10 +261,7 @@ function typedLayerEvidence(
         // selected resource was acquired, not decisive publisher-byte truth.
         // Keep the independently published SHA case decisive (C34).
         certaintyClass:
-          outcome.layer === 'target' &&
-          targetBasisOf(input.request) === 'REQUESTED_LOCATOR_PROVENANCE'
-            ? 'PROBATIVE'
-            : 'DECISIVE',
+          outcome.layer === 'target' ? targetCertaintyOf(targetBasisOf(input.request)) : 'DECISIVE',
       }),
     });
   }

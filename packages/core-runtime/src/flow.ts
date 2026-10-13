@@ -59,6 +59,7 @@ import {
 } from '@xdownload/domain-contracts';
 import {
   DirectHttpAdapter,
+  targetCertaintyOf,
   type DirectTransferOutcome,
   type DirectTransferRequest,
 } from '@xdownload/direct-acquisition';
@@ -366,6 +367,14 @@ export async function executeDirectAcquisition(
         locatorChain: transfer.locatorChain.map((hop) => hop.locator.uri),
         observedIdentity: transfer.observedIdentity,
         slice: transfer.slice,
+        // #101 P2-2: the accepted artifact's durable provenance carries the
+        // secret-free typed Target identity basis + certainty (C34), so the
+        // no-digest vs publisher-hash distinction survives restarts in the
+        // SQLite record itself.
+        targetEvidence: {
+          basis: transfer.targetBasis,
+          certaintyClass: targetCertaintyOf(transfer.targetBasis),
+        },
       },
       consumption: {
         domain: 'transfer',

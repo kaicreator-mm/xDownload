@@ -103,6 +103,13 @@ export interface DirectTransferRequest {
   /** Prior partial state to consider resuming from (same lineage required). */
   readonly resumeFrom?: PartialTransferState;
   /**
+   * External cancellation checkpoint (#101 P2-1): when fired, the in-flight
+   * request and body stream are aborted at once (no lingering socket) and the
+   * attempt terminates with a truthful `USER_CANCELLED` outcome carrying
+   * whatever bytes had already arrived — never a fabricated COMPLETED.
+   */
+  readonly signal?: AbortSignal;
+  /**
    * Retry lineage anchor (counterexample C12): when present it must match
    * this request's effect/target identities or the retry is rejected before
    * any transfer happens.
@@ -147,7 +154,8 @@ export type DirectTransferTerminalReason =
   | 'GLOBAL_SAFETY_EXHAUSTED'
   | 'AUTH_REQUIRED'
   | 'NO_PROGRESS'
-  | 'UNSUPPORTED_RESPONSE';
+  | 'UNSUPPORTED_RESPONSE'
+  | 'USER_CANCELLED';
 
 /** The evidence basis of the Target validation claim for one attempt (C34). */
 export type TargetIdentityBasis = 'PUBLISHED_SHA256' | 'REQUESTED_LOCATOR_PROVENANCE';
@@ -160,6 +168,17 @@ export type TargetIdentityBasis = 'PUBLISHED_SHA256' | 'REQUESTED_LOCATOR_PROVEN
  */
 export function targetBasisOf(request: { readonly expectedSha256?: string }): TargetIdentityBasis {
   return request.expectedSha256 === undefined ? 'REQUESTED_LOCATOR_PROVENANCE' : 'PUBLISHED_SHA256';
+}
+
+/**
+ * The C34 certainty class that pairs with a Target identity basis: a
+ * publisher-digest anchor is decisive byte identity; the requested-locator
+ * provenance basis is probative of which selected resource was acquired,
+ * never decisive publisher-byte truth. One authority for the adapter's typed
+ * evidence and every durable projection of it (#101 P2-2).
+ */
+export function targetCertaintyOf(basis: TargetIdentityBasis): 'DECISIVE' | 'PROBATIVE' {
+  return basis === 'REQUESTED_LOCATOR_PROVENANCE' ? 'PROBATIVE' : 'DECISIVE';
 }
 
 /**

@@ -15,7 +15,7 @@ import {
   type RequestedScope,
   type TerminalResult,
 } from '@xdownload/domain-contracts';
-import type { LineageState, SeamAuthorityState } from './state.ts';
+import type { LineageState, SeamAuthorityState, TargetEvidenceReceipt } from './state.ts';
 
 export interface ContractProjectionView {
   readonly contractId: string;
@@ -79,6 +79,15 @@ export interface SeamProjectionView {
   readonly resolvedMemberCount?: number;
   /** Core-owned action semantics, present only for an authoritative terminal. */
   readonly needsUserAction?: boolean;
+  /**
+   * Additive durable Target evidence exposure (#101 P2-2, wire-compatible v1
+   * schema unchanged): the secret-free typed identity basis + certainty of
+   * the successful S1 record with its exact artifact/effect identity. Present
+   * only once the trusted Core receipt exists; an unknown basis is absent
+   * entirely (never synthesized), so no-digest and publisher-hash records
+   * stay distinguishable on the sanctioned read projection.
+   */
+  readonly targetEvidence?: TargetEvidenceReceipt;
 }
 
 /**
@@ -159,6 +168,9 @@ export function projectAggregate(
           authAccessibleMemberCount: lineage.coverageAccounting.authAccessible.length,
           resolvedMemberCount: lineage.coverageAccounting.resolved.length,
         }),
+    // Additive §27-pattern exposure (#101 P2-2): the durable Target evidence
+    // receipt is projected verbatim when present, absent when unknown.
+    ...(lineage.targetEvidence === undefined ? {} : { targetEvidence: lineage.targetEvidence }),
   };
   return deepFreeze(view);
 }

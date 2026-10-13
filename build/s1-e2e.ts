@@ -121,6 +121,8 @@ interface Origin {
   readonly digest: string;
   readonly byteSize: number;
   requestCount(): number;
+  /** Hang responses torn down by the client (abort checkpoint evidence). */
+  closedHangCount(): number;
   stop(): Promise<void>;
 }
 
@@ -128,6 +130,7 @@ interface Origin {
 function startOrigin(bytes: Uint8Array): Promise<Origin> {
   const digest = createHash('sha256').update(bytes).digest('hex');
   let requests = 0;
+  let closedHang = 0;
   const hanging: http.ServerResponse[] = [];
   const server = http.createServer((request, response) => {
     requests += 1;
@@ -152,6 +155,9 @@ function startOrigin(bytes: Uint8Array): Promise<Origin> {
       response.writeHead(200, {
         'content-type': 'application/octet-stream',
         'content-length': '100',
+      });
+      response.on('close', () => {
+        closedHang += 1;
       });
       hanging.push(response);
       return;
@@ -180,6 +186,7 @@ function startOrigin(bytes: Uint8Array): Promise<Origin> {
         digest,
         byteSize: bytes.byteLength,
         requestCount: () => requests,
+        closedHangCount: () => closedHang,
         stop: () =>
           new Promise<void>((done) => {
             for (const response of hanging.splice(0)) {
@@ -212,6 +219,66 @@ function readyPort(stdout: string): number | undefined {
     }
   }
   return port;
+}
+
+/**
+ * Durable journal observation (evidence-side read, like the artifact walks):
+ * the aggregate id of the last durably accepted SUBMIT_CONTRACT / the last
+ * aggregate with a durably accepted EXECUTE_S1_DIRECT_ACQUISITION. Lets the
+ * harness correlate a still-running download to its contract id and cancel
+ * it mid-wait at the exact post-execute revision.
+ */
+function contractIdsFromJournal(coreRoot: string): {
+  readonly submitted: string | undefined;
+  readonly executed: string | undefined;
+} {
+  const file = path.join(coreRoot, 'seam-journal.jsonl');
+  let submitted: string | undefined;
+  let executed: string | undefined;
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return { submitted: undefined, executed: undefined };
+  }
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trim() === '') {
+      continue;
+    }
+    try {
+      const entry = JSON.parse(line) as {
+        kind?: string;
+        envelope?: { commandType?: string; aggregateId?: string };
+      };
+      if (entry.kind !== 'COMMAND' || entry.envelope === undefined) {
+        continue;
+      }
+      if (entry.envelope.commandType === 'SUBMIT_CONTRACT') {
+        submitted = entry.envelope.aggregateId;
+      }
+      if (entry.envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION') {
+        executed = entry.envelope.aggregateId;
+      }
+    } catch {
+      // A torn/partial trailing line is skipped; append is line-atomic.
+    }
+  }
+  return { submitted, executed };
+}
+
+/** Poll until the probe returns a value; bounded, then undefined. */
+async function waitFor<T>(probe: () => T | undefined, timeoutMs = 15000): Promise<T | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = probe();
+    if (value !== undefined) {
+      return value;
+    }
+    if (Date.now() > deadline) {
+      return undefined;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 async function main(): Promise<void> {
@@ -294,7 +361,10 @@ async function main(): Promise<void> {
       successDoc['document'] === 'xdownload.cli.status' &&
       successDoc['RequestFulfillmentStatus'] === 'COMPLETE' &&
       successDoc['SelectionAcquisitionStatus'] === 'COMPLETE' &&
-      successDoc['StopReason'] === 'NONE';
+      successDoc['StopReason'] === 'NONE' &&
+      // #101 P2-2: the known-digest record is durably decisive byte identity.
+      successDoc['target_evidence_basis'] === 'PUBLISHED_SHA256' &&
+      successDoc['target_evidence_certainty'] === 'DECISIVE';
     checks.push(
       complete
         ? {
@@ -524,7 +594,12 @@ async function main(): Promise<void> {
       freeRun.proc.exitCode === 0 &&
       freeDoc['document'] === 'xdownload.cli.status' &&
       freeDoc['RequestFulfillmentStatus'] === 'COMPLETE' &&
-      freeDoc['SelectionAcquisitionStatus'] === 'COMPLETE';
+      freeDoc['SelectionAcquisitionStatus'] === 'COMPLETE' &&
+      // #101 P2-2: the ordinary no-digest record stays distinguishable — its
+      // Target claim rests on the probative requested-locator provenance
+      // basis (C34), durably recorded and readable on the projection.
+      freeDoc['target_evidence_basis'] === 'REQUESTED_LOCATOR_PROVENANCE' &&
+      freeDoc['target_evidence_certainty'] === 'PROBATIVE';
     checks.push(
       freeComplete
         ? {
@@ -762,13 +837,22 @@ async function main(): Promise<void> {
         // left empty
       }
       const cancelled =
-        cancelRun.proc.exitCode === 0 && statusDoc3['lineage_status'] === 'CANCELLED';
+        cancelRun.proc.exitCode === 0 &&
+        // #101 P2-1: the durably committed cancel connects to the canonical
+        // stores and the in-flight transfer's abort checkpoint — the hung
+        // socket is torn down and the lineage closes with the truthful
+        // USER_CANCELLED projector terminal (never a fabricated COMPLETE,
+        // never a lingering connection).
+        statusDoc3['lineage_status'] === 'TERMINAL' &&
+        statusDoc3['StopReason'] === 'USER_CANCELLED' &&
+        statusDoc3['RequestFulfillmentStatus'] !== 'COMPLETE' &&
+        origin.closedHangCount() === 1;
       checks.push(
         cancelled
           ? {
               ...check(
                 'stalled-download-cancellation-truthful',
-                'stalled download: bounded wait elapsed (exit 6); user cancel accepted; projection shows CANCELLED with no fabricated terminal',
+                'stalled download: bounded wait elapsed (exit 6); user cancel accepted; the hung transfer aborted (origin socket torn down) and the lineage closed with the truthful USER_CANCELLED terminal',
               ),
               command: ['node', path.join(cleanRoot, 'cli', 'xdownload-cli.js'), ...cancelArgv],
               exitCode: cancelRun.proc.exitCode ?? -1,
@@ -778,7 +862,7 @@ async function main(): Promise<void> {
           : {
               ...failedCheck(
                 'stalled-download-cancellation-truthful',
-                `cancelExit=${String(cancelRun.proc.exitCode)} statusExit=${String(statusRun3.proc.exitCode)} status=${statusRun3.stdout.trim().slice(0, 300)}`,
+                `cancelExit=${String(cancelRun.proc.exitCode)} statusExit=${String(statusRun3.proc.exitCode)} status=${statusRun3.stdout.trim().slice(0, 300)} closedHang=${String(origin.closedHangCount())}`,
               ),
               command: ['node', path.join(cleanRoot, 'cli', 'xdownload-cli.js'), ...cancelArgv],
               exitCode: cancelRun.proc.exitCode ?? -1,
@@ -788,14 +872,16 @@ async function main(): Promise<void> {
       );
 
       // 12. Retry cannot invent a failed-member authority domain on a
-      //     cancelled lineage (C12), and a terminal-failed lineage is LATE
-      //     for retry (immutable terminal truth).
+      //     cancelled-then-closed lineage (C12), and a terminal-failed
+      //     lineage is LATE for retry (immutable terminal truth).
+      //     Revisions on the cancelled contract: submit(1) → execute(2) →
+      //     cancel(3) → closure(4).
       const retryArgv = [
         'retry',
         '--contract',
         hangContractId,
         '--expected-revision',
-        '3',
+        '4',
         '--members',
         's1member-unknown',
         '--port',
@@ -831,7 +917,7 @@ async function main(): Promise<void> {
           ? {
               ...check(
                 'retry-vocabulary-truthful',
-                'retry on a cancelled lineage rejects (no invented failed-member domain, C12); retry after a terminal-failed download is LATE_COMMAND (terminal truth immutable)',
+                'retry on the cancelled-then-closed lineage rejects with terminal truth immutable (revision 4); retry after a terminal-failed download is LATE_COMMAND — neither can mutate terminal truth',
               ),
               command: ['node', path.join(cleanRoot, 'cli', 'xdownload-cli.js'), ...badRetryArgv],
               exitCode: badRetryRun.proc.exitCode ?? -1,
@@ -857,6 +943,282 @@ async function main(): Promise<void> {
         ),
       );
       checks.push(failedCheck('retry-vocabulary-truthful', 'prerequisite missing: hang contract'));
+    }
+
+    // 13. Cancel DURING the live bounded wait (#101 P2-1): the truthful
+    //     USER_CANCELLED closure ends the wait with exit 4 before its bound —
+    //     the hung transfer aborts (no lingering socket), no fabricated
+    //     COMPLETED, and the closure terminal is immutable afterwards.
+    {
+      const requestsBefore = origin.requestCount();
+      const hangsBefore = origin.closedHangCount();
+      const midWait = runCliProcess([
+        'download',
+        '--url',
+        hangUri,
+        '--timeout-ms',
+        '30000',
+        '--poll-ms',
+        '100',
+      ]);
+      const originRef13 = origin;
+      const contractId13 = await waitFor(() => {
+        if (originRef13.requestCount() < requestsBefore + 1) {
+          return undefined;
+        }
+        const journaled = contractIdsFromJournal(coreRoot);
+        return journaled.submitted !== undefined && journaled.submitted === journaled.executed
+          ? journaled.submitted
+          : undefined;
+      });
+      if (contractId13 === undefined) {
+        stopSpawned(midWait.spawned);
+        checks.push(
+          failedCheck(
+            'cancel-mid-wait-ends-truthfully',
+            'prerequisite: the hang download never registered/executed its contract',
+          ),
+        );
+      } else {
+        const cancelArgv13 = [
+          'cancel',
+          '--contract',
+          contractId13,
+          '--expected-revision',
+          '2',
+          '--port',
+          String(port),
+          ...peerArgs,
+        ];
+        const cancelRun13 = spawnNode(
+          path.join(cleanRoot, 'cli', 'xdownload-cli.js'),
+          cancelArgv13,
+        );
+        await new Promise((resolve) => cancelRun13.proc.on('exit', resolve));
+        const exited = await Promise.race([
+          new Promise<number | null>((resolve) => midWait.spawned.proc.on('exit', resolve)),
+          new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 20000)),
+        ]);
+        let doc13: Record<string, unknown> = {};
+        try {
+          doc13 = JSON.parse(midWait.spawned.stdout.trim()) as Record<string, unknown>;
+        } catch {
+          // left empty; assertions below fail with excerpts
+        }
+        const truthful =
+          cancelRun13.proc.exitCode === 0 &&
+          typeof exited === 'number' &&
+          exited === 4 &&
+          doc13['document'] === 'xdownload.cli.status' &&
+          doc13['lineage_status'] === 'TERMINAL' &&
+          doc13['StopReason'] === 'USER_CANCELLED' &&
+          doc13['RequestFulfillmentStatus'] !== 'COMPLETE' &&
+          origin.closedHangCount() === hangsBefore + 1;
+        checks.push(
+          truthful
+            ? {
+                ...check(
+                  'cancel-mid-wait-ends-truthfully',
+                  'cancel issued while the CLI wait was live: the hung transfer aborted (origin socket torn down), the truthful USER_CANCELLED closure ended the wait with exit 4 before its bound — no fabricated COMPLETED escape',
+                ),
+                command: ['node', cliScript, ...midWait.argv],
+                exitCode: typeof exited === 'number' ? exited : -1,
+                expectedExitCode: 4,
+                stdoutExcerpt: excerpt(midWait.spawned.stdout.trim()),
+              }
+            : {
+                ...failedCheck(
+                  'cancel-mid-wait-ends-truthfully',
+                  `cancelExit=${String(cancelRun13.proc.exitCode)} waitExit=${String(exited)} stdout=${midWait.spawned.stdout.trim().slice(0, 300)} closedHang=${String(origin.closedHangCount())}`,
+                ),
+                command: ['node', cliScript, ...midWait.argv],
+                exitCode: typeof exited === 'number' ? exited : -1,
+                expectedExitCode: 4,
+                stdoutExcerpt: excerpt(midWait.spawned.stdout.trim()),
+              },
+        );
+      }
+    }
+
+    // 14. Stale terminal: a cancel after an already-terminal acquisition is
+    //     recorded as LATE and never rewrites terminal truth.
+    if (contractId.length > 0) {
+      const lateCancelArgv = [
+        'cancel',
+        '--contract',
+        contractId,
+        '--expected-revision',
+        '3',
+        '--port',
+        String(port),
+        ...peerArgs,
+      ];
+      const lateCancelRun = spawnNode(
+        path.join(cleanRoot, 'cli', 'xdownload-cli.js'),
+        lateCancelArgv,
+      );
+      await new Promise((resolve) => lateCancelRun.proc.on('exit', resolve));
+      const lateText = `${lateCancelRun.stdout}${lateCancelRun.stderr}`;
+      checks.push(
+        lateCancelRun.proc.exitCode === 2 && lateText.includes('LATE_COMMAND')
+          ? {
+              ...check(
+                'cancel-after-terminal-is-late',
+                'cancel of an already-terminal completed download is LATE_COMMAND — terminal truth immutable, no retroactive rewrite',
+              ),
+              command: ['node', path.join(cleanRoot, 'cli', 'xdownload-cli.js'), ...lateCancelArgv],
+              exitCode: lateCancelRun.proc.exitCode ?? -1,
+              expectedExitCode: 2,
+              stdoutExcerpt: excerpt(lateText),
+            }
+          : {
+              ...failedCheck(
+                'cancel-after-terminal-is-late',
+                `exit=${String(lateCancelRun.proc.exitCode)} out=${lateText.slice(0, 300)}`,
+              ),
+              command: ['node', path.join(cleanRoot, 'cli', 'xdownload-cli.js'), ...lateCancelArgv],
+              exitCode: lateCancelRun.proc.exitCode ?? -1,
+              expectedExitCode: 2,
+              stdoutExcerpt: excerpt(lateText),
+            },
+      );
+    }
+
+    // 15. Kill-reopen (#101 P2-1/P2-2 regression): a hard core-host kill
+    //     during a hung transfer re-derives truth from durable state only on
+    //     restart — no re-download, a fail-closed non-COMPLETE terminal for
+    //     the interrupted attempt, and a live CLI wait ends with exit 4.
+    {
+      const requestsBefore15 = origin.requestCount();
+      const killWait = runCliProcess([
+        'download',
+        '--url',
+        hangUri,
+        '--timeout-ms',
+        '45000',
+        '--poll-ms',
+        '100',
+      ]);
+      const originRef15 = origin;
+      const contractId15 = await waitFor(() => {
+        if (originRef15.requestCount() < requestsBefore15 + 1) {
+          return undefined;
+        }
+        const journaled = contractIdsFromJournal(coreRoot);
+        return journaled.submitted !== undefined && journaled.submitted === journaled.executed
+          ? journaled.submitted
+          : undefined;
+      });
+      if (contractId15 === undefined || core === undefined) {
+        stopSpawned(killWait.spawned);
+        checks.push(
+          failedCheck(
+            'kill-reopen-no-redownload-truthful',
+            'prerequisite: the hang download never registered/executed its contract',
+          ),
+        );
+      } else {
+        // Hard process death mid-transfer (crash is a first-class installed
+        // path): the socket dies with the process, no graceful shutdown. The
+        // restart pins the SAME loopback port and polls readiness with
+        // retries (a SIGKILLed listener may need a moment to rebind).
+        const waitPort = port;
+        core.proc.kill('SIGKILL');
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        let port15: number | undefined;
+        for (let attempt = 0; attempt < 3 && port15 === undefined; attempt += 1) {
+          core = spawnNode(path.join(cleanRoot, 'core', 'xdownload-core-host.js'), [
+            '--root',
+            coreRoot,
+            '--port',
+            String(waitPort),
+            ...peerArgs,
+          ]);
+          for (let waited = 0; waited < 40 && port15 === undefined; waited += 1) {
+            port15 = readyPort(core.stdout);
+            if (port15 === undefined) {
+              await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+          }
+        }
+        if (port15 !== undefined) {
+          port = port15;
+        }
+        // The interrupted attempt's wait cannot survive the restart window
+        // (the CLI wait treats an unreachable seam as a transport rejection),
+        // so the reopened truth is read through a fresh status call: the
+        // reconcile must re-derive the fail-closed UNKNOWN/NOT_STARTED
+        // terminal from durable truth with NO re-execution.
+        stopSpawned(killWait.spawned);
+        let status15: Record<string, unknown> = {};
+        let status15Exit = -1;
+        if (port15 !== undefined) {
+          const statusArgv15 = [
+            'status',
+            '--contract',
+            contractId15,
+            '--port',
+            String(port15),
+            ...peerArgs,
+          ];
+          const statusRun15 = spawnNode(
+            path.join(cleanRoot, 'cli', 'xdownload-cli.js'),
+            statusArgv15,
+          );
+          await new Promise((resolve) => statusRun15.proc.on('exit', resolve));
+          status15Exit = statusRun15.proc.exitCode ?? -1;
+          try {
+            status15 = JSON.parse(statusRun15.stdout.trim()) as Record<string, unknown>;
+          } catch {
+            // left empty; assertions below fail with excerpts
+          }
+        }
+        const truthful15 =
+          port15 !== undefined &&
+          status15Exit === 0 &&
+          status15['document'] === 'xdownload.cli.status' &&
+          status15['RequestFulfillmentStatus'] === 'UNKNOWN' &&
+          status15['SelectionAcquisitionStatus'] === 'NOT_STARTED' &&
+          status15['lineage_status'] === 'TERMINAL' &&
+          // Restart reconcile re-derives from durable truth: the interrupted
+          // attempt is NEVER re-executed (no new origin request).
+          origin.requestCount() === requestsBefore15 + 1;
+        checks.push(
+          truthful15
+            ? {
+                ...check(
+                  'kill-reopen-no-redownload-truthful',
+                  `hard core-host kill during a hung transfer: the reopen re-derived the fail-closed UNKNOWN/NOT_STARTED terminal from durable truth with no re-download (origin requests stayed ${String(requestsBefore15 + 1)})`,
+                ),
+                command: [
+                  'node',
+                  path.join(cleanRoot, 'cli', 'xdownload-cli.js'),
+                  'status',
+                  '--contract',
+                  contractId15,
+                ],
+                exitCode: status15Exit,
+                expectedExitCode: 0,
+                stdoutExcerpt: excerpt(JSON.stringify(status15)),
+              }
+            : {
+                ...failedCheck(
+                  'kill-reopen-no-redownload-truthful',
+                  `port=${String(port15)} statusExit=${String(status15Exit)} stdout=${JSON.stringify(status15).slice(0, 300)} originRequests=${String(origin.requestCount())}`,
+                ),
+                command: [
+                  'node',
+                  path.join(cleanRoot, 'cli', 'xdownload-cli.js'),
+                  'status',
+                  '--contract',
+                  contractId15,
+                ],
+                exitCode: status15Exit,
+                expectedExitCode: 0,
+                stdoutExcerpt: excerpt(JSON.stringify(status15)),
+              },
+        );
+      }
     }
   } catch (error) {
     checks.push(

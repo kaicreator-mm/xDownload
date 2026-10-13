@@ -72,6 +72,10 @@ export interface StatusDocument {
   readonly CoverageStatus: string | null;
   readonly StopReason: string | null;
   readonly needs_user_action: boolean | null;
+  /** Additive #101 P2-2: the durable Target identity basis, when Core recorded it. */
+  readonly target_evidence_basis: string | null;
+  /** Additive #101 P2-2: the durable Target evidence certainty, when Core recorded it. */
+  readonly target_evidence_certainty: string | null;
   readonly failed_member_count: number;
   readonly retried_member_ids: readonly string[];
   readonly presentation: Presentation;
@@ -227,6 +231,8 @@ export function renderStatusDocument(view: SeamProjectionView): StatusDocument {
     CoverageStatus: terminal === undefined ? null : terminal.coverage,
     StopReason: terminal === undefined ? null : terminal.stopReason,
     needs_user_action: view.needsUserAction ?? null,
+    target_evidence_basis: view.targetEvidence?.basis ?? null,
+    target_evidence_certainty: view.targetEvidence?.certaintyClass ?? null,
     failed_member_count: view.lineage.failedMemberCount,
     retried_member_ids: [...view.lineage.retriedMemberIds],
     presentation: renderPresentation(terminal),
