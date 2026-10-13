@@ -644,6 +644,36 @@ describe('#95 R1/F04 — bounded chunked delivery across the frozen seam frame b
     }
   });
 
+  it('reopens after a completed three-chunk S2 acceptance (#98)', () => {
+    const dir = makeTempDir('s2-i98-completed-chunk-replay');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    submitS2Contract(runtime);
+    const bytes = attachmentBytes(9000);
+    const response = executeChunked(runtime, bytes, 3072);
+    expect(response.outcome).toBe('ACCEPTED');
+    const before = readProjection(runtime);
+    expect(before.outcome).toBe('PROJECTION');
+    closeRuntime(runtime);
+
+    // The accepted artifact already exists while earlier STAGED journal
+    // entries replay; they must not project TERMINAL before the final chunk.
+    const reopened = reopenCoreRuntime({ rootDir: dir, expectedPeer: EXPECTED_PEER });
+    try {
+      const after = readProjection(reopened);
+      expect(after.outcome).toBe('PROJECTION');
+      expect(after.projection).toEqual(before.projection);
+      const items = reopened.writer.reader.workItems();
+      expect(items).toHaveLength(1);
+      const classification = reopened.recovery.classify(items[0]!.workItemId);
+      expect(classification.lifecycleClass).toBe('ACCEPTED');
+      const artifact = reopened.store.readFinalBytes('artifact:s2-delivered-001');
+      expect(artifact === undefined ? '' : sha256(artifact)).toBe(sha256(bytes));
+    } finally {
+      closeRuntime(reopened);
+    }
+  });
+
   it('a stream larger than the retired 512 KiB hard cap completes (the declared bound is 64 MiB)', () => {
     const dir = makeTempDir('s2-r1-beyond-cap');
     dirs.push(dir);
