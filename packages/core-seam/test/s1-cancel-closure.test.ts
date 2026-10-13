@@ -91,7 +91,10 @@ function frame(
   };
 }
 
-function submitAndExecute(s: ReturnType<typeof serverWith>): void {
+function submitAndExecute(
+  s: ReturnType<typeof serverWith>,
+  payload: Record<string, unknown> = s1Payload(),
+): void {
   expect(
     frame(
       s,
@@ -108,7 +111,7 @@ function submitAndExecute(s: ReturnType<typeof serverWith>): void {
       rawCommand({
         commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
         aggregateId: 'contract-single-001',
-        payload: s1Payload(),
+        payload,
         expectedRevision: 1,
       }),
     ).outcome,
@@ -256,7 +259,31 @@ describe('P2-2 durable target evidence receipt', () => {
   it('validates fail-closed and exposes the receipt through the read projection', () => {
     const journal = createInMemorySeamJournal();
     const s = serverWith({ journal });
-    submitAndExecute(s);
+    submitAndExecute(
+      s,
+      s1Payload({
+        delivery: {
+          locatorUri: 'http://127.0.0.1:9/file.bin',
+          declaredRedirectHosts: ['127.0.0.1:9'],
+          expectedSha256: 'a'.repeat(64),
+        },
+      }),
+    );
+
+    // A typed but mismatched receipt is NOT this lineage's durable truth.
+    expect(
+      s.recordTargetEvidence('contract-single-001', {
+        ...DECISIVE,
+        artifactId: 'another-artifact',
+      }).ok,
+    ).toBe(false);
+    expect(
+      s.recordTargetEvidence('contract-single-001', {
+        ...DECISIVE,
+        effectId: 'effect:another-contract:s1snap-001:target-file-001',
+      }).ok,
+    ).toBe(false);
+    expect(s.recordTargetEvidence('contract-single-001', PROBATIVE).ok).toBe(false);
 
     expect(s.recordTargetEvidence('contract-single-001', DECISIVE).ok).toBe(true);
     const view = s.inspectProjection('contract-single-001');
@@ -293,6 +320,19 @@ describe('P2-2 durable target evidence receipt', () => {
     const reopened = serverWith({ journal });
     expect(reopened.inspectProjection('contract-single-001')?.targetEvidence).toStrictEqual(
       DECISIVE,
+    );
+  });
+
+  it('no-digest S1 intent permits only provenance-bound probative Target receipts', () => {
+    const journal = createInMemorySeamJournal();
+    const s = serverWith({ journal });
+    submitAndExecute(s);
+    expect(s.recordTargetEvidence('contract-single-001', DECISIVE).ok).toBe(false);
+    expect(s.recordTargetEvidence('contract-single-001', PROBATIVE).ok).toBe(true);
+    expect(s.inspectProjection('contract-single-001')?.targetEvidence).toStrictEqual(PROBATIVE);
+    const reopened = serverWith({ journal });
+    expect(reopened.inspectProjection('contract-single-001')?.targetEvidence).toStrictEqual(
+      PROBATIVE,
     );
   });
 
