@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bindLocator, makeLogicalTargetId, unwrapOrThrow } from '@xdownload/domain-contracts';
+import { bindRenditionToTarget } from '../src/bind.ts';
+import { decodeMasterPlaylist } from '../src/playlist.ts';
 import { preflightSelectedHlsVod } from '../src/selected-preflight.ts';
 
 const masterUrl = 'https://cdn.example.test/master.m3u8';
@@ -52,6 +54,42 @@ describe('S4 Core-owned frozen HLS preflight composition', () => {
       'https://cdn.example.test/v360/part-01.ts',
       'https://cdn.example.test/v360/part-02.ts',
     ]);
+  });
+
+  it('cannot forge frozen rendition bitrate, codec, resolution or index under the same URI', () => {
+    const decoded = decodeMasterPlaylist(master, masterUrl);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    const declared = decoded.value.variants[0]!;
+    const forgeries = [
+      { ...declared, bandwidth: declared.bandwidth + 1 },
+      { ...declared, codecs: ['xdv1-video'] },
+      { ...declared, resolution: { width: 1920, height: 1080 } },
+      { ...declared, index: declared.index + 1 },
+    ];
+    for (const selectedVariant of forgeries) {
+      const attempt = bindRenditionToTarget({
+        logicalTargetId,
+        manifestLocator,
+        master: decoded.value,
+        selectedVariant,
+      });
+      expect(attempt.ok).toBe(false);
+      if (!attempt.ok) expect(attempt.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+    }
+
+    const valid = bindRenditionToTarget({
+      logicalTargetId,
+      manifestLocator,
+      master: decoded.value,
+      selectedVariant: declared,
+    });
+    expect(valid.ok).toBe(true);
+    if (valid.ok) {
+      expect(valid.value.declared.bandwidth).toBe(declared.bandwidth);
+      expect(valid.value.declared.codecs).toEqual(declared.codecs);
+      expect(valid.value.declared.resolution).toEqual(declared.resolution);
+    }
   });
 
   it('cannot substitute a model-proposed rendition missing from master', () => {

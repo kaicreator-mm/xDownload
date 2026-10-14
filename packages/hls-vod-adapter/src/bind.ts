@@ -52,13 +52,34 @@ export function bindRenditionToTarget(input: {
   readonly selectedVariant: VariantStream;
 }): DomainValidationResult<HlsRenditionBinding> {
   const { logicalTargetId, manifestLocator, master, selectedVariant } = input;
-  const admitted = master.variants.some((variant) => variant.uri === selectedVariant.uri);
-  if (!admitted) {
+  const declared = master.variants.find((variant) => variant.uri === selectedVariant.uri);
+  if (declared === undefined) {
     return fail([
       diagnostic(
         'ADMISSION_REJECTED',
         'selectedVariant.uri',
-        `variant '${selectedVariant.uri}' is not a variant identity declared by the selected manifest; rendition binding requires manifest identity correspondence`,
+        'selected rendition is not declared by the frozen master playlist',
+      ),
+    ]);
+  }
+  // Exact URI alone is insufficient. A caller could reuse the frozen URI
+  // while supplying a different codec/resolution/bandwidth, changing the
+  // Media probe's expected truth without any manifest or identity change.
+  // Bind the *decoded manifest* declaration and reject every mismatched
+  // caller-selected field, including index and codec order.
+  if (
+    selectedVariant.index !== declared.index ||
+    selectedVariant.bandwidth !== declared.bandwidth ||
+    selectedVariant.codecs.length !== declared.codecs.length ||
+    selectedVariant.codecs.some((codec, index) => codec !== declared.codecs[index]) ||
+    selectedVariant.resolution?.width !== declared.resolution?.width ||
+    selectedVariant.resolution?.height !== declared.resolution?.height
+  ) {
+    return fail([
+      diagnostic(
+        'ADMISSION_REJECTED',
+        'selectedVariant',
+        'selected rendition declaration differs from the frozen manifest',
       ),
     ]);
   }
@@ -81,9 +102,9 @@ export function bindRenditionToTarget(input: {
       renditionId: selectedVariant.uri,
       renditionLocator: renditionLocator.value,
       declared: deepFreeze({
-        bandwidth: selectedVariant.bandwidth,
-        codecs: selectedVariant.codecs,
-        resolution: selectedVariant.resolution,
+        bandwidth: declared.bandwidth,
+        codecs: declared.codecs,
+        resolution: declared.resolution,
       }),
     }),
   );
