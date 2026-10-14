@@ -13,6 +13,8 @@ import type { SegmentFetchResult } from './acquire.ts';
 
 export interface AsyncSegmentFetcherPort {
   readonly fetcherId: string;
+  /** Upper bound checked against Core remaining bytes before each HTTP effect. */
+  readonly maxResponseBytes: number;
   fetch(entry: SegmentPlanEntry): Promise<SegmentFetchResult>;
 }
 
@@ -93,6 +95,7 @@ export function createAuthorizedHttpSegmentFetcher(
 
   return Object.freeze({
     fetcherId: 's4-authorized-http-segment-v1',
+    maxResponseBytes: options.maxBytes,
     async fetch(entry: SegmentPlanEntry): Promise<SegmentFetchResult> {
       let selected: URL;
       try {

@@ -160,7 +160,7 @@ function runFrom(
  * different bytes remains possible and is caught by assembly/probe media
  * validation, never by counting bytes.
  */
-function normalizeFetchResult(
+export function normalizeFetchResult(
   entry: SegmentPlanEntry,
   fetched: SegmentFetchResult,
 ): SegmentFetchResult {
