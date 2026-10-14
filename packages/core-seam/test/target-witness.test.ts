@@ -44,6 +44,9 @@ function witnessOf(overrides: Partial<TargetWitnessReceipt> = {}): TargetWitness
 function serverWith(journal?: ReturnType<typeof createInMemorySeamJournal>) {
   const result = createCoreSeamServer({
     expectedPeer: EXPECTED_PEER,
+    // The seam test exercises a real accepted S1 command before any trusted
+    // witness. Its test beginner never starts a transfer.
+    s1DirectAcquisition: { begin: () => {} },
     // The witness is a durable fact: absent an explicit journal, the case
     // harness still composes the in-memory journal so the record path itself
     // is exercised; the journal-less composition has its own case below.
@@ -66,6 +69,25 @@ function submitSingle(s: ReturnType<typeof serverWith>, aggregateId = AGGREGATE)
     ),
   );
   expect(response.outcome).toBe('ACCEPTED');
+  const execution = s.handleFrame(
+    JSON.stringify(
+      rawCommand({
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId,
+        expectedRevision: 1,
+        payload: {
+          snapshotId: 's1snap-001',
+          memberId: 's1member-001',
+          artifactId: 's1artifact-001',
+          delivery: {
+            locatorUri: 'http://127.0.0.1:9/file.bin',
+            declaredRedirectHosts: ['127.0.0.1:9'],
+          },
+        },
+      }),
+    ),
+  );
+  expect(execution.outcome).toBe('ACCEPTED');
 }
 
 function rejectCode(result: SeamResult<unknown>): { code: string; path: string } {
@@ -161,6 +183,29 @@ describe('#113 target witness — trusted fact path and exact ownership binding'
     expect(response.outcome).toBe('ACCEPTED');
     const wrongKind = rejectCode(s.recordTargetWitness(collection, witnessOf()));
     expect(wrongKind.code).toBe('ADMISSION_REJECTED');
+  });
+
+  it('rejects a coherent foreign witness that changes the accepted S1 member, artifact, snapshot, locator or delivery hosts', () => {
+    const s = serverWith();
+    submitSingle(s);
+    const cases: readonly TargetWitnessReceipt[] = [
+      witnessOf({ memberId: 'foreign-member-001' }),
+      witnessOf({ artifactId: 'foreign-artifact-001' }),
+      witnessOf({
+        snapshotId: 'foreign-snapshot-001',
+        effectId: `effect:${AGGREGATE}:foreign-snapshot-001:target-file-001`,
+      }),
+      witnessOf({ locatorUri: 'http://127.0.0.1:9/different.bin' }),
+      witnessOf({ declaredRedirectHosts: ['other.example'] }),
+      witnessOf({ transferAttempted: false }),
+    ];
+    for (const [i, witness] of cases.entries()) {
+      const result = s.recordTargetWitness(AGGREGATE, witness);
+      expect(result.ok, `case ${i}: a witness cannot redefine accepted S1 intent`).toBe(false);
+      if (!result.ok) expect(result.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+    }
+    expect(s.targetWitnessFor(AGGREGATE)).toBeUndefined();
+    expect(s.recordTargetWitness(AGGREGATE, witnessOf()).ok).toBe(true);
   });
 
   it('strictly decodes the receipt: closed fields, status-conditional basis pairing, bounded graphs', () => {
