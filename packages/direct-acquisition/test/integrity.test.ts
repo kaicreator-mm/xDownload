@@ -425,6 +425,70 @@ describe('wrong-target-and-integrity: S3 media validation gates acceptance (C27)
     });
   });
 
+  it('malformed runtime MediaPolicy values reject without a thrown exception', () => {
+    const invalidPolicies: readonly unknown[] = [
+      undefined,
+      {},
+      { signatures: null },
+      { signatures: 'ftyp' },
+      { signatures: [null] },
+      { signatures: [{}] },
+      { signatures: [{ hex: '66747970', offset: -1, label: 'ftyp' }] },
+      { signatures: [{ hex: '66747970', offset: 1.5, label: 'ftyp' }] },
+      { signatures: [{ hex: '66747970', offset: 4, label: '' }] },
+      { signatures: [{ hex: '66'.repeat(65), offset: 4, label: 'ftyp' }] },
+      {
+        signatures: Array.from({ length: 17 }, () => ({
+          hex: '66747970',
+          offset: 4,
+          label: 'ftyp',
+        })),
+      },
+    ];
+    for (const policy of invalidPolicies) {
+      expect(
+        validateMedia({
+          bytes: mp4WithTrack(),
+          policy: policy as MediaPolicy,
+        }),
+      ).toMatchObject({
+        layer: 'media',
+        passed: false,
+        code: 'MALFORMED_MEDIA_POLICY',
+      });
+    }
+    expect(
+      validateMedia({
+        bytes: mp4WithTrack(),
+        policy: { signatures: [{ hex: '66747970', offset: 4, label: 'ftyp' }] },
+      }),
+    ).toEqual({ layer: 'media', passed: true });
+  });
+
+  it('S3 HTTP adapter projects malformed JavaScript policy to negative Media result', async () => {
+    const bytes = mp4WithTrack();
+    fixture.serveFile('/malformed-policy.mp4', {
+      body: bytes,
+      contentType: 'video/mp4',
+    });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const outcome = unwrapOrThrow(
+      await adapter.acquire(
+        directRequest(baseUri, '/malformed-policy.mp4', bytes, {
+          slice: 'S3',
+          mediaPolicy: {} as MediaPolicy,
+        }),
+      ),
+    );
+    expect(outcome.reason).toBe('MEDIA_INVALID');
+    expect(outcome.validations.find((check) => check.layer === 'media')).toMatchObject({
+      passed: false,
+      code: 'MALFORMED_MEDIA_POLICY',
+    });
+    expect(outcome.terminalResult.selectionAcquisition).not.toBe('COMPLETE');
+  });
+
   it('S3 transfer with required media structure present completes with all four layers', async () => {
     const media = mp4WithTrack();
     fixture.serveFile('/media.mp4', { body: media, etag: '"m1"', contentType: 'video/mp4' });
