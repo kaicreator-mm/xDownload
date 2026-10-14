@@ -2274,9 +2274,66 @@ function applyTargetWitnessReceipt(
       ),
     ]);
   }
-  // Exact owned-witness binding: the canonical composite effect identity of
-  // THIS aggregate/contract/snapshot — a forged/foreign witness (different
-  // effect, snapshot or target) never binds.
+  // A target witness belongs to the ONE accepted S1 execution intent, not
+  // merely to any plausible effect string for this aggregate. This also
+  // rejects well-shaped but substituted member/artifact/locator facts during
+  // journal replay, before a terminal can be reconstructed (#113).
+  const s1Commands = [...state.accepted.values()].filter(
+    ({ envelope }) =>
+      envelope.aggregateId === aggregateId &&
+      envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION',
+  );
+  if (s1Commands.length !== 1) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetWitness',
+        'a target witness requires exactly one durably accepted S1 execution command',
+        '#103-§2.2/#113',
+      ),
+    ]);
+  }
+  // The accepted S1 payload was validated through the closed vocabulary
+  // before commit. Compare all identity and delivery-authority fields,
+  // including the exact selected URL and host list, on both write and replay.
+  const intent = s1Commands[0]!.envelope.payload as {
+    readonly snapshotId: string;
+    readonly memberId: string;
+    readonly artifactId: string;
+    readonly delivery: {
+      readonly locatorUri: string;
+      readonly declaredRedirectHosts: readonly string[];
+    };
+  };
+  if (
+    receipt.snapshotId !== intent.snapshotId ||
+    receipt.memberId !== intent.memberId ||
+    receipt.artifactId !== intent.artifactId ||
+    receipt.locatorUri !== intent.delivery.locatorUri ||
+    stableStringify(receipt.declaredRedirectHosts) !==
+      stableStringify(intent.delivery.declaredRedirectHosts)
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetWitness',
+        'witness member/artifact/snapshot/locator/hosts disagree with the accepted S1 execution intent',
+        '#103-§2.2/#113',
+      ),
+    ]);
+  }
+  if (receipt.transferAttempted !== true) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetWitness.transferAttempted',
+        'no target-resolution witness may assert an unattempted transfer',
+        '#103-§2.2/#113',
+      ),
+    ]);
+  }
+  // Exact owned-witness binding: canonical effect identity of the accepted
+  // contract and its actual selected snapshot, not a caller-chosen snapshot.
   const canonicalEffectId = `effect:${aggregateId}:${receipt.snapshotId}:${contract.requestedTarget}`;
   if (receipt.effectId !== canonicalEffectId) {
     return seamFail([
