@@ -45,6 +45,7 @@ import {
   CoreRuntimeFlowError,
   cancelLineage,
   executeDirectAcquisition,
+  attemptIdFor,
   projectLineageResult,
   registerLineage,
   type FlowRuntime,
@@ -563,6 +564,8 @@ function hostOf(uri: string): string | undefined {
 
 /** Witness identity inputs shared by both derivation paths (identical rule). */
 interface WitnessInputs {
+  readonly contractId: string;
+  readonly targetId: string;
   readonly snapshotId: string;
   readonly memberId: string;
   readonly artifactId: string;
@@ -579,6 +582,8 @@ function witnessInputsOf(
   effectId: string,
 ): WitnessInputs {
   return {
+    contractId: contract.contractId,
+    targetId: contract.requestedTarget,
     snapshotId: payload.snapshotId,
     memberId: payload.memberId,
     artifactId: payload.artifactId,
@@ -715,6 +720,27 @@ function witnessFromDurableTruth(
       status: 'RESOLVED',
       basis: basis.basis,
       certaintyClass: basis.certaintyClass,
+    });
+  }
+  // Recover the delivery-graph failure from the FIRST durable scheduler
+  // effect outcome. The control fact is committed before the witness journal
+  // append; on SIGKILL inside that window no staged artifact or terminal
+  // failure row exists yet, so a ledger-only lookup silently lost tuple (b).
+  const lineageKey = s1LineageKey({
+    contractId: inputs.contractId,
+    snapshotId: inputs.snapshotId,
+    targetId: inputs.targetId,
+    effectId: inputs.effectId,
+  });
+  const outcome = runtime.scheduler.durableEffectOutcome(lineageKey, attemptIdFor(workItemId));
+  const effectReason =
+    outcome?.outcome === 'FAILED' ? outcome.failureCategory : undefined;
+  if (effectReason !== undefined && PROVENANCE_UNPROVEN_REASONS.has(effectReason)) {
+    const originHost = hostOf(inputs.locatorUri);
+    return seamOk({
+      ...witnessBaseOf(inputs, originHost === undefined ? [] : [originHost]),
+      status: 'PROVENANCE_UNPROVEN',
+      unprovenReason: effectReason,
     });
   }
   const failure = runtime.writer.reader
