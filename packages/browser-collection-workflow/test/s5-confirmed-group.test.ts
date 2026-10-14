@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { AcquisitionContract, SelectionSnapshot } from '@xdownload/domain-contracts';
+import type { AcquisitionContract } from '@xdownload/domain-contracts';
+import type { SelectionSnapshot } from '@xdownload/domain-contracts';
 import {
   runConfirmedCurrentPageGroup,
   validateConfirmedPageGroup,
@@ -62,10 +63,11 @@ describe('S5 confirmed group Core admission', () => {
   });
 
   it('refuses added or replaced members not covered by the batch claim', () => {
-    const result = validateConfirmedPageGroup(contract(), {
+    const changed = {
       ...snapshot(),
-      selectedMemberIds: ['member-001', 'member-999'] as unknown as SelectionSnapshot['selectedMemberIds'],
-    });
+      selectedMemberIds: ['member-001', 'member-999'],
+    } as unknown as SelectionSnapshot;
+    const result = validateConfirmedPageGroup(contract(), changed);
     expect(result.ok).toBe(false);
   });
 
@@ -76,18 +78,17 @@ describe('S5 confirmed group Core admission', () => {
         continuationScope: { kind: 'DECLARED_BATCH_COUNT', count: 2 },
       }).ok,
     ).toBe(false);
-    expect(
-      validateConfirmedPageGroup(contract(), {
-        ...snapshot(),
-        selectionClaims: [
-          {
-            kind: 'SINGLE',
-            confirmationType: 'CONFIRM_SELECTION',
-            memberRefs: ['member-001'] as unknown as SelectionSnapshot['selectedMemberIds'],
-          },
-        ],
-      }).ok,
-    ).toBe(false);
+    const unconfirmed = {
+      ...snapshot(),
+      selectionClaims: [
+        {
+          kind: 'SINGLE',
+          confirmationType: 'CONFIRM_SELECTION',
+          memberRefs: ['member-001'],
+        },
+      ],
+    } as unknown as SelectionSnapshot;
+    expect(validateConfirmedPageGroup(contract(), unconfirmed).ok).toBe(false);
   });
 
   it('rejects outside-member caller substitution before any T016 effect', async () => {
