@@ -385,6 +385,46 @@ describe('wrong-target-and-integrity: S3 media validation gates acceptance (C27)
     return bytes;
   }
 
+  it('S3 with absent or empty MediaPolicy cannot vacuously pass Media validation', async () => {
+    const media = mp4WithTrack();
+    fixture.serveFile('/media-no-policy.mp4', {
+      body: media,
+      etag: '"no-media-policy"',
+      contentType: 'video/mp4',
+    });
+    for (const policy of [undefined, { signatures: [] }] as const) {
+      const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+      const adapter = new DirectHttpAdapter(ledger);
+      const outcome = unwrapOrThrow(
+        await adapter.acquire(
+          directRequest(baseUri, '/media-no-policy.mp4', media, {
+            effectId: 'effect-001',
+            slice: 'S3',
+            ...(policy === undefined ? {} : { mediaPolicy: policy }),
+          }),
+        ),
+      );
+      const mediaVerdict = outcome.validations.find((check) => check.layer === 'media');
+      expect(mediaVerdict).toMatchObject({
+        layer: 'media',
+        passed: false,
+        code: 'MEDIA_POLICY_REQUIRED',
+      });
+      expect(outcome.reason).toBe('MEDIA_INVALID');
+      expect(outcome.allApplicableValidationPassed).toBe(false);
+      expect(outcome.terminalResult.selectionAcquisition).not.toBe('COMPLETE');
+      expect(outcome.terminalResult.validationSummary.status).toBe('FAILED');
+    }
+  });
+
+  it('the pure Media validator rejects an empty signature set without a byte oracle', () => {
+    expect(validateMedia({ bytes: mp4WithTrack(), policy: { signatures: [] } })).toMatchObject({
+      layer: 'media',
+      passed: false,
+      code: 'MEDIA_POLICY_REQUIRED',
+    });
+  });
+
   it('S3 transfer with required media structure present completes with all four layers', async () => {
     const media = mp4WithTrack();
     fixture.serveFile('/media.mp4', { body: media, etag: '"m1"', contentType: 'video/mp4' });
