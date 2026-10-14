@@ -33,7 +33,7 @@ export function validateConfirmedPageGroup(
   snapshot: SelectionSnapshot,
 ): DomainValidationResult<ConfirmedPageGroup> {
   const conformance = assertSliceCollectionConformance('S5', contract);
-  if (!conformance.ok) return conformance;
+  if (!conformance.ok) return fail(conformance.diagnostics);
   if (
     contract.intentType !== 'COLLECTION' ||
     contract.requestedScope.kind !== 'current_page' ||
