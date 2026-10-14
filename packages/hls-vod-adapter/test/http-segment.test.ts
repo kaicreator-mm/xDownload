@@ -141,18 +141,17 @@ describe('S4 authorized asynchronous HTTP segment transport', () => {
   });
 
   it('rejects query secrets, unapproved origins and invalid source configuration', async () => {
-    expect(
-      await transport().fetch(segment('/media/ok.ts?signature=secret')),
-    ).toMatchObject({ ok: false, failure: 'UNREACHABLE' });
-    expect(
-      await transport().fetch({
-        ...segment('/media/ok.ts'),
-        locator: {
-          ...segment('/media/ok.ts').locator,
-          locator: { kind: 'direct', uri: 'https://unapproved.example.test/media/ok.ts' },
-        },
-      }),
-    ).toMatchObject({ ok: false, failure: 'UNREACHABLE' });
+    const signed = await transport().fetch(segment('/media/ok.ts?signature=secret'));
+    expect(signed).toMatchObject({ ok: false, failure: 'UNREACHABLE' });
+    const original = segment('/media/ok.ts');
+    const foreign = await transport().fetch({
+      ...original,
+      locator: {
+        ...original.locator,
+        locator: { kind: 'direct', uri: 'https://unapproved.example.test/media/ok.ts' },
+      },
+    });
+    expect(foreign).toMatchObject({ ok: false, failure: 'UNREACHABLE' });
     expect(() =>
       createAuthorizedHttpSegmentFetcher({
         allowedOrigins: [origin],
