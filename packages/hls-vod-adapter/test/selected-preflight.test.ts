@@ -32,7 +32,13 @@ const manifestLocator = unwrapOrThrow(
 );
 
 function input() {
-  return { logicalTargetId, manifestLocator, masterText: master, selectedRenditionUri: renditionUrl, mediaText: media };
+  return {
+    logicalTargetId,
+    manifestLocator,
+    masterText: master,
+    selectedRenditionUri: renditionUrl,
+    mediaText: media,
+  };
 }
 
 describe('S4 Core-owned frozen HLS preflight composition', () => {
@@ -42,7 +48,7 @@ describe('S4 Core-owned frozen HLS preflight composition', () => {
     if (!result.ok) return;
     expect(result.value.binding.renditionId).toBe(renditionUrl);
     expect(result.value.segmentPlan.entries).toHaveLength(2);
-    expect(result.value.segmentPlan.entries.map(x => x.locator.locator.uri)).toEqual([
+    expect(result.value.segmentPlan.entries.map((x) => x.locator.locator.uri)).toEqual([
       'https://cdn.example.test/v360/part-01.ts',
       'https://cdn.example.test/v360/part-02.ts',
     ]);
@@ -68,7 +74,10 @@ describe('S4 Core-owned frozen HLS preflight composition', () => {
   it('rejects AES-128 encrypted topology rather than treating segments as plain file', () => {
     const result = preflightSelectedHlsVod({
       ...input(),
-      mediaText: media.replace('#EXTINF:4.0,', '#EXT-X-KEY:METHOD=AES-128,URI="secret.key"\n#EXTINF:4.0,'),
+      mediaText: media.replace(
+        '#EXTINF:4.0,',
+        '#EXT-X-KEY:METHOD=AES-128,URI="secret.key"\n#EXTINF:4.0,',
+      ),
     });
     expect(result.ok).toBe(false);
   });
