@@ -640,13 +640,66 @@ export interface LineageProjectionInput {
   readonly recordedAt: string;
   readonly enumeration: EnumerationClosure;
   readonly stopFacts?: StopFacts;
-  readonly resolution?: ResolutionFacts;
+  /**
+   * Caller-supplied resolution facts. The S1 target fact (`s1Target`) is
+   * deliberately absent: it is derived ONLY from the Core's own durable
+   * target-witness receipt (verified identity/provenance/attempt) — a
+   * caller-supplied evidence string can never pretend proof (#113).
+   */
+  readonly resolution?: Omit<ResolutionFacts, 's1Target'>;
   /** Canonical coverage accounting built through the domain-contracts API. */
   readonly accounting?: CoverageAccounting;
   /** Independent canonical evidence ledger for persisted authorization witnesses. */
   readonly evidenceLedger?: EvidenceLedger;
   readonly coverageBasis?: CoverageEvidence;
   readonly requiredLayers?: readonly ValidationLayer[];
+}
+
+/**
+ * The canonical S1 target-resolution fact source (#113): the Core's own
+ * durable target witness, admitted only after verifying its exact ownership
+ * binding (same aggregate, frozen snapshot, sole requested member, canonical
+ * effect identity). The evidence ref resolves back to that exact witness —
+ * never a caller-supplied string. Returns undefined (no fact) when no
+ * verified witness exists, so auth/unsupported/cancel/collection truths are
+ * untouched by construction.
+ */
+function verifiedS1TargetFact(
+  runtime: ProjectionRuntime,
+  input: LineageProjectionInput,
+): ResolutionFacts['s1Target'] {
+  if (runtime.seam === undefined) {
+    return undefined;
+  }
+  if (input.intentType !== 'SINGLE_RESOURCE' || input.scopeKind !== 'single_resource') {
+    return undefined;
+  }
+  if (input.requestedMemberIds.length !== 1) {
+    return undefined;
+  }
+  const witness = runtime.seam.targetWitnessFor(input.contractId);
+  if (witness === undefined) {
+    return undefined;
+  }
+  if (input.snapshotId !== undefined && witness.snapshotId !== input.snapshotId) {
+    return undefined;
+  }
+  if (witness.memberId !== input.requestedMemberIds[0]) {
+    return undefined;
+  }
+  if (!witness.effectId.startsWith(`effect:${input.contractId}:`)) {
+    return undefined;
+  }
+  const member = makeMemberId(witness.memberId);
+  if (!member.ok) {
+    return undefined;
+  }
+  return {
+    memberId: member.value,
+    evidenceRef: `target-witness:${input.contractId}:${witness.effectId}`,
+    status: witness.status,
+    transferAttempted: witness.transferAttempted,
+  };
 }
 
 /**
@@ -740,6 +793,19 @@ export function projectLineageResult(
               : [],
         };
 
+  // #113: the S1 target fact is joined from the Core's own durable witness
+  // (verified binding) — the single canonical source for both the S1 driver
+  // and every other projection consumer. A caller-supplied value is
+  // unrepresentable at this boundary (type-level) and never synthesized.
+  const s1Target = verifiedS1TargetFact(runtime, input);
+  const resolution: ResolutionFacts | undefined =
+    input.resolution === undefined && s1Target === undefined
+      ? undefined
+      : {
+          ...(input.resolution ?? {}),
+          ...(s1Target === undefined ? {} : { s1Target }),
+        };
+
   const facts: ProjectionFacts = {
     contractId: unwrapOrThrow(makeContractId(input.contractId)),
     ...(input.snapshotId === undefined
@@ -757,7 +823,7 @@ export function projectLineageResult(
     enumeration: input.enumeration,
     stopFacts,
     ...(cancellation === undefined ? {} : { cancellation }),
-    ...(input.resolution === undefined ? {} : { resolution: input.resolution }),
+    ...(resolution === undefined ? {} : { resolution }),
   };
   // Validate without mutating terminal-store authority. A seam receipt failure
   // cannot leave behind a published in-memory terminal result.

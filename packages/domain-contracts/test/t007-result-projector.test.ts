@@ -129,6 +129,119 @@ describe('T007 ResultProjector — exhaustive legal status projection (PRD §18.
     });
   });
 
+  it('#113: a known S1 target remains RESOLVED when a separately published digest mismatches', () => {
+    const target = mid('target-t007-published-mismatch');
+    const result = projectOk({
+      contractId: t007Contract('contract-t007-digest-failed'),
+      intentType: 'SINGLE_RESOURCE',
+      scopeKind: 'single_resource',
+      recordedAt: T007_RECORDED_AT,
+      requestedMemberIds: [target],
+      acceptedSelectedMemberIds: [],
+      memberValidation: [{ memberId: target, result: 'VALIDATION_FAILED' }],
+      enumeration: { kind: 'NOT_APPLICABLE' },
+      resolution: {
+        s1Target: {
+          memberId: target,
+          status: 'RESOLVED',
+          evidenceRef: 'evidence/s1-publisher-hash-provenance',
+          transferAttempted: true,
+        },
+      },
+      stopFacts: { validationFailed: true },
+    });
+    expect([
+      result.requestFulfillment,
+      result.targetResolution,
+      result.selectionAcquisition,
+      result.coverage,
+      result.stopReason,
+    ]).toEqual(['UNSATISFIED', 'RESOLVED', 'FAILED', 'NOT_APPLICABLE', 'VALIDATION_FAILED']);
+    expect(result.validationSummary.status).toBe('FAILED');
+  });
+
+  it('#113: attempted transfer without trustworthy Target provenance cannot become success', () => {
+    const target = mid('target-t007-provenance-unknown');
+    const fact: ProjectionFacts = {
+      contractId: t007Contract('contract-t007-provenance-unknown'),
+      intentType: 'SINGLE_RESOURCE',
+      scopeKind: 'single_resource',
+      recordedAt: T007_RECORDED_AT,
+      requestedMemberIds: [target],
+      acceptedSelectedMemberIds: [],
+      memberValidation: [{ memberId: target, result: 'VALIDATION_FAILED' }],
+      enumeration: { kind: 'NOT_APPLICABLE' },
+      resolution: {
+        s1Target: {
+          memberId: target,
+          status: 'PROVENANCE_UNPROVEN',
+          evidenceRef: 'evidence/s1-redirect-unbound',
+          transferAttempted: true,
+        },
+      },
+    };
+    const result = projectOk(fact);
+    expect([
+      result.requestFulfillment,
+      result.targetResolution,
+      result.selectionAcquisition,
+      result.coverage,
+      result.stopReason,
+    ]).toEqual(['UNKNOWN', 'BLOCKED', 'FAILED', 'NOT_APPLICABLE', 'VALIDATION_FAILED']);
+    expect(projectOk(fact)).toStrictEqual(result);
+    const withoutAttempt = projectOk({
+      ...fact,
+      resolution: {
+        s1Target: {
+          memberId: target,
+          status: 'PROVENANCE_UNPROVEN',
+          evidenceRef: 'evidence/s1-redirect-unbound',
+          transferAttempted: false,
+        },
+      },
+    });
+    expect(withoutAttempt.selectionAcquisition).toBe('NOT_STARTED');
+  });
+
+  it('#113: identity substitution or accepted bytes under unproven provenance fail closed', () => {
+    const target = mid('target-t007-frozen-identity');
+    const base: ProjectionFacts = {
+      contractId: t007Contract('contract-t007-target-failclosed'),
+      intentType: 'SINGLE_RESOURCE',
+      scopeKind: 'single_resource',
+      recordedAt: T007_RECORDED_AT,
+      requestedMemberIds: [target],
+      acceptedSelectedMemberIds: [],
+      memberValidation: [{ memberId: target, result: 'VALIDATION_FAILED' }],
+      enumeration: { kind: 'NOT_APPLICABLE' },
+    };
+    const foreign = projectResult({
+      ...base,
+      resolution: {
+        s1Target: {
+          memberId: mid('target-t007-foreign'),
+          status: 'RESOLVED',
+          evidenceRef: 'evidence/foreign',
+          transferAttempted: true,
+        },
+      },
+    });
+    expectCode(foreign, 'INVALID_RESULT_COMBINATION', 'PRD-§16/T007-#113');
+    const inconsistent = projectResult({
+      ...base,
+      acceptedSelectedMemberIds: [target],
+      resolution: {
+        s1Target: {
+          memberId: target,
+          status: 'PROVENANCE_UNPROVEN',
+          evidenceRef: 'evidence/no-provenance',
+          transferAttempted: true,
+        },
+      },
+    });
+    expectCode(inconsistent, 'INVALID_RESULT_COMBINATION', 'C34/T007-#113');
+  });
+
   it('§18.2 requested bounded scope fully acquired projects USER_SCOPE_REACHED and NATURAL_COLLECTION_END variants', () => {
     const requested = members('member-t007-bounded', 3);
     const base = {

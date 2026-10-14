@@ -74,6 +74,7 @@ import {
   type SeamAuthorityState,
   type SeamJournal,
   type TargetEvidenceReceipt,
+  type TargetWitnessReceipt,
 } from './state.ts';
 
 /**
@@ -263,6 +264,26 @@ export interface CoreSeamServer {
     aggregateId: string,
     receipt: TargetEvidenceReceipt,
   ): SeamResult<{ readonly converged: boolean }>;
+  /**
+   * Trusted Core-runtime fact path (#113, #103 §2.2): journal the Core-private
+   * S1 requested-target-resolution witness of one execution — durably, BEFORE
+   * terminal authority is handed over, including on failed digest/no accepted
+   * bytes. Identical witnesses converge (restart replay never rewrites); a
+   * conflicting witness rejects (the recorded resolution fact is immutable
+   * and bound to the exact contract/snapshot/member/effect + declared
+   * delivery graph). No surface command can invoke this method.
+   */
+  recordTargetWitness(
+    aggregateId: string,
+    receipt: TargetWitnessReceipt,
+  ): SeamResult<{ readonly converged: boolean }>;
+  /**
+   * Core-internal (never a wire command): the durable target-resolution
+   * witness recorded for one aggregate, when one exists. The canonical Core
+   * read port the projector's S1 target facts derive from — a caller-supplied
+   * resolution string never substitutes for it.
+   */
+  targetWitnessFor(aggregateId: string): TargetWitnessReceipt | undefined;
   /** Accepted-command count (concern-test observation; not a wire surface). */
   readonly acceptedCommandCount: number;
 }
@@ -316,21 +337,25 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
             )
           : entry.kind === 'TARGET_EVIDENCE'
             ? applyTargetEvidenceReceipt(state, entry.aggregateId, entry.receipt)
-            : restoreAcceptedCommand(
-                state,
-                gateway,
-                entry,
-                options.s2DeliveredAcquisition,
-                options.s1DirectAcquisition,
-                s1Intents,
-              );
+            : entry.kind === 'TARGET_WITNESS'
+              ? applyTargetWitnessReceipt(state, entry.aggregateId, entry.receipt)
+              : restoreAcceptedCommand(
+                  state,
+                  gateway,
+                  entry,
+                  options.s2DeliveredAcquisition,
+                  options.s1DirectAcquisition,
+                  s1Intents,
+                );
       if (!restored.ok) {
         const subject =
           entry.kind === 'COVERAGE_ACCOUNTING'
             ? `aggregate '${entry.aggregateId}'`
             : entry.kind === 'TARGET_EVIDENCE'
               ? `target evidence receipt for aggregate '${entry.aggregateId}'`
-              : `request '${entry.envelope.requestId}'`;
+              : entry.kind === 'TARGET_WITNESS'
+                ? `target witness receipt for aggregate '${entry.aggregateId}'`
+                : `request '${entry.envelope.requestId}'`;
         return {
           ok: false,
           diagnostics: [
@@ -849,6 +874,72 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         throw new Error(recoveryFenceMessage());
       }
       return state.accepted.size;
+    },
+    recordTargetWitness(aggregateId: string, receipt: TargetWitnessReceipt) {
+      if (recoveryFenceReason !== undefined) {
+        return seamFail([recoveryFenceDiagnostic()]);
+      }
+      if (journal === undefined) {
+        return seamFail([
+          seamDiagnostic(
+            'ADMISSION_REJECTED',
+            'journal',
+            'durable Core journal is required before a target witness can be recorded',
+            'PRD-§17/§27',
+          ),
+        ]);
+      }
+      const applied = applyTargetWitnessReceipt(state, aggregateId, receipt);
+      if (!applied.ok) {
+        return applied;
+      }
+      if (!applied.value.converged) {
+        let durability;
+        try {
+          durability = journal.append({
+            kind: 'TARGET_WITNESS',
+            aggregateId,
+            receipt: applied.value.receipt,
+          });
+        } catch (error) {
+          poisonForRecovery(
+            `target witness journal threw after in-memory authority apply; durability is uncertain: ${String(
+              error,
+            )}`,
+          );
+        }
+        if (
+          durability === null ||
+          typeof durability !== 'object' ||
+          !['COMMITTED', 'NOT_COMMITTED', 'UNCERTAIN'].includes(durability.status)
+        ) {
+          poisonForRecovery('target witness journal returned an invalid durability outcome');
+        }
+        if (durability.status === 'UNCERTAIN') {
+          poisonForRecovery(
+            `target witness durability is uncertain after in-memory authority apply: ${durability.error}`,
+          );
+        }
+        if (durability.status === 'NOT_COMMITTED') {
+          const lineage = state.lineages.get(aggregateId);
+          if (lineage !== undefined) lineage.targetWitness = undefined;
+          return seamFail([
+            seamDiagnostic(
+              'ADMISSION_REJECTED',
+              'journal',
+              `target witness was not durably committed: ${durability.error}`,
+              'L2-§6.8',
+            ),
+          ]);
+        }
+      }
+      return applied;
+    },
+    targetWitnessFor(aggregateId: string) {
+      if (recoveryFenceReason !== undefined) {
+        throw new Error(recoveryFenceMessage());
+      }
+      return state.lineages.get(aggregateId)?.targetWitness;
     },
   };
   return { ok: true, value: server };
@@ -1899,6 +1990,318 @@ function applyTargetEvidenceReceipt(
     ]);
   }
   lineage.targetEvidence = receipt;
+  return seamOk({ converged: false, receipt });
+}
+
+const TARGET_WITNESS_FIELDS: readonly string[] = [
+  'snapshotId',
+  'memberId',
+  'artifactId',
+  'effectId',
+  'locatorUri',
+  'declaredRedirectHosts',
+  'observedRedirectHosts',
+  'status',
+  'transferAttempted',
+  'basis',
+  'certaintyClass',
+  'unprovenReason',
+];
+const TARGET_WITNESS_STATUS_VALUES: readonly string[] = ['RESOLVED', 'PROVENANCE_UNPROVEN'];
+/** #103 §2.2: at most 8 declared redirect hosts (selected host included). */
+const TARGET_WITNESS_MAX_DECLARED_HOSTS = 8;
+const TARGET_WITNESS_MAX_OBSERVED_HOSTS = 16;
+const MAX_LOCATOR_URI_LENGTH = 2048;
+
+function boundedHostList(value: unknown, path: string, max: number): SeamResult<readonly string[]> {
+  if (!Array.isArray(value) || value.length > max) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        path,
+        `must be an array of at most ${String(max)} host strings`,
+      ),
+    ]);
+  }
+  for (const host of value) {
+    if (typeof host !== 'string' || host.length === 0 || host.length > 255) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          path,
+          'entries must be non-empty host strings of at most 255 characters',
+        ),
+      ]);
+    }
+    if (/\s/u.test(host)) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          path,
+          'entries must be plain hosts without whitespace',
+        ),
+      ]);
+    }
+  }
+  return seamOk(value as readonly string[]);
+}
+
+/**
+ * Validate one secret-free S1 target-resolution witness (#113): closed field
+ * set, exact identity binding, http(s) selected locator, bounded delivery
+ * graphs, status-conditional basis/unproven pairing (a RESOLVED witness
+ * carries its validated basis + certainty; a PROVENANCE_UNPROVEN witness
+ * carries the canonical failure reason and never an identity claim).
+ */
+function decodeTargetWitnessReceipt(value: unknown): SeamResult<TargetWitnessReceipt> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'targetWitness', 'target witness must be an object'),
+    ]);
+  }
+  const record = value as Record<string, unknown>;
+  const unknown = Object.keys(record).filter((key) => !TARGET_WITNESS_FIELDS.includes(key));
+  if (unknown.length > 0) {
+    return seamFail(
+      unknown.map((key) =>
+        seamDiagnostic('ENVELOPE_MALFORMED', `targetWitness.${key}`, 'unknown witness field'),
+      ),
+    );
+  }
+  for (const key of ['snapshotId', 'memberId', 'artifactId', 'effectId'] as const) {
+    const id = record[key];
+    if (typeof id !== 'string' || id.length === 0 || id.length > 128) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          `targetWitness.${key}`,
+          'witness identity must be a non-empty bounded string',
+        ),
+      ]);
+    }
+  }
+  const locatorUri = record['locatorUri'];
+  if (
+    typeof locatorUri !== 'string' ||
+    locatorUri.length === 0 ||
+    locatorUri.length > MAX_LOCATOR_URI_LENGTH ||
+    !/^https?:\/\//u.test(locatorUri)
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetWitness.locatorUri',
+        'the selected locator must be a bounded http(s) URI',
+      ),
+    ]);
+  }
+  const declared = boundedHostList(
+    record['declaredRedirectHosts'],
+    'targetWitness.declaredRedirectHosts',
+    TARGET_WITNESS_MAX_DECLARED_HOSTS,
+  );
+  if (!declared.ok) {
+    return declared;
+  }
+  if (declared.value.length === 0) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetWitness.declaredRedirectHosts',
+        'the declared delivery graph must include at least the selected locator host',
+      ),
+    ]);
+  }
+  const observed = boundedHostList(
+    record['observedRedirectHosts'],
+    'targetWitness.observedRedirectHosts',
+    TARGET_WITNESS_MAX_OBSERVED_HOSTS,
+  );
+  if (!observed.ok) {
+    return observed;
+  }
+  const status = record['status'];
+  if (typeof status !== 'string' || !TARGET_WITNESS_STATUS_VALUES.includes(status)) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetWitness.status',
+        'witness status is a closed vocabulary value',
+      ),
+    ]);
+  }
+  const transferAttempted = record['transferAttempted'];
+  if (typeof transferAttempted !== 'boolean') {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetWitness.transferAttempted',
+        'transferAttempted must be a boolean',
+      ),
+    ]);
+  }
+  const basis = record['basis'];
+  const certainty = record['certaintyClass'];
+  const unprovenReason = record['unprovenReason'];
+  if (status === 'RESOLVED') {
+    if (typeof basis !== 'string' || !TARGET_EVIDENCE_BASIS_VALUES.includes(basis)) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'targetWitness.basis',
+          'a RESOLVED witness carries its closed C34 identity basis',
+        ),
+      ]);
+    }
+    if (typeof certainty !== 'string' || !TARGET_EVIDENCE_CERTAINTY_VALUES.includes(certainty)) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'targetWitness.certaintyClass',
+          'a RESOLVED witness carries its closed certainty value',
+        ),
+      ]);
+    }
+    if (
+      (basis === 'PUBLISHED_SHA256' && certainty !== 'DECISIVE') ||
+      (basis === 'REQUESTED_LOCATOR_PROVENANCE' && certainty !== 'PROBATIVE')
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'targetWitness.certaintyClass',
+          'C34 pairing violated: a publisher-digest anchor is DECISIVE, requested-locator provenance is PROBATIVE',
+          'C34',
+        ),
+      ]);
+    }
+    if (unprovenReason !== undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'ENVELOPE_MALFORMED',
+          'targetWitness.unprovenReason',
+          'a RESOLVED witness carries no unproven reason',
+        ),
+      ]);
+    }
+    return seamOk({
+      snapshotId: record['snapshotId'] as string,
+      memberId: record['memberId'] as string,
+      artifactId: record['artifactId'] as string,
+      effectId: record['effectId'] as string,
+      locatorUri,
+      declaredRedirectHosts: declared.value,
+      observedRedirectHosts: observed.value,
+      status: 'RESOLVED',
+      transferAttempted,
+      basis: basis as TargetWitnessReceipt['basis'],
+      certaintyClass: certainty as TargetWitnessReceipt['certaintyClass'],
+    });
+  }
+  if (basis !== undefined || certainty !== undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetWitness.basis',
+        'an unproven witness carries no target identity claim',
+      ),
+    ]);
+  }
+  if (typeof unprovenReason !== 'string' || unprovenReason.length === 0) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetWitness.unprovenReason',
+        'an unproven witness carries the canonical delivery-graph failure reason',
+      ),
+    ]);
+  }
+  return seamOk({
+    snapshotId: record['snapshotId'] as string,
+    memberId: record['memberId'] as string,
+    artifactId: record['artifactId'] as string,
+    effectId: record['effectId'] as string,
+    locatorUri,
+    declaredRedirectHosts: declared.value,
+    observedRedirectHosts: observed.value,
+    status: 'PROVENANCE_UNPROVEN',
+    transferAttempted,
+    unprovenReason,
+  });
+}
+
+/**
+ * Validate and apply one trusted Core-runtime target witness (#113).
+ * Identical witnesses converge (restart replay never rewrites authority); a
+ * conflicting witness for the same lineage rejects — the recorded resolution
+ * fact is immutable. The witness must be bound to the aggregate's actual
+ * single-resource contract: canonical composite effect identity, frozen
+ * snapshot, and the contract's own requested target. Internal authority
+ * fact: no surface revision is consumed (mirrors recordTargetEvidence).
+ */
+function applyTargetWitnessReceipt(
+  state: SeamAuthorityState,
+  aggregateId: string,
+  raw: unknown,
+): SeamResult<{ readonly converged: boolean; readonly receipt: TargetWitnessReceipt }> {
+  const aggregate = state.aggregates.get(aggregateId);
+  const lineage = state.lineages.get(aggregateId);
+  if (aggregate === undefined || lineage === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'AGGREGATE_NOT_FOUND',
+        'aggregateId',
+        'no aggregate exists for this target witness',
+      ),
+    ]);
+  }
+  const decoded = decodeTargetWitnessReceipt(raw);
+  if (!decoded.ok) {
+    return decoded;
+  }
+  const receipt = decoded.value;
+  const contract = aggregate.contract;
+  if (
+    contract.intentType !== 'SINGLE_RESOURCE' ||
+    contract.requestedScope.kind !== 'single_resource'
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetWitness',
+        'a target witness is bound to a SINGLE_RESOURCE contract only',
+        'PRD-§28 S1',
+      ),
+    ]);
+  }
+  // Exact owned-witness binding: the canonical composite effect identity of
+  // THIS aggregate/contract/snapshot — a forged/foreign witness (different
+  // effect, snapshot or target) never binds.
+  const canonicalEffectId = `effect:${aggregateId}:${receipt.snapshotId}:${contract.requestedTarget}`;
+  if (receipt.effectId !== canonicalEffectId) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetWitness.effectId',
+        'the witness effect identity does not match the canonical effect of this contract/aggregate',
+        'L2-§6.8',
+      ),
+    ]);
+  }
+  if (lineage.targetWitness !== undefined) {
+    if (stableStringify(lineage.targetWitness) === stableStringify(receipt)) {
+      return seamOk({ converged: true, receipt });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetWitness',
+        'a different target witness is already recorded for this lineage; the recorded resolution fact is never rewritten',
+        '#103-§2.2/#113',
+      ),
+    ]);
+  }
+  lineage.targetWitness = receipt;
   return seamOk({ converged: false, receipt });
 }
 
