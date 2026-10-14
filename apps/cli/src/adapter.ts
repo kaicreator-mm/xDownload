@@ -37,6 +37,7 @@ import {
   decodeAcquisitionContract,
   decodeSelectionSnapshot,
   currentSchemaIdentity,
+  parseSemVer,
   type AcquisitionContract,
 } from '@xdownload/domain-contracts';
 import {
@@ -247,6 +248,48 @@ function buildQueryEnvelope(input: {
     aggregateId: input.aggregateId,
     issuedAt: input.ports.now(),
   };
+}
+
+/**
+ * Probe the installed Core before creating the first S1 aggregate. The older
+ * 1.0 Core understands this read-only legacy query, but cannot execute S1.
+ * Its AGGREGATE_NOT_FOUND rejection only becomes a compatibility signal when
+ * every response correlation/shape/version condition is satisfied (#114).
+ */
+async function requireS1CoreCompatibility(
+  session: Session,
+  ports: AdapterPorts,
+  aggregateId: string,
+): Promise<void> {
+  const query: QueryEnvelope = {
+    ...buildQueryEnvelope({ aggregateId, req: ports.makeRequestId(), session, ports }),
+    schemaIdentity: { schema: 'xdownload.core-seam', version: '1.0.0' },
+  };
+  const response = await session.client.submitQuery(query);
+  const version = parseSemVer(response.schemaIdentity.version);
+  const diagnostic = response.diagnostics?.[0];
+  const compatible =
+    response.schemaIdentity.schema === 'xdownload.core-seam' &&
+    version !== undefined &&
+    version.major === 1 &&
+    version.minor >= 1 &&
+    response.kind === 'response' &&
+    response.inReplyTo === query.requestId &&
+    response.outcome === 'REJECTED' &&
+    response.diagnostics?.length === 1 &&
+    diagnostic?.code === 'AGGREGATE_NOT_FOUND' &&
+    diagnostic.path === 'aggregateId' &&
+    response.acceptance === undefined &&
+    response.projection === undefined;
+  if (!compatible) {
+    throw new CliInputError('USAGE', 'S1 requires Core seam 1.1', [
+      {
+        code: 'UNSUPPORTED_ENVELOPE_VERSION',
+        path: 'schemaIdentity.version',
+        message: 'S1 preflight did not verify compatible Core on the intended fresh task',
+      },
+    ]);
+  }
 }
 
 interface AcceptedOutcome {
@@ -567,6 +610,7 @@ async function runDownload(
   input: Extract<ParsedInput, { kind: 'download' }>,
 ): Promise<AdapterResult> {
   const { contract, base } = buildS1Contract(input, ports);
+  await requireS1CoreCompatibility(session, ports, contract.contractId);
   const submit = await submitContract(session, ports, {
     contract,
     req: input.requestId,

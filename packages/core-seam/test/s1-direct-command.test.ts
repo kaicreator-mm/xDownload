@@ -116,6 +116,37 @@ function executeS1(
 }
 
 describe('EXECUTE_S1_DIRECT_ACQUISITION authority gates', () => {
+  it('requires seam 1.1 only for the S1 effect; legacy 1.0 submit remains accepted', () => {
+    const { beginner, calls } = makeBeginner();
+    const s = serverWith({ beginner });
+    const legacySubmit = rawCommand({
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: 'contract-single-001',
+      payload: rawSingleResourceContract(),
+    });
+    legacySubmit['schemaIdentity'] = { schema: 'xdownload.core-seam', version: '1.0.0' };
+    const admitted = s.handleFrame(JSON.stringify(legacySubmit));
+    expect(admitted.outcome).toBe('ACCEPTED');
+
+    const legacyExecute = rawCommand({
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId: 'contract-single-001',
+      expectedRevision: 1,
+      payload: s1Payload(),
+    });
+    legacyExecute['schemaIdentity'] = { schema: 'xdownload.core-seam', version: '1.0.0' };
+    const rejected = s.handleFrame(JSON.stringify(legacyExecute));
+    expect(rejected.outcome).toBe('REJECTED');
+    expect(rejected.diagnostics?.[0]?.code).toBe('UNSUPPORTED_ENVELOPE_VERSION');
+    expect(calls).toHaveLength(0);
+    expect(s.pendingS1Executions()).toHaveLength(0);
+
+    legacyExecute['schemaIdentity'] = { schema: 'xdownload.core-seam', version: '1.1.0' };
+    const accepted = s.handleFrame(JSON.stringify(legacyExecute));
+    expect(accepted.outcome).toBe('ACCEPTED');
+    expect(calls).toHaveLength(1);
+  });
+
   it('fails closed when the Core composition provides no S1 beginner', () => {
     const s = serverWith();
     submitSingle(s);

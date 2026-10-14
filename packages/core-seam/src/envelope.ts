@@ -26,7 +26,7 @@ import { decodePeerIdentity, type PeerIdentity } from './peer.ts';
 
 /** Seam wire schema identity — independent of the domain-contracts version space. */
 export const CORE_SEAM_SCHEMA_ID = 'xdownload.core-seam' as const;
-export const CORE_SEAM_SCHEMA_VERSION = '1.0.0' as const;
+export const CORE_SEAM_SCHEMA_VERSION = '1.1.0' as const;
 export const SUPPORTED_SEAM_MAJOR_VERSIONS: readonly number[] = [1];
 
 /** Seam-owned wire schema identity; independent of the domain version space. */
@@ -364,6 +364,22 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
         `unknown command discriminant '${String(commandType)}'; the command vocabulary is closed`,
       ),
     ]);
+  }
+  // EXECUTE_S1_DIRECT_ACQUISITION is introduced only in seam 1.1.
+  // Major-1 backwards decoding remains valid for the old closed vocabulary,
+  // but a 1.0 frame can never gain the new network-effect authority.
+  if (commandType === 'EXECUTE_S1_DIRECT_ACQUISITION') {
+    const version = parseSemVer(schemaIdentity.value.version);
+    if (version === undefined || version.major !== 1 || version.minor < 1) {
+      return seamFail([
+        seamDiagnostic(
+          'UNSUPPORTED_ENVELOPE_VERSION',
+          'schemaIdentity.version',
+          'S1 direct acquisition execution requires core-seam version 1.1.0 or newer',
+          'L2-#103-F06',
+        ),
+      ]);
+    }
   }
   const requestId = decodeRequestId(record['requestId']);
   if (!requestId.ok) {

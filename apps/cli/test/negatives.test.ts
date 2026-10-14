@@ -11,8 +11,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { createLoopbackClientTransport, type SeamClientTransport } from '@xdownload/core-seam';
 import net from 'node:net';
-import { runCli, startSeam } from './helpers.ts';
+import { queryCountingTransport, runCli, startSeam } from './helpers.ts';
 
 /** A raw framed endpoint that answers with an unsupported seam schema
  * version (2.0.0) and immediately closes — the exact-base fail-closed shape
@@ -79,6 +80,65 @@ describe('unsupported-seam-schema-version-response', () => {
     // The incompatible frame's contents never surface as projection truth.
     expect(run.document.includes('"PROJECTION"')).toBe(false);
     expect(run.document.includes('UNSUPPORTED_ENVELOPE_VERSION')).toBe(false);
+  });
+});
+
+describe('S1 Core 1.1 read-only compatibility preflight (#114)', () => {
+  it('refuses a legacy Core response before sending any authoritative S1 command', async () => {
+    const seam = await startSeam();
+    const inner = createLoopbackClientTransport();
+    let commands = 0;
+    let queries = 0;
+    const transport: SeamClientTransport = {
+      async connect(target) {
+        const connection = await inner.connect(target);
+        const originalSend = connection.send.bind(connection);
+        connection.send = (frame: string) => {
+          const request = JSON.parse(frame) as { kind?: string };
+          if (request.kind === 'command') commands += 1;
+          if (request.kind === 'query') queries += 1;
+          originalSend(frame);
+        };
+        const originalOnFrame = connection.onFrame.bind(connection);
+        connection.onFrame = (listener) => {
+          originalOnFrame((frame) => {
+            const result = JSON.parse(frame) as {
+              outcome?: string;
+              diagnostics?: { code?: string }[];
+              schemaIdentity?: { schema: string; version: string };
+            };
+            if (
+              result.outcome === 'REJECTED' &&
+              result.diagnostics?.[0]?.code === 'AGGREGATE_NOT_FOUND'
+            ) {
+              result.schemaIdentity = { schema: 'xdownload.core-seam', version: '1.0.0' };
+            }
+            listener(JSON.stringify(result));
+          });
+        };
+        return connection;
+      },
+    };
+    const run = await runCli(['download', '--url', 'http://127.0.0.1:9/file.bin'], seam.target, {
+      transport,
+    });
+    expect(run.exitCode).not.toBe(0);
+    expect(run.document).toContain('S1 requires Core seam 1.1');
+    expect(queries).toBe(1);
+    expect(commands).toBe(0);
+  });
+
+  it('queries the genuinely fresh aggregate on a compatible Core before S1 submission', async () => {
+    const seam = await startSeam();
+    const transport = queryCountingTransport(createLoopbackClientTransport());
+    const run = await runCli(['download', '--url', 'http://127.0.0.1:9/file.bin'], seam.target, {
+      transport,
+    });
+    // The Core here intentionally has no S1 beginner, so execution rejects.
+    // A normal first-time user nevertheless gets past the safe version probe.
+    expect(run.exitCode).not.toBe(0);
+    expect(transport.queryCount()).toBe(1);
+    expect(run.document).not.toContain('S1 requires Core seam 1.1');
   });
 });
 
