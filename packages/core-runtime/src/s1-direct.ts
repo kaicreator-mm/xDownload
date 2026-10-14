@@ -355,7 +355,19 @@ export async function driveS1DirectExecution(
       seamLineageStatus(runtime, input.aggregateId) !== 'CANCELLED' &&
       runtime.recovery.classify(existing.workItemId).lifecycleClass !== 'ACCEPTED'
     ) {
-      runtime.writer.recordTerminalFailure(existing.workItemId, witness.value.unprovenReason);
+      // The receipt's runtime decoder guarantees a reason for this status;
+      // enforce it at the trust boundary before writing durable failure truth.
+      const unprovenReason = witness.value.unprovenReason;
+      if (unprovenReason === undefined) {
+        return seamFail([
+          seamDiagnostic(
+            'ADMISSION_REJECTED',
+            'targetWitness.unprovenReason',
+            'an unproven Target witness has no durable failure reason',
+          ),
+        ]);
+      }
+      runtime.writer.recordTerminalFailure(existing.workItemId, unprovenReason);
       const failed = runtime.seam.recordFailedMembers(input.aggregateId, [payload.memberId]);
       if (!failed.ok) return failed;
     }
