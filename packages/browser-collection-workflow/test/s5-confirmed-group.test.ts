@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  AcquisitionContract,
-  SelectionSnapshot,
-} from '@xdownload/domain-contracts';
+import type { AcquisitionContract, SelectionSnapshot } from '@xdownload/domain-contracts';
 import {
   runConfirmedCurrentPageGroup,
   validateConfirmedPageGroup,
@@ -36,9 +33,7 @@ function snapshot(): SelectionSnapshot {
     requestedMemberBasis: { kind: 'CONFIRMED_PAGE_SNAPSHOT' },
     authorizationContextRef: 'auth-s5-001',
     selectedMemberIds: [...members],
-    selectionClaims: [
-      { kind: 'BATCH', confirmationType: 'CONFIRM_SELECTION', memberRefs: [...members] },
-    ],
+    selectionClaims: [{ kind: 'BATCH', confirmationType: 'CONFIRM_SELECTION', memberRefs: [...members] }],
   } as SelectionSnapshot;
 }
 
