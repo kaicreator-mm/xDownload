@@ -27,6 +27,11 @@
 
   const list = document.getElementById('attachments');
   const stateBox = document.getElementById('state');
+  const s5Group = document.getElementById('s5-group');
+  const s5PreviewButton = document.getElementById('s5-preview');
+  const s5PreviewResult = document.getElementById('s5-preview-result');
+  const s5ObservedRows = [];
+  let s5ObservedTab = null;
 
   function setState(kind, text) {
     stateBox.className = `state ${kind}`;
@@ -134,6 +139,14 @@
     link.textContent = `${item.text || '(untitled link)'} — ${item.href}`;
     li.appendChild(link);
 
+    // A checked row is only a local, explicitly selected S5 PREVIEW member.
+    // It NEVER starts individual S2 acquisition or commits group Core truth.
+    const groupCheckbox = document.createElement('input');
+    groupCheckbox.type = 'checkbox';
+    groupCheckbox.setAttribute('aria-label', 'Include this observed link in S5 preview');
+    li.appendChild(groupCheckbox);
+    s5ObservedRows.push({ checkbox: groupCheckbox, href: item.href, text: item.text });
+
     const digest = document.createElement('input');
     digest.type = 'text';
     digest.placeholder = 'known SHA-256 (optional — strengthens target verification)';
@@ -188,6 +201,46 @@
     list.appendChild(li);
   }
 
+  s5PreviewButton.addEventListener('click', async () => {
+    // Selection is frozen against the initially observed page and tab.
+    // A navigation between scanning and confirmation must never silently
+    // enlarge a current-page scope or reuse stale observations.
+    try {
+      const currentTab = await activeTab();
+      if (
+        !currentTab ||
+        !s5ObservedTab ||
+        currentTab.id !== s5ObservedTab.id ||
+        (currentTab.url || '') !== s5ObservedTab.url
+      ) {
+        s5PreviewResult.textContent =
+          'Page changed since scanning; reopen xDownload to get a fresh member snapshot.';
+        return;
+      }
+      const selected = s5ObservedRows.filter((row) => row.checkbox.checked);
+      if (selected.length === 0) {
+        s5PreviewResult.textContent = 'Select at least one observed member to preview.';
+        return;
+      }
+      const uniqueHrefs = new Set(selected.map((row) => row.href));
+      if (uniqueHrefs.size !== selected.length) {
+        s5PreviewResult.textContent =
+          'Duplicate member locators need distinct verified identities; no group was confirmed.';
+        return;
+      }
+      const subset = selected.length !== s5ObservedRows.length;
+      s5PreviewResult.textContent = [
+        `S5 preview only: ${selected.length} selected of ${s5ObservedRows.length} observed links.`,
+        subset
+          ? 'This subset requires a separately confirmed selected_collection_members successor scope.'
+          : 'Current-page membership is only observed; continuation scope would be NONE.',
+        'No Core snapshot, download, Coverage or COMPLETE terminal has been created.',
+      ].join(' ');
+    } catch (error) {
+      s5PreviewResult.textContent = `S5 preview failed without any acquisition: ${String(error)}`;
+    }
+  });
+
   (async () => {
     try {
       const tab = await activeTab();
@@ -205,10 +258,13 @@
         return;
       }
       list.textContent = '';
+      s5ObservedTab = { id: tab.id, url: tab.url || '' };
+      s5ObservedRows.length = 0;
       for (const item of links) {
         renderRow(tab, item);
       }
-      setState('RUNNING', 'Select an attachment, then Download. A known SHA-256 is optional.');
+      s5Group.hidden = false;
+      setState('RUNNING', 'Select an S2 attachment to Download, or preview an S5 page group without acquisition.');
     } catch (error) {
       setState('FAILED', `page scan failed: ${String(error)}`);
     }
