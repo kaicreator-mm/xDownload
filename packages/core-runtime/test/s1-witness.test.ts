@@ -174,7 +174,10 @@ describe('#113 S1 crash-window replay of durable provenance failure', () => {
             failureCategory: 'LOCATOR_SUBSTITUTION',
           }).ok,
         ).toBe(true);
-        const durableOutcome = first.scheduler.durableEffectOutcome(submission.lineageKey, attemptId);
+        const durableOutcome = first.scheduler.durableEffectOutcome(
+          submission.lineageKey,
+          attemptId,
+        );
         expect(durableOutcome).toEqual({
           outcome: 'FAILED',
           failureCategory: 'LOCATOR_SUBSTITUTION',
