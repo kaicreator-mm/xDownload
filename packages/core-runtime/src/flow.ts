@@ -520,18 +520,31 @@ function concatenateTransferredBytes(
 }
 
 /**
- * Execute one basic HLS VOD acquisition (S4) end-to-end: the pipeline runs
- * playlist→bind→plan→acquire→assemble→validate with the canonical scheduler
- * budget ledger behind the pipeline's `TransferLedger` port; artifact
- * persistence and acceptance follow the same single-writer path as direct.
+ * BEGIN for both S4 transport modes: a single durable scheduler/ledger
+ * admission. A duplicate attempt NEVER reaches any external async or sync
+ * fetch capability, including after a crash/reopen.
  */
-export function executeHlsAcquisition(runtime: FlowRuntime, input: HlsFlowInput): HlsFlowOutcome {
+export interface HlsFlowStarted {
+  readonly kind: 'STARTED';
+  readonly submission: LineageSubmission;
+  readonly workItemId: string;
+  readonly lineageKey: LineageKey;
+  readonly attempt: AttemptRecord;
+}
+
+export type HlsFlowStart =
+  | HlsFlowStarted
+  | { readonly kind: 'REPLAY'; readonly outcome: HlsFlowOutcome };
+
+export function beginHlsAcquisition(
+  runtime: FlowRuntime,
+  input: LineageSeed & { readonly commandId: string; readonly memberId: string },
+): HlsFlowStart {
   const { submission, workItemId } = registerLineage(runtime, input, {
     commandId: input.commandId,
     memberId: input.memberId,
   });
   const lineageKey = submission.lineageKey;
-
   runtime.writer.dispatch({ workItemId, attemptId: attemptIdFor(workItemId) });
   const attempt = must(
     'startEffectAttempt',
@@ -539,35 +552,29 @@ export function executeHlsAcquisition(runtime: FlowRuntime, input: HlsFlowInput)
   );
 
   if (attempt.replayed) {
-    // At-least-once replay: reconcile from durable truth, never re-execute
-    // the segment acquisition (no double external effects, no double charge).
     const schedulerAcceptance = runtime.scheduler.tryAccept(lineageKey);
     return {
-      lineageKey,
-      workItemId,
-      submission,
-      attemptReplayed: true,
-      ...(schedulerAcceptance === undefined ? {} : { schedulerAcceptance }),
+      kind: 'REPLAY',
+      outcome: {
+        lineageKey,
+        workItemId,
+        submission,
+        attemptReplayed: true,
+        ...(schedulerAcceptance === undefined ? {} : { schedulerAcceptance }),
+      },
     };
   }
+  return { kind: 'STARTED', submission, workItemId, lineageKey, attempt };
+}
 
-  const snapshotId: SnapshotId | undefined =
-    input.snapshotId === '' ? undefined : unwrapOrThrow(makeSnapshotId(input.snapshotId));
-  const pipeline = mustDomain(
-    'hls-pipeline',
-    executeHlsVodAcquisition({
-      contractId: unwrapOrThrow(makeContractId(input.contractId)),
-      snapshotId,
-      binding: input.binding,
-      master: input.master,
-      mediaPlaylist: input.mediaPlaylist,
-      mediaPlaylistLocator: input.mediaPlaylistLocator,
-      ledger: schedulerHlsTransferLedger(runtime, lineageKey),
-      fetcher: input.fetcher,
-      assemblyPort: input.assemblyPort,
-      recordedAt: input.recordedAt,
-    }),
-  );
+/** Canonical post-effect truth/persistence logic for both S4 delivery modes. */
+export function finishHlsAcquisition(
+  runtime: FlowRuntime,
+  input: Pick<HlsFlowInput, 'artifactId' | 'binding'>,
+  started: HlsFlowStarted,
+  pipeline: HlsVodPipelineOutcome,
+): HlsFlowOutcome {
+  const { submission, workItemId, lineageKey, attempt } = started;
   runtime.writer.recordExternalEffectObserved(workItemId);
 
   const effect = hlsEffectOutcome(pipeline);
@@ -626,6 +633,34 @@ export function executeHlsAcquisition(runtime: FlowRuntime, input: HlsFlowInput)
     ...(acceptanceError === undefined ? {} : { acceptanceError }),
     ...(schedulerAcceptance === undefined ? {} : { schedulerAcceptance }),
   };
+}
+
+/**
+ * Synchronous fixture/provider mode retains the same Core durability and
+ * result path. Real HTTP uses the new async selected-HLS path instead.
+ */
+export function executeHlsAcquisition(runtime: FlowRuntime, input: HlsFlowInput): HlsFlowOutcome {
+  const started = beginHlsAcquisition(runtime, input);
+  if (started.kind === 'REPLAY') return started.outcome;
+
+  const snapshotId: SnapshotId | undefined =
+    input.snapshotId === '' ? undefined : unwrapOrThrow(makeSnapshotId(input.snapshotId));
+  const pipeline = mustDomain(
+    'hls-pipeline',
+    executeHlsVodAcquisition({
+      contractId: unwrapOrThrow(makeContractId(input.contractId)),
+      snapshotId,
+      binding: input.binding,
+      master: input.master,
+      mediaPlaylist: input.mediaPlaylist,
+      mediaPlaylistLocator: input.mediaPlaylistLocator,
+      ledger: schedulerHlsTransferLedger(runtime, started.lineageKey),
+      fetcher: input.fetcher,
+      assemblyPort: input.assemblyPort,
+      recordedAt: input.recordedAt,
+    }),
+  );
+  return finishHlsAcquisition(runtime, input, started, pipeline);
 }
 
 // ------------------------------------------------------------------- projection
