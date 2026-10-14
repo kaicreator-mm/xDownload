@@ -31,9 +31,7 @@ async function runAsync(
 
   for (const entry of plan.entries) {
     if (priorPositions.has(entry.position)) continue;
-    const work = retryPositions.has(entry.position)
-      ? 'RETRY_TRANSFER_REQUEST'
-      : 'SEGMENT_REQUEST';
+    const work = retryPositions.has(entry.position) ? 'RETRY_TRANSFER_REQUEST' : 'SEGMENT_REQUEST';
     const remaining = ledger.remaining();
     const bytesLeft = remaining.transfer.perLimit['maxBytes'];
     // This is a conservative PRE-HTTP budget gate. A trusted fetcher MUST
