@@ -654,13 +654,19 @@ export function executeSelectedHlsAcquisition(
   runtime: FlowRuntime,
   input: SelectedHlsFlowInput,
 ): HlsFlowOutcome {
-  const { manifestLocator, masterText, selectedRenditionUri, mediaText, ...execution } = input;
+  const {
+    manifestLocator,
+    masterText,
+    selectedRenditionUri,
+    mediaText,
+    ...execution
+  } = input;
   if (input.targetId !== manifestLocator.identity) {
     throw new CoreRuntimeFlowError('selected-hls-target', undefined, [
       diagnostic(
         'CONTRACT_BINDING_MISMATCH',
         'targetId',
-        'S4 Core lineage target must match the previously frozen manifest locator identity',
+        'S4 lineage target differs from frozen manifest identity',
       ),
     ]);
   }
