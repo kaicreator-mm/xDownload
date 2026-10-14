@@ -33,7 +33,13 @@ function snapshot(): SelectionSnapshot {
     requestedMemberBasis: { kind: 'CONFIRMED_PAGE_SNAPSHOT' },
     authorizationContextRef: 'auth-s5-001',
     selectedMemberIds: [...members],
-    selectionClaims: [{ kind: 'BATCH', confirmationType: 'CONFIRM_SELECTION', memberRefs: [...members] }],
+    selectionClaims: [
+      {
+        kind: 'BATCH',
+        confirmationType: 'CONFIRM_SELECTION',
+        memberRefs: [...members],
+      },
+    ],
   } as SelectionSnapshot;
 }
 
@@ -74,7 +80,11 @@ describe('S5 confirmed group Core admission', () => {
       validateConfirmedPageGroup(contract(), {
         ...snapshot(),
         selectionClaims: [
-          { kind: 'SINGLE', confirmationType: 'CONFIRM_SELECTION', memberRefs: ['member-001'] },
+          {
+            kind: 'SINGLE',
+            confirmationType: 'CONFIRM_SELECTION',
+            memberRefs: ['member-001'],
+          },
         ],
       }).ok,
     ).toBe(false);
