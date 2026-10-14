@@ -69,16 +69,18 @@ export function createAuthorizedHlsManifestPort(
     } catch {
       throw new Error('invalid trusted S4 manifest origin');
     }
+    const fixture =
+      authority.allowLoopbackHttpFixture === true &&
+      parsed.protocol === 'http:' &&
+      parsed.hostname === '127.0.0.1';
+    const validOrigin = parsed.protocol === 'https:' || fixture;
     if (
       parsed.username !== '' ||
       parsed.password !== '' ||
       parsed.search !== '' ||
       parsed.hash !== '' ||
       parsed.pathname !== '/' ||
-      (parsed.protocol !== 'https:' &&
-        !(authority.allowLoopbackHttpFixture === true &&
-          parsed.protocol === 'http:' &&
-          parsed.hostname === '127.0.0.1')) ||
+      !validOrigin ||
       raw !== parsed.origin ||
       allowed.has(parsed.origin)
     ) {
