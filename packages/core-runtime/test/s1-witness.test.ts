@@ -14,8 +14,8 @@
  * Plus the negative battery: no witness on cancel-before-transfer, witness
  * survival + identical re-derivation across restart (no re-download,
  * no double charge), changed-basis/foreign-witness rejection, caller-
- * supplied resolution refusal, journal corruption fail-closed, and the S2
- * /collection lanes unchanged.
+ * supplied resolution refusal and journal corruption fail-closed. Existing
+ * S2 and collection regression suites cover cross-lane compatibility.
  */
 
 import { createHash } from 'node:crypto';
