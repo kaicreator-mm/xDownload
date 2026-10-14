@@ -65,6 +65,7 @@ import {
 } from '@xdownload/direct-acquisition';
 import {
   executeHlsVodAcquisition,
+  preflightSelectedHlsVod,
   type HlsRenditionBinding,
   type HlsVodPipelineOutcome,
   type MasterPlaylist,
@@ -626,6 +627,60 @@ export function executeHlsAcquisition(runtime: FlowRuntime, input: HlsFlowInput)
     ...(acceptanceError === undefined ? {} : { acceptanceError }),
     ...(schedulerAcceptance === undefined ? {} : { schedulerAcceptance }),
   };
+}
+
+/**
+ * Selected S4 user flow -> authoritative Core effect hand-off.
+ *
+ * The existing HLS flow takes an already-decoded/bound rendition. This
+ * entrypoint validates the exact selected master/rendition/media tuple and
+ * fixed logical-target identity BEFORE registering a lineage or debiting
+ * any Core budget. It then reuses the one existing T015 scheduler/writer
+ * implementation, never a second HLS local task engine.
+ *
+ * Caller must supply manifest/media text from its previously authorized,
+ * provenance-checked fetch capability. This wrapper does not grant network,
+ * peer/session or public Core-command authority.
+ */
+export interface SelectedHlsFlowInput
+  extends Omit<HlsFlowInput, 'binding' | 'master' | 'mediaPlaylist' | 'mediaPlaylistLocator'> {
+  readonly manifestLocator: LocatorBinding<LogicalTargetId>;
+  readonly masterText: string;
+  readonly selectedRenditionUri: string;
+  readonly mediaText: string;
+}
+
+export function executeSelectedHlsAcquisition(
+  runtime: FlowRuntime,
+  input: SelectedHlsFlowInput,
+): HlsFlowOutcome {
+  const { manifestLocator, masterText, selectedRenditionUri, mediaText, ...execution } = input;
+  if (input.targetId !== manifestLocator.identity) {
+    throw new CoreRuntimeFlowError('selected-hls-target', undefined, [
+      diagnostic(
+        'CONTRACT_BINDING_MISMATCH',
+        'targetId',
+        'S4 Core lineage target must match the previously frozen manifest locator identity',
+      ),
+    ]);
+  }
+  const selected = mustDomain(
+    'selected-hls-preflight',
+    preflightSelectedHlsVod({
+      logicalTargetId: manifestLocator.identity,
+      manifestLocator,
+      masterText,
+      selectedRenditionUri,
+      mediaText,
+    }),
+  );
+  return executeHlsAcquisition(runtime, {
+    ...execution,
+    binding: selected.binding,
+    master: selected.master,
+    mediaPlaylist: selected.media,
+    mediaPlaylistLocator: selected.binding.renditionLocator,
+  });
 }
 
 // ------------------------------------------------------------------- projection
