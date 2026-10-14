@@ -20,14 +20,6 @@
 
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  decodeAcquisitionContract,
-  makeEffectId,
-  makeLogicalTargetId,
-  makeMemberId,
-  unwrapOrThrow,
-  type AcquisitionContract,
-} from '@xdownload/domain-contracts';
 import type { SeamProjectionView } from '@xdownload/core-seam';
 import {
   closeRuntime,
@@ -97,16 +89,6 @@ async function waitForCondition(condition: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error('condition was not met in time');
-}
-
-function decodedContract(contractId: string): AcquisitionContract {
-  const decoded = decodeAcquisitionContract(
-    rawSingleResourceContract({ contractId }) as unknown as Record<string, unknown>,
-  );
-  if (!decoded.ok) {
-    throw new Error('fixture contract does not decode');
-  }
-  return decoded.value;
 }
 
 describe('S1 cancel cutoff through the composed runtime (#101 P2-1)', () => {
@@ -228,68 +210,45 @@ describe('S1 cancel cutoff through the composed runtime (#101 P2-1)', () => {
           }).outcome,
         ).toBe('ACCEPTED');
 
-        // The transfer + durable acceptance run at the flow level, so the
-        // cancel command deterministically lands AFTER the durable
-        // acceptance but BEFORE any terminal is recorded.
-        const flow = await import('../src/index.ts').then((m) =>
-          m.executeDirectAcquisition(runtime, {
-            contractId: CONTRACT,
-            snapshotId: SNAPSHOT,
-            targetId: 'target-file-001',
-            authorizationContextRef: String(rawSingleResourceContract()['authorizationContextRef']),
-            budgetProfile: rawSingleResourceContract()['budgetProfile'],
-            frozenMemberIds: [MEMBER],
-            commandId: `s1-direct:${CONTRACT}:${SNAPSHOT}:${MEMBER}`,
-            memberId: MEMBER,
-            artifactId: ARTIFACT,
-            transfer: {
-              effectId: unwrapOrThrow(
-                makeEffectId(`effect:${CONTRACT}:${SNAPSHOT}:target-file-001`),
-              ),
-              contractId: CONTRACT,
-              slice: 'S1',
-              selectedMemberId: unwrapOrThrow(makeMemberId(MEMBER)),
-              binding: {
-                identity: unwrapOrThrow(makeLogicalTargetId('target-file-001')),
-                locator: { kind: 'direct', uri: `${baseUri}/file.bin` },
-                provenance: {
-                  binding: 'SELECTED_RESOURCE_PROVENANCE',
-                  originLocatorUri: `${baseUri}/file.bin`,
-                },
-              },
-              expectedSha256: digest,
-              allowedRedirectHosts: [HOST],
-              attempt: 0,
-            },
-          }),
-        );
-        const classification = runtime.recovery.classify(flow.workItemId);
-        expect(classification.lifecycleClass).toBe('ACCEPTED');
-        expect(classification.bytesVerified).toBe(true);
-        expect(runtime.seam.inspectProjection(CONTRACT)?.terminal).toBeUndefined();
-
-        // The user cancel commits after the durable acceptance.
+        // Intercept the Core-private journal port at the precise moment
+        // AFTER durable artifact acceptance but BEFORE the terminal. Unlike
+        // the old test's raw-flow shortcut, this runs through the accepted
+        // S1 seam command and the single real Core authority end-to-end.
+        const originalWitness = runtime.seam.recordTargetWitness.bind(runtime.seam);
+        let cancelCommittedAfterAcceptance = false;
+        runtime.seam.recordTargetWitness = (aggregateId, receipt) => {
+          if (!cancelCommittedAfterAcceptance) {
+            const workItem = runtime.writer.reader
+              .workItems()
+              .find((item) => item.contractId === CONTRACT);
+            expect(workItem).toBeDefined();
+            const classification = runtime.recovery.classify(workItem!.workItemId);
+            expect(classification.lifecycleClass).toBe('ACCEPTED');
+            expect(classification.bytesVerified).toBe(true);
+            expect(runtime.seam.inspectProjection(CONTRACT)?.terminal).toBeUndefined();
+            // A real seam CANCEL commits after the accepted bytes. The S1
+            // drive must close with COMPLETE per ADR-013, never re-download.
+            const cancel = seamCommand(runtime, {
+              commandType: 'CANCEL_LINEAGE',
+              aggregateId: CONTRACT,
+              payload: {},
+              expectedRevision: 2,
+            });
+            expect(cancel.outcome).toBe('ACCEPTED');
+            cancelCommittedAfterAcceptance = true;
+          }
+          return originalWitness(aggregateId, receipt);
+        };
         expect(
           seamCommand(runtime, {
-            commandType: 'CANCEL_LINEAGE',
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
             aggregateId: CONTRACT,
-            payload: {},
+            payload: s1Payload(`${baseUri}/file.bin`, digest),
             expectedRevision: 1,
           }).outcome,
         ).toBe('ACCEPTED');
-
-        // Reconcile the intent from durable truth: the projector applies the
-        // frozen cutoff — acceptance committed before the cancel is not
-        // retroactively revoked, so the truthful closure is COMPLETE (with
-        // the durable target evidence recorded before terminal authority).
-        const drive = await import('../src/index.ts').then((m) =>
-          m.driveS1DirectExecution(runtime, {
-            aggregateId: CONTRACT,
-            contract: decodedContract(CONTRACT),
-            payload: s1Payload(`${baseUri}/file.bin`, digest),
-          }),
-        );
-        expect(drive.ok).toBe(true);
+        await waitForTerminal(() => runtime.seam.inspectProjection(CONTRACT));
+        expect(cancelCommittedAfterAcceptance).toBe(true);
         const view = runtime.seam.inspectProjection(CONTRACT);
         expect(view?.lineage.status).toBe('TERMINAL');
         expect(view?.terminal?.requestFulfillment).toBe('COMPLETE');

@@ -293,6 +293,21 @@ export class FileBackedSeamJournal implements SeamJournal {
             'seam target-evidence receipt is missing identity or the receipt object',
           );
         }
+      } else if (record['kind'] === 'TARGET_WITNESS') {
+        // #113: the trusted target-resolution witness entry; semantic
+        // validation happens during seam replay, also fail-closed.
+        if (
+          typeof record['aggregateId'] !== 'string' ||
+          record['aggregateId'].length === 0 ||
+          typeof record['receipt'] !== 'object' ||
+          record['receipt'] === null ||
+          Array.isArray(record['receipt'])
+        ) {
+          throw new DurableStoreCorruptError(
+            path,
+            'seam target witness is missing identity or the receipt object',
+          );
+        }
       } else if (
         (record['kind'] !== undefined && record['kind'] !== 'COMMAND') ||
         typeof record['envelope'] !== 'object' ||

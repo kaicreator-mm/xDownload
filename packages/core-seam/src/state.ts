@@ -43,6 +43,57 @@ export interface TargetEvidenceReceipt {
   readonly certaintyClass: 'DECISIVE' | 'PROBATIVE';
 }
 
+/**
+ * Core-private, durable S1 requested-target-resolution witness (#113, #103
+ * §2.2 T007 separation): the immutable fact that the user-selected delivery
+ * locator + declared redirect graph actually served the frozen requested
+ * member for one exact contract/snapshot/effect execution — recorded BEFORE
+ * any terminal authority is handed over, including when the transfer's bytes
+ * failed validation or no bytes were accepted at all. Written only by the
+ * trusted Core-runtime S1 driver from its own observed transfer truth; no
+ * surface/AI/Recipe command can inject one. Secret-free: hosts only, never
+ * credentials/tokens/cookies. The resolved Target identity is distinct from
+ * artifact acceptance; `PROVENANCE_UNPROVEN` is distinct from auth/unsupported.
+ */
+export interface TargetWitnessReceipt {
+  /** The frozen snapshot identity of the executed lineage. */
+  readonly snapshotId: string;
+  /** The sole frozen requested member this witness is bound to. */
+  readonly memberId: string;
+  /** The artifact-store identity the attempt targeted (bytes may be absent). */
+  readonly artifactId: string;
+  /** The frozen canonical effect identity of the executed lineage. */
+  readonly effectId: string;
+  /** The user-selected delivery locator the witness is bound to. */
+  readonly locatorUri: string;
+  /** The declared delivery-graph hosts (selected host + authorized redirects). */
+  readonly declaredRedirectHosts: readonly string[];
+  /** Hosts the attempt actually traversed, in hop order (secret-free). */
+  readonly observedRedirectHosts: readonly string[];
+  /**
+   * RESOLVED: the declared delivery graph actually served the frozen target
+   * (bytes arrived through it). PROVENANCE_UNPROVEN: the attempt stopped
+   * inside the delivery graph itself (undeclared redirect/locator
+   * substitution) — no reliable requested-locator fact exists.
+   */
+  readonly status: 'RESOLVED' | 'PROVENANCE_UNPROVEN';
+  /** True only when a real transfer was attempted. */
+  readonly transferAttempted: boolean;
+  /**
+   * Present iff status === 'RESOLVED': the validated identity basis. The
+   * publisher-digest anchor with DECISIVE certainty is recorded only when the
+   * durably accepted bytes actually matched it; a failed/unaccepted transfer
+   * resolves on the REQUESTED_LOCATOR_PROVENANCE basis (PROBATIVE) alone.
+   */
+  readonly basis?: 'PUBLISHED_SHA256' | 'REQUESTED_LOCATOR_PROVENANCE';
+  readonly certaintyClass?: 'DECISIVE' | 'PROBATIVE';
+  /**
+   * Present iff status === 'PROVENANCE_UNPROVEN': the canonical terminal
+   * reason the delivery graph failed closed with.
+   */
+  readonly unprovenReason?: string;
+}
+
 export interface ContractAggregate {
   readonly contract: AcquisitionContract;
   /** Monotonic per-aggregate revision; starts at 1 on creation. */
@@ -62,6 +113,13 @@ export interface LineageState {
    * survives restarts identically.
    */
   targetEvidence?: TargetEvidenceReceipt;
+  /**
+   * Trusted Core-runtime S1 target-resolution witness (#113). Internal
+   * authority state only: surfaces cannot write it through the command
+   * vocabulary. Journaled for restart replay so the durable resolution fact
+   * exists before terminal truth and survives restarts identically.
+   */
+  targetWitness?: TargetWitnessReceipt;
   /**
    * Trusted Core-runtime CoverageAccounting receipt. This is internal authority
    * state only: surfaces cannot write it through the command vocabulary.
@@ -140,8 +198,25 @@ export interface TargetEvidenceJournalEntry {
   readonly receipt: TargetEvidenceReceipt;
 }
 
+/**
+ * Core-internal durable S1 target-resolution witness (#113). Written only
+ * through the trusted server API by the Core-runtime S1 driver, never through
+ * a surface command; journaled BEFORE terminal authority so the resolution
+ * fact survives restarts even when the process dies first (kill before/after
+ * record), and replay re-establishes the identical witness (identical
+ * replays converge, conflicting ones fail closed).
+ */
+export interface TargetWitnessJournalEntry {
+  readonly kind: 'TARGET_WITNESS';
+  readonly aggregateId: string;
+  readonly receipt: TargetWitnessReceipt;
+}
+
 export type SeamJournalEntry =
-  AcceptedCommandJournalEntry | CoverageAccountingJournalEntry | TargetEvidenceJournalEntry;
+  | AcceptedCommandJournalEntry
+  | CoverageAccountingJournalEntry
+  | TargetEvidenceJournalEntry
+  | TargetWitnessJournalEntry;
 
 /**
  * Persistence port for accepted commands. T004 ships only the port and an
