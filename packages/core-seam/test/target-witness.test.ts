@@ -208,6 +208,24 @@ describe('#113 target witness — trusted fact path and exact ownership binding'
     expect(s.recordTargetWitness(AGGREGATE, witnessOf()).ok).toBe(true);
   });
 
+  it('rejects a trusted receipt when the contract exists but no S1 execution was accepted', () => {
+    const s = serverWith();
+    expect(
+      s.handleFrame(
+        JSON.stringify(
+          rawCommand({
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: AGGREGATE,
+            payload: rawSingleResourceContract({ contractId: AGGREGATE }),
+          }),
+        ),
+      ).outcome,
+    ).toBe('ACCEPTED');
+    const rejected = rejectCode(s.recordTargetWitness(AGGREGATE, witnessOf()));
+    expect(rejected.code).toBe('ADMISSION_REJECTED');
+    expect(s.targetWitnessFor(AGGREGATE)).toBeUndefined();
+  });
+
   it('strictly decodes the receipt: closed fields, status-conditional basis pairing, bounded graphs', () => {
     const s = serverWith();
     submitSingle(s);
@@ -243,6 +261,10 @@ describe('#113 target witness — trusted fact path and exact ownership binding'
       },
       {
         receipt: witnessOf({ declaredRedirectHosts: [] }),
+        path: 'targetWitness.declaredRedirectHosts',
+      },
+      {
+        receipt: witnessOf({ declaredRedirectHosts: ['unrelated.invalid'] }),
         path: 'targetWitness.declaredRedirectHosts',
       },
       {
