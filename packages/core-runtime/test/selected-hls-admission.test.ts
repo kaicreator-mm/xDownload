@@ -36,18 +36,23 @@ const mediaText = [
 
 function validInput(): SelectedHlsFlowInput {
   return {
-    contractId: 'hls-contract-001',
-    snapshotId: 'hls-snapshot-001',
-    targetId: logicalTargetId,
-    authorizationContextRef: 'hls-auth-001',
-    budgetProfile: {},
+    seed: {
+      contractId: 'hls-contract-001',
+      snapshotId: 'hls-snapshot-001',
+      targetId: logicalTargetId,
+      authorizationContextRef: 'hls-auth-001',
+      budgetProfile: {},
+    },
     commandId: 'hls-command-001',
     memberId: 'hls-member-001',
     artifactId: 'hls-artifact-001',
-    manifestLocator,
-    masterText,
-    selectedRenditionUri: 'https://cdn.example.test/v360/index.m3u8',
-    mediaText,
+    selection: {
+      logicalTargetId,
+      manifestLocator,
+      masterText,
+      selectedRenditionUri: 'https://cdn.example.test/v360/index.m3u8',
+      mediaText,
+    },
     fetcher: {
       fetcherId: 'should-never-transfer',
       fetch() {
@@ -79,7 +84,10 @@ describe('S4 selected Core entrypoint pre-effect authority', () => {
     expect(() =>
       executeSelectedHlsAcquisition(blockedRuntime, {
         ...validInput(),
-        selectedRenditionUri: 'https://cdn.example.test/other/index.m3u8',
+        selection: {
+          ...validInput().selection,
+          selectedRenditionUri: 'https://cdn.example.test/other/index.m3u8',
+        },
       }),
     ).toThrowError(CoreRuntimeFlowError);
   });
@@ -88,7 +96,7 @@ describe('S4 selected Core entrypoint pre-effect authority', () => {
     try {
       executeSelectedHlsAcquisition(blockedRuntime, {
         ...validInput(),
-        targetId: 'different-target-001',
+        seed: { ...validInput().seed, targetId: 'different-target-001' },
       });
       throw new Error('bad lineage was admitted');
     } catch (error) {
@@ -108,7 +116,7 @@ describe('S4 selected Core entrypoint pre-effect authority', () => {
       try {
         executeSelectedHlsAcquisition(blockedRuntime, {
           ...validInput(),
-          mediaText: alteredMedia,
+          selection: { ...validInput().selection, mediaText: alteredMedia },
         });
         throw new Error('unsupported media was admitted');
       } catch (error) {
