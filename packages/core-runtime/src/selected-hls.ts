@@ -113,9 +113,7 @@ export async function executeSelectedHlsAcquisitionAsync(
   if (started.kind === 'REPLAY') return started.outcome;
 
   const snapshotId: SnapshotId | undefined =
-    input.seed.snapshotId === ''
-      ? undefined
-      : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
+    input.seed.snapshotId === '' ? undefined : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
   const pipeline = await executeHlsVodAcquisitionAsync({
     contractId: unwrapOrThrow(makeContractId(input.seed.contractId)),
     snapshotId,
