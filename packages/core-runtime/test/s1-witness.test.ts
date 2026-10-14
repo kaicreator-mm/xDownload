@@ -21,6 +21,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
+import { decodeAcquisitionContract } from '@xdownload/domain-contracts';
 import type { SeamProjectionView } from '@xdownload/core-seam';
 import {
   closeRuntime,
@@ -36,6 +37,7 @@ import {
   closeCoreRuntime,
   durableLayout,
   projectLineageResult,
+  registerLineage,
   reopenCoreRuntime,
   s1EffectIdentity,
 } from '../src/index.ts';
@@ -117,6 +119,102 @@ function setup(runtime: ReturnType<typeof openRuntime>, payload: unknown): void 
     }).outcome,
   ).toBe('ACCEPTED');
 }
+
+describe('#113 S1 crash-window replay of durable provenance failure', () => {
+  it(
+    'reconstructs tuple (b) from an effect-outcome-only journal after restart, without re-downloading',
+    { timeout: 60_000 },
+    async () => {
+      const rootDir = makeTempDir('s1w-crash-window-b');
+      dirs.push(rootDir);
+      const raw = rawSingleResourceContract({ contractId: CONTRACT });
+      const contractResult = decodeAcquisitionContract(raw);
+      expect(contractResult.ok).toBe(true);
+      if (!contractResult.ok) return;
+      const contract = contractResult.value;
+      const locator = 'http://127.0.0.1:9/file.bin';
+      const payload = s1Payload('http://127.0.0.1:9', '127.0.0.1:9');
+
+      // Simulated SIGKILL boundary: command intent not yet dispatched by the
+      // seam, but the same canonical T015 scheduler/ledger has a work item,
+      // dispatched attempt and committed FAILED/LOCATOR_SUBSTITUTION fact.
+      // No staged bytes, TERMINAL_FAILURE row or target witness exists yet.
+      const first = openRuntime(rootDir);
+      try {
+        expect(
+          seamCommand(first, {
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: CONTRACT,
+            payload: raw,
+          }).outcome,
+        ).toBe('ACCEPTED');
+        const { submission, workItemId } = registerLineage(
+          first,
+          {
+            contractId: CONTRACT,
+            snapshotId: SNAPSHOT,
+            targetId: contract.requestedTarget,
+            authorizationContextRef: contract.authorizationContextRef,
+            budgetProfile: contract.budgetProfile,
+            frozenMemberIds: [MEMBER],
+          },
+          {
+            commandId: `s1-direct:${CONTRACT}:${SNAPSHOT}:${MEMBER}`,
+            memberId: MEMBER,
+          },
+        );
+        const attemptId = `${workItemId}#attempt-1`;
+        first.writer.dispatch({ workItemId, attemptId });
+        expect(first.scheduler.startEffectAttempt(submission.lineageKey, attemptId).ok).toBe(true);
+        first.writer.recordExternalEffectObserved(workItemId);
+        expect(
+          first.scheduler.recordEffectOutcome(submission.lineageKey, {
+            attemptId,
+            outcome: 'FAILED',
+            failureCategory: 'LOCATOR_SUBSTITUTION',
+          }).ok,
+        ).toBe(true);
+        expect(
+          first.scheduler.durableEffectOutcome(submission.lineageKey, attemptId),
+        ).toEqual({ outcome: 'FAILED', failureCategory: 'LOCATOR_SUBSTITUTION' });
+        expect(first.writer.reader.artifacts(workItemId)).toHaveLength(0);
+        expect(first.seam.targetWitnessFor(CONTRACT)).toBeUndefined();
+      } finally {
+        closeRuntime(first);
+      }
+
+      const reopened = reopenCoreRuntime(runtimeOptions(rootDir));
+      try {
+        expect(
+          seamCommand(reopened, {
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+            aggregateId: CONTRACT,
+            payload,
+            expectedRevision: 1,
+          }).outcome,
+        ).toBe('ACCEPTED');
+        const view = await waitForTerminal(() => reopened.seam.inspectProjection(CONTRACT));
+        expect(tupleOf(view)).toEqual([
+          'UNKNOWN', 'BLOCKED', 'FAILED', 'NOT_APPLICABLE', 'VALIDATION_FAILED',
+        ]);
+        expect(reopened.seam.targetWitnessFor(CONTRACT)).toMatchObject({
+          status: 'PROVENANCE_UNPROVEN',
+          unprovenReason: 'LOCATOR_SUBSTITUTION',
+          locatorUri: locator,
+        });
+        // The previous FAILED attempt must never be re-issued: port :9 is
+        // deliberately not served, proving terminal came from durable truth.
+        const workItem = reopened.writer.reader
+          .workItems()
+          .find((row) => row.contractId === CONTRACT);
+        expect(workItem).toBeDefined();
+        expect(reopened.writer.reader.artifacts(workItem!.workItemId)).toHaveLength(0);
+      } finally {
+        closeRuntime(reopened);
+      }
+    },
+  );
+});
 
 describe('#113 S1 target witness — the three frozen §2.2 tuples on the same Core source', () => {
   it(
