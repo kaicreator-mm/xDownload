@@ -259,6 +259,16 @@ export interface MediaValidationInput {
  * with a missing required track/structure cannot pass (counterexample C27).
  */
 export function validateMedia(input: MediaValidationInput): ValidationLayerOutcome {
+  // S3 Media is a required, independent validation dimension. Neither an
+  // omitted policy nor an empty required-signature set can be evidence that
+  // an MP4/audio track or container is actually valid (#105 / PRD §28).
+  if (input.policy.signatures.length === 0) {
+    return failed(
+      'media',
+      'MEDIA_POLICY_REQUIRED',
+      'no independently applicable media structure check was declared',
+    );
+  }
   for (const signature of input.policy.signatures) {
     const required = signatureBytes(signature.hex);
     if (required === undefined) {
