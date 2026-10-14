@@ -23,3 +23,4 @@ export * from './request.ts';
 export * from './pipeline.ts';
 export * from './selected-preflight.ts';
 export * from './http-segment.ts';
+export * from './acquire-async.ts';
