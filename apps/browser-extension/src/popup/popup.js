@@ -264,7 +264,10 @@
         renderRow(tab, item);
       }
       s5Group.hidden = false;
-      setState('RUNNING', 'Select an S2 attachment to Download, or preview an S5 page group without acquisition.');
+      setState(
+        'RUNNING',
+        'Select an S2 attachment to Download, or preview an S5 page group without acquisition.',
+      );
     } catch (error) {
       setState('FAILED', `page scan failed: ${String(error)}`);
     }
