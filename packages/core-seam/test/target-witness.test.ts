@@ -214,6 +214,22 @@ describe('#113 target witness — trusted fact path and exact ownership binding'
     expect(s.recordTargetWitness(AGGREGATE, witnessOf()).ok).toBe(true);
   });
 
+  it('cannot promote a no-digest S1 intent to DECISIVE publisher identity', () => {
+    const s = serverWith();
+    submitSingle(s);
+    const forged = s.recordTargetWitness(
+      AGGREGATE,
+      witnessOf({ basis: 'PUBLISHED_SHA256', certaintyClass: 'DECISIVE' }),
+    );
+    expect(forged.ok).toBe(false);
+    if (!forged.ok) {
+      expect(forged.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+      expect(forged.diagnostics[0]?.path).toBe('targetWitness.basis');
+    }
+    expect(s.targetWitnessFor(AGGREGATE)).toBeUndefined();
+    expect(s.recordTargetWitness(AGGREGATE, witnessOf()).ok).toBe(true);
+  });
+
   it('rejects a trusted receipt when the contract exists but no S1 execution was accepted', () => {
     const s = serverWith();
     expect(
