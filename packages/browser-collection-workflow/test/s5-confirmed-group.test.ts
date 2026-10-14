@@ -21,7 +21,7 @@ function contract(): AcquisitionContract {
     validationPolicy: {
       requiredLayers: ['membership', 'target', 'transfer', 'format', 'coverage'],
     },
-  } as AcquisitionContract;
+  } as unknown as AcquisitionContract;
 }
 
 function snapshot(): SelectionSnapshot {
@@ -40,7 +40,7 @@ function snapshot(): SelectionSnapshot {
         memberRefs: [...members],
       },
     ],
-  } as SelectionSnapshot;
+  } as unknown as SelectionSnapshot;
 }
 
 describe('S5 confirmed group Core admission', () => {
@@ -56,7 +56,7 @@ describe('S5 confirmed group Core admission', () => {
   it('refuses a snapshot from another confirmed contract', () => {
     const result = validateConfirmedPageGroup(contract(), {
       ...snapshot(),
-      contractId: 'unrelated-contract',
+      contractId: 'unrelated-contract' as SelectionSnapshot['contractId'],
     });
     expect(result.ok).toBe(false);
   });
@@ -64,7 +64,7 @@ describe('S5 confirmed group Core admission', () => {
   it('refuses added or replaced members not covered by the batch claim', () => {
     const result = validateConfirmedPageGroup(contract(), {
       ...snapshot(),
-      selectedMemberIds: ['member-001', 'member-999'],
+      selectedMemberIds: ['member-001', 'member-999'] as unknown as SelectionSnapshot['selectedMemberIds'],
     });
     expect(result.ok).toBe(false);
   });
@@ -83,7 +83,7 @@ describe('S5 confirmed group Core admission', () => {
           {
             kind: 'SINGLE',
             confirmationType: 'CONFIRM_SELECTION',
-            memberRefs: ['member-001'],
+            memberRefs: ['member-001'] as unknown as SelectionSnapshot['selectedMemberIds'],
           },
         ],
       }).ok,
@@ -95,7 +95,7 @@ describe('S5 confirmed group Core admission', () => {
       contract: contract(),
       snapshot: snapshot(),
       declaredRequestedMemberIds: ['member-001', 'other-003'],
-    } as Omit<CollectionFlowInput, 'slice'>);
+    } as unknown as Omit<CollectionFlowInput, 'slice'>);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.rejection.stage).toBe('MEMBERSHIP_IDENTITY');
   });
