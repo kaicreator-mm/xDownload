@@ -282,17 +282,13 @@ async function requireS1CoreCompatibility(
     response.acceptance === undefined &&
     response.projection === undefined;
   if (!compatible) {
-    throw new CliInputError(
-      'USAGE',
-      'S1 download requires an authorized Core with core-seam 1.1.0 or later; upgrade/reconcile the installed Core before submitting a new task',
-      [
-        {
-          code: 'UNSUPPORTED_ENVELOPE_VERSION',
-          path: 'schemaIdentity.version',
-          message: 'read-only S1 capability preflight did not verify a fresh aggregate on compatible Core',
-        },
-      ],
-    );
+    throw new CliInputError('USAGE', 'S1 download requires Core seam 1.1; upgrade the installed Core', [
+      {
+        code: 'UNSUPPORTED_ENVELOPE_VERSION',
+        path: 'schemaIdentity.version',
+        message: 'S1 preflight did not verify compatible Core on the intended fresh task',
+      },
+    ]);
   }
 }
 
