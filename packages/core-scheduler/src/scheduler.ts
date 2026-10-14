@@ -600,6 +600,30 @@ export class CoreScheduler {
     return this.#view(lineageKey);
   }
 
+  /**
+   * Read the FIRST durable outcome for an exact effect attempt, including its
+   * failure category. The reduced LineageView intentionally carries only the
+   * outcome class, so S1 target-provenance restart reconciliation must consult
+   * the same immutable fact log for LOCATOR_SUBSTITUTION / redirect failures.
+   * This is a read-only Core control query: it creates no authority/fact.
+   */
+  durableEffectOutcome(
+    lineageKey: LineageKey,
+    attemptId: string,
+  ): { readonly outcome: EffectOutcome; readonly failureCategory?: string } | undefined {
+    const fact = this.#facts().find(
+      (item) =>
+        item.kind === 'effectOutcomeRecorded' &&
+        item.lineageKey === lineageKey &&
+        item.attemptId === attemptId,
+    );
+    if (fact?.kind !== 'effectOutcomeRecorded') return undefined;
+    return {
+      outcome: fact.outcome,
+      ...(fact.failureCategory === undefined ? {} : { failureCategory: fact.failureCategory }),
+    };
+  }
+
   // --------------------------------------------------------------- internal
 
   #facts(): readonly DurableControlFact[] {
