@@ -33,6 +33,7 @@ import type {
   TransferBudgetLedgerPort,
   ValidationLayerOutcome,
 } from './port.ts';
+import { targetBasisOf } from './port.ts';
 
 const MAX_REDIRECT_HOPS = 5;
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
@@ -82,6 +83,12 @@ export class DirectHttpAdapter {
     try {
       state = await this.run(request);
     } catch {
+      // A fired cancellation checkpoint is a truthful user-cancel stop, not
+      // infrastructure noise: it terminates the attempt with whatever bytes
+      // had already arrived and never becomes a fabricated COMPLETED.
+      if (request.signal?.aborted === true) {
+        return ok(this.finalize(request, stopState(request, 'USER_CANCELLED')));
+      }
       // Infrastructure-level failure (connection refused/reset): truthful
       // no-progress outcome, never an exception-shaped success.
       state = stopState(request, 'NO_PROGRESS');
@@ -97,6 +104,11 @@ export class DirectHttpAdapter {
     let refreshedSignedLocator = false;
 
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
+      // Cancellation checkpoint: a fired user-cancel stop ends the attempt
+      // before any further request/hop (no lingering socket, #101 P2-1).
+      if (request.signal?.aborted === true) {
+        return stopState(request, 'USER_CANCELLED', { chain: locatorChain });
+      }
       // Global safety ceiling first, then the transfer domain (PRD §15.4).
       const remaining = this.ledger.remaining();
       if (remaining.globalSafety.exhausted) {
@@ -110,6 +122,7 @@ export class DirectHttpAdapter {
       const response = await fetch(current.locator.uri, {
         redirect: 'manual',
         headers: requestHeaders(request),
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
       });
       const responseIdentity = observeIdentity(response.headers);
 
@@ -256,7 +269,19 @@ export class DirectHttpAdapter {
           : { kind: 'SAFE_RESTART', reason: 'IDENTITY_CHANGED' }
         : plan;
 
-    const read = await this.streamBytes(response, prefix);
+    const read = await this.streamBytes(response, prefix, request.signal);
+    if (read.aborted) {
+      // The cancellation checkpoint fired mid-body: what arrived stays
+      // partial/unaccepted truth — never a completed transfer (P2-1).
+      return stopState(request, 'USER_CANCELLED', {
+        chain: locatorChain,
+        resumeDecision: resumeFinal,
+        observedIdentity: responseIdentity,
+        targetResolved: true,
+        bytes: read.chunks,
+        receivedBytes: byteLengthOf(read.chunks),
+      });
+    }
     if (read.budgetStop !== undefined) {
       return stopState(request, read.budgetStop, {
         chain: locatorChain,
@@ -320,6 +345,12 @@ export class DirectHttpAdapter {
       bytes,
       expectedSha256: request.expectedSha256,
       expectedTotalBytes: request.expectedTotalBytes,
+      // Provenance-basis Target facts (C34): the bytes' actual serving URI is
+      // the realized chain's last hop; the claim is bound to the declared
+      // delivery graph rooted at the user-selected locator.
+      servedUri: locatorChain[locatorChain.length - 1]?.locator.uri,
+      originUri: request.binding.locator.uri,
+      declaredRedirectHosts: request.allowedRedirectHosts,
     });
     const validations: ValidationLayerOutcome[] = [transferCheck, formatCheck, targetCheck];
     if (request.slice === 'S3') {
@@ -349,17 +380,25 @@ export class DirectHttpAdapter {
   private async streamBytes(
     response: Response,
     prefix: Uint8Array | undefined,
+    signal?: AbortSignal,
   ): Promise<{
     chunks: Uint8Array[];
     budgetStop: 'TRANSFER_BUDGET_EXHAUSTED' | 'GLOBAL_SAFETY_EXHAUSTED' | undefined;
+    aborted: boolean;
   }> {
     const chunks: Uint8Array[] = prefix !== undefined ? [prefix] : [];
     const reader = response.body?.getReader();
     if (reader === undefined) {
-      return { chunks, budgetStop: undefined };
+      return { chunks, budgetStop: undefined, aborted: signal?.aborted === true };
     }
     try {
       for (;;) {
+        if (signal?.aborted === true) {
+          // Checkpoint fired between chunks: tear the stream down at once
+          // (reader.cancel closes the connection — no lingering socket).
+          await reader.cancel('user cancelled').catch(() => undefined);
+          return { chunks, budgetStop: undefined, aborted: true };
+        }
         const next = await reader.read();
         if (next.done) {
           break;
@@ -390,16 +429,20 @@ export class DirectHttpAdapter {
               budgetStop: after.globalSafety.exhausted
                 ? 'GLOBAL_SAFETY_EXHAUSTED'
                 : 'TRANSFER_BUDGET_EXHAUSTED',
+              aborted: false,
             };
           }
           break;
         }
       }
     } catch {
-      // Premature close / connection reset: return what arrived so Transfer
-      // Validation reports the truncation truthfully.
+      // Premature close / connection reset / fired abort signal: return what
+      // arrived so Transfer Validation reports the stop truthfully.
+      if (signal?.aborted === true) {
+        return { chunks, budgetStop: undefined, aborted: true };
+      }
     }
-    return { chunks, budgetStop: undefined };
+    return { chunks, budgetStop: undefined, aborted: false };
   }
 
   // --- helpers ------------------------------------------------------------
@@ -443,6 +486,7 @@ export class DirectHttpAdapter {
       locatorChain: state.locatorChain,
       observedIdentity: state.observedIdentity,
       targetResolved: state.targetResolved,
+      targetBasis: targetBasisOf(request),
     };
   }
 }
@@ -583,11 +627,11 @@ function followRedirect(
 }
 
 function validateRequestShape(request: DirectTransferRequest): DomainValidationResult<void> {
-  if (!isSha256Hex(request.expectedSha256)) {
+  if (request.expectedSha256 !== undefined && !isSha256Hex(request.expectedSha256)) {
     return rejectRequest(
       'MALFORMED_REQUIRED_FIELD',
       'expectedSha256',
-      'the frozen target identity anchor must be a lowercase hex sha-256 digest',
+      'the published target identity anchor must be a lowercase hex sha-256 digest',
     );
   }
   if (!makeContractId(request.contractId).ok) {

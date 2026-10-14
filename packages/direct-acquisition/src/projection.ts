@@ -30,6 +30,7 @@ import type {
   DirectTransferTerminalReason,
   ValidationLayerOutcome,
 } from './port.ts';
+import { targetBasisOf, targetCertaintyOf } from './port.ts';
 
 export interface ProjectionInput {
   readonly request: DirectTransferRequest;
@@ -109,6 +110,14 @@ export function projectOutcome(
       requestFulfillment = 'UNSATISFIED';
       selectionAcquisition = 'FAILED';
       stopReason = 'NO_PROGRESS';
+      break;
+    case 'USER_CANCELLED':
+      // The durable user-cancel cutoff is decided by the Core scheduler over
+      // committed fact order; the adapter only records the attempt's truthful
+      // stop: arrived bytes stay partial, never promoted to COMPLETED.
+      requestFulfillment = input.bytesReceived > 0 ? 'PARTIAL' : 'UNSATISFIED';
+      selectionAcquisition = input.bytesReceived > 0 ? 'PARTIAL' : 'CANCELLED';
+      stopReason = 'USER_CANCELLED';
       break;
     default:
       // Integrity failures: transfer finished but validation rejected.
@@ -228,6 +237,14 @@ function typedLayerEvidence(
         : outcome.layer === 'media'
           ? 'MEDIA'
           : 'RESOURCE_IDENTITY';
+    // C34: the Target evidence names its identity basis explicitly — a
+    // publisher-byte digest anchor or the conservative requested-locator
+    // provenance basis — so downstream consumers can never mistake a
+    // provenance-bound claim for a publisher-digest identity.
+    const sourceIdentity =
+      outcome.layer === 'target'
+        ? `xdownload/target-validator:${targetBasisOf(input.request)}`
+        : `xdownload/${outcome.layer}-validator`;
     records.push({
       layer: outcome.layer,
       record: evidenceRecord({
@@ -237,10 +254,14 @@ function typedLayerEvidence(
         claimType,
         claimSubject: { kind: 'LOGICAL_TARGET', ref: input.request.binding.identity },
         sourceType: 'INDEPENDENT_VALIDATOR',
-        provenance: { sourceIdentity: `xdownload/${outcome.layer}-validator` },
+        provenance: { sourceIdentity },
         independenceFromDiscovery: 'INDEPENDENT',
         scope: { domain: 'SINGLE_RESOURCE_TRANSFER', contractRef: input.request.contractId },
-        certaintyClass: 'DECISIVE',
+        // A requested URL/redirect provenance check is probative of which
+        // selected resource was acquired, not decisive publisher-byte truth.
+        // Keep the independently published SHA case decisive (C34).
+        certaintyClass:
+          outcome.layer === 'target' ? targetCertaintyOf(targetBasisOf(input.request)) : 'DECISIVE',
       }),
     });
   }

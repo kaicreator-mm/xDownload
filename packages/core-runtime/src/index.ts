@@ -23,9 +23,12 @@ export {
   closeCoreRuntime,
   CoreRuntimeCompositionError,
   createCoreRuntime,
+  createS1DriveSupervisor,
   reopenCoreRuntime,
   type CoreRuntime,
   type CoreRuntimeOptions,
+  type S1DriveHealthEntry,
+  type S1DriveSupervisor,
 } from './runtime.ts';
 export {
   CoreRuntimeBudgetBridge,
@@ -57,3 +60,11 @@ export {
   MAX_S2_DELIVERED_BYTES,
   type S2DeliveredAcquisitionPayload,
 } from './s2-delivered.ts';
+export {
+  decodeS1DirectPayload,
+  driveS1DirectExecution,
+  s1EffectIdentity,
+  type S1DirectDelivery,
+  type S1DirectExecutionPayload,
+  type S1DriveRuntime,
+} from './s1-direct.ts';

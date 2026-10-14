@@ -18,10 +18,12 @@ export type {
   PartialTransferState,
   RepresentationIdentity,
   ResumeDecision,
+  TargetIdentityBasis,
   TransferBudgetLedgerPort,
   TransferConsumption,
   ValidationLayerOutcome,
 } from './port.ts';
+export { targetBasisOf, targetCertaintyOf } from './port.ts';
 export { DirectHttpAdapter } from './direct-http-adapter.ts';
 export {
   classifyRangeResponse,

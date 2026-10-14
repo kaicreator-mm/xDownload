@@ -42,8 +42,9 @@ import {
   type RecoveryClassification,
 } from '@xdownload/persistence-ledger';
 import { createTerminalResultStore, type TerminalResultStore } from '@xdownload/domain-contracts';
+import type { AcquisitionContract } from '@xdownload/domain-contracts';
 import { createS2ChunkStaging, executeS2DeliveredAcquisition } from './s2-delivered.ts';
-import type { FlowRuntime } from './flow.ts';
+import { cancelLineage, type FlowRuntime } from './flow.ts';
 import {
   durableLayout,
   DurableStoreCorruptError,
@@ -51,9 +52,18 @@ import {
   FileBackedSeamJournal,
   type DurableLayout,
 } from './durable-stores.ts';
+import { driveS1DirectExecution, decodeS1DirectPayload, s1EffectIdentity } from './s1-direct.ts';
+import {
+  createS1DriveSupervisor,
+  type S1DriveHealthEntry,
+  type S1DriveSupervisor,
+} from './s1-drive-supervisor.ts';
+import { createS1TransferAbortHub, type S1TransferAbortHub } from './s1-transfer-abort.ts';
 
 export { durableLayout, DurableStoreCorruptError, FileBackedControlFactLog, FileBackedSeamJournal };
 export type { DurableLayout };
+export { createS1DriveSupervisor, createS1TransferAbortHub };
+export type { S1DriveHealthEntry, S1DriveSupervisor, S1TransferAbortHub };
 
 /** Options for composing/reopening one authoritative Core Runtime. */
 export interface CoreRuntimeOptions {
@@ -61,6 +71,14 @@ export interface CoreRuntimeOptions {
   readonly rootDir: string;
   /** The only same-install/same-user peer scope the seam admits. */
   readonly expectedPeer: ExpectedPeerScope;
+  /**
+   * Optional observer for Core-internal S1 drive health transitions (#101
+   * R1/F03): a rejected/thrown drive is bounded-retried and its truthful
+   * degraded/exhausted state surfaced here (the core host relays it to
+   * stderr) instead of being silently swallowed. Diagnostics only — never
+   * terminal truth.
+   */
+  readonly onS1DriveHealth?: (entry: S1DriveHealthEntry) => void;
 }
 
 /** The composed authoritative Core Runtime (one instance per install). */
@@ -83,6 +101,14 @@ export interface CoreRuntime {
   readonly expectedPeer: ExpectedPeerScope;
   /** Recovery classification captured at composition/reopen time. */
   readonly recoveryAtComposition: readonly RecoveryClassification[];
+  /**
+   * Bounded observable S1 drive-health ledger (#101 R1/F03): the latest
+   * supervised-drive state per aggregate (degraded retries, drained
+   * recoveries, exhausted give-ups). Diagnostics only — lineage/terminal
+   * truth stays with the durable stores; a listed aggregate's intent stays
+   * registered and continues to reconcile (restart or future re-drive).
+   */
+  readonly s1DriveHealth: () => readonly S1DriveHealthEntry[];
 }
 
 export class CoreRuntimeCompositionError extends Error {
@@ -110,11 +136,36 @@ function bindSeam(
   expectedPeer: ExpectedPeerScope,
   journal: SeamJournal,
   flowRuntime: FlowRuntime,
+  supervisor: S1DriveSupervisor,
+  transferAbort: S1TransferAbortHub,
 ): CoreSeamServer {
   // #95 R1/F04: chunked delivered streams stage inside the composition so
   // journal replay during seam construction rebuilds staged truth through
   // the same store before the completing chunk re-executes.
   const s2ChunkStaging = createS2ChunkStaging();
+  // #101: the seam hands the S1 driver the seam completion ports once
+  // constructed (chicken-and-egg resolved with a holder populated before
+  // any frame or reconcile can run).
+  const seamHolder: { current?: CoreSeamServer } = {};
+  // #101 R1/F03: a rejected/thrown drive is a supervised bounded-retry
+  // episode with an observable health record — never a silent swallow. The
+  // verbatim seam rejection becomes the episode's diagnostic message.
+  const drive = (
+    seam: CoreSeamServer,
+    input: { aggregateId: string; contract: AcquisitionContract; payload: unknown },
+  ): void => {
+    void supervisor.drive(input.aggregateId, async () => {
+      const result = await driveS1DirectExecution(
+        { ...flowRuntime, seam, s1TransferAbort: transferAbort },
+        input,
+      );
+      if (!result.ok) {
+        throw new Error(
+          `s1 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
+    });
+  };
   const result = createCoreSeamServer({
     expectedPeer,
     journal,
@@ -135,6 +186,62 @@ function bindSeam(
           s2ChunkStaging,
         ),
     },
+    // #101 first slice: the CLI-surface S1 direct execution command only
+    // registers a durable intent at apply; the real HTTP transfer begins
+    // strictly after the accepted-command journal commit and completes via
+    // recordExecutedTerminal (Core-derived projector terminal).
+    s1DirectAcquisition: {
+      begin: (input) => {
+        const seam = seamHolder.current;
+        if (seam !== undefined) {
+          drive(seam, input);
+        }
+      },
+    },
+    // #101 P2-1: the durably committed user cancel order connects to the
+    // canonical stores and the in-flight transfer abort checkpoint. The
+    // bridge self-filters aggregates without a registered S1 execution, so
+    // other lanes (e.g. synchronous S2 delivery) are unaffected.
+    s1LineageCancel: {
+      cancelled: ({ aggregateId, source }) => {
+        // Tear the in-flight transfer down at once (no lingering socket).
+        transferAbort.abort(aggregateId);
+        const seam = seamHolder.current;
+        if (seam === undefined) {
+          return;
+        }
+        const pending = seam
+          .pendingS1Executions()
+          .find((entry) => entry.aggregateId === aggregateId);
+        if (pending === undefined) {
+          return;
+        }
+        // Commit the cancel into BOTH canonical stores when the durable
+        // execution already exists; when it does not (the drive has not
+        // registered yet), the supervised re-drive below registers the
+        // lineage with its cancellation and closes truthfully instead.
+        const decoded = decodeS1DirectPayload(pending.payload);
+        if (decoded.ok) {
+          const identity = s1EffectIdentity({
+            contractId: pending.contract.contractId,
+            snapshotId: decoded.value.snapshotId,
+            targetId: pending.contract.requestedTarget,
+          });
+          if (identity.ok) {
+            const existing = flowRuntime.writer.reader
+              .workItems()
+              .find((workItem) => workItem.effectId === identity.value.effectId);
+            if (existing !== undefined) {
+              cancelLineage(flowRuntime, identity.value.lineageKey, source, existing.workItemId);
+            }
+          }
+        }
+        // Ensure the cancelled lineage reaches its truthful closure even
+        // when no drive is live; an in-flight episode coalesces and its own
+        // post-transfer checkpoint performs the closure.
+        drive(seam, pending);
+      },
+    },
   });
   if (!result.ok) {
     // Journal replay failed: durable seam truth is corrupt → fail closed.
@@ -144,7 +251,45 @@ function bindSeam(
         .join(', ')}`,
     );
   }
+  seamHolder.current = result.value;
   return result.value;
+}
+
+/**
+ * Reconcile registered S1 direct execution intents against durable truth.
+ * Restart replay re-registers every journaled intent but never restores the
+ * (unjournaled) in-memory terminal, so every non-terminal intent is
+ * re-driven: the driver reconciles from the durable work item (no
+ * re-download of an accepted artifact) and re-derives the identical
+ * terminal through the projector. A replayed durably committed cancel is
+ * re-driven too (#101 P2-1): the driver records the canonical cancel facts
+ * (idempotent) and closes the lineage with the truthful projector output.
+ * Drives run under the same supervisor as command-initiated drives (#101
+ * R1/F03): failures are bounded-retried and surfaced in the runtime's
+ * health ledger, never swallowed.
+ */
+function reconcileS1Executions(
+  runtime: CoreRuntime,
+  supervisor: S1DriveSupervisor,
+  transferAbort: S1TransferAbortHub,
+): void {
+  for (const pending of runtime.seam.pendingS1Executions()) {
+    const view = runtime.seam.inspectProjection(pending.aggregateId);
+    if (view === undefined || view.lineage.status === 'TERMINAL') {
+      continue;
+    }
+    void supervisor.drive(pending.aggregateId, async () => {
+      const result = await driveS1DirectExecution(
+        { ...runtime, s1TransferAbort: transferAbort },
+        pending,
+      );
+      if (!result.ok) {
+        throw new Error(
+          `s1 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
+    });
+  }
 }
 
 /**
@@ -159,14 +304,22 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const { writer, store, recovery } = composePersistence(layout);
   const scheduler = new CoreScheduler(factLog);
   const terminalStore = createTerminalResultStore();
+  const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
+  const transferAbort = createS1TransferAbortHub();
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(options.expectedPeer, journal, {
-      scheduler,
-      writer,
-      store,
-      recovery,
-      terminalStore,
-    }),
+    seam: bindSeam(
+      options.expectedPeer,
+      journal,
+      {
+        scheduler,
+        writer,
+        store,
+        recovery,
+        terminalStore,
+      },
+      supervisor,
+      transferAbort,
+    ),
     scheduler,
     writer,
     store,
@@ -175,7 +328,9 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     layout,
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze([]),
+    s1DriveHealth: supervisor.health,
   });
+  reconcileS1Executions(runtime, supervisor, transferAbort);
   return runtime;
 }
 
@@ -211,14 +366,22 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     .map((workItem) => recovery.classify(workItem.workItemId));
   const scheduler = new CoreScheduler(factLog);
   const terminalStore = createTerminalResultStore();
+  const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
+  const transferAbort = createS1TransferAbortHub();
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(options.expectedPeer, journal, {
-      scheduler,
-      writer,
-      store,
-      recovery,
-      terminalStore,
-    }),
+    seam: bindSeam(
+      options.expectedPeer,
+      journal,
+      {
+        scheduler,
+        writer,
+        store,
+        recovery,
+        terminalStore,
+      },
+      supervisor,
+      transferAbort,
+    ),
     scheduler,
     writer,
     store,
@@ -227,7 +390,11 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     layout,
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze(classifications),
+    s1DriveHealth: supervisor.health,
   });
+  // Restart reconcile: replay re-registered every S1 intent but never the
+  // unjournaled terminal — re-drive non-terminal intents from durable truth.
+  reconcileS1Executions(runtime, supervisor, transferAbort);
   return runtime;
 }
 

@@ -150,8 +150,17 @@ export function validateFormat(input: FormatValidationInput): ValidationLayerOut
 
 export interface TargetValidationInput {
   readonly bytes: Uint8Array;
-  readonly expectedSha256: string;
+  readonly expectedSha256?: string;
   readonly expectedTotalBytes?: number;
+  /**
+   * The URI that actually served the acquired bytes (last hop of the
+   * realized locator chain); required for the provenance Target basis.
+   */
+  readonly servedUri?: string;
+  /** The user-selected delivery locator the acquisition was bound to. */
+  readonly originUri?: string;
+  /** The declared delivery graph's admissible hosts (user-selected URI host included). */
+  readonly declaredRedirectHosts?: readonly string[];
 }
 
 /**
@@ -159,20 +168,73 @@ export interface TargetValidationInput {
  * requested/confirmed frozen identity. Technically valid bytes of a
  * different variant are rejected — validity alone is not the Target claim
  * (counterexample C09).
+ *
+ * Two truthful bases exist (C34):
+ * - `PUBLISHED_SHA256` — the request declared an independently published
+ *   digest; the acquired bytes must match it exactly.
+ * - `REQUESTED_LOCATOR_PROVENANCE` — no publisher anchor exists; the claim
+ *   is explicitly structural: the bytes must have been served by a URI
+ *   inside the declared delivery graph rooted at the user-selected locator.
+ *   The digest is computed for corruption detection downstream and is NEVER
+ *   promoted to an independent identity oracle.
+ *
+ * Without the provenance facts (served URI + declared graph) the provenance
+ * basis cannot make a truthful claim and fails NOT_VALIDATED — it never
+ * passes on absence of evidence.
  */
 export function validateTarget(input: TargetValidationInput): ValidationLayerOutcome {
-  if (!/^[0-9a-f]{64}$/.test(input.expectedSha256)) {
-    return failed(
-      'target',
-      'MALFORMED_IDENTITY_ANCHOR',
-      'expectedSha256 must be lowercase hex sha-256',
-    );
-  }
+  // Size is evidence on BOTH bases: a declared total the acquired bytes
+  // contradict fails the Target layer before any identity claim is made.
   if (input.expectedTotalBytes !== undefined && input.bytes.length !== input.expectedTotalBytes) {
     return failed(
       'target',
       'SIZE_MISMATCH',
       `acquired ${String(input.bytes.length)} bytes but the frozen target declares ${String(input.expectedTotalBytes)}`,
+    );
+  }
+  if (input.expectedSha256 === undefined) {
+    if (
+      input.servedUri === undefined ||
+      input.originUri === undefined ||
+      input.declaredRedirectHosts === undefined
+    ) {
+      return failed(
+        'target',
+        'TARGET_PROVENANCE_NOT_VALIDATED',
+        'no published digest anchor and no provenance facts (served URI / declared delivery graph); the Target claim cannot be truthfully made',
+      );
+    }
+    let served: URL;
+    try {
+      served = new URL(input.servedUri);
+    } catch {
+      return failed(
+        'target',
+        'TARGET_PROVENANCE_INVALID',
+        `the serving URI '${input.servedUri}' is not a resolvable URI inside the declared delivery graph`,
+      );
+    }
+    if (served.protocol !== 'http:' && served.protocol !== 'https:') {
+      return failed(
+        'target',
+        'TARGET_PROVENANCE_INVALID',
+        `the serving URI '${input.servedUri}' is outside the http(s) declared delivery graph`,
+      );
+    }
+    if (!input.declaredRedirectHosts.includes(served.host)) {
+      return failed(
+        'target',
+        'TARGET_PROVENANCE_INVALID',
+        `the serving URI host '${served.host}' is not inside the declared delivery graph rooted at '${input.originUri}'`,
+      );
+    }
+    return { layer: 'target', passed: true };
+  }
+  if (!/^[0-9a-f]{64}$/.test(input.expectedSha256)) {
+    return failed(
+      'target',
+      'MALFORMED_IDENTITY_ANCHOR',
+      'expectedSha256 must be lowercase hex sha-256',
     );
   }
   const digest = createHash('sha256').update(input.bytes).digest('hex');

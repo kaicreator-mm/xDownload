@@ -59,6 +59,7 @@ import {
 } from '@xdownload/domain-contracts';
 import {
   DirectHttpAdapter,
+  targetCertaintyOf,
   type DirectTransferOutcome,
   type DirectTransferRequest,
 } from '@xdownload/direct-acquisition';
@@ -194,7 +195,7 @@ export function registerLineage(
 
 /** Durable `USER_CANCELLED` in both canonical stores (idempotent upstream). */
 export function cancelLineage(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   lineageKey: LineageKey,
   source: CancelSource,
   workItemId: string,
@@ -205,7 +206,7 @@ export function cancelLineage(
 
 /** Explicit authorized retry/resume in both canonical stores (no automatic reopen). */
 export function resumeLineage(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   lineageKey: LineageKey,
   workItemId: string,
   request: ResumeRequest & { readonly retryCommandId: string },
@@ -300,7 +301,7 @@ export function acceptanceValidationOf(
  * artifact → scheduler acceptance at the cutoff decision point.
  */
 export async function executeDirectAcquisition(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   input: DirectFlowInput,
 ): Promise<DirectFlowOutcome> {
   const { submission, workItemId } = registerLineage(runtime, input, {
@@ -366,6 +367,14 @@ export async function executeDirectAcquisition(
         locatorChain: transfer.locatorChain.map((hop) => hop.locator.uri),
         observedIdentity: transfer.observedIdentity,
         slice: transfer.slice,
+        // #101 P2-2: the accepted artifact's durable provenance carries the
+        // secret-free typed Target identity basis + certainty (C34), so the
+        // no-digest vs publisher-hash distinction survives restarts in the
+        // SQLite record itself.
+        targetEvidence: {
+          basis: transfer.targetBasis,
+          certaintyClass: targetCertaintyOf(transfer.targetBasis),
+        },
       },
       consumption: {
         domain: 'transfer',
@@ -516,7 +525,7 @@ function concatenateTransferredBytes(
  * budget ledger behind the pipeline's `TransferLedger` port; artifact
  * persistence and acceptance follow the same single-writer path as direct.
  */
-export function executeHlsAcquisition(runtime: CoreRuntime, input: HlsFlowInput): HlsFlowOutcome {
+export function executeHlsAcquisition(runtime: FlowRuntime, input: HlsFlowInput): HlsFlowOutcome {
   const { submission, workItemId } = registerLineage(runtime, input, {
     commandId: input.commandId,
     memberId: input.memberId,

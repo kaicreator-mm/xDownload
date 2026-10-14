@@ -67,6 +67,17 @@ export type ParsedInput =
       readonly wait: WaitOptions | null;
       readonly requestId: string | undefined;
     }
+  | {
+      readonly kind: 'download';
+      readonly target: TargetOptions;
+      readonly url: string;
+      readonly expectedSha256: string | undefined;
+      readonly expectedContentTypePrefix: string | undefined;
+      readonly expectedTotalBytes: number | undefined;
+      readonly redirectHosts: readonly string[];
+      readonly wait: WaitOptions;
+      readonly requestId: string | undefined;
+    }
   | { readonly kind: 'status'; readonly target: TargetOptions; readonly contractId: string }
   | {
       readonly kind: 'wait';
@@ -110,6 +121,8 @@ Usage: xdownload <command> [options]
 
 Commands:
   submit   Submit one acquisition contract (JSON payload; acceptance only unless --wait)
+  download S1 direct file download: Core-executed HTTP transfer with
+           declared-target validation (bounded --wait for terminal truth)
   status   Read the machine-readable status projection for one contract
   wait     Poll READ_PROJECTION until a terminal result is projected (bounded)
   cancel   Cancel a lineage (CANCEL_LINEAGE through the seam)
@@ -132,6 +145,15 @@ Payload options (submit/confirm/batch):
 Command options:
   submit:   --expected-revision <n> (default 0 = assert creation)
             --wait --timeout-ms <n> --poll-ms <n>
+  download: --url <http(s)://...> [--sha256 <hex>]
+            --sha256: an independently published digest, when one exists;
+            supplied, a mismatch fails the download (C09). Omitted, the
+            Target claim rests on the declared delivery graph (the --url
+            host + --redirect-host entries); the artifact digest is still
+            computed and durably recorded for later corruption detection
+            (C34 — it is never promoted to a post-hoc identity oracle).
+            [--content-type-prefix <p>] [--total-bytes <n>]
+            [--redirect-host <host> ...] [--timeout-ms <n>] [--poll-ms <n>]
   status:   --contract <id>
   wait:     --contract <id> --timeout-ms <n> --poll-ms <n>
   cancel:   --contract <id> --expected-revision <n> (required)
@@ -159,6 +181,11 @@ const OPTIONS = {
   'poll-ms': { type: 'string' },
   contract: { type: 'string' },
   members: { type: 'string' },
+  url: { type: 'string' },
+  sha256: { type: 'string' },
+  'content-type-prefix': { type: 'string' },
+  'total-bytes': { type: 'string' },
+  'redirect-host': { type: 'string', multiple: true },
 } as const;
 
 function str(values: ArgValues, name: string): string | undefined {
@@ -232,6 +259,91 @@ function parseWait(values: ArgValues): WaitOptions {
     timeoutMs: parseInteger(str(values, 'timeout-ms'), 'timeout-ms', 1),
     pollMs: parseInteger(str(values, 'poll-ms'), 'poll-ms', 1),
   };
+}
+
+const DEFAULT_WAIT: WaitOptions = { timeoutMs: 30_000, pollMs: 200 };
+
+/** download always bounds its terminal wait; the flags tune the bound. */
+function parseWaitWithDefault(values: ArgValues): WaitOptions {
+  return {
+    timeoutMs:
+      str(values, 'timeout-ms') === undefined
+        ? DEFAULT_WAIT.timeoutMs
+        : parseInteger(str(values, 'timeout-ms'), 'timeout-ms', 1),
+    pollMs:
+      str(values, 'poll-ms') === undefined
+        ? DEFAULT_WAIT.pollMs
+        : parseInteger(str(values, 'poll-ms'), 'poll-ms', 1),
+  };
+}
+
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
+
+/**
+ * The independently published digest is OPTIONAL (#101 R1/F01): an ordinary
+ * S1 download never requires the user to know a digest first. When supplied
+ * it is enforced (a mismatch fails the download, C09); when omitted the
+ * Target claim uses the conservative declared-delivery-graph provenance
+ * basis (C34).
+ */
+function parseSha256(values: ArgValues): string | undefined {
+  const raw = str(values, 'sha256');
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (raw.length === 0 || !SHA256_HEX_PATTERN.test(raw)) {
+    throw new CliInputError('USAGE', '--sha256 must be a lowercase hex SHA-256 digest', [
+      {
+        code: 'ENVELOPE_MALFORMED',
+        path: 'delivery.expectedSha256',
+        message: 'expected 64 lowercase hex characters',
+      },
+    ]);
+  }
+  return raw;
+}
+
+function parseHttpUrl(values: ArgValues): string {
+  const raw = requireString(str(values, 'url'), 'url');
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    fail('--url must be an absolute http(s) URL');
+  }
+  if (parsed!.protocol !== 'http:' && parsed!.protocol !== 'https:') {
+    fail('--url must be an absolute http(s) URL');
+  }
+  return raw;
+}
+
+function parseRedirectHosts(values: ArgValues, urlHost: string): readonly string[] {
+  const raw = values['redirect-host'];
+  const hosts = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  const declared: string[] = [];
+  for (const host of hosts) {
+    if (typeof host !== 'string' || host.length === 0 || host.length > 255 || /[/\\]/.test(host)) {
+      throw new CliInputError('USAGE', '--redirect-host entries must be plain host strings', [
+        {
+          code: 'ENVELOPE_MALFORMED',
+          path: 'delivery.declaredRedirectHosts',
+          message: `'${String(host)}' is not a plain host string`,
+        },
+      ]);
+    }
+    if (!declared.includes(host)) {
+      declared.push(host);
+    }
+  }
+  // The locator's own host is always an admissible delivery hop (C29 scope
+  // is the selected resource itself); explicit flags only ADD hosts.
+  if (!declared.includes(urlHost)) {
+    declared.unshift(urlHost);
+  }
+  if (declared.length > 8) {
+    fail('at most 8 redirect hosts are admissible (including the locator host)');
+  }
+  return declared;
 }
 
 function parsePayloadSource(values: ArgValues): PayloadSource {
@@ -317,6 +429,22 @@ export function parseArgv(argv: readonly string[]): ParsedInput {
         wait: flag(values, 'wait') ? parseWait(values) : null,
         requestId: parseRequestId(values),
       };
+    case 'download': {
+      const url = parseHttpUrl(values);
+      const totalBytesRaw = str(values, 'total-bytes');
+      return {
+        kind: 'download',
+        target,
+        url,
+        expectedSha256: parseSha256(values),
+        expectedContentTypePrefix: str(values, 'content-type-prefix'),
+        expectedTotalBytes:
+          totalBytesRaw === undefined ? undefined : parseInteger(totalBytesRaw, 'total-bytes', 0),
+        redirectHosts: parseRedirectHosts(values, new URL(url).host),
+        wait: parseWaitWithDefault(values),
+        requestId: parseRequestId(values),
+      };
+    }
     case 'status':
       return { kind: 'status', target, contractId: contractId() };
     case 'wait':

@@ -21,6 +21,7 @@ import {
   type ExpectedPeerScope,
   type PeerIdentity,
   type SeamClient,
+  type S1DirectAcquisitionBeginner,
   type SeamClientTransport,
   type SeamListenTarget,
   type SeamResponse,
@@ -207,11 +208,16 @@ export interface RunningSeam {
 /** Start the real seam server behind the loopback transport (port 0). */
 export async function startSeam(
   expectedPeer: ExpectedPeerScope = EXPECTED_PEER,
-  options: { readonly durableJournal?: boolean } = {},
+  options: {
+    readonly durableJournal?: boolean;
+    /** #101: stub/Core stand-in for the S1 direct-acquisition beginner. */
+    readonly s1Beginner?: S1DirectAcquisitionBeginner;
+  } = {},
 ): Promise<RunningSeam> {
   const result = createCoreSeamServer({
     expectedPeer,
     ...(options.durableJournal === true ? { journal: createInMemorySeamJournal() } : {}),
+    ...(options.s1Beginner === undefined ? {} : { s1DirectAcquisition: options.s1Beginner }),
   });
   if (!result.ok) {
     throw new Error('seam server construction failed');

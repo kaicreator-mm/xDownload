@@ -36,6 +36,7 @@ import {
 import {
   decodeAcquisitionContract,
   decodeSelectionSnapshot,
+  currentSchemaIdentity,
   type AcquisitionContract,
 } from '@xdownload/domain-contracts';
 import {
@@ -208,7 +209,7 @@ function enforceDeclaredBounds(payload: unknown, envelope: unknown): void {
 function buildCommandEnvelope(input: {
   commandType: CommandEnvelope['commandType'];
   aggregateId: string;
-  req: string;
+  req: string | undefined;
   expectedRevision: number;
   correlation: CommandEnvelope['correlation'];
   payload: unknown;
@@ -488,6 +489,165 @@ async function runSubmit(
   };
 }
 
+/**
+ * Bounded S1 transfer budget for one CLI download invocation: generous file
+ * headroom, never unbounded; the frozen decode keeps the shape canonical.
+ */
+const S1_BUDGET_PROFILE = {
+  discovery: {
+    domain: 'discovery',
+    maxGeneratedRequests: 50,
+    maxNavigationActions: 20,
+    maxModelCalls: 5,
+  },
+  transfer: {
+    domain: 'transfer',
+    maxBytes: 1_073_741_824,
+    maxSegments: 5000,
+    maxActiveTransferMs: 3_600_000,
+    maxRetryTransferRequests: 5,
+  },
+  globalSafety: {
+    domain: 'global_safety',
+    maxTotalGeneratedRequests: 500,
+    maxActiveElapsedMs: 7_200_000,
+  },
+} as const;
+
+/**
+ * Build the canonical S1 single-resource contract from the operator's own
+ * download facts (presentation-only: the CLI invents no semantics; the
+ * canonical payload still passes the frozen domain decoder fail-closed, and
+ * the seam/Core own every authority decision).
+ *
+ * Each invocation mints one fresh contract identity: a completed or failed
+ * download is immutable truth, and re-invocation creates a new acquisition
+ * (PRD §8 successor discipline stays with the Core, not with client-side
+ * identity reuse).
+ */
+function buildS1Contract(
+  input: Extract<ParsedInput, { kind: 'download' }>,
+  ports: AdapterPorts,
+): { contract: AcquisitionContract; base: string } {
+  // The canonical composite effect identity (effect:<contract>:<snapshot>:
+  // <target>) must stay inside the 128-char canonical id bound, so the
+  // derived identity base is bounded to 16 chars.
+  const base = ports.makeRequestId().replace(/^req-/, '').slice(0, 16);
+  const contractId = `contract-s1-${base}`;
+  const targetId = `target-s1-${base}`;
+  const decoded = decodeAcquisitionContract({
+    schemaIdentity: currentSchemaIdentity(),
+    contractId,
+    status: 'CONFIRMED',
+    intentType: 'SINGLE_RESOURCE',
+    requestedTarget: targetId,
+    requestedScope: { kind: 'single_resource', targetId },
+    continuationScope: { kind: 'NONE' },
+    selectionPolicy: { basis: 'ENTIRE_REQUESTED_SCOPE', allowsBatchSelection: false },
+    automationMode: 'AUTO',
+    explorationPermission: 'NONE',
+    budgetProfile: S1_BUDGET_PROFILE,
+    authorizationContextRef: 'authctx/s1-direct-public',
+    validationPolicy: { requiredLayers: ['target', 'transfer', 'format'] },
+    stopPolicy: { globalSafetyPrecedence: 'HIGHEST' },
+    resultPolicy: { requireMultidimensionalResult: true },
+    confirmedAt: ports.now(),
+  });
+  if (!decoded.ok) {
+    throw new CliInputError('USAGE', 'download facts do not form a canonical S1 contract', [
+      ...decoded.diagnostics,
+    ]);
+  }
+  return { contract: decoded.value, base };
+}
+
+async function runDownload(
+  session: Session,
+  ports: AdapterPorts,
+  input: Extract<ParsedInput, { kind: 'download' }>,
+): Promise<AdapterResult> {
+  const { contract, base } = buildS1Contract(input, ports);
+  const submit = await submitContract(session, ports, {
+    contract,
+    req: input.requestId,
+    expectedRevision: 0,
+    command: 'download',
+  });
+  let currentRevision: number;
+  if ('rejected' in submit) {
+    // A pre-existing identical contract identity converges into the execute
+    // step; any other rejection is projected verbatim (never absorbed).
+    const code = submit.rejected.diagnostics?.[0]?.code;
+    if (code !== 'DUPLICATE_ALLOCATION') {
+      return rejectionResult('download', submit.rejected, contract.contractId);
+    }
+    currentRevision = submit.rejected.currentRevision ?? 1;
+  } else {
+    currentRevision = submit.accepted.currentRevision;
+  }
+  const executePayload = {
+    snapshotId: `s1snap-${base}`,
+    memberId: `s1member-${base}`,
+    artifactId: `s1artifact-${base}`,
+    delivery: {
+      locatorUri: input.url,
+      declaredRedirectHosts: [...input.redirectHosts],
+      // An independently published digest is optional (#101 R1/F01): when the
+      // operator has one it is enforced (mismatch fails); omitted, the Target
+      // claim rests on the declared delivery graph (C34 provenance basis).
+      ...(input.expectedSha256 === undefined ? {} : { expectedSha256: input.expectedSha256 }),
+      ...(input.expectedContentTypePrefix === undefined
+        ? {}
+        : { expectedContentTypePrefix: input.expectedContentTypePrefix }),
+      ...(input.expectedTotalBytes === undefined
+        ? {}
+        : { expectedTotalBytes: input.expectedTotalBytes }),
+    },
+  };
+  const executeEnvelope = buildCommandEnvelope({
+    commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+    aggregateId: contract.contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId: contract.contractId },
+    payload: executePayload,
+    session,
+    ports,
+  });
+  const executed = await session.client.submitCommand(executeEnvelope);
+  if (executed.outcome !== 'ACCEPTED' || executed.acceptance === undefined) {
+    return rejectionResult('download', executed, contract.contractId);
+  }
+  // Acceptance of the execution command is not acquisition success: the
+  // terminal truth is Core-derived and read back through the projection.
+  const waited = await waitForTerminalProjection(session, ports, {
+    contractId: contract.contractId,
+    wait: input.wait,
+  });
+  if (waited.terminal) {
+    const view = waited.view;
+    const exit = view.terminal === undefined ? EXIT.SUCCESS : terminalExitCode(view.terminal);
+    return {
+      exitCode: exit,
+      document: toJson(renderStatusDocument(view)),
+      stderr: `download: terminal result rendered (exit ${String(exit)})\n`,
+    };
+  }
+  if ('rejected' in waited) {
+    return rejectionResult('download', waited.rejected, contract.contractId);
+  }
+  const doc = renderWaitTimeoutDocument({
+    contractId: contract.contractId,
+    timeoutMs: input.wait.timeoutMs,
+    pollMs: input.wait.pollMs,
+  });
+  return {
+    exitCode: EXIT.WAIT_TIMEOUT,
+    document: toJson(doc),
+    stderr: `bounded wait elapsed (exit ${String(EXIT.WAIT_TIMEOUT)})\n`,
+  };
+}
+
 async function runStatus(
   session: Session,
   ports: AdapterPorts,
@@ -734,6 +894,8 @@ export async function runAdapter(input: ParsedInput, ports: AdapterPorts): Promi
     switch (input.kind) {
       case 'submit':
         return await runSubmit(session, ports, input);
+      case 'download':
+        return await runDownload(session, ports, input);
       case 'status':
         return await runStatus(session, ports, input.contractId);
       case 'wait':

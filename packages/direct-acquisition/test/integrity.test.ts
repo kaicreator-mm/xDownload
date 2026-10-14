@@ -14,7 +14,7 @@ import {
   unwrapOrThrow,
   whatConfirmationProves,
 } from '@xdownload/domain-contracts';
-import { DirectHttpAdapter, validateMedia } from '../src/index.ts';
+import { DirectHttpAdapter, validateMedia, validateTarget } from '../src/index.ts';
 import { ControlledHttpFixture, mp4WithoutTrackBox } from './helpers/fixture-server.ts';
 import { InMemoryAuthoritativeLedger } from './helpers/ledger.ts';
 import {
@@ -214,6 +214,159 @@ describe('wrong-target-and-integrity: HTML masquerading as target content', () =
 
     expect(outcome.reason).toBe('FORMAT_REJECTED');
     expect(outcome.validations.find((check) => check.layer === 'format')?.passed).toBe(false);
+  });
+});
+
+describe('no-digest Target basis: requested-locator provenance (#101 R1/F01, C34)', () => {
+  it('a no-digest download inside the declared delivery graph completes on the provenance basis', async () => {
+    fixture.serveFile('/provenance.bin', { body: FULL });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+
+    const outcome = unwrapOrThrow(
+      await adapter.acquire(
+        directRequest(baseUri, '/provenance.bin', FULL, {
+          effectId: 'effect-001',
+          omitExpectedSha256: true,
+        }),
+      ),
+    );
+
+    expect(outcome.reason).toBe('COMPLETED');
+    expect(outcome.allApplicableValidationPassed).toBe(true);
+    expect(outcome.terminalResult.requestFulfillment).toBe('COMPLETE');
+    expect(outcome.terminalResult.validationSummary).toEqual({
+      status: 'ALL_PASSED',
+      passedCount: 3,
+      failedCount: 0,
+    });
+    expect(outcome.targetBasis).toBe('REQUESTED_LOCATOR_PROVENANCE');
+    // The Target evidence names its conservative basis explicitly — it can
+    // never be mistaken for a publisher-byte-digest identity (C34).
+    const targetEvidence = outcome.evidence.find(
+      (record) =>
+        record.claimType === 'RESOURCE_IDENTITY' && record.sourceType === 'INDEPENDENT_VALIDATOR',
+    );
+    expect(targetEvidence).toBeDefined();
+    expect(targetEvidence?.provenance.sourceIdentity).toContain('REQUESTED_LOCATOR_PROVENANCE');
+    expect(targetEvidence?.certaintyClass).toBe('PROBATIVE');
+  });
+
+  it('a digest-anchored download names the PUBLISHED_SHA256 basis in its evidence', async () => {
+    fixture.serveFile('/published.bin', { body: FULL });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+
+    const outcome = unwrapOrThrow(
+      await adapter.acquire(
+        directRequest(baseUri, '/published.bin', FULL, {
+          effectId: 'effect-001',
+          expectedSha256: sha256(FULL),
+        }),
+      ),
+    );
+
+    expect(outcome.reason).toBe('COMPLETED');
+    expect(outcome.targetBasis).toBe('PUBLISHED_SHA256');
+    const targetEvidence = outcome.evidence.find(
+      (record) =>
+        record.claimType === 'RESOURCE_IDENTITY' && record.sourceType === 'INDEPENDENT_VALIDATOR',
+    );
+    expect(targetEvidence?.provenance.sourceIdentity).toContain('PUBLISHED_SHA256');
+    expect(targetEvidence?.certaintyClass).toBe('DECISIVE');
+  });
+
+  it('a redirect to an undeclared host cannot silently pass without a digest (C29/C34)', async () => {
+    fixture.redirect('/moved.bin', 'http://undeclared.example/file.bin');
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+
+    const outcome = unwrapOrThrow(
+      await adapter.acquire(
+        directRequest(baseUri, '/moved.bin', FULL, {
+          effectId: 'effect-001',
+          omitExpectedSha256: true,
+        }),
+      ),
+    );
+
+    expect(outcome.reason).toBe('LOCATOR_SUBSTITUTION');
+    expect(outcome.allApplicableValidationPassed).toBe(false);
+    expect(outcome.terminalResult.requestFulfillment).toBe('UNSATISFIED');
+    expect(outcome.terminalResult.selectionAcquisition).toBe('FAILED');
+  });
+
+  it('a changed endpoint (different bytes, same locator) on the provenance basis stays bounded by transfer/format truth and never fabricates a digest identity', async () => {
+    // The provenance basis makes a structural claim only; the changed-bytes
+    // case without a declared anchor is exactly why evidence names the basis:
+    // the transfer/format layers still validate what actually arrived.
+    const changed = payload(100, 7);
+    fixture.serveFile('/changed.bin', { body: changed });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+
+    const outcome = unwrapOrThrow(
+      await adapter.acquire(
+        directRequest(baseUri, '/changed.bin', FULL, {
+          effectId: 'effect-001',
+          omitExpectedSha256: true,
+        }),
+      ),
+    );
+
+    // No publisher anchor exists, so a WRONG_TARGET digest claim is impossible
+    // by construction; the completed transfer passes on the declared graph.
+    expect(outcome.targetBasis).toBe('REQUESTED_LOCATOR_PROVENANCE');
+    expect(outcome.validations.find((check) => check.layer === 'target')?.passed).toBe(true);
+  });
+
+  it('validateTarget without provenance facts fails NOT_VALIDATED instead of passing blindly', () => {
+    const blind = validateTarget({ bytes: FULL });
+    expect(blind.passed).toBe(false);
+    if (!blind.passed) {
+      expect(blind.code).toBe('TARGET_PROVENANCE_NOT_VALIDATED');
+    }
+    const undeclaredHost = validateTarget({
+      bytes: FULL,
+      servedUri: 'http://stranger.example/file.bin',
+      originUri: 'http://127.0.0.1/file.bin',
+      declaredRedirectHosts: ['127.0.0.1'],
+    });
+    expect(undeclaredHost.passed).toBe(false);
+    if (!undeclaredHost.passed) {
+      expect(undeclaredHost.code).toBe('TARGET_PROVENANCE_INVALID');
+    }
+    const nonHttp = validateTarget({
+      bytes: FULL,
+      servedUri: 'ftp://127.0.0.1/file.bin',
+      originUri: 'http://127.0.0.1/file.bin',
+      declaredRedirectHosts: ['127.0.0.1'],
+    });
+    expect(nonHttp.passed).toBe(false);
+    if (!nonHttp.passed) {
+      expect(nonHttp.code).toBe('TARGET_PROVENANCE_INVALID');
+    }
+    const malformedServed = validateTarget({
+      bytes: FULL,
+      servedUri: 'not a uri',
+      originUri: 'http://127.0.0.1/file.bin',
+      declaredRedirectHosts: ['127.0.0.1'],
+    });
+    expect(malformedServed.passed).toBe(false);
+  });
+
+  it('declared total bytes still gate the provenance basis (size is evidence, not identity)', () => {
+    const sizeGate = validateTarget({
+      bytes: FULL.subarray(0, 40),
+      expectedTotalBytes: 100,
+      servedUri: 'http://127.0.0.1/file.bin',
+      originUri: 'http://127.0.0.1/file.bin',
+      declaredRedirectHosts: ['127.0.0.1'],
+    });
+    expect(sizeGate.passed).toBe(false);
+    if (!sizeGate.passed) {
+      expect(sizeGate.code).toBe('SIZE_MISMATCH');
+    }
   });
 });
 

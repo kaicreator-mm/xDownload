@@ -83,6 +83,8 @@ export interface RequestOverrides {
   readonly targetId?: string;
   readonly binding?: LocatorBinding<LogicalTargetId>;
   readonly expectedSha256?: string;
+  /** Build the request WITHOUT a digest anchor (no-digest provenance basis, C34). */
+  readonly omitExpectedSha256?: boolean;
   readonly expectedTotalBytes?: number;
   readonly allowedRedirectHosts?: readonly string[];
   readonly attempt?: number;
@@ -113,7 +115,9 @@ export function directRequest(
     slice: overrides.slice ?? 'S1',
     selectedMemberId: memberIdOf(overrides.selectedMemberId ?? 'member-file-001'),
     binding,
-    expectedSha256: overrides.expectedSha256 ?? sha256(body),
+    ...(overrides.omitExpectedSha256 === true
+      ? {}
+      : { expectedSha256: overrides.expectedSha256 ?? sha256(body) }),
     ...(overrides.expectedTotalBytes === undefined
       ? {}
       : { expectedTotalBytes: overrides.expectedTotalBytes }),

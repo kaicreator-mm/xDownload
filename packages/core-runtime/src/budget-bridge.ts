@@ -37,15 +37,15 @@ import {
 } from '@xdownload/domain-contracts';
 import type { TransferBudgetLedgerPort, TransferConsumption } from '@xdownload/direct-acquisition';
 import type { TransferLedger, TransferWorkKind } from '@xdownload/hls-vod-adapter';
-import type { CoreRuntime } from './runtime.ts';
+import type { FlowRuntime } from './flow.ts';
 
 /** A bridge bound to one registered lineage's contract budget lifecycle. */
 export class CoreRuntimeBudgetBridge {
-  readonly #runtime: CoreRuntime;
+  readonly #runtime: FlowRuntime;
   readonly #lineageKey: LineageKey;
   readonly #contractId: string;
 
-  constructor(runtime: CoreRuntime, lineageKey: LineageKey) {
+  constructor(runtime: FlowRuntime, lineageKey: LineageKey) {
     this.#runtime = runtime;
     this.#lineageKey = lineageKey;
     const binding = bindingOf(runtime, lineageKey);
@@ -155,7 +155,7 @@ interface LineageBindingLike {
   readonly contractId: string;
 }
 
-function bindingOf(runtime: CoreRuntime, lineageKey: LineageKey): LineageBindingLike {
+function bindingOf(runtime: FlowRuntime, lineageKey: LineageKey): LineageBindingLike {
   for (const fact of runtime.scheduler.log().readAll()) {
     if (fact.kind === 'lineageSubmitted' && fact.lineageKey === lineageKey) {
       return fact.binding;
@@ -170,7 +170,7 @@ function bindingOf(runtime: CoreRuntime, lineageKey: LineageKey): LineageBinding
  * remaining budget is always the durable, capped projection.
  */
 export function schedulerTransferBudgetPort(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   lineageKey: LineageKey,
 ): TransferBudgetLedgerPort {
   const bridge = new CoreRuntimeBudgetBridge(runtime, lineageKey);
@@ -197,7 +197,7 @@ export function schedulerTransferBudgetPort(
  * `canTransferAfterDiscoveryExhaustion` projection of the durable ledger.
  */
 export function schedulerHlsTransferLedger(
-  runtime: CoreRuntime,
+  runtime: FlowRuntime,
   lineageKey: LineageKey,
 ): TransferLedger {
   const bridge = new CoreRuntimeBudgetBridge(runtime, lineageKey);

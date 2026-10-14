@@ -31,12 +31,29 @@ every frame (no local admission path).
 | Command  | Seam message         | Notes                                                          |
 | -------- | -------------------- | -------------------------------------------------------------- |
 | `submit` | `SUBMIT_CONTRACT`    | JSON payload via `--file`/`--stdin`; acceptance by default     |
+| `download` | `SUBMIT_CONTRACT` + `EXECUTE_S1_DIRECT_ACQUISITION` | S1 direct file download: the CLI builds the canonical contract from `--url` plus the optional `--sha256` (no hand-authored JSON), Core executes the real HTTP transfer and derives the terminal; bounded `--wait` renders it |
 | `status` | `READ_PROJECTION`    | Machine-readable PRD §27 status document                       |
 | `wait`   | `READ_PROJECTION`    | Bounded polling until a terminal result is projected           |
 | `cancel` | `CANCEL_LINEAGE`     | Requires explicit `--expected-revision`                        |
 | `retry`  | `RETRY_FAILED_MEMBERS` | Explicit `--members` list only; the CLI computes no membership |
 | `confirm`| `CONFIRM_SNAPSHOT`   | JSON snapshot payload via `--file`/`--stdin`                   |
 | `batch`  | `SUBMIT_CONTRACT` xN | JSONL input; per-item identity/correlation and per-item result |
+
+`download` (S1, PRD §28) does not require knowing a digest first (#101 R1/F01):
+an ordinary download passes `--url` alone. When an independently published
+`--sha256` exists, supply it — the Core enforces it and any mismatch fails the
+download (C09); the digest is always validated Core-side, never by the CLI.
+Without one the Target claim rests on the declared delivery graph (the
+`--url` host + `--redirect-host` entries); redirects leaving that graph fail
+closed (C29), and the artifact digest is still computed and durably recorded
+for later corruption detection — never promoted to a post-hoc identity oracle
+(C34). `--content-type-prefix`, `--total-bytes` and repeated `--redirect-host`
+strengthen delivery validation; the locator's own host is always admissible.
+Each invocation mints one fresh contract identity — a completed or failed
+download is immutable truth, and re-invocation is a new acquisition. The
+execution command's acceptance is not success either: the CLI polls
+`READ_PROJECTION` and exits `0` only for a Core-derived `COMPLETE` terminal,
+`4` for any other terminal, `6` when the bounded wait elapses.
 
 `PROJECT_TERMINAL_RESULT` is deliberately not exposed: terminal result truth
 is Core-owned (T007); a user surface never authors results. Tests drive that
