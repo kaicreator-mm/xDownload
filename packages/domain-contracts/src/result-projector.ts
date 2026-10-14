@@ -650,8 +650,7 @@ function project(facts: ProjectionFacts): DomainValidationResult<ProjectedTermin
       facts.requestedMemberIds.length !== 1 ||
       s1Target.memberId !== facts.requestedMemberIds[0] ||
       s1Target.evidenceRef.trim().length === 0 ||
-      (s1Target.status !== 'RESOLVED' &&
-        s1Target.status !== 'PROVENANCE_UNPROVEN') ||
+      (s1Target.status !== 'RESOLVED' && s1Target.status !== 'PROVENANCE_UNPROVEN') ||
       typeof s1Target.transferAttempted !== 'boolean'
     ) {
       return reject(
@@ -660,10 +659,7 @@ function project(facts: ProjectionFacts): DomainValidationResult<ProjectedTermin
         'PRD-§16/T007-#113',
       );
     }
-    if (
-      s1Target.status === 'PROVENANCE_UNPROVEN' &&
-      facts.acceptedSelectedMemberIds.length > 0
-    ) {
+    if (s1Target.status === 'PROVENANCE_UNPROVEN' && facts.acceptedSelectedMemberIds.length > 0) {
       return reject(
         'INVALID_RESULT_COMBINATION',
         'unproven S1 target provenance cannot coexist with an accepted requested artifact',
