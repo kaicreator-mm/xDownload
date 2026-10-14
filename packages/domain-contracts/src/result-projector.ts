@@ -97,6 +97,19 @@ export interface ResolutionFacts {
   readonly blockedBeforeAnyResolution?: {
     readonly reason: 'AUTH_FAILED' | 'AUTH_REQUIRED' | 'UNSUPPORTED';
   };
+  /**
+   * Core-attested, durably sourced S1 requested-target identity, separate from
+   * artifact acceptance. evidenceRef must point to a canonical Target witness
+   * bound to the immutable requested member by its owning Core lane.
+   * An observed locator is never by itself an accepted or validated byte.
+   */
+  readonly s1Target?: {
+    readonly memberId: MemberId;
+    readonly evidenceRef: string;
+    readonly status: 'RESOLVED' | 'PROVENANCE_UNPROVEN';
+    /** True only when a real transfer was attempted. */
+    readonly transferAttempted: boolean;
+  };
   /** The requested collection was independently verified empty (needs a sufficient basis). */
   readonly verifiedEmpty?: boolean;
 }
@@ -173,6 +186,10 @@ function blockedReason(
   facts: ProjectionFacts,
 ): 'AUTH_FAILED' | 'AUTH_REQUIRED' | 'UNSUPPORTED' | undefined {
   return facts.resolution?.blockedBeforeAnyResolution?.reason;
+}
+
+function unprovenS1Target(facts: ProjectionFacts): boolean {
+  return facts.resolution?.s1Target?.status === 'PROVENANCE_UNPROVEN';
 }
 
 function selectedSetOf(facts: ProjectionFacts): readonly MemberId[] {
@@ -379,6 +396,13 @@ function resolutionStatusFrom(
     }
   }
   if (facts.scopeKind === 'single_resource') {
+    const target = facts.resolution?.s1Target;
+    if (target?.status === 'PROVENANCE_UNPROVEN') {
+      return 'BLOCKED';
+    }
+    if (target?.status === 'RESOLVED') {
+      return 'RESOLVED';
+    }
     return facts.acceptedSelectedMemberIds.length === 1 ? 'RESOLVED' : 'PARTIAL';
   }
   if (accounting === undefined) {
@@ -395,6 +419,9 @@ function selectionAcquisitionFrom(
   if (selected.length === 0) {
     // No vacuous success for an empty selected set (PRD §16.3).
     return 'NOT_STARTED';
+  }
+  if (unprovenS1Target(facts)) {
+    return facts.resolution?.s1Target?.transferAttempted === true ? 'FAILED' : 'NOT_STARTED';
   }
   const accepted = new Set(
     facts.cancellation ? facts.cancellation.acceptedBeforeCutoff : facts.acceptedSelectedMemberIds,
@@ -426,6 +453,9 @@ function requestFulfillmentFrom(
   selection: SelectionAcquisitionStatus,
   outcomes: readonly MemberRequiredValidation[],
 ): RequestFulfillmentStatus {
+  if (unprovenS1Target(facts)) {
+    return 'UNKNOWN';
+  }
   if (blockedReason(facts) !== undefined) {
     return 'UNSATISFIED';
   }
@@ -493,6 +523,9 @@ function stopReasonFrom(
     }
   }
   const stop = facts.stopFacts ?? {};
+  if (unprovenS1Target(facts)) {
+    return 'VALIDATION_FAILED';
+  }
   const blocked = blockedReason(facts);
   if (stop.authFailed === true || blocked === 'AUTH_FAILED') {
     return 'AUTH_FAILED';
@@ -609,6 +642,35 @@ function project(facts: ProjectionFacts): DomainValidationResult<ProjectedTermin
 
   const selected = selectedSetOf(facts);
 
+  const s1Target = facts.resolution?.s1Target;
+  if (s1Target !== undefined) {
+    if (
+      facts.intentType !== 'SINGLE_RESOURCE' ||
+      facts.scopeKind !== 'single_resource' ||
+      facts.requestedMemberIds.length !== 1 ||
+      s1Target.memberId !== facts.requestedMemberIds[0] ||
+      s1Target.evidenceRef.trim().length === 0 ||
+      (s1Target.status !== 'RESOLVED' &&
+        s1Target.status !== 'PROVENANCE_UNPROVEN') ||
+      typeof s1Target.transferAttempted !== 'boolean'
+    ) {
+      return reject(
+        'INVALID_RESULT_COMBINATION',
+        'S1 target fact must reference the sole frozen requested target and a durable Target evidence identity',
+        'PRD-§16/T007-#113',
+      );
+    }
+    if (
+      s1Target.status === 'PROVENANCE_UNPROVEN' &&
+      facts.acceptedSelectedMemberIds.length > 0
+    ) {
+      return reject(
+        'INVALID_RESULT_COMBINATION',
+        'unproven S1 target provenance cannot coexist with an accepted requested artifact',
+        'C34/T007-#113',
+      );
+    }
+  }
   if (facts.scopeKind === 'single_resource' && facts.requestedMemberIds.length !== 1) {
     return reject(
       'MALFORMED_REQUIRED_FIELD',
