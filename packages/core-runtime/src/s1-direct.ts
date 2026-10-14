@@ -476,7 +476,9 @@ export async function driveS1DirectExecution(
   // cancellations record no witness, so the frozen auth/unsupported/cancel
   // tuples stay untouched; provenance-unproven (undeclared redirect/locator
   // substitution) records the distinct (b)-tuple witness instead. A
-  // replayed durable attempt (no fresh outcome) derives the witness from
+  // cancelled transfer may already have delivered bytes before the cutoff;
+  // such a PROBATIVE witness never overrides USER_CANCELLED or grants accepted
+  // bytes. A replayed durable attempt (no fresh outcome) derives the witness from
   // durable truth — the same decision table as the reconcile path.
   const witnessInputs = witnessInputsOf(input.contract, payload, effectId);
   const witnessResult =
