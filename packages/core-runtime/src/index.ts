@@ -41,7 +41,6 @@ export {
   effectIdFor,
   executeDirectAcquisition,
   executeHlsAcquisition,
-  executeSelectedHlsAcquisition,
   projectLineageResult,
   registerLineage,
   resumeLineage,
@@ -50,11 +49,11 @@ export {
   type FlowRuntime,
   type HlsFlowInput,
   type HlsFlowOutcome,
-  type SelectedHlsFlowInput,
   type LineageProjectionInput,
   type LineageSeed,
   type ProjectionRuntime,
 } from './flow.ts';
+export { executeSelectedHlsAcquisition, type SelectedHlsFlowInput } from './selected-hls.ts';
 export {
   createS2ChunkStaging,
   decodeS2DeliveredPayload,
