@@ -202,7 +202,13 @@ describe('#113 target witness — trusted fact path and exact ownership binding'
     for (const [i, witness] of cases.entries()) {
       const result = s.recordTargetWitness(AGGREGATE, witness);
       expect(result.ok, `case ${i}: a witness cannot redefine accepted S1 intent`).toBe(false);
-      if (!result.ok) expect(result.diagnostics[0]?.code).toBe('ADMISSION_REJECTED');
+      if (!result.ok) {
+        // A forged delivery host is stopped earlier at strict envelope
+        // decoding; coherent foreign identities reach the ownership gate.
+        expect(result.diagnostics[0]?.code).toBe(
+          i === 4 ? 'ENVELOPE_MALFORMED' : 'ADMISSION_REJECTED',
+        );
+      }
     }
     expect(s.targetWitnessFor(AGGREGATE)).toBeUndefined();
     expect(s.recordTargetWitness(AGGREGATE, witnessOf()).ok).toBe(true);
