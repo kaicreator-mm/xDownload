@@ -3,6 +3,8 @@ import { bindLocator, makeLogicalTargetId, unwrapOrThrow } from '@xdownload/doma
 import {
   CoreRuntimeFlowError,
   executeSelectedHlsAcquisition,
+  executeSelectedHlsAcquisitionAsync,
+  type AsyncSelectedHlsFlowInput,
   type FlowRuntime,
   type SelectedHlsFlowInput,
 } from '../src/index.ts';
@@ -130,5 +132,87 @@ describe('S4 selected Core entrypoint pre-effect authority', () => {
     expect(() => executeSelectedHlsAcquisition(blockedRuntime, validInput())).toThrow(
       'SCHEDULER_EFFECT_STARTED',
     );
+  });
+});
+
+function validAsyncInput(): AsyncSelectedHlsFlowInput {
+  return {
+    ...validInput(),
+    fetcher: {
+      fetcherId: 'should-never-async-fetch',
+      maxResponseBytes: 64,
+      async fetch() {
+        throw new Error('unexpected HTTP request');
+      },
+    },
+  };
+}
+
+describe('S4 selected asynchronous Core authority and replay', () => {
+  it('rejects an invalid HLS choice without Core journal or network calls', async () => {
+    await expect(
+      executeSelectedHlsAcquisitionAsync(blockedRuntime, {
+        ...validAsyncInput(),
+        selection: {
+          ...validAsyncInput().selection,
+          selectedRenditionUri: 'https://other.example.test/wrong.m3u8',
+        },
+      }),
+    ).rejects.toBeInstanceOf(CoreRuntimeFlowError);
+  });
+
+  it('valid HLS input cannot issue HTTP before the durable Core attempt', async () => {
+    await expect(executeSelectedHlsAcquisitionAsync(blockedRuntime, validAsyncInput())).rejects.toThrow(
+      'SCHEDULER_EFFECT_STARTED',
+    );
+  });
+
+  it('replayed already-started Core attempt never invokes the HTTP fetcher', async () => {
+    let network = 0;
+    let dispatches = 0;
+    const replayRuntime = {
+      scheduler: {
+        submitLineage() {
+          return {
+            ok: true,
+            value: {
+              lineageKey: 'lineage:s4-replay-001',
+              effectId: 'effect:s4-replay-001',
+              binding: { contractId: 'hls-contract-001' },
+            },
+          };
+        },
+        startEffectAttempt() {
+          return {
+            ok: true,
+            value: { replayed: true, attemptId: 'attempt:s4-replay-001' },
+          };
+        },
+        tryAccept() {
+          return undefined;
+        },
+      },
+      writer: {
+        submitAcquisition() {},
+        dispatch() {
+          dispatches += 1;
+        },
+      },
+    } as unknown as FlowRuntime;
+    const input = validAsyncInput();
+    const outcome = await executeSelectedHlsAcquisitionAsync(replayRuntime, {
+      ...input,
+      fetcher: {
+        fetcherId: 'must-not-fetch-on-replay',
+        maxResponseBytes: 64,
+        async fetch() {
+          network += 1;
+          return { ok: false, failure: 'FAILED' };
+        },
+      },
+    });
+    expect(outcome.attemptReplayed).toBe(true);
+    expect(dispatches).toBe(1);
+    expect(network).toBe(0);
   });
 });
