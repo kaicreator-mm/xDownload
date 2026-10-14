@@ -21,3 +21,4 @@ export * from './assemble.ts';
 export * from './validate.ts';
 export * from './request.ts';
 export * from './pipeline.ts';
+export * from './selected-preflight.ts';
