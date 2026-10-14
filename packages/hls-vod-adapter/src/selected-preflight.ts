@@ -89,9 +89,7 @@ export function preflightSelectedHlsVod(
 
   const topology = classifyTopology(master.value, media.value);
   if (!topology.supported) {
-    return fail([
-      diagnostic('ADMISSION_REJECTED', 'mediaPlaylist.topology', topology.detail),
-    ]);
+    return fail([diagnostic('ADMISSION_REJECTED', 'mediaPlaylist.topology', topology.detail)]);
   }
   // Never follow arbitrary segment URIs here: the T009 planner derives the
   // provenance-bound plan from the single frozen selected rendition.
