@@ -74,3 +74,4 @@ export {
   type S2LaneRejectionStage,
   type S2LaneResponse,
 } from './s2-installed-lane.ts';
+export { runConfirmedCurrentPageGroup, validateConfirmedPageGroup } from './s5-confirmed-group.ts';
