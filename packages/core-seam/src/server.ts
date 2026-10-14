@@ -2103,12 +2103,31 @@ function decodeTargetWitnessReceipt(value: unknown): SeamResult<TargetWitnessRec
   if (!declared.ok) {
     return declared;
   }
-  if (declared.value.length === 0) {
+  let selectedHost: string;
+  let selectedHostname: string;
+  try {
+    const locator = new URL(locatorUri);
+    selectedHost = locator.host.toLowerCase();
+    selectedHostname = locator.hostname.toLowerCase();
+  } catch {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'targetWitness.locatorUri', 'invalid selected HTTP locator'),
+    ]);
+  }
+  // Declarations may name the host with or without the explicit port; the
+  // target witness must never assert an origin absent from its authorized
+  // delivery graph. A nonempty but unrelated graph is insufficient.
+  if (
+    !declared.value.some((host) => {
+      const normalized = host.toLowerCase();
+      return normalized === selectedHost || normalized === selectedHostname;
+    })
+  ) {
     return seamFail([
       seamDiagnostic(
         'ENVELOPE_MALFORMED',
         'targetWitness.declaredRedirectHosts',
-        'the declared delivery graph must include at least the selected locator host',
+        'the declared delivery graph must include the selected locator host',
       ),
     ]);
   }
