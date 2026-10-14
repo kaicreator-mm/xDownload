@@ -2111,7 +2111,11 @@ function decodeTargetWitnessReceipt(value: unknown): SeamResult<TargetWitnessRec
     selectedHostname = locator.hostname.toLowerCase();
   } catch {
     return seamFail([
-      seamDiagnostic('ENVELOPE_MALFORMED', 'targetWitness.locatorUri', 'invalid selected HTTP locator'),
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'targetWitness.locatorUri',
+        'invalid selected HTTP locator',
+      ),
     ]);
   }
   // Declarations may name the host with or without the explicit port; the
@@ -2322,6 +2326,7 @@ function applyTargetWitnessReceipt(
     readonly delivery: {
       readonly locatorUri: string;
       readonly declaredRedirectHosts: readonly string[];
+      readonly expectedSha256?: string;
     };
   };
   if (
@@ -2338,6 +2343,19 @@ function applyTargetWitnessReceipt(
         'targetWitness',
         'witness member/artifact/snapshot/locator/hosts disagree with the accepted S1 execution intent',
         '#103-§2.2/#113',
+      ),
+    ]);
+  }
+  // A DECISIVE publisher SHA claim is impossible unless the exact accepted
+  // command declared an independent publisher digest. PROBATIVE remains legal
+  // even when a digest was declared but mismatched (failed/unaccepted bytes).
+  if (receipt.basis === 'PUBLISHED_SHA256' && intent.delivery.expectedSha256 === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'targetWitness.basis',
+        'publisher-digest witness not declared in accepted S1 intent',
+        'C34/#103-§2.2',
       ),
     ]);
   }
