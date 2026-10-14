@@ -33,7 +33,7 @@ async function runAsync(
     if (priorPositions.has(entry.position)) continue;
     const work = retryPositions.has(entry.position) ? 'RETRY_TRANSFER_REQUEST' : 'SEGMENT_REQUEST';
     const remaining = ledger.remaining();
-    const bytesLeft = remaining.transfer.perLimit['maxBytes'];
+    const bytesLeft = remaining.transfer.perLimit['bytes'];
     // This is a conservative PRE-HTTP budget gate. A trusted fetcher MUST
     // advertise its worst-case byte bound; an unbounded or oversized fetch
     // must never launch simply because the segment's length is unknown.
