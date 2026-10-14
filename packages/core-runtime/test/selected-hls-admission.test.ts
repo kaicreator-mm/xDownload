@@ -162,9 +162,9 @@ describe('S4 selected asynchronous Core authority and replay', () => {
   });
 
   it('valid HLS input cannot issue HTTP before the durable Core attempt', async () => {
-    await expect(executeSelectedHlsAcquisitionAsync(blockedRuntime, validAsyncInput())).rejects.toThrow(
-      'SCHEDULER_EFFECT_STARTED',
-    );
+    await expect(
+      executeSelectedHlsAcquisitionAsync(blockedRuntime, validAsyncInput()),
+    ).rejects.toThrow('SCHEDULER_EFFECT_STARTED');
   });
 
   it('replayed already-started Core attempt never invokes the HTTP fetcher', async () => {
