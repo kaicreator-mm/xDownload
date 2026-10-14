@@ -82,7 +82,7 @@ export interface DirectTransferRequest {
   readonly expectedTotalBytes?: number;
   /** Optional declared content-type prefix for Format Validation. */
   readonly expectedContentTypePrefix?: string;
-  /** Required media signatures (S3); empty/absent skips media probing. */
+  /** Required S3 media signatures; absent/empty fails Media Validation (never vacuous PASS). */
   readonly mediaPolicy?: MediaPolicy;
   /**
    * Declared delivery policy: the only hosts a redirect/CDN hop may bind to.
