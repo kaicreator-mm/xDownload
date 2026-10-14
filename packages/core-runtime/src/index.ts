@@ -53,7 +53,12 @@ export {
   type LineageSeed,
   type ProjectionRuntime,
 } from './flow.ts';
-export { executeSelectedHlsAcquisition, type SelectedHlsFlowInput } from './selected-hls.ts';
+export {
+  executeSelectedHlsAcquisition,
+  executeSelectedHlsAcquisitionAsync,
+  type SelectedHlsFlowInput,
+  type AsyncSelectedHlsFlowInput,
+} from './selected-hls.ts';
 export {
   createS2ChunkStaging,
   decodeS2DeliveredPayload,
