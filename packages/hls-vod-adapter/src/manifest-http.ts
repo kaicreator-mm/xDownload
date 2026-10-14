@@ -15,7 +15,10 @@ export interface HlsManifestAuthority {
 
 export type HlsManifestFetchResult =
   | { readonly ok: true; readonly text: string; readonly byteLength: number }
-  | { readonly ok: false; readonly reason: 'UNSUPPORTED' | 'UNREACHABLE' | 'OVERSIZE' | 'INVALID_MANIFEST' };
+  | {
+      readonly ok: false;
+      readonly reason: 'UNSUPPORTED' | 'UNREACHABLE' | 'OVERSIZE' | 'INVALID_MANIFEST';
+    };
 
 export interface AuthorizedHlsManifestPort {
   readonly maxResponseBytes: number;
