@@ -282,7 +282,7 @@ async function requireS1CoreCompatibility(
     response.acceptance === undefined &&
     response.projection === undefined;
   if (!compatible) {
-    throw new CliInputError('USAGE', 'S1 download requires Core seam 1.1; upgrade the installed Core', [
+    throw new CliInputError('USAGE', 'S1 requires Core seam 1.1', [
       {
         code: 'UNSUPPORTED_ENVELOPE_VERSION',
         path: 'schemaIdentity.version',
