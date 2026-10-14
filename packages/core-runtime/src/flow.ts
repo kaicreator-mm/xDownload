@@ -532,9 +532,12 @@ export interface HlsFlowStarted {
   readonly attempt: AttemptRecord;
 }
 
-export type HlsFlowStart =
-  | HlsFlowStarted
-  | { readonly kind: 'REPLAY'; readonly outcome: HlsFlowOutcome };
+export interface HlsFlowReplayed {
+  readonly kind: 'REPLAY';
+  readonly outcome: HlsFlowOutcome;
+}
+
+export type HlsFlowStart = HlsFlowStarted | HlsFlowReplayed;
 
 export function beginHlsAcquisition(
   runtime: FlowRuntime,
