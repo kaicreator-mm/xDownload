@@ -760,8 +760,7 @@ function witnessFromDurableTruth(
     effectId: inputs.effectId,
   });
   const outcome = runtime.scheduler.durableEffectOutcome(lineageKey, attemptIdFor(workItemId));
-  const effectReason =
-    outcome?.outcome === 'FAILED' ? outcome.failureCategory : undefined;
+  const effectReason = outcome?.outcome === 'FAILED' ? outcome.failureCategory : undefined;
   if (effectReason !== undefined && PROVENANCE_UNPROVEN_REASONS.has(effectReason)) {
     const originHost = hostOf(inputs.locatorUri);
     return seamOk({
