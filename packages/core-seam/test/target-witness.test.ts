@@ -309,7 +309,10 @@ describe('#113 target witness — trusted fact path and exact ownership binding'
   });
 
   it('requires a durable journal; no witness is recorded without one', () => {
-    const journalless = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
+    const journalless = createCoreSeamServer({
+      expectedPeer: EXPECTED_PEER,
+      s1DirectAcquisition: { begin: () => {} },
+    });
     if (!journalless.ok) {
       throw new Error('server construction failed');
     }
