@@ -84,6 +84,22 @@ export function executeHlsVodAcquisition(
   }
   const plan = planned.value;
   const run = acquirePlannedSegments(plan, input.ledger, input.fetcher);
+  return completeHlsPipelineRun(input, plan, run);
+}
+
+/**
+ * The sole S4 post-transfer validation and canonical projection path shared
+ * by synchronous and asynchronous segment transport. Neither transport is
+ * allowed to invent different Media, Format or Target success conditions.
+ */
+export function completeHlsPipelineRun(
+  input: Pick<
+    HlsVodPipelineInput,
+    'contractId' | 'snapshotId' | 'binding' | 'assemblyPort' | 'recordedAt'
+  >,
+  plan: SegmentPlan,
+  run: AcquisitionRun,
+): DomainValidationResult<HlsVodPipelineOutcome> {
   // Assembly/probe runs only after full transfer. A port-level typed
   // rejection is classified INSUFFICIENT_EVIDENCE (fail closed, C22) — it is
   // never a skip and never converted into a passing gate.
