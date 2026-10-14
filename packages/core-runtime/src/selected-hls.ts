@@ -6,20 +6,32 @@
  * The authorized fetcher and final Media-probe capabilities remain supplied
  * by the already trusted host; this is not a publicly exposed seam command.
  */
-import { diagnostic } from '@xdownload/domain-contracts';
+import {
+  diagnostic,
+  makeContractId,
+  makeSnapshotId,
+  unwrapOrThrow,
+  type SnapshotId,
+} from '@xdownload/domain-contracts';
 import {
   preflightSelectedHlsVod,
+  executeHlsVodAcquisitionAsync,
+  type AsyncSegmentFetcherPort,
   type MediaAssemblyPort,
   type SegmentFetcherPort,
   type SelectedHlsPreflightInput,
 } from '@xdownload/hls-vod-adapter';
 import {
   CoreRuntimeFlowError,
+  beginHlsAcquisition,
   executeHlsAcquisition,
+  finishHlsAcquisition,
   type FlowRuntime,
   type HlsFlowOutcome,
   type LineageSeed,
 } from './flow.ts';
+
+import { schedulerHlsTransferLedger } from './budget-bridge.ts';
 
 export interface SelectedHlsFlowInput {
   readonly seed: LineageSeed;
@@ -63,4 +75,66 @@ export function executeSelectedHlsAcquisition(
     assemblyPort: input.assemblyPort,
     recordedAt: input.recordedAt,
   });
+}
+
+/**
+ * Selected HLS + Core's ONE durable async transfer path.
+ * Selection preflight precedes lineage journal and effect budget; the
+ * first async segment is fetched only AFTER the Core attempt is committed.
+ * Reopen/replayed attempt returns durable truth without a second network call.
+ */
+export type AsyncSelectedHlsFlowInput = Omit<SelectedHlsFlowInput, 'fetcher'> & {
+  readonly fetcher: AsyncSegmentFetcherPort;
+};
+
+export async function executeSelectedHlsAcquisitionAsync(
+  runtime: FlowRuntime,
+  input: AsyncSelectedHlsFlowInput,
+): Promise<HlsFlowOutcome> {
+  if (input.seed.targetId !== input.selection.logicalTargetId) {
+    throw new CoreRuntimeFlowError('selected-hls-target', undefined, [
+      diagnostic(
+        'CONTRACT_BINDING_MISMATCH',
+        'targetId',
+        'S4 frozen manifest target differs from Core lineage target',
+      ),
+    ]);
+  }
+  const selected = preflightSelectedHlsVod(input.selection);
+  if (!selected.ok) {
+    throw new CoreRuntimeFlowError('selected-hls-preflight', undefined, selected.diagnostics);
+  }
+
+  const started = beginHlsAcquisition(runtime, {
+    ...input.seed,
+    commandId: input.commandId,
+    memberId: input.memberId,
+  });
+  if (started.kind === 'REPLAY') return started.outcome;
+
+  const snapshotId: SnapshotId | undefined =
+    input.seed.snapshotId === ''
+      ? undefined
+      : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
+  const pipeline = await executeHlsVodAcquisitionAsync({
+    contractId: unwrapOrThrow(makeContractId(input.seed.contractId)),
+    snapshotId,
+    binding: selected.value.binding,
+    master: selected.value.master,
+    mediaPlaylist: selected.value.media,
+    mediaPlaylistLocator: selected.value.binding.renditionLocator,
+    ledger: schedulerHlsTransferLedger(runtime, started.lineageKey),
+    fetcher: input.fetcher,
+    assemblyPort: input.assemblyPort,
+    recordedAt: input.recordedAt,
+  });
+  if (!pipeline.ok) {
+    throw new CoreRuntimeFlowError('hls-async-pipeline', undefined, pipeline.diagnostics);
+  }
+  return finishHlsAcquisition(
+    runtime,
+    { artifactId: input.artifactId, binding: selected.value.binding },
+    started,
+    pipeline.value,
+  );
 }
