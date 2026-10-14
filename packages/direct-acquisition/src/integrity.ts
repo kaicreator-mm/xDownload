@@ -259,17 +259,40 @@ export interface MediaValidationInput {
  * with a missing required track/structure cannot pass (counterexample C27).
  */
 export function validateMedia(input: MediaValidationInput): ValidationLayerOutcome {
+  // T008 is exported to JavaScript callers, even though TypeScript types the
+  // request. Runtime-invalid external policies must fail as Media validation,
+  // not throw before the canonical negative terminal can be projected.
+  const signatures = input.policy?.signatures;
+  if (!Array.isArray(signatures)) {
+    return failed('media', 'MALFORMED_MEDIA_POLICY', 'media signatures must be an array');
+  }
   // S3 Media is a required, independent validation dimension. Neither an
   // omitted policy nor an empty required-signature set can be evidence that
   // an MP4/audio track or container is actually valid (#105 / PRD §28).
-  if (input.policy.signatures.length === 0) {
+  if (signatures.length === 0) {
     return failed(
       'media',
       'MEDIA_POLICY_REQUIRED',
       'no independently applicable media structure check was declared',
     );
   }
-  for (const signature of input.policy.signatures) {
+  if (signatures.length > 16) {
+    return failed('media', 'MALFORMED_MEDIA_POLICY', 'too many media signatures');
+  }
+  for (const signature of signatures) {
+    if (
+      typeof signature !== 'object' ||
+      signature === null ||
+      typeof signature.hex !== 'string' ||
+      signature.hex.length > 128 ||
+      !Number.isSafeInteger(signature.offset) ||
+      signature.offset < 0 ||
+      typeof signature.label !== 'string' ||
+      signature.label.trim().length === 0 ||
+      signature.label.length > 128
+    ) {
+      return failed('media', 'MALFORMED_MEDIA_POLICY', 'invalid bounded media signature');
+    }
     const required = signatureBytes(signature.hex);
     if (required === undefined) {
       return failed('media', 'MALFORMED_MEDIA_POLICY', `signature '${signature.hex}' is not hex`);
