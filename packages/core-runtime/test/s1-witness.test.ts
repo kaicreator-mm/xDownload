@@ -174,9 +174,11 @@ describe('#113 S1 crash-window replay of durable provenance failure', () => {
             failureCategory: 'LOCATOR_SUBSTITUTION',
           }).ok,
         ).toBe(true);
-        expect(
-          first.scheduler.durableEffectOutcome(submission.lineageKey, attemptId),
-        ).toEqual({ outcome: 'FAILED', failureCategory: 'LOCATOR_SUBSTITUTION' });
+        const durableOutcome = first.scheduler.durableEffectOutcome(submission.lineageKey, attemptId);
+        expect(durableOutcome).toEqual({
+          outcome: 'FAILED',
+          failureCategory: 'LOCATOR_SUBSTITUTION',
+        });
         expect(first.writer.reader.artifacts(workItemId)).toHaveLength(0);
         expect(first.seam.targetWitnessFor(CONTRACT)).toBeUndefined();
       } finally {
@@ -195,7 +197,11 @@ describe('#113 S1 crash-window replay of durable provenance failure', () => {
         ).toBe('ACCEPTED');
         const view = await waitForTerminal(() => reopened.seam.inspectProjection(CONTRACT));
         expect(tupleOf(view)).toEqual([
-          'UNKNOWN', 'BLOCKED', 'FAILED', 'NOT_APPLICABLE', 'VALIDATION_FAILED',
+          'UNKNOWN',
+          'BLOCKED',
+          'FAILED',
+          'NOT_APPLICABLE',
+          'VALIDATION_FAILED',
         ]);
         expect(reopened.seam.targetWitnessFor(CONTRACT)).toMatchObject({
           status: 'PROVENANCE_UNPROVEN',
