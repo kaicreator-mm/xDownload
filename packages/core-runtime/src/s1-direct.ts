@@ -346,6 +346,19 @@ export async function driveS1DirectExecution(
     if (!recorded.ok) {
       return recorded;
     }
+    // Crash after the immutable scheduler failure fact but before the first
+    // terminal-failure ledger row: reconstruct BOTH the S1 target witness and
+    // failed-member/validation truth before projecting. An accepted artifact
+    // or a durably committed cancellation is never downgraded to failure.
+    if (
+      witness.value?.status === 'PROVENANCE_UNPROVEN' &&
+      seamLineageStatus(runtime, input.aggregateId) !== 'CANCELLED' &&
+      runtime.recovery.classify(existing.workItemId).lifecycleClass !== 'ACCEPTED'
+    ) {
+      runtime.writer.recordTerminalFailure(existing.workItemId, witness.value.unprovenReason);
+      const failed = runtime.seam.recordFailedMembers(input.aggregateId, [payload.memberId]);
+      if (!failed.ok) return failed;
+    }
     return projectAndRecord(runtime, {
       aggregateId: input.aggregateId,
       lineageKey,
