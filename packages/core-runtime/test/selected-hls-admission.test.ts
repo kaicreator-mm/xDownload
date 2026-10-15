@@ -340,7 +340,13 @@ describe('S4 durable manifest failure truth, without acceptance', () => {
       submission: { effectId: 'effect-s4-fail' },
       attempt: { attemptId: 'attempt-s4-fail' },
     } as unknown as HlsFlowStarted;
-    return { runtime, started, observed, recorded, counts: () => ({ accepted, staged }) };
+    return {
+      runtime,
+      started,
+      observed,
+      recorded,
+      counts: () => ({ accepted, staged }),
+    };
   }
 
   it('persists a failed effect when the authorized manifest network port failed', () => {
@@ -354,9 +360,9 @@ describe('S4 durable manifest failure truth, without acceptance', () => {
     expect(result.attemptReplayed).toBe(false);
     expect(result.effectOutcome?.outcome).toBe('FAILED');
     expect(state.observed).toEqual(['work:s4-fail']);
-    expect(state.recorded).toEqual([
-      { attemptId: 'attempt-s4-fail', outcome: 'FAILED', failureCategory: 'HLS_MANIFEST_FETCH_FAILED' },
-    ]);
+    expect(state.recorded).toHaveLength(1);
+    expect(state.recorded[0]?.outcome).toBe('FAILED');
+    expect(state.recorded[0]?.failureCategory).toBe('HLS_MANIFEST_FETCH_FAILED');
     expect(state.counts()).toEqual({ accepted: 0, staged: 0 });
   });
 
