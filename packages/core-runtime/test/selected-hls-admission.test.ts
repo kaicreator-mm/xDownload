@@ -4,6 +4,8 @@ import {
   CoreRuntimeFlowError,
   executeSelectedHlsAcquisition,
   executeSelectedHlsAcquisitionAsync,
+  executeSelectedHlsFromAuthorizedManifestsAsync,
+  type HttpSelectedHlsFlowInput,
   type AsyncSelectedHlsFlowInput,
   type FlowRuntime,
   type SelectedHlsFlowInput,
@@ -214,5 +216,84 @@ describe('S4 selected asynchronous Core authority and replay', () => {
     expect(outcome.attemptReplayed).toBe(true);
     expect(dispatches).toBe(1);
     expect(network).toBe(0);
+  });
+});
+
+function validManifestInput(): HttpSelectedHlsFlowInput {
+  const previous = validAsyncInput();
+  return {
+    ...previous,
+    selection: {
+      logicalTargetId: previous.selection.logicalTargetId,
+      manifestLocator: previous.selection.manifestLocator,
+      selectedRenditionUri: previous.selection.selectedRenditionUri,
+    },
+    manifestPort: {
+      maxResponseBytes: 128,
+      async fetchManifest() {
+        throw new Error('MANIFEST_FETCH_BEFORE_DURABLE_EFFECT');
+      },
+    },
+  };
+}
+
+describe('S4 Core manifest HTTP requires durable effect ownership', () => {
+  it('rejects wrong target before a scheduler write or any network effect', async () => {
+    await expect(
+      executeSelectedHlsFromAuthorizedManifestsAsync(blockedRuntime, {
+        ...validManifestInput(),
+        seed: { ...validManifestInput().seed, targetId: 'other-target' },
+      }),
+    ).rejects.toBeInstanceOf(CoreRuntimeFlowError);
+  });
+
+  it('does not fetch a playlist before starting the Core effect', async () => {
+    await expect(
+      executeSelectedHlsFromAuthorizedManifestsAsync(blockedRuntime, validManifestInput()),
+    ).rejects.toThrow('SCHEDULER_EFFECT_STARTED');
+  });
+
+  it('durable Core replay prevents both manifest and segment HTTP requests', async () => {
+    let manifestCalls = 0;
+    const replayRuntime = {
+      scheduler: {
+        submitLineage() {
+          return {
+            ok: true,
+            value: {
+              lineageKey: 'lineage:s4-manifest-replay',
+              effectId: 'effect:s4-manifest-replay',
+              binding: { contractId: 'hls-contract-001' },
+            },
+          };
+        },
+        startEffectAttempt() {
+          return {
+            ok: true,
+            value: { replayed: true, attemptId: 'attempt:s4-manifest-replay' },
+          };
+        },
+        tryAccept() {
+          return undefined;
+        },
+      },
+      writer: {
+        submitAcquisition() {},
+        dispatch() {},
+      },
+    } as unknown as FlowRuntime;
+    const input = validManifestInput();
+    const result = await executeSelectedHlsFromAuthorizedManifestsAsync(replayRuntime, {
+      ...input,
+      manifestPort: {
+        maxResponseBytes: 128,
+        async fetchManifest() {
+          manifestCalls += 1;
+          throw new Error('unexpected duplicate manifest request');
+        },
+      },
+    });
+    expect(result.attemptReplayed).toBe(true);
+    expect(manifestCalls).toBe(0);
   });
 });

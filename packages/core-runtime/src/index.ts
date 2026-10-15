@@ -56,6 +56,8 @@ export {
 export {
   executeSelectedHlsAcquisition,
   executeSelectedHlsAcquisitionAsync,
+  executeSelectedHlsFromAuthorizedManifestsAsync,
+  type HttpSelectedHlsFlowInput,
   type SelectedHlsFlowInput,
   type AsyncSelectedHlsFlowInput,
 } from './selected-hls.ts';
