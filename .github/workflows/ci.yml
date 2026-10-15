@@ -43,5 +43,10 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Diagnose S3 policy Prettier (temporary; revert before merge)
+        run: |
+          pnpm exec prettier packages/direct-acquisition/src/public-media-source.ts packages/direct-acquisition/test/public-media-source.test.ts --write
+          git diff -- packages/direct-acquisition/src/public-media-source.ts packages/direct-acquisition/test/public-media-source.test.ts
+
       - name: Run aggregate gate
         run: pnpm ci:verify
