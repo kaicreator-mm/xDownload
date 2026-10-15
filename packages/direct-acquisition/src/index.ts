@@ -34,3 +34,12 @@ export {
 } from './identity.ts';
 export { validateFormat, validateMedia, validateTarget, validateTransfer } from './integrity.ts';
 export { projectOutcome } from './projection.ts';
+
+export {
+  digestPublicMediaSourceProfile,
+  pinPublicMediaSourcePolicy,
+  type PinnedPublicMediaSourcePolicy,
+  type PublicMediaOrigin,
+  type PublicMediaSourceDecision,
+  type PublicMediaSourceProfile,
+} from './public-media-source.ts';
