@@ -15,7 +15,9 @@ import {
 } from '@xdownload/domain-contracts';
 import {
   preflightSelectedHlsVod,
+  acquireSelectedHlsManifests,
   executeHlsVodAcquisitionAsync,
+  type AuthorizedHlsManifestPort,
   type AsyncSegmentFetcherPort,
   type MediaAssemblyPort,
   type SegmentFetcherPort,
@@ -122,6 +124,80 @@ export async function executeSelectedHlsAcquisitionAsync(
     mediaPlaylist: selected.value.media,
     mediaPlaylistLocator: selected.value.binding.renditionLocator,
     ledger: schedulerHlsTransferLedger(runtime, started.lineageKey),
+    fetcher: input.fetcher,
+    assemblyPort: input.assemblyPort,
+    recordedAt: input.recordedAt,
+  });
+  if (!pipeline.ok) {
+    throw new CoreRuntimeFlowError('hls-async-pipeline', undefined, pipeline.diagnostics);
+  }
+  return finishHlsAcquisition(
+    runtime,
+    { artifactId: input.artifactId, binding: selected.value.binding },
+    started,
+    pipeline.value,
+  );
+}
+
+/**
+ * S4 durable selected-manifest HTTP path: the first manifest fetch happens
+ * only AFTER the single Core scheduler/writer has accepted the effect start.
+ * This is host-private, not an unreviewed public Core command or browser
+ * authorization bypass. The trusted host supplies the frozen selection and
+ * approved manifest/segment ports.
+ */
+export type HttpSelectedHlsFlowInput = Omit<AsyncSelectedHlsFlowInput, 'selection'> & {
+  readonly selection: Pick<
+    SelectedHlsPreflightInput,
+    'logicalTargetId' | 'manifestLocator' | 'selectedRenditionUri'
+  >;
+  readonly manifestPort: AuthorizedHlsManifestPort;
+};
+
+export async function executeSelectedHlsFromAuthorizedManifestsAsync(
+  runtime: FlowRuntime,
+  input: HttpSelectedHlsFlowInput,
+): Promise<HlsFlowOutcome> {
+  if (
+    input.seed.targetId !== input.selection.logicalTargetId ||
+    input.selection.manifestLocator.identity !== input.selection.logicalTargetId
+  ) {
+    throw new CoreRuntimeFlowError('selected-hls-target', undefined, [
+      diagnostic(
+        'CONTRACT_BINDING_MISMATCH',
+        'manifestLocator.identity',
+        'S4 frozen target and selected manifest must match before Core effects',
+      ),
+    ]);
+  }
+
+  const started = beginHlsAcquisition(runtime, {
+    ...input.seed,
+    commandId: input.commandId,
+    memberId: input.memberId,
+  });
+  if (started.kind === 'REPLAY') return started.outcome;
+
+  const ledger = schedulerHlsTransferLedger(runtime, started.lineageKey);
+  const selected = await acquireSelectedHlsManifests({
+    ...input.selection,
+    ledger,
+    port: input.manifestPort,
+  });
+  if (!selected.ok) {
+    throw new CoreRuntimeFlowError('hls-manifest-admission', undefined, selected.diagnostics);
+  }
+
+  const snapshotId: SnapshotId | undefined =
+    input.seed.snapshotId === '' ? undefined : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
+  const pipeline = await executeHlsVodAcquisitionAsync({
+    contractId: unwrapOrThrow(makeContractId(input.seed.contractId)),
+    snapshotId,
+    binding: selected.value.binding,
+    master: selected.value.master,
+    mediaPlaylist: selected.value.media,
+    mediaPlaylistLocator: selected.value.binding.renditionLocator,
+    ledger,
     fetcher: input.fetcher,
     assemblyPort: input.assemblyPort,
     recordedAt: input.recordedAt,
