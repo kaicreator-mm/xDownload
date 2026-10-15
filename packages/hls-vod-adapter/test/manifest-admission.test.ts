@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  bindLocator,
-  makeLogicalTargetId,
-  unwrapOrThrow,
-} from '@xdownload/domain-contracts';
+import { bindLocator, makeLogicalTargetId, unwrapOrThrow } from '@xdownload/domain-contracts';
 import { acquireSelectedHlsManifests } from '../src/manifest-admission.ts';
 import { createTransferLedger } from '../src/budget.ts';
 import type { AuthorizedHlsManifestPort } from '../src/manifest-http.ts';
@@ -50,18 +46,26 @@ function fixture(
     async fetchManifest(uri) {
       urls.push(uri);
       if (uri === masterUri) {
-        return { ok: true, text: masterText, byteLength: Buffer.byteLength(masterText) };
+        return {
+          ok: true,
+          text: masterText,
+          byteLength: Buffer.byteLength(masterText),
+        };
       }
       if (uri === renditionUri && !options.failMedia) {
-        return { ok: true, text: mediaText, byteLength: Buffer.byteLength(mediaText) };
+        return {
+          ok: true,
+          text: mediaText,
+          byteLength: Buffer.byteLength(mediaText),
+        };
       }
       return { ok: false, reason: 'UNREACHABLE' };
     },
   };
 }
 
-describe('S4 frozen selected manifests use one inherited Core transfer budget', () => {
-  it('fetches exact declared rendition and produces a finite segment plan', async () => {
+describe('S4 Core transfer ledger manifest admission', () => {
+  it('loads exact rendition and finite plan', async () => {
     const urls: string[] = [];
     const ledger = budget(1000);
     const result = await acquireSelectedHlsManifests({
@@ -79,7 +83,7 @@ describe('S4 frozen selected manifests use one inherited Core transfer budget', 
     );
   });
 
-  it('does not request arbitrary rendition absent from decoded master', async () => {
+  it('rejects unknown rendition before second HTTP', async () => {
     const urls: string[] = [];
     const result = await acquireSelectedHlsManifests({
       logicalTargetId: target,
@@ -92,7 +96,7 @@ describe('S4 frozen selected manifests use one inherited Core transfer budget', 
     expect(urls).toEqual([masterUri]);
   });
 
-  it('refuses second HTTP when first manifest depleted safe pre-request budget', async () => {
+  it('blocks second HTTP on insufficient bytes', async () => {
     const urls: string[] = [];
     const ledger = budget(200);
     const result = await acquireSelectedHlsManifests({
@@ -107,7 +111,7 @@ describe('S4 frozen selected manifests use one inherited Core transfer budget', 
     expect(ledger.consumed().transfer.bytes).toBe(Buffer.byteLength(masterText));
   });
 
-  it('does not fetch anything on invalid target or missing initial budget', async () => {
+  it('blocks invalid target or initial budget', async () => {
     const urls: string[] = [];
     const common = {
       manifestLocator,
@@ -129,7 +133,7 @@ describe('S4 frozen selected manifests use one inherited Core transfer budget', 
     expect(urls).toEqual([]);
   });
 
-  it('reports the second HTTP failure, never produces a complete plan', async () => {
+  it('reports second HTTP failure without success', async () => {
     const urls: string[] = [];
     const result = await acquireSelectedHlsManifests({
       logicalTargetId: target,
