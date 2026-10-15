@@ -22,6 +22,8 @@ import {
   type MediaAssemblyPort,
   type SegmentFetcherPort,
   type SelectedHlsPreflightInput,
+  type SelectedHlsPreflight,
+  type TransferLedger,
 } from '@xdownload/hls-vod-adapter';
 import {
   CoreRuntimeFlowError,
@@ -30,6 +32,7 @@ import {
   finishHlsAcquisition,
   stopHlsAcquisition,
   type FlowRuntime,
+  type HlsFlowStarted,
   type HlsFlowOutcome,
   type LineageSeed,
 } from './flow.ts';
@@ -115,28 +118,13 @@ export async function executeSelectedHlsAcquisitionAsync(
   });
   if (started.kind === 'REPLAY') return started.outcome;
 
-  const snapshotId: SnapshotId | undefined =
-    input.seed.snapshotId === '' ? undefined : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
-  const pipeline = await executeHlsVodAcquisitionAsync({
-    contractId: unwrapOrThrow(makeContractId(input.seed.contractId)),
-    snapshotId,
-    binding: selected.value.binding,
-    master: selected.value.master,
-    mediaPlaylist: selected.value.media,
-    mediaPlaylistLocator: selected.value.binding.renditionLocator,
-    ledger: schedulerHlsTransferLedger(runtime, started.lineageKey),
-    fetcher: input.fetcher,
-    assemblyPort: input.assemblyPort,
-    recordedAt: input.recordedAt,
-  });
-  if (!pipeline.ok) {
-    throw new CoreRuntimeFlowError('hls-async-pipeline', undefined, pipeline.diagnostics);
-  }
-  return finishHlsAcquisition(
+  return finishSelectedAsyncAfterCoreStart(
     runtime,
-    { artifactId: input.artifactId, binding: selected.value.binding },
+    input,
     started,
-    pipeline.value,
+    selected.value,
+    schedulerHlsTransferLedger(runtime, started.lineageKey),
+    false,
   );
 }
 
@@ -208,26 +196,71 @@ export async function executeSelectedHlsFromAuthorizedManifestsAsync(
     return stopHlsAcquisition(runtime, started, failure, manifestRequestIssued);
   }
 
-  const snapshotId: SnapshotId | undefined =
-    input.seed.snapshotId === '' ? undefined : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
-  const pipeline = await executeHlsVodAcquisitionAsync({
-    contractId: unwrapOrThrow(makeContractId(input.seed.contractId)),
-    snapshotId,
-    binding: selected.value.binding,
-    master: selected.value.master,
-    mediaPlaylist: selected.value.media,
-    mediaPlaylistLocator: selected.value.binding.renditionLocator,
+  return finishSelectedAsyncAfterCoreStart(
+    runtime,
+    input,
+    started,
+    selected.value,
     ledger,
-    fetcher: input.fetcher,
-    assemblyPort: input.assemblyPort,
-    recordedAt: input.recordedAt,
-  });
+    manifestRequestIssued,
+  );
+}
+
+/**
+ * One fail-closed post-start S4 path for both pre-supplied manifest fixtures
+ * and approved real manifest transport. A typed pipeline rejection or thrown
+ * media tool is always durably FAILED, never an orphaned effect or COMPLETE.
+ */
+async function finishSelectedAsyncAfterCoreStart(
+  runtime: FlowRuntime,
+  input: Pick<
+    AsyncSelectedHlsFlowInput,
+    'seed' | 'artifactId' | 'fetcher' | 'assemblyPort' | 'recordedAt'
+  >,
+  started: HlsFlowStarted,
+  selected: SelectedHlsPreflight,
+  ledger: TransferLedger,
+  earlierExternalEffectIssued: boolean,
+): Promise<HlsFlowOutcome> {
+  let segmentRequestIssued = false;
+  const trackedFetcher: AsyncSegmentFetcherPort = {
+    fetcherId: input.fetcher.fetcherId,
+    maxResponseBytes: input.fetcher.maxResponseBytes,
+    async fetch(entry) {
+      segmentRequestIssued = true;
+      return input.fetcher.fetch(entry);
+    },
+  };
+  const externalEffectIssued = () => earlierExternalEffectIssued || segmentRequestIssued;
+  let pipeline: Awaited<ReturnType<typeof executeHlsVodAcquisitionAsync>>;
+  try {
+    const snapshotId: SnapshotId | undefined =
+      input.seed.snapshotId === ''
+        ? undefined
+        : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
+    pipeline = await executeHlsVodAcquisitionAsync({
+      contractId: unwrapOrThrow(makeContractId(input.seed.contractId)),
+      snapshotId,
+      binding: selected.binding,
+      master: selected.master,
+      mediaPlaylist: selected.media,
+      mediaPlaylistLocator: selected.binding.renditionLocator,
+      ledger,
+      fetcher: trackedFetcher,
+      assemblyPort: input.assemblyPort,
+      recordedAt: input.recordedAt,
+    });
+  } catch {
+    const failure = 'HLS_PIPELINE_THROWN';
+    return stopHlsAcquisition(runtime, started, failure, externalEffectIssued());
+  }
   if (!pipeline.ok) {
-    throw new CoreRuntimeFlowError('hls-async-pipeline', undefined, pipeline.diagnostics);
+    const failure = 'HLS_PIPELINE_VALIDATION_FAILED';
+    return stopHlsAcquisition(runtime, started, failure, externalEffectIssued());
   }
   return finishHlsAcquisition(
     runtime,
-    { artifactId: input.artifactId, binding: selected.value.binding },
+    { artifactId: input.artifactId, binding: selected.binding },
     started,
     pipeline.value,
   );

@@ -581,7 +581,11 @@ export function beginHlsAcquisition(
 export function stopHlsAcquisition(
   runtime: FlowRuntime,
   started: HlsFlowStarted,
-  failureCategory: 'HLS_MANIFEST_ADMISSION_FAILED' | 'HLS_MANIFEST_FETCH_FAILED',
+  failureCategory:
+    | 'HLS_MANIFEST_ADMISSION_FAILED'
+    | 'HLS_MANIFEST_FETCH_FAILED'
+    | 'HLS_PIPELINE_VALIDATION_FAILED'
+    | 'HLS_PIPELINE_THROWN',
   externalEffectIssued: boolean,
 ): HlsFlowOutcome {
   if (externalEffectIssued) {
