@@ -95,6 +95,23 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
     expect(tools.paths.every((path) => !existsSync(path))).toBe(true);
   });
 
+  it('refuses to replace the frozen rendition metadata under an unchanged target id', () => {
+    const tools = runner(probeOutput());
+    const base = request();
+    const altered = {
+      ...base,
+      binding: {
+        ...base.binding,
+        declared: { ...base.binding.declared, codecs: ['mp4a.40.2'] },
+      },
+    };
+    expect(tools.port.assembleAndProbe(altered)).toMatchObject({
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
+    });
+    expect(tools.calls).toEqual([]);
+  });
+
   it('rejects a non-TS byte payload before spawning tools', () => {
     const tools = runner(probeOutput());
     const base = request();
