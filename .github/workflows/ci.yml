@@ -43,5 +43,10 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Diagnose S3 redirect-test Prettier (temporary; restore before merge)
+        run: |
+          pnpm exec prettier packages/direct-acquisition/test/s3-guarded-transport.test.ts --write
+          git diff -- packages/direct-acquisition/test/s3-guarded-transport.test.ts
+
       - name: Run aggregate gate
         run: pnpm ci:verify
