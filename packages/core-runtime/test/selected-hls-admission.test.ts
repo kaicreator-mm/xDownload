@@ -380,7 +380,7 @@ describe('S4 durable manifest failure truth, without acceptance', () => {
     expect(state.counts()).toEqual({ accepted: 0, staged: 0 });
   });
 
-  it('persists a typed pre-network HLS pipeline refusal without false Media truth', () => {
+  it('persists pre-network pipeline denial without Media evidence', () => {
     const state = failRuntime();
     const result = stopHlsAcquisition(
       state.runtime,
