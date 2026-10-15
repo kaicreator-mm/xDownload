@@ -43,5 +43,10 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Diagnose new S4 manifest formatting (temporary; revert before merge)
+        run: |
+          pnpm exec prettier packages/hls-vod-adapter/src/manifest-admission.ts --write
+          git diff -- packages/hls-vod-adapter/src/manifest-admission.ts
+
       - name: Run aggregate gate
         run: pnpm ci:verify
