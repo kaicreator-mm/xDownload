@@ -59,9 +59,9 @@ describe('S3 Core-pinned public-only source profile', () => {
 
   it('rejects changed Core profile revision or origin against digest pin', () => {
     const pinned = digestPublicMediaSourceProfile(profile);
-    expect(() =>
-      pinPublicMediaSourcePolicy({ ...profile, revision: '2' }, pinned),
-    ).toThrow('digest mismatch');
+    expect(() => pinPublicMediaSourcePolicy({ ...profile, revision: '2' }, pinned)).toThrow(
+      'digest mismatch',
+    );
     expect(() =>
       pinPublicMediaSourcePolicy(
         { ...profile, origins: [{ scheme: 'https', hostname: 'evil.example.test', port: 443 }] },
@@ -88,8 +88,8 @@ describe('S3 Core-pinned public-only source profile', () => {
       origins: [{ scheme: 'https', hostname: 'attacker.example.test', port: 443 }],
     };
     const expectedByCore = digestPublicMediaSourceProfile(profile);
-    expect(() =>
-      pinPublicMediaSourcePolicy(attackerProfile, expectedByCore),
-    ).toThrow('digest mismatch');
+    expect(() => pinPublicMediaSourcePolicy(attackerProfile, expectedByCore)).toThrow(
+      'digest mismatch',
+    );
   });
 });
