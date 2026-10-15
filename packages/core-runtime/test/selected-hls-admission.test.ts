@@ -366,6 +366,35 @@ describe('S4 durable manifest failure truth, without acceptance', () => {
     expect(state.counts()).toEqual({ accepted: 0, staged: 0 });
   });
 
+  it('persists a thrown async Media pipeline as FAILED after network effects', () => {
+    const state = failRuntime();
+    const result = stopHlsAcquisition(
+      state.runtime,
+      state.started,
+      'HLS_PIPELINE_THROWN',
+      true,
+    );
+    expect(result.effectOutcome?.outcome).toBe('FAILED');
+    expect(state.recorded[0]?.failureCategory).toBe('HLS_PIPELINE_THROWN');
+    expect(state.observed).toEqual(['work:s4-fail']);
+    expect(state.counts()).toEqual({ accepted: 0, staged: 0 });
+  });
+
+  it('persists a typed pre-network HLS pipeline refusal without false Media truth', () => {
+    const state = failRuntime();
+    const result = stopHlsAcquisition(
+      state.runtime,
+      state.started,
+      'HLS_PIPELINE_VALIDATION_FAILED',
+      false,
+    );
+    expect(result.effectOutcome?.outcome).toBe('FAILED');
+    expect(result.pipeline).toBeUndefined();
+    expect(state.recorded[0]?.failureCategory).toBe('HLS_PIPELINE_VALIDATION_FAILED');
+    expect(state.observed).toEqual([]);
+    expect(state.counts()).toEqual({ accepted: 0, staged: 0 });
+  });
+
   it('does not fabricate observed HTTP when rejected before manifest network', () => {
     const state = failRuntime();
     const result = stopHlsAcquisition(
