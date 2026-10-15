@@ -5,6 +5,8 @@ import {
   executeSelectedHlsAcquisition,
   executeSelectedHlsAcquisitionAsync,
   executeSelectedHlsFromAuthorizedManifestsAsync,
+  stopHlsAcquisition,
+  type HlsFlowStarted,
   type HttpSelectedHlsFlowInput,
   type AsyncSelectedHlsFlowInput,
   type FlowRuntime,
@@ -295,5 +297,80 @@ describe('S4 Core manifest HTTP requires durable effect ownership', () => {
     });
     expect(result.attemptReplayed).toBe(true);
     expect(manifestCalls).toBe(0);
+  });
+});
+
+describe('S4 durable manifest failure truth, without acceptance', () => {
+  function failRuntime() {
+    const observed: string[] = [];
+    const recorded: Array<{ outcome: string; failureCategory?: string }> = [];
+    let accepted = 0;
+    let staged = 0;
+    const runtime = {
+      writer: {
+        recordExternalEffectObserved(id: string) {
+          observed.push(id);
+        },
+        stageArtifact() {
+          staged += 1;
+          throw new Error('failed manifest must never stage bytes');
+        },
+      },
+      scheduler: {
+        recordEffectOutcome(
+          _lineage: string,
+          value: { outcome: string; failureCategory?: string },
+        ) {
+          recorded.push(value);
+          return {
+            ok: true,
+            value: { outcome: 'FAILED', attemptId: 'attempt-s4-fail', sequence: 5 },
+          };
+        },
+        tryAccept() {
+          accepted += 1;
+          throw new Error('failed manifest must not accept');
+        },
+      },
+    } as unknown as FlowRuntime;
+    const started = {
+      kind: 'STARTED',
+      lineageKey: 'lineage-s4-fail',
+      workItemId: 'work:s4-fail',
+      submission: { effectId: 'effect-s4-fail' },
+      attempt: { attemptId: 'attempt-s4-fail' },
+    } as unknown as HlsFlowStarted;
+    return { runtime, started, observed, recorded, counts: () => ({ accepted, staged }) };
+  }
+
+  it('persists a failed effect when the authorized manifest network port failed', () => {
+    const state = failRuntime();
+    const result = stopHlsAcquisition(
+      state.runtime,
+      state.started,
+      'HLS_MANIFEST_FETCH_FAILED',
+      true,
+    );
+    expect(result.attemptReplayed).toBe(false);
+    expect(result.effectOutcome?.outcome).toBe('FAILED');
+    expect(state.observed).toEqual(['work:s4-fail']);
+    expect(state.recorded).toEqual([
+      { attemptId: 'attempt-s4-fail', outcome: 'FAILED', failureCategory: 'HLS_MANIFEST_FETCH_FAILED' },
+    ]);
+    expect(state.counts()).toEqual({ accepted: 0, staged: 0 });
+  });
+
+  it('does not fabricate observed HTTP when rejected before manifest network', () => {
+    const state = failRuntime();
+    const result = stopHlsAcquisition(
+      state.runtime,
+      state.started,
+      'HLS_MANIFEST_ADMISSION_FAILED',
+      false,
+    );
+    expect(result.effectOutcome?.outcome).toBe('FAILED');
+    expect(state.observed).toEqual([]);
+    expect(state.recorded[0]?.failureCategory).toBe('HLS_MANIFEST_ADMISSION_FAILED');
+    expect(state.counts()).toEqual({ accepted: 0, staged: 0 });
   });
 });
