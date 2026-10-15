@@ -23,6 +23,7 @@ import {
 import { classifyRangeResponse, isSha256Hex, observeIdentity, planResume } from './identity.ts';
 import { validateFormat, validateMedia, validateTarget, validateTransfer } from './integrity.ts';
 import { projectOutcome, rejectRequest } from './projection.ts';
+import type { PinnedPublicMediaSourcePolicy } from './public-media-source.ts';
 import type {
   DirectTransferOutcome,
   DirectTransferRequest,
@@ -65,6 +66,44 @@ export class DirectHttpAdapter {
   async acquire(
     request: DirectTransferRequest,
   ): Promise<DomainValidationResult<DirectTransferOutcome>> {
+    return this.acquireWithPolicy(request);
+  }
+
+  /**
+   * S3 public-file Core-private transfer lane. Callers cannot smuggle a
+   * self-attested source profile or bearer locator through this port.
+   * This is NOT a Core seam command or a replacement for the protected
+   * CLI session/confirmed-candidate journal required by L2 §2.1.
+   */
+  async acquirePublicS3(
+    request: DirectTransferRequest,
+    policy: PinnedPublicMediaSourcePolicy,
+  ): Promise<DomainValidationResult<DirectTransferOutcome>> {
+    if (
+      request.slice !== 'S3' ||
+      request.locatorRefresher !== undefined ||
+      request.expectedSha256 !== undefined
+    ) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        's3.publicSource',
+        'S3 public-file transfer requires Core-confirmed S3, no refresher and no claimed publisher SHA',
+      );
+    }
+    if (!policy.admitInitial(request.binding.locator.uri).ok) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        's3.publicSource',
+        'selected S3 URI is not admitted by Core-pinned public source profile',
+      );
+    }
+    return this.acquireWithPolicy(request, policy);
+  }
+
+  private async acquireWithPolicy(
+    request: DirectTransferRequest,
+    policy?: PinnedPublicMediaSourcePolicy,
+  ): Promise<DomainValidationResult<DirectTransferOutcome>> {
     const shape = validateRequestShape(request);
     if (!shape.ok) {
       return shape;
@@ -81,7 +120,7 @@ export class DirectHttpAdapter {
 
     let state: AttemptState;
     try {
-      state = await this.run(request);
+      state = await this.run(request, policy);
     } catch {
       // A fired cancellation checkpoint is a truthful user-cancel stop, not
       // infrastructure noise: it terminates the attempt with whatever bytes
@@ -98,7 +137,10 @@ export class DirectHttpAdapter {
 
   // --- attempt loop -------------------------------------------------------
 
-  private async run(request: DirectTransferRequest): Promise<AttemptState> {
+  private async run(
+    request: DirectTransferRequest,
+    policy?: PinnedPublicMediaSourcePolicy,
+  ): Promise<AttemptState> {
     const locatorChain: LocatorBinding<LogicalTargetId>[] = [request.binding];
     let current = request.binding;
     let refreshedSignedLocator = false;
@@ -153,6 +195,23 @@ export class DirectHttpAdapter {
                   },
                 ],
               });
+        }
+        // Guard every redirect BEFORE another fetch and BEFORE committing
+        // its URI into an outcome chain or any persisted evidence. Never
+        // return an unapproved signed/secret candidate URI to the caller.
+        if (policy !== undefined && !policy.admitRedirect(hopResult.binding.locator.uri).ok) {
+          await cancelBody(response);
+          return stopState(request, 'REDIRECT_SCOPE_EXPANSION', {
+            chain: locatorChain,
+            validations: [
+              {
+                layer: 'target',
+                passed: false,
+                code: 'SCOPE_EXPANSION_REJECTED',
+                failure: 'S3 redirect not in the Core-pinned public source profile',
+              },
+            ],
+          });
         }
         current = hopResult.binding;
         locatorChain.push(current);
