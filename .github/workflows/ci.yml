@@ -43,5 +43,10 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Diagnose S4 narrow formatting (temporary; restore before merge)
+        run: |
+          pnpm exec prettier packages/core-runtime/src/selected-hls.ts packages/core-runtime/test/selected-hls-admission.test.ts --write
+          git diff -- packages/core-runtime/src/selected-hls.ts packages/core-runtime/test/selected-hls-admission.test.ts
+
       - name: Run aggregate gate
         run: pnpm ci:verify
