@@ -93,10 +93,7 @@ describe('S3 pinned Core public-file transport applies guard before HTTP and red
     if (!result.ok) return;
     expect(result.value.reason).toBe('AUTH_REQUIRED');
     expect(result.value.locatorChain).toHaveLength(2);
-    expect(calls).toEqual([
-      `${initial}/media/clip_01.mp4`,
-      `${approvedCdn}/media/clip_01.mp4`,
-    ]);
+    expect(calls).toEqual([`${initial}/media/clip_01.mp4`, `${approvedCdn}/media/clip_01.mp4`]);
   });
 
   it('blocks signed-path/percent/query redirect even on a declared CDN', async () => {
