@@ -7,22 +7,12 @@
  * or media truth. Both bytes and request effects are recorded with the
  * caller's authoritative ledger; pre-HTTP admission is fail-closed.
  */
-import {
-  diagnostic,
-  fail,
-  type DomainValidationResult,
-} from '@xdownload/domain-contracts';
-import type {
-  LocatorBinding,
-  LogicalTargetId,
-} from '@xdownload/domain-contracts';
+import { diagnostic, fail, type DomainValidationResult } from '@xdownload/domain-contracts';
+import type { LocatorBinding, LogicalTargetId } from '@xdownload/domain-contracts';
 import type { TransferLedger } from './budget.ts';
 import type { AuthorizedHlsManifestPort } from './manifest-http.ts';
 import { decodeMasterPlaylist } from './playlist.ts';
-import {
-  preflightSelectedHlsVod,
-  type SelectedHlsPreflight,
-} from './selected-preflight.ts';
+import { preflightSelectedHlsVod, type SelectedHlsPreflight } from './selected-preflight.ts';
 
 export interface BudgetedManifestAdmission {
   readonly logicalTargetId: LogicalTargetId;
@@ -45,10 +35,7 @@ export async function acquireSelectedHlsManifests(
     ]);
   }
 
-  async function read(
-    uri: string,
-    path: string,
-  ): Promise<DomainValidationResult<string>> {
+  async function read(uri: string, path: string): Promise<DomainValidationResult<string>> {
     const remaining = input.ledger.remaining();
     const bytesLeft = remaining.transfer.perLimit['bytes'];
     if (
@@ -69,10 +56,7 @@ export async function acquireSelectedHlsManifests(
     const result = await input.port.fetchManifest(uri);
     // Record the fact that a manifest request occurred even on a typed
     // failure; only actually returned payload bytes may be consumed.
-    input.ledger.recordTransfer(
-      'MANIFEST_REQUEST',
-      result.ok ? result.byteLength : 0,
-    );
+    input.ledger.recordTransfer('MANIFEST_REQUEST', result.ok ? result.byteLength : 0);
     if (!result.ok) {
       return fail([
         diagnostic(
@@ -85,16 +69,10 @@ export async function acquireSelectedHlsManifests(
     return { ok: true, value: result.text };
   }
 
-  const master = await read(
-    input.manifestLocator.locator.uri,
-    'masterManifest',
-  );
+  const master = await read(input.manifestLocator.locator.uri, 'masterManifest');
   if (!master.ok) return master;
 
-  const decoded = decodeMasterPlaylist(
-    master.value,
-    input.manifestLocator.locator.uri,
-  );
+  const decoded = decodeMasterPlaylist(master.value, input.manifestLocator.locator.uri);
   if (!decoded.ok) return decoded;
   const candidates = decoded.value.variants.filter(
     (variant) => variant.uri === input.selectedRenditionUri,
