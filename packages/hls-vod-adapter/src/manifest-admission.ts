@@ -7,12 +7,22 @@
  * or media truth. Both bytes and request effects are recorded with the
  * caller's authoritative ledger; pre-HTTP admission is fail-closed.
  */
-import { diagnostic, fail, type DomainValidationResult } from '@xdownload/domain-contracts';
-import type { LocatorBinding, LogicalTargetId } from '@xdownload/domain-contracts';
+import {
+  diagnostic,
+  fail,
+  type DomainValidationResult,
+} from '@xdownload/domain-contracts';
+import type {
+  LocatorBinding,
+  LogicalTargetId,
+} from '@xdownload/domain-contracts';
 import type { TransferLedger } from './budget.ts';
 import type { AuthorizedHlsManifestPort } from './manifest-http.ts';
 import { decodeMasterPlaylist } from './playlist.ts';
-import { preflightSelectedHlsVod, type SelectedHlsPreflight } from './selected-preflight.ts';
+import {
+  preflightSelectedHlsVod,
+  type SelectedHlsPreflight,
+} from './selected-preflight.ts';
 
 export interface BudgetedManifestAdmission {
   readonly logicalTargetId: LogicalTargetId;
@@ -75,7 +85,10 @@ export async function acquireSelectedHlsManifests(
     return { ok: true, value: result.text };
   }
 
-  const master = await read(input.manifestLocator.locator.uri, 'masterManifest');
+  const master = await read(
+    input.manifestLocator.locator.uri,
+    'masterManifest',
+  );
   if (!master.ok) return master;
 
   const decoded = decodeMasterPlaylist(
