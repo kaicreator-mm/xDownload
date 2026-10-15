@@ -200,20 +200,12 @@ export async function executeSelectedHlsFromAuthorizedManifestsAsync(
     });
   } catch {
     // Do not persist thrown URL/credential text or expose it as truth.
-    return stopHlsAcquisition(
-      runtime,
-      started,
-      'HLS_MANIFEST_FETCH_FAILED',
-      manifestRequestIssued,
-    );
+    const failure = 'HLS_MANIFEST_FETCH_FAILED';
+    return stopHlsAcquisition(runtime, started, failure, manifestRequestIssued);
   }
   if (!selected.ok) {
-    return stopHlsAcquisition(
-      runtime,
-      started,
-      'HLS_MANIFEST_ADMISSION_FAILED',
-      manifestRequestIssued,
-    );
+    const failure = 'HLS_MANIFEST_ADMISSION_FAILED';
+    return stopHlsAcquisition(runtime, started, failure, manifestRequestIssued);
   }
 
   const snapshotId: SnapshotId | undefined =
