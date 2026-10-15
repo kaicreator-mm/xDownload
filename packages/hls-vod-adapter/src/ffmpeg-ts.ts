@@ -139,7 +139,16 @@ function validateTransferred(
     }
   | undefined {
   const entries = request.plan.entries;
+  const frozen = request.plan.binding.declared;
+  const selected = request.binding.declared;
+  const sameCodecs =
+    frozen.codecs.length === selected.codecs.length &&
+    frozen.codecs.every((codec, index) => codec === selected.codecs[index]);
   if (
+    !sameCodecs ||
+    frozen.bandwidth !== selected.bandwidth ||
+    frozen.resolution?.width !== selected.resolution?.width ||
+    frozen.resolution?.height !== selected.resolution?.height ||
     entries.length < 1 ||
     entries.length > 128 ||
     request.transferred.length !== entries.length ||
