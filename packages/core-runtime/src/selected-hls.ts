@@ -246,15 +246,12 @@ async function finishSelectedAsyncAfterCoreStart(
       recordedAt: input.recordedAt,
     });
   } catch {
-    return stopHlsAcquisition(runtime, started, 'HLS_PIPELINE_THROWN', externalEffectIssued());
+    const failure = 'HLS_PIPELINE_THROWN';
+    return stopHlsAcquisition(runtime, started, failure, externalEffectIssued());
   }
   if (!pipeline.ok) {
-    return stopHlsAcquisition(
-      runtime,
-      started,
-      'HLS_PIPELINE_VALIDATION_FAILED',
-      externalEffectIssued(),
-    );
+    const failure = 'HLS_PIPELINE_VALIDATION_FAILED';
+    return stopHlsAcquisition(runtime, started, failure, externalEffectIssued());
   }
   return finishHlsAcquisition(
     runtime,
