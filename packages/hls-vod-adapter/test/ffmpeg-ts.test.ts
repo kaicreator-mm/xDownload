@@ -31,14 +31,21 @@ function request(): MediaAssemblyRequest {
 function probeOutput(overrides?: { duration?: string; codec?: string; width?: number }): string {
   return JSON.stringify({
     format: { format_name: 'mpegts', duration: overrides?.duration ?? '11.5' },
-    streams: [{
-      codec_type: 'video', codec_name: overrides?.codec ?? 'h264',
-      width: overrides?.width ?? 1280, height: 720,
-    }],
+    streams: [
+      {
+        codec_type: 'video',
+        codec_name: overrides?.codec ?? 'h264',
+        width: overrides?.width ?? 1280,
+        height: 720,
+      },
+    ],
   });
 }
 
-function runner(probe: string, decodeStatus = 0): {
+function runner(
+  probe: string,
+  decodeStatus = 0,
+): {
   readonly port: ReturnType<typeof createFfmpegTsMediaAssemblyPort>;
   readonly calls: string[];
   readonly paths: string[];
@@ -94,7 +101,8 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
     const malformed = {
       ...base,
       transferred: base.transferred.map((item, i) =>
-        i === 1 ? { ...item, bytes: new Uint8Array(188) } : item),
+        i === 1 ? { ...item, bytes: new Uint8Array(188) } : item,
+      ),
     };
     const result = tools.port.assembleAndProbe(malformed);
     expect(result.ok && result.value.kind).toBe('INSUFFICIENT_EVIDENCE');
@@ -105,14 +113,17 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
     const tools = runner(probeOutput());
     const base = request();
     const partial = { ...base, transferred: base.transferred.slice(1) };
-    const duplicate = { ...base, transferred: [
-      base.transferred[0]!, base.transferred[0]!, base.transferred[2]!,
-    ] };
+    const duplicate = {
+      ...base,
+      transferred: [base.transferred[0]!, base.transferred[0]!, base.transferred[2]!],
+    };
     expect(tools.port.assembleAndProbe(partial)).toMatchObject({
-      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
     expect(tools.port.assembleAndProbe(duplicate)).toMatchObject({
-      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
     expect(tools.calls).toEqual([]);
   });
@@ -128,8 +139,7 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
       expect(result.ok).toBe(true);
       if (!result.ok || result.value.kind !== 'EVIDENCE') continue;
       expect(
-        result.value.report.matchesDeclaredRendition &&
-          result.value.report.durationConsistent,
+        result.value.report.matchesDeclaredRendition && result.value.report.durationConsistent,
       ).toBe(false);
     }
   });
@@ -137,26 +147,35 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
   it('a metadata-only ffprobe success cannot substitute for failed media decoding', () => {
     const tools = runner(probeOutput(), 1);
     expect(tools.port.assembleAndProbe(request())).toMatchObject({
-      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
     expect(tools.calls).toEqual(['ffprobe', 'ffmpeg']);
   });
 
   it('missing or malformed real tool output cannot become successful evidence', () => {
     for (const metadata of [
-      '{}', '{not json', JSON.stringify({ format: { format_name: 'matroska', duration: '11.5' }, streams: [] }),
+      '{}',
+      '{not json',
+      JSON.stringify({ format: { format_name: 'matroska', duration: '11.5' }, streams: [] }),
     ]) {
       const tools = runner(metadata);
       expect(tools.port.assembleAndProbe(request())).toMatchObject({
-        ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+        ok: true,
+        value: { kind: 'INSUFFICIENT_EVIDENCE' },
       });
       expect(tools.calls).toEqual(['ffprobe']);
     }
     const unavailable = createFfmpegTsMediaAssemblyPort({
-      runner: { run() { return { status: null, stdout: '' }; } },
+      runner: {
+        run() {
+          return { status: null, stdout: '' };
+        },
+      },
     });
     expect(unavailable.assembleAndProbe(request())).toMatchObject({
-      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
   });
 
@@ -164,10 +183,15 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
     const tools = runner(probeOutput());
     const small = createFfmpegTsMediaAssemblyPort({
       maxAssembledBytes: 2 * 188,
-      runner: { run() { throw Error('must not run'); } },
+      runner: {
+        run() {
+          throw Error('must not run');
+        },
+      },
     });
     expect(small.assembleAndProbe(request())).toMatchObject({
-      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
     expect(tools.calls).toEqual([]);
   });

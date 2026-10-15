@@ -12,7 +12,11 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deepFreeze, identitySetEquals, type DomainValidationResult } from '@xdownload/domain-contracts';
+import {
+  deepFreeze,
+  identitySetEquals,
+  type DomainValidationResult,
+} from '@xdownload/domain-contracts';
 import type {
   MediaAssemblyPort,
   MediaAssemblyProbeOutcome,
@@ -82,56 +86,90 @@ function codecFamily(declared: string): string | undefined {
   return undefined;
 }
 
-function parseProbe(value: string): {
-  readonly duration: number;
-  readonly streams: readonly ProbeStream[];
-} | undefined {
+function parseProbe(value: string):
+  | {
+      readonly duration: number;
+      readonly streams: readonly ProbeStream[];
+    }
+  | undefined {
   try {
     const data: unknown = JSON.parse(value);
     if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
     const record = data as Record<string, unknown>;
-    if (typeof record['format'] !== 'object' || record['format'] === null ||
-        Array.isArray(record['format']) || !Array.isArray(record['streams'])) return undefined;
+    if (
+      typeof record['format'] !== 'object' ||
+      record['format'] === null ||
+      Array.isArray(record['format']) ||
+      !Array.isArray(record['streams'])
+    )
+      return undefined;
     const format = record['format'] as Record<string, unknown>;
     // Reject an unrecognized or surprising container rather than assuming TS.
-    if (typeof format['format_name'] !== 'string' ||
-        !format['format_name'].split(',').includes('mpegts')) return undefined;
+    if (
+      typeof format['format_name'] !== 'string' ||
+      !format['format_name'].split(',').includes('mpegts')
+    )
+      return undefined;
     const durationValue = format['duration'];
     if (typeof durationValue !== 'string' && typeof durationValue !== 'number') return undefined;
     const duration = Number(durationValue);
     if (!Number.isFinite(duration) || duration <= 0) return undefined;
-    if (record['streams'].length < 1 || record['streams'].length > 8 ||
-        !record['streams'].every((s: unknown) =>
-          typeof s === 'object' && s !== null && !Array.isArray(s))) return undefined;
+    if (
+      record['streams'].length < 1 ||
+      record['streams'].length > 8 ||
+      !record['streams'].every(
+        (s: unknown) => typeof s === 'object' && s !== null && !Array.isArray(s),
+      )
+    )
+      return undefined;
     return { duration, streams: record['streams'] as ProbeStream[] };
   } catch {
     return undefined;
   }
 }
 
-function validateTransferred(request: MediaAssemblyRequest, maxBytes: number):
-  | { readonly bytes: Uint8Array; readonly identityMatches: boolean; readonly plannedDuration: number }
+function validateTransferred(
+  request: MediaAssemblyRequest,
+  maxBytes: number,
+):
+  | {
+      readonly bytes: Uint8Array;
+      readonly identityMatches: boolean;
+      readonly plannedDuration: number;
+    }
   | undefined {
   const entries = request.plan.entries;
-  if (entries.length < 1 || entries.length > 128 ||
-      request.transferred.length !== entries.length ||
-      request.plan.binding.logicalTargetId !== request.binding.logicalTargetId ||
-      request.plan.binding.renditionId !== request.binding.renditionId) return undefined;
+  if (
+    entries.length < 1 ||
+    entries.length > 128 ||
+    request.transferred.length !== entries.length ||
+    request.plan.binding.logicalTargetId !== request.binding.logicalTargetId ||
+    request.plan.binding.renditionId !== request.binding.renditionId
+  )
+    return undefined;
   const transferredIds = request.transferred.map((s) => s.entry.identity);
   const plannedIds = entries.map((s) => s.identity);
-  if (new Set(transferredIds).size !== transferredIds.length ||
-      !identitySetEquals(transferredIds, plannedIds)) return undefined;
+  if (
+    new Set(transferredIds).size !== transferredIds.length ||
+    !identitySetEquals(transferredIds, plannedIds)
+  )
+    return undefined;
   const byId = new Map(request.transferred.map((item) => [item.entry.identity, item]));
   let total = 0;
   let plannedDuration = 0;
   for (const entry of entries) {
     const item = byId.get(entry.identity);
-    if (item === undefined || item.entry.position !== entry.position ||
-        item.entry.sequence !== entry.sequence ||
-        item.bytes.length === 0 ||
-        item.bytes.length % TS_PACKET_BYTES !== 0 ||
-        (entry.byterange !== undefined && item.bytes.length !== entry.byterange.length) ||
-        !Number.isFinite(entry.durationSeconds) || entry.durationSeconds <= 0) return undefined;
+    if (
+      item === undefined ||
+      item.entry.position !== entry.position ||
+      item.entry.sequence !== entry.sequence ||
+      item.bytes.length === 0 ||
+      item.bytes.length % TS_PACKET_BYTES !== 0 ||
+      (entry.byterange !== undefined && item.bytes.length !== entry.byterange.length) ||
+      !Number.isFinite(entry.durationSeconds) ||
+      entry.durationSeconds <= 0
+    )
+      return undefined;
     for (let offset = 0; offset < item.bytes.length; offset += TS_PACKET_BYTES) {
       if (item.bytes[offset] !== 0x47) return undefined;
     }
@@ -149,7 +187,9 @@ function validateTransferred(request: MediaAssemblyRequest, maxBytes: number):
   return { bytes, identityMatches: true, plannedDuration };
 }
 
-export function createFfmpegTsMediaAssemblyPort(options: FfmpegTsPortOptions = {}): MediaAssemblyPort {
+export function createFfmpegTsMediaAssemblyPort(
+  options: FfmpegTsPortOptions = {},
+): MediaAssemblyPort {
   const limit = options.maxAssembledBytes ?? DEFAULT_MAX_BYTES;
   if (!Number.isSafeInteger(limit) || limit < TS_PACKET_BYTES || limit > DEFAULT_MAX_BYTES) {
     throw new Error('invalid ffmpeg TS media byte bound');
@@ -163,43 +203,69 @@ export function createFfmpegTsMediaAssemblyPort(options: FfmpegTsPortOptions = {
     toolId: 'xdownload/ffmpeg-ts-media/1',
     assembleAndProbe(request) {
       const verified = validateTransferred(request, limit);
-      if (verified === undefined) return insufficient('incomplete, unordered, oversized or non-MPEG-TS segment set');
+      if (verified === undefined)
+        return insufficient('incomplete, unordered, oversized or non-MPEG-TS segment set');
       let directory: string | undefined;
       try {
         directory = mkdtempSync(join(tmpdir(), 'xdownload-s4-probe-'));
         const filepath = join(directory, 'selected.ts');
         writeFileSync(filepath, verified.bytes, { flag: 'wx', mode: 0o600 });
         const scanned = runner.run(ffprobe, [
-          '-v', 'error', '-show_entries',
+          '-v',
+          'error',
+          '-show_entries',
           'format=format_name,duration:stream=codec_type,codec_name,width,height',
-          '-of', 'json', filepath,
+          '-of',
+          'json',
+          filepath,
         ]);
         if (scanned.status !== 0 || scanned.stdout.length > TOOL_MAX_OUTPUT_BYTES) {
           return insufficient('bounded ffprobe failed or exceeded output bound');
         }
         const observed = parseProbe(scanned.stdout);
-        if (observed === undefined) return insufficient('ffprobe did not provide a valid MPEG-TS stream/duration report');
+        if (observed === undefined)
+          return insufficient('ffprobe did not provide a valid MPEG-TS stream/duration report');
         // Metadata alone is NOT Media evidence: decode the entire input.
         const decoded = runner.run(ffmpeg, [
-          '-nostdin', '-v', 'error', '-xerror', '-err_detect', 'explode',
-          '-i', filepath, '-map', '0:v?', '-map', '0:a?', '-f', 'null', '-',
+          '-nostdin',
+          '-v',
+          'error',
+          '-xerror',
+          '-err_detect',
+          'explode',
+          '-i',
+          filepath,
+          '-map',
+          '0:v?',
+          '-map',
+          '0:a?',
+          '-f',
+          'null',
+          '-',
         ]);
         if (decoded.status !== 0) return insufficient('full media decode did not pass');
         const expected = request.binding.declared.codecs.map(codecFamily);
         const actual = observed.streams.map((s) =>
-          (s.codec_type === 'video' || s.codec_type === 'audio') &&
-          typeof s.codec_name === 'string' ? s.codec_name : undefined,
+          (s.codec_type === 'video' || s.codec_type === 'audio') && typeof s.codec_name === 'string'
+            ? s.codec_name
+            : undefined,
         );
-        const codecMatch = expected.length > 0 && !expected.includes(undefined) &&
-          expected.length === actual.length && !actual.includes(undefined) &&
+        const codecMatch =
+          expected.length > 0 &&
+          !expected.includes(undefined) &&
+          expected.length === actual.length &&
+          !actual.includes(undefined) &&
           [...expected].sort().join('|') === [...actual].sort().join('|');
         const resolution = request.binding.declared.resolution;
         const videos = observed.streams.filter((s) => s.codec_type === 'video');
-        const resolutionMatch = resolution === undefined ||
-          (videos.length === 1 && videos[0]?.width === resolution.width &&
+        const resolutionMatch =
+          resolution === undefined ||
+          (videos.length === 1 &&
+            videos[0]?.width === resolution.width &&
             videos[0]?.height === resolution.height);
         const renditionMatches = codecMatch && resolutionMatch;
-        const durationMatches = Math.abs(observed.duration - verified.plannedDuration) <=
+        const durationMatches =
+          Math.abs(observed.duration - verified.plannedDuration) <=
           Math.max(1, verified.plannedDuration * 0.05);
         const checks: ProbeCheck[] = [
           verified.identityMatches ? 'IDENTITY_SET_MATCHES_PLAN' : 'IDENTITY_MISMATCH',
@@ -226,7 +292,11 @@ export function createFfmpegTsMediaAssemblyPort(options: FfmpegTsPortOptions = {
         return insufficient('local media tooling or temporary staging unavailable');
       } finally {
         if (directory !== undefined) {
-          try { rmSync(directory, { recursive: true, force: true }); } catch { /* fail closed above */ }
+          try {
+            rmSync(directory, { recursive: true, force: true });
+          } catch {
+            /* fail closed above */
+          }
         }
       }
     },
