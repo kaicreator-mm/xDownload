@@ -28,6 +28,7 @@ import {
   beginHlsAcquisition,
   executeHlsAcquisition,
   finishHlsAcquisition,
+  stopHlsAcquisition,
   type FlowRuntime,
   type HlsFlowOutcome,
   type LineageSeed,
@@ -179,13 +180,32 @@ export async function executeSelectedHlsFromAuthorizedManifestsAsync(
   if (started.kind === 'REPLAY') return started.outcome;
 
   const ledger = schedulerHlsTransferLedger(runtime, started.lineageKey);
-  const selected = await acquireSelectedHlsManifests({
-    ...input.selection,
-    ledger,
-    port: input.manifestPort,
-  });
+  let manifestRequestIssued = false;
+  // The trusted port is invoked ONLY by T009 after its per-request budget
+  // admission. Mark observation before entering the port so throwing or
+  // network-failed reads cannot leave an unrecorded started effect.
+  const trackedPort: AuthorizedHlsManifestPort = {
+    maxResponseBytes: input.manifestPort.maxResponseBytes,
+    async fetchManifest(uri) {
+      manifestRequestIssued = true;
+      return input.manifestPort.fetchManifest(uri);
+    },
+  };
+  let selected: Awaited<ReturnType<typeof acquireSelectedHlsManifests>>;
+  try {
+    selected = await acquireSelectedHlsManifests({
+      ...input.selection,
+      ledger,
+      port: trackedPort,
+    });
+  } catch {
+    // Do not persist thrown URL/credential text or expose it as truth.
+    const failure = 'HLS_MANIFEST_FETCH_FAILED';
+    return stopHlsAcquisition(runtime, started, failure, manifestRequestIssued);
+  }
   if (!selected.ok) {
-    throw new CoreRuntimeFlowError('hls-manifest-admission', undefined, selected.diagnostics);
+    const failure = 'HLS_MANIFEST_ADMISSION_FAILED';
+    return stopHlsAcquisition(runtime, started, failure, manifestRequestIssued);
   }
 
   const snapshotId: SnapshotId | undefined =

@@ -570,6 +570,40 @@ export function beginHlsAcquisition(
   return { kind: 'STARTED', submission, workItemId, lineageKey, attempt };
 }
 
+/**
+ * Persist a truthful failure after an S4 attempt has already been durably
+ * started, even if manifest admission fails before Media probing.
+ *
+ * Only mark external effect observed when an approved fetch port was
+ * actually invoked; budget denial before any HTTP is not an observation.
+ * A failed control outcome can never be promoted to artifact acceptance.
+ */
+export function stopHlsAcquisition(
+  runtime: FlowRuntime,
+  started: HlsFlowStarted,
+  failureCategory: 'HLS_MANIFEST_ADMISSION_FAILED' | 'HLS_MANIFEST_FETCH_FAILED',
+  externalEffectIssued: boolean,
+): HlsFlowOutcome {
+  if (externalEffectIssued) {
+    runtime.writer.recordExternalEffectObserved(started.workItemId);
+  }
+  const effectOutcome = must(
+    'recordEffectOutcome',
+    runtime.scheduler.recordEffectOutcome(started.lineageKey, {
+      attemptId: started.attempt.attemptId,
+      outcome: 'FAILED',
+      failureCategory,
+    }),
+  );
+  return {
+    lineageKey: started.lineageKey,
+    workItemId: started.workItemId,
+    submission: started.submission,
+    attemptReplayed: false,
+    effectOutcome,
+  };
+}
+
 /** Canonical post-effect truth/persistence logic for both S4 delivery modes. */
 export function finishHlsAcquisition(
   runtime: FlowRuntime,
