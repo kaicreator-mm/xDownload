@@ -213,7 +213,10 @@ export async function executeSelectedHlsFromAuthorizedManifestsAsync(
  */
 async function finishSelectedAsyncAfterCoreStart(
   runtime: FlowRuntime,
-  input: AsyncSelectedHlsFlowInput,
+  input: Pick<
+    AsyncSelectedHlsFlowInput,
+    'seed' | 'artifactId' | 'fetcher' | 'assemblyPort' | 'recordedAt'
+  >,
   started: HlsFlowStarted,
   selected: SelectedHlsPreflight,
   ledger: TransferLedger,
@@ -232,7 +235,9 @@ async function finishSelectedAsyncAfterCoreStart(
   let pipeline: Awaited<ReturnType<typeof executeHlsVodAcquisitionAsync>>;
   try {
     const snapshotId: SnapshotId | undefined =
-      input.seed.snapshotId === '' ? undefined : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
+      input.seed.snapshotId === ''
+        ? undefined
+        : unwrapOrThrow(makeSnapshotId(input.seed.snapshotId));
     pipeline = await executeHlsVodAcquisitionAsync({
       contractId: unwrapOrThrow(makeContractId(input.seed.contractId)),
       snapshotId,
