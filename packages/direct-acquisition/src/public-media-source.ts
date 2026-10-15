@@ -34,7 +34,8 @@ export interface PinnedPublicMediaSourcePolicy {
 }
 
 const PATH = /^\/media\/[A-Za-z0-9_-]{1,64}\.(mp4|m4a|mp3|webm)$/;
-const DNS = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/;
+const DNS =
+  /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/;
 const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const REVISION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
 const HEX_SHA256 = /^[0-9a-f]{64}$/;
@@ -80,11 +81,7 @@ function canonicalProfile(profile: PublicMediaSourceProfile): string {
     profileId: profile.profileId,
     revision: profile.revision,
     origins: profile.origins.map((item) => [item.scheme, item.hostname, item.port]),
-    redirectOrigins: profile.redirectOrigins.map((item) => [
-      item.scheme,
-      item.hostname,
-      item.port,
-    ]),
+    redirectOrigins: profile.redirectOrigins.map((item) => [item.scheme, item.hostname, item.port]),
   });
 }
 
