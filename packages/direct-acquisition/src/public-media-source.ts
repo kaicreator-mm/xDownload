@@ -130,6 +130,10 @@ export function pinPublicMediaSourcePolicy(
     }
     const raw = /^https:\/\/([^/]+)(\/.*)$/.exec(uri);
     if (raw === null || !PATH.test(raw[2] ?? '')) return deny();
+    const authority = /^([a-z0-9.-]+)(?::([0-9]{1,5}))?$/.exec(raw[1] ?? '');
+    if (authority === null || !DNS.test(authority[1] ?? '')) return deny();
+    const rawPort = authority[2];
+    if (rawPort !== undefined && String(Number(rawPort)) !== rawPort) return deny();
     let parsed: URL;
     try {
       parsed = new URL(uri);
@@ -144,6 +148,7 @@ export function pinPublicMediaSourcePolicy(
       parsed.search !== '' ||
       parsed.hash !== '' ||
       host !== host.toLowerCase() ||
+      host !== authority[1] ||
       !DNS.test(host) ||
       host.includes('xn--') ||
       !PATH.test(parsed.pathname) ||
