@@ -20,4 +20,7 @@ export * from './projection.ts';
 export * from './server.ts';
 export * from './transport.ts';
 export * from './transport-loopback.ts';
+export * from './verified-session.ts';
+export * from './win-ipc.ts';
+export * from './transport-windows-pipe.ts';
 export * from './client.ts';

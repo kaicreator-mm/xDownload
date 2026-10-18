@@ -3,5 +3,8 @@ packages:
   - apps/*
 allowBuilds:
   esbuild: true
+  # koffi's install script is a source-build fallback; the binary ships in the
+  # @koromix/koffi-<platform> optional dependency and loads without it.
+  koffi: false
 onlyBuiltDependencies:
   - esbuild

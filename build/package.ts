@@ -79,6 +79,12 @@ async function bundleArtifacts(distDir: string): Promise<void> {
       sourcemap: false,
       legalComments: 'none',
       logLevel: 'warning',
+      // #101 S3-WIN-IPC-001: the native FFI bridge (koffi) is a lazy, win32-only
+      // runtime dependency that cannot be bundled (prebuilt .node binary). It
+      // stays external: bundles keep the guarded loader, which fails closed in
+      // artifacts until the native bridge is packaged with the installed Core
+      // surface; the pipe transport is exercised in-repo on the Build Host.
+      external: ['koffi', '@koromix/*'],
       ...(artifact.withShebang ? { banner: { js: SHEBANG } } : {}),
     });
   }
