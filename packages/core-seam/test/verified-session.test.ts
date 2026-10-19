@@ -84,6 +84,16 @@ describe('OS-verified peer transport authorization gate', () => {
         verifiedPeer: session({ sameUserAsCore: false }),
       });
       expect(foreign.ok).toBe(false);
+      // Same Windows SID is not sufficient for protected S3 authority:
+      // an unrelated interactive logon must not confirm this Core session.
+      const otherLogon = assertPeerTransportAuthorization({
+        commandType,
+        verifiedPeer: session({ sameLogonSessionAsCore: false }),
+      });
+      expect(otherLogon.ok).toBe(false);
+      if (!otherLogon.ok) {
+        expect(otherLogon.diagnostics[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
+      }
       // A positively verified same-user named-pipe session is admitted.
       const admitted = assertPeerTransportAuthorization({ commandType, verifiedPeer: session() });
       expect(admitted.ok).toBe(true);
