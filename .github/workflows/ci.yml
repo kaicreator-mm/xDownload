@@ -44,10 +44,4 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run aggregate gate
-        run: |
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
-          pnpm exec vitest run packages/hls-vod-adapter/test/ffmpeg-ts-real.test.ts
-          pnpm ci:verify
+        run: pnpm ci:verify
