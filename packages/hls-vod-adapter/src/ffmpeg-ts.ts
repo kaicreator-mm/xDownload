@@ -9,7 +9,7 @@
  * synthetic test oracle and is never enabled by default on an unqualified host.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -29,6 +29,8 @@ const TS_PACKET_BYTES = 188;
 const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 const TOOL_TIMEOUT_MS = 20_000;
 const TOOL_MAX_OUTPUT_BYTES = 1024 * 1024;
+// Each tool invocation is bounded; also cap the number of invoked programs.
+const MAX_REAL_TS_SEGMENTS = 32;
 
 export interface LocalMediaToolResult {
   readonly status: number | null;
@@ -47,6 +49,8 @@ export interface FfmpegTsPortOptions {
   readonly maxAssembledBytes?: number;
   /** Test seam; production uses the bounded OS process runner below. */
   readonly runner?: LocalMediaToolRunner;
+  /** Host-only test seam. A failed cleanup always disqualifies Media evidence. */
+  readonly removeTemporaryDirectory?: (directory: string) => void;
 }
 
 const systemRunner: LocalMediaToolRunner = {
@@ -74,6 +78,9 @@ interface ProbeStream {
   readonly codec_name?: unknown;
   readonly width?: unknown;
   readonly height?: unknown;
+  readonly start_time?: unknown;
+  readonly duration?: unknown;
+  readonly nb_read_frames?: unknown;
 }
 
 function codecFamily(declared: string): string | undefined {
@@ -150,7 +157,7 @@ function validateTransferred(
     frozen.resolution?.width !== selected.resolution?.width ||
     frozen.resolution?.height !== selected.resolution?.height ||
     entries.length < 1 ||
-    entries.length > 128 ||
+    entries.length > MAX_REAL_TS_SEGMENTS ||
     request.transferred.length !== entries.length ||
     request.plan.binding.logicalTargetId !== request.binding.logicalTargetId ||
     request.plan.binding.renditionId !== request.binding.renditionId
@@ -196,17 +203,176 @@ function validateTransferred(
   return { bytes, identityMatches: true, plannedDuration };
 }
 
+/** A probe cannot prove media by file byte count or whole-file duration alone. */
+function observedStreamTypes(streams: readonly ProbeStream[]): readonly string[] | undefined {
+  const codecs: string[] = [];
+  for (const stream of streams) {
+    if (stream.codec_type !== 'audio' && stream.codec_type !== 'video') return undefined;
+    if (typeof stream.codec_name !== 'string') return undefined;
+    codecs.push(stream.codec_name);
+  }
+  return codecs;
+}
+
+function matchesFrozenRendition(
+  request: MediaAssemblyRequest,
+  streams: readonly ProbeStream[],
+): boolean {
+  const expected = request.binding.declared.codecs.map(codecFamily);
+  const actual = observedStreamTypes(streams);
+  if (
+    actual === undefined ||
+    expected.length === 0 ||
+    expected.includes(undefined) ||
+    actual.length !== expected.length ||
+    [...expected].sort().join('|') !== [...actual].sort().join('|')
+  ) return false;
+  const resolution = request.binding.declared.resolution;
+  if (resolution === undefined) return true;
+  const videos = streams.filter((item) => item.codec_type === 'video');
+  return (
+    videos.length === 1 &&
+    videos[0]?.width === resolution.width &&
+    videos[0]?.height === resolution.height
+  );
+}
+
+function durationTolerance(seconds: number): number {
+  // Allow normal EXTINF rounding and packetized transport timing, but
+  // never let a missing multi-second segment hide under whole-file duration.
+  return Math.max(0.25, seconds * 0.05);
+}
+
+function probeArgs(filepath: string): string[] {
+  return [
+    '-v', 'error', '-count_frames', '-show_entries',
+    'format=format_name,duration:stream=codec_type,codec_name,width,height,start_time,duration,nb_read_frames',
+    '-of', 'json', filepath,
+  ];
+}
+
+function decodeArgs(filepath: string): string[] {
+  return [
+    '-nostdin', '-v', 'error', '-xerror', '-err_detect', 'explode',
+    '-i', filepath, '-map', '0:v?', '-map', '0:a?',
+    '-f', 'null', '-',
+  ];
+}
+
+function runRealVerification(
+  request: MediaAssemblyRequest,
+  verified: { readonly bytes: Uint8Array; readonly plannedDuration: number },
+  directory: string,
+  runner: LocalMediaToolRunner,
+  ffprobe: string,
+  ffmpeg: string,
+): DomainValidationResult<MediaAssemblyProbeOutcome> {
+  const entries = request.plan.entries;
+  const byId = new Map(request.transferred.map((item) => [item.entry.identity, item]));
+  let previousStart: number | undefined;
+  let previousDuration = 0;
+  let expectedFrameCounts: number[] | undefined;
+
+  for (const [index, entry] of entries.entries()) {
+    const filepath = join(directory, `part-${index}.ts`);
+    writeFileSync(filepath, byId.get(entry.identity)!.bytes, { flag: 'wx', mode: 0o600 });
+    const scanned = runner.run(ffprobe, probeArgs(filepath));
+    if (scanned.status !== 0 || scanned.stdout.length > TOOL_MAX_OUTPUT_BYTES) {
+      return insufficient('per-segment media probe failed');
+    }
+    const observed = parseProbe(scanned.stdout);
+    if (observed === undefined || !matchesFrozenRendition(request, observed.streams)) {
+      return insufficient('per-segment container or declared media did not match');
+    }
+    // Each *individual* planned piece must be independently decodable and
+    // provide actual frames; a null-only TS piece yields no stream evidence.
+    const counts: number[] = [];
+    const starts: number[] = [];
+    for (const stream of observed.streams) {
+      const count = Number(stream.nb_read_frames);
+      const start = Number(stream.start_time);
+      if (!Number.isSafeInteger(count) || count <= 0 || !Number.isFinite(start) || start < 0) {
+        return insufficient('segment had no positively counted decodable media frames');
+      }
+      counts.push(count);
+      starts.push(start);
+    }
+    // Enforce each EXTINF duration instead of using only the assembled
+    // container duration (which may span absent material).
+    if (Math.abs(observed.duration - entry.durationSeconds) > durationTolerance(entry.durationSeconds)) {
+      return insufficient('per-segment duration differs from the frozen playlist');
+    }
+    const segmentStart = Math.min(...starts);
+    if (
+      previousStart !== undefined &&
+      Math.abs(segmentStart - (previousStart + previousDuration)) >
+        durationTolerance(previousDuration)
+    ) {
+      return insufficient('missing, repeated or discontinuous segment timeline');
+    }
+    previousStart = segmentStart;
+    previousDuration = entry.durationSeconds;
+    if (expectedFrameCounts === undefined) expectedFrameCounts = counts;
+    else {
+      if (expectedFrameCounts.length !== counts.length)
+        return insufficient('segment stream count changed');
+      expectedFrameCounts = expectedFrameCounts.map((old, i) => old + counts[i]!);
+    }
+    const decoded = runner.run(ffmpeg, decodeArgs(filepath));
+    if (decoded.status !== 0) return insufficient('segment failed full independent media decoding');
+  }
+
+  const filepath = join(directory, 'selected.ts');
+  writeFileSync(filepath, verified.bytes, { flag: 'wx', mode: 0o600 });
+  const scanned = runner.run(ffprobe, probeArgs(filepath));
+  if (scanned.status !== 0 || scanned.stdout.length > TOOL_MAX_OUTPUT_BYTES)
+    return insufficient('whole-file media probe failed');
+  const observed = parseProbe(scanned.stdout);
+  if (observed === undefined || !matchesFrozenRendition(request, observed.streams))
+    return insufficient('whole-file container or frozen rendition mismatch');
+  const decoded = runner.run(ffmpeg, decodeArgs(filepath));
+  if (decoded.status !== 0) return insufficient('whole-file media decode failed');
+  // The entire file cannot contain fewer frames than the individually
+  // validated parts, or a different stream topology.
+  const wholeCounts = observed.streams.map((stream) => Number(stream.nb_read_frames));
+  const frameCorrespondence = expectedFrameCounts !== undefined &&
+    expectedFrameCounts.length === wholeCounts.length &&
+    wholeCounts.every((count, i) => Number.isSafeInteger(count) && count === expectedFrameCounts?.[i]);
+  if (!frameCorrespondence) return insufficient('assembled media frame coverage differs from its parts');
+  const durationMatches =
+    Math.abs(observed.duration - verified.plannedDuration) <= durationTolerance(verified.plannedDuration);
+  const checks: ProbeCheck[] = [
+    'IDENTITY_SET_MATCHES_PLAN', 'ALL_SEGMENTS_VALID',
+    durationMatches ? 'DURATION_CONSISTENT' : 'DURATION_MISMATCH',
+    'MATCHES_DECLARED_RENDITION', 'CONTAINER_MARKERS_PRESENT',
+  ];
+  const report: MediaProbeReport = {
+    observedIdentitySetMatchesPlan: true,
+    allSegmentsValid: true,
+    durationConsistent: durationMatches,
+    matchesDeclaredRendition: true,
+    containerMarkersPresent: true,
+    checks,
+    observedDurationSeconds: observed.duration,
+    plannedDurationSeconds: verified.plannedDuration,
+    observedCodecClass: observedStreamTypes(observed.streams)?.join(','),
+    assembledByteCount: verified.bytes.length,
+  };
+  return { ok: true, value: deepFreeze({ kind: 'EVIDENCE' as const, report }) };
+}
+
 export function createFfmpegTsMediaAssemblyPort(
   options: FfmpegTsPortOptions = {},
 ): MediaAssemblyPort {
   const limit = options.maxAssembledBytes ?? DEFAULT_MAX_BYTES;
-  if (!Number.isSafeInteger(limit) || limit < TS_PACKET_BYTES || limit > DEFAULT_MAX_BYTES) {
+  if (!Number.isSafeInteger(limit) || limit < TS_PACKET_BYTES || limit > DEFAULT_MAX_BYTES)
     throw new Error('invalid ffmpeg TS media byte bound');
-  }
   const runner = options.runner ?? systemRunner;
   const ffprobe = options.ffprobeBinary ?? 'ffprobe';
   const ffmpeg = options.ffmpegBinary ?? 'ffmpeg';
   if (!ffprobe || !ffmpeg) throw new Error('media tool path must be nonempty');
+  const cleanup = options.removeTemporaryDirectory ??
+    ((directory: string) => rmSync(directory, { recursive: true, force: true }));
 
   return {
     toolId: 'xdownload/ffmpeg-ts-media/1',
@@ -215,99 +381,31 @@ export function createFfmpegTsMediaAssemblyPort(
       if (verified === undefined)
         return insufficient('incomplete, unordered, oversized or non-MPEG-TS segment set');
       let directory: string | undefined;
+      let outcome: DomainValidationResult<MediaAssemblyProbeOutcome> =
+        insufficient('media tooling did not complete');
+      let cleanupPassed = false;
       try {
         directory = mkdtempSync(join(tmpdir(), 'xdownload-s4-probe-'));
-        const filepath = join(directory, 'selected.ts');
-        writeFileSync(filepath, verified.bytes, { flag: 'wx', mode: 0o600 });
-        const scanned = runner.run(ffprobe, [
-          '-v',
-          'error',
-          '-show_entries',
-          'format=format_name,duration:stream=codec_type,codec_name,width,height',
-          '-of',
-          'json',
-          filepath,
-        ]);
-        if (scanned.status !== 0 || scanned.stdout.length > TOOL_MAX_OUTPUT_BYTES) {
-          return insufficient('bounded ffprobe failed or exceeded output bound');
-        }
-        const observed = parseProbe(scanned.stdout);
-        if (observed === undefined)
-          return insufficient('ffprobe did not provide a valid MPEG-TS stream/duration report');
-        // Metadata alone is NOT Media evidence: decode the entire input.
-        const decoded = runner.run(ffmpeg, [
-          '-nostdin',
-          '-v',
-          'error',
-          '-xerror',
-          '-err_detect',
-          'explode',
-          '-i',
-          filepath,
-          '-map',
-          '0:v?',
-          '-map',
-          '0:a?',
-          '-f',
-          'null',
-          '-',
-        ]);
-        if (decoded.status !== 0) return insufficient('full media decode did not pass');
-        const expected = request.binding.declared.codecs.map(codecFamily);
-        const actual = observed.streams.map((s) =>
-          (s.codec_type === 'video' || s.codec_type === 'audio') && typeof s.codec_name === 'string'
-            ? s.codec_name
-            : undefined,
-        );
-        const codecMatch =
-          expected.length > 0 &&
-          !expected.includes(undefined) &&
-          expected.length === actual.length &&
-          !actual.includes(undefined) &&
-          [...expected].sort().join('|') === [...actual].sort().join('|');
-        const resolution = request.binding.declared.resolution;
-        const videos = observed.streams.filter((s) => s.codec_type === 'video');
-        const resolutionMatch =
-          resolution === undefined ||
-          (videos.length === 1 &&
-            videos[0]?.width === resolution.width &&
-            videos[0]?.height === resolution.height);
-        const renditionMatches = codecMatch && resolutionMatch;
-        const durationMatches =
-          Math.abs(observed.duration - verified.plannedDuration) <=
-          Math.max(1, verified.plannedDuration * 0.05);
-        const checks: ProbeCheck[] = [
-          verified.identityMatches ? 'IDENTITY_SET_MATCHES_PLAN' : 'IDENTITY_MISMATCH',
-          'ALL_SEGMENTS_VALID',
-          durationMatches ? 'DURATION_CONSISTENT' : 'DURATION_MISMATCH',
-          renditionMatches ? 'MATCHES_DECLARED_RENDITION' : 'DIFFERS_FROM_DECLARED_RENDITION',
-          'CONTAINER_MARKERS_PRESENT',
-        ];
-        const report: MediaProbeReport = {
-          observedIdentitySetMatchesPlan: verified.identityMatches,
-          allSegmentsValid: true,
-          durationConsistent: durationMatches,
-          matchesDeclaredRendition: renditionMatches,
-          containerMarkersPresent: true,
-          checks,
-          observedDurationSeconds: observed.duration,
-          plannedDurationSeconds: verified.plannedDuration,
-          observedCodecClass: actual.join(','),
-          assembledByteCount: verified.bytes.length,
-        };
-        return { ok: true, value: deepFreeze({ kind: 'EVIDENCE' as const, report }) };
+        outcome = runRealVerification(request, verified, directory, runner, ffprobe, ffmpeg);
       } catch {
-        // Do not expose executable stderr, arbitrary local paths, or media bytes.
-        return insufficient('local media tooling or temporary staging unavailable');
+        outcome = insufficient('local media tooling or temporary staging unavailable');
       } finally {
         if (directory !== undefined) {
           try {
-            rmSync(directory, { recursive: true, force: true });
+            cleanup(directory);
+            cleanupPassed = !existsSync(directory);
           } catch {
-            /* fail closed above */
+            // Even if a best-effort fallback deletes the files, the tool
+            // cleanup failed; no Media evidence may be accepted.
+            try { rmSync(directory, { recursive: true, force: true }); } catch {
+              // Cannot remediate here. Never return private path in diagnosis.
+            }
           }
         }
       }
+      return cleanupPassed
+        ? outcome
+        : insufficient('private media staging cleanup could not be verified');
     },
   };
 }
