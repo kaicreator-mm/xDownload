@@ -44,18 +44,4 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run aggregate gate
-        run: |
-          pnpm exec prettier --write packages/hls-vod-adapter/src/ffmpeg-ts.ts packages/hls-vod-adapter/test/ffmpeg-ts.test.ts packages/hls-vod-adapter/test/ffmpeg-ts-real.test.ts
-          echo XD_SOURCE_BEGIN
-          base64 -w0 packages/hls-vod-adapter/src/ffmpeg-ts.ts
-          echo
-          echo XD_SOURCE_END
-          echo XD_TEST_BEGIN
-          base64 -w0 packages/hls-vod-adapter/test/ffmpeg-ts.test.ts
-          echo
-          echo XD_TEST_END
-          echo XD_REAL_BEGIN
-          base64 -w0 packages/hls-vod-adapter/test/ffmpeg-ts-real.test.ts
-          echo
-          echo XD_REAL_END
-          pnpm ci:verify
+        run: pnpm ci:verify

@@ -226,7 +226,8 @@ function matchesFrozenRendition(
     expected.includes(undefined) ||
     actual.length !== expected.length ||
     [...expected].sort().join('|') !== [...actual].sort().join('|')
-  ) return false;
+  )
+    return false;
   const resolution = request.binding.declared.resolution;
   if (resolution === undefined) return true;
   const videos = streams.filter((item) => item.codec_type === 'video');
@@ -245,17 +246,34 @@ function durationTolerance(seconds: number): number {
 
 function probeArgs(filepath: string): string[] {
   return [
-    '-v', 'error', '-count_frames', '-show_entries',
+    '-v',
+    'error',
+    '-count_frames',
+    '-show_entries',
     'format=format_name,duration:stream=codec_type,codec_name,width,height,start_time,duration,nb_read_frames',
-    '-of', 'json', filepath,
+    '-of',
+    'json',
+    filepath,
   ];
 }
 
 function decodeArgs(filepath: string): string[] {
   return [
-    '-nostdin', '-v', 'error', '-xerror', '-err_detect', 'explode',
-    '-i', filepath, '-map', '0:v?', '-map', '0:a?',
-    '-f', 'null', '-',
+    '-nostdin',
+    '-v',
+    'error',
+    '-xerror',
+    '-err_detect',
+    'explode',
+    '-i',
+    filepath,
+    '-map',
+    '0:v?',
+    '-map',
+    '0:a?',
+    '-f',
+    'null',
+    '-',
   ];
 }
 
@@ -299,7 +317,9 @@ function runRealVerification(
     }
     // Enforce each EXTINF duration instead of using only the assembled
     // container duration (which may span absent material).
-    if (Math.abs(observed.duration - entry.durationSeconds) > durationTolerance(entry.durationSeconds)) {
+    if (
+      Math.abs(observed.duration - entry.durationSeconds) > durationTolerance(entry.durationSeconds)
+    ) {
       return insufficient('per-segment duration differs from the frozen playlist');
     }
     const segmentStart = Math.min(...starts);
@@ -335,16 +355,23 @@ function runRealVerification(
   // The entire file cannot contain fewer frames than the individually
   // validated parts, or a different stream topology.
   const wholeCounts = observed.streams.map((stream) => Number(stream.nb_read_frames));
-  const frameCorrespondence = expectedFrameCounts !== undefined &&
+  const frameCorrespondence =
+    expectedFrameCounts !== undefined &&
     expectedFrameCounts.length === wholeCounts.length &&
-    wholeCounts.every((count, i) => Number.isSafeInteger(count) && count === expectedFrameCounts?.[i]);
-  if (!frameCorrespondence) return insufficient('assembled media frame coverage differs from its parts');
+    wholeCounts.every(
+      (count, i) => Number.isSafeInteger(count) && count === expectedFrameCounts?.[i],
+    );
+  if (!frameCorrespondence)
+    return insufficient('assembled media frame coverage differs from its parts');
   const durationMatches =
-    Math.abs(observed.duration - verified.plannedDuration) <= durationTolerance(verified.plannedDuration);
+    Math.abs(observed.duration - verified.plannedDuration) <=
+    durationTolerance(verified.plannedDuration);
   const checks: ProbeCheck[] = [
-    'IDENTITY_SET_MATCHES_PLAN', 'ALL_SEGMENTS_VALID',
+    'IDENTITY_SET_MATCHES_PLAN',
+    'ALL_SEGMENTS_VALID',
     durationMatches ? 'DURATION_CONSISTENT' : 'DURATION_MISMATCH',
-    'MATCHES_DECLARED_RENDITION', 'CONTAINER_MARKERS_PRESENT',
+    'MATCHES_DECLARED_RENDITION',
+    'CONTAINER_MARKERS_PRESENT',
   ];
   const report: MediaProbeReport = {
     observedIdentitySetMatchesPlan: true,
@@ -371,7 +398,8 @@ export function createFfmpegTsMediaAssemblyPort(
   const ffprobe = options.ffprobeBinary ?? 'ffprobe';
   const ffmpeg = options.ffmpegBinary ?? 'ffmpeg';
   if (!ffprobe || !ffmpeg) throw new Error('media tool path must be nonempty');
-  const cleanup = options.removeTemporaryDirectory ??
+  const cleanup =
+    options.removeTemporaryDirectory ??
     ((directory: string) => rmSync(directory, { recursive: true, force: true }));
 
   return {
@@ -381,8 +409,9 @@ export function createFfmpegTsMediaAssemblyPort(
       if (verified === undefined)
         return insufficient('incomplete, unordered, oversized or non-MPEG-TS segment set');
       let directory: string | undefined;
-      let outcome: DomainValidationResult<MediaAssemblyProbeOutcome> =
-        insufficient('media tooling did not complete');
+      let outcome: DomainValidationResult<MediaAssemblyProbeOutcome> = insufficient(
+        'media tooling did not complete',
+      );
       let cleanupPassed = false;
       try {
         directory = mkdtempSync(join(tmpdir(), 'xdownload-s4-probe-'));
@@ -397,7 +426,9 @@ export function createFfmpegTsMediaAssemblyPort(
           } catch {
             // Even if a best-effort fallback deletes the files, the tool
             // cleanup failed; no Media evidence may be accepted.
-            try { rmSync(directory, { recursive: true, force: true }); } catch {
+            try {
+              rmSync(directory, { recursive: true, force: true });
+            } catch {
               // Cannot remediate here. Never return private path in diagnosis.
             }
           }

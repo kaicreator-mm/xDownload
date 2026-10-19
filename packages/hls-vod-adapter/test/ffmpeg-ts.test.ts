@@ -37,14 +37,16 @@ function probeOutput(overrides?: {
 }): string {
   return JSON.stringify({
     format: { format_name: 'mpegts', duration: overrides?.duration ?? '11.5' },
-    streams: [{
-      codec_type: 'video',
-      codec_name: overrides?.codec ?? 'h264',
-      width: overrides?.width ?? 1280,
-      height: 720,
-      start_time: overrides?.start ?? '1.6',
-      nb_read_frames: overrides?.frames ?? '115',
-    }],
+    streams: [
+      {
+        codec_type: 'video',
+        codec_name: overrides?.codec ?? 'h264',
+        width: overrides?.width ?? 1280,
+        height: 720,
+        start_time: overrides?.start ?? '1.6',
+        nb_read_frames: overrides?.frames ?? '115',
+      },
+    ],
   });
 }
 
@@ -76,19 +78,19 @@ function runner(
         const durations = [4, 4, 3.5];
         // A malformed / wrong-codec mock applies to the per-segment path
         // as well; successful mock data uses its frozen EXTINF and timeline.
-        const malformed = probe === '{}' || probe === '{not json' ||
-          probe.includes('matroska');
+        const malformed = probe === '{}' || probe === '{not json' || probe.includes('matroska');
         if (malformed) return { status: 0, stdout: probe };
         const metadata = JSON.parse(probe) as {
-          format: {duration: string};
-          streams: [{codec_name: string; width: number}];
+          format: { duration: string };
+          streams: [{ codec_name: string; width: number }];
         };
         return {
           status: 0,
           stdout: probeOutput({
-            duration: metadata.format.duration === '11.5'
-              ? String(durations[index]!)
-              : metadata.format.duration,
+            duration:
+              metadata.format.duration === '11.5'
+                ? String(durations[index]!)
+                : metadata.format.duration,
             codec: metadata.streams[0]!.codec_name,
             width: metadata.streams[0]!.width,
             start: String(1.6 + durations.slice(0, index).reduce((a, b) => a + b, 0)),
@@ -264,7 +266,8 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
       },
     };
     expect(unsafe.assembleAndProbe(request())).toMatchObject({
-      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
     expect(calls).toHaveLength(8);
     expect(tools.calls).toEqual([]);
