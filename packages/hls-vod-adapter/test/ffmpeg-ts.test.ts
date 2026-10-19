@@ -71,7 +71,7 @@ function runner(
           stagedFirstBytes.push(...[staged[1]!, staged[189]!, staged[377]!]);
           return { status: 0, stdout: probe };
         }
-        const index = Number(path.match(/part-(\\d+)\\.ts$/u)?.[1] ?? -1);
+        const index = Number(path.match(/part-(\d+)\.ts$/u)?.[1] ?? -1);
         if (index < 0 || index > 2) throw new Error('unexpected segment path');
         const durations = [4, 4, 3.5];
         // A malformed / wrong-codec mock applies to the per-segment path
@@ -245,7 +245,7 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
       },
     });
     function fakeProbe(filepath: string): string {
-      const index = Number(filepath.match(/part-(\\d+)\\.ts$/u)?.[1] ?? -1);
+      const index = Number(filepath.match(/part-(\d+)\.ts$/u)?.[1] ?? -1);
       const durations = [4, 4, 3.5];
       return index === -1
         ? probeOutput()
