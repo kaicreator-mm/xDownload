@@ -28,17 +28,23 @@ function request(): MediaAssemblyRequest {
   };
 }
 
-function probeOutput(overrides?: { duration?: string; codec?: string; width?: number }): string {
+function probeOutput(overrides?: {
+  duration?: string;
+  codec?: string;
+  width?: number;
+  start?: string;
+  frames?: string;
+}): string {
   return JSON.stringify({
     format: { format_name: 'mpegts', duration: overrides?.duration ?? '11.5' },
-    streams: [
-      {
-        codec_type: 'video',
-        codec_name: overrides?.codec ?? 'h264',
-        width: overrides?.width ?? 1280,
-        height: 720,
-      },
-    ],
+    streams: [{
+      codec_type: 'video',
+      codec_name: overrides?.codec ?? 'h264',
+      width: overrides?.width ?? 1280,
+      height: 720,
+      start_time: overrides?.start ?? '1.6',
+      nb_read_frames: overrides?.frames ?? '115',
+    }],
   });
 }
 
@@ -61,8 +67,34 @@ function runner(
         const path = args.at(-1)!;
         paths.push(path);
         const staged = readFileSync(path);
-        stagedFirstBytes.push(...[staged[1]!, staged[189]!, staged[377]!]);
-        return { status: 0, stdout: probe };
+        if (path.endsWith('selected.ts')) {
+          stagedFirstBytes.push(...[staged[1]!, staged[189]!, staged[377]!]);
+          return { status: 0, stdout: probe };
+        }
+        const index = Number(path.match(/part-(\\d+)\\.ts$/u)?.[1] ?? -1);
+        if (index < 0 || index > 2) throw new Error('unexpected segment path');
+        const durations = [4, 4, 3.5];
+        // A malformed / wrong-codec mock applies to the per-segment path
+        // as well; successful mock data uses its frozen EXTINF and timeline.
+        const malformed = probe === '{}' || probe === '{not json' ||
+          probe.includes('matroska');
+        if (malformed) return { status: 0, stdout: probe };
+        const metadata = JSON.parse(probe) as {
+          format: {duration: string};
+          streams: [{codec_name: string; width: number}];
+        };
+        return {
+          status: 0,
+          stdout: probeOutput({
+            duration: metadata.format.duration === '11.5'
+              ? String(durations[index]!)
+              : metadata.format.duration,
+            codec: metadata.streams[0]!.codec_name,
+            width: metadata.streams[0]!.width,
+            start: String(1.6 + durations.slice(0, index).reduce((a, b) => a + b, 0)),
+            frames: String(Math.round(durations[index]! * 10)),
+          }),
+        };
       }
       return { status: decodeStatus, stdout: '' };
     },
@@ -90,7 +122,7 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
       containerMarkersPresent: true,
       assembledByteCount: 3 * 188,
     });
-    expect(tools.calls).toEqual(['ffprobe', 'ffmpeg']);
+    expect(tools.calls).toEqual(Array.from({ length: 4 }, () => ['ffprobe', 'ffmpeg']).flat());
     expect(tools.stagedFirstBytes).toEqual([0, 1, 2]);
     expect(tools.paths.every((path) => !existsSync(path))).toBe(true);
   });
@@ -194,6 +226,48 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
       ok: true,
       value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
+  });
+
+  it('never publishes EVIDENCE after cleanup reports failure', () => {
+    const calls: string[] = [];
+    const tools = runner(probeOutput());
+    const unsafe = createFfmpegTsMediaAssemblyPort({
+      runner: {
+        run: (binary, args) => {
+          calls.push(binary);
+          // Preserve all real sequencing by using the existing mock runner's
+          // return semantics through a dedicated test helper below.
+          return cleanupRunner.run(binary, args);
+        },
+      },
+      removeTemporaryDirectory() {
+        throw new Error('simulated private staging cleanup refusal');
+      },
+    });
+    function fakeProbe(filepath: string): string {
+      const index = Number(filepath.match(/part-(\\d+)\\.ts$/u)?.[1] ?? -1);
+      const durations = [4, 4, 3.5];
+      return index === -1
+        ? probeOutput()
+        : probeOutput({
+            duration: String(durations[index]!),
+            start: String(1.6 + durations.slice(0, index).reduce((a, b) => a + b, 0)),
+            frames: String(Math.round(durations[index]! * 10)),
+          });
+    }
+    const cleanupRunner: LocalMediaToolRunner = {
+      run(binary, args) {
+        return {
+          status: 0,
+          stdout: binary === 'ffprobe' ? fakeProbe(args.at(-1)!) : '',
+        };
+      },
+    };
+    expect(unsafe.assembleAndProbe(request())).toMatchObject({
+      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+    });
+    expect(calls).toHaveLength(8);
+    expect(tools.calls).toEqual([]);
   });
 
   it('caps local assembly bytes independent of the fetcher budget', () => {
