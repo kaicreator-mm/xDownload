@@ -128,13 +128,14 @@ export function assertPeerTransportAuthorization(input: {
   if (
     input.verifiedPeer === undefined ||
     !input.verifiedPeer.sameUserAsCore ||
+    !input.verifiedPeer.sameLogonSessionAsCore ||
     input.verifiedPeer.transportKind !== 'WINDOWS_NAMED_PIPE'
   ) {
     return seamFail([
       seamDiagnostic(
         'TRANSPORT_UNAUTHORIZED',
         'peer',
-        'command requires a positively OS-verified same-user peer session; legacy loopback or unverified transports are not eligible',
+        'command requires a positively OS-verified same-user and same-logon-session peer; legacy loopback or unverified transports are not eligible',
         'L2-S3-§2.1',
       ),
     ]);
