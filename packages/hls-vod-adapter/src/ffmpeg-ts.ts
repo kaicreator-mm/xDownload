@@ -293,39 +293,40 @@ function hasDenseTimestampCoverage(
   json: string,
   streams: readonly ProbeStream[],
   plannedSeconds: number,
-): boolean {
+): readonly number[] | undefined {
   try {
     const parsed: unknown = JSON.parse(json);
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
     const frames: unknown = (parsed as Record<string, unknown>)['frames'];
     if (
       !Array.isArray(frames) ||
       frames.length < 2 ||
       frames.length > MAX_PROBED_FRAMES_PER_SEGMENT
     )
-      return false;
+      return undefined;
     const indices = streams.map((s, index) => {
       const declaredIndex = (s as ProbeStream & { readonly index?: unknown }).index;
       return typeof declaredIndex === 'number' && Number.isSafeInteger(declaredIndex)
         ? declaredIndex
         : index;
     });
-    if (new Set(indices).size !== indices.length) return false;
+    if (new Set(indices).size !== indices.length) return undefined;
     const times = new Map<number, number[]>(indices.map((index) => [index, []]));
     for (const item of frames as unknown[]) {
-      if (item === null || typeof item !== 'object' || Array.isArray(item)) return false;
+      if (item === null || typeof item !== 'object' || Array.isArray(item)) return undefined;
       const frame = item as Record<string, unknown>;
       const index = frame['stream_index'];
       const type = frame['media_type'];
       const streamPosition = indices.indexOf(index as number);
-      if (streamPosition < 0 || type !== streams[streamPosition]?.codec_type) return false;
+      if (streamPosition < 0 || type !== streams[streamPosition]?.codec_type) return undefined;
       const raw = frame['best_effort_timestamp_time'];
-      if (typeof raw !== 'string' || !/^\d+(?:\.\d+)?$/u.test(raw)) return false;
+      if (typeof raw !== 'string' || !/^\d+(?:\.\d+)?$/u.test(raw)) return undefined;
       const pts = Number(raw);
-      if (!Number.isFinite(pts) || pts < 0) return false;
+      if (!Number.isFinite(pts) || pts < 0) return undefined;
       times.get(index as number)!.push(pts);
     }
     const firsts: number[] = [];
+    const cadences: number[] = [];
     for (const [position, index] of indices.entries()) {
       const stamps = times.get(index);
       if (
@@ -333,7 +334,7 @@ function hasDenseTimestampCoverage(
         stamps.length < 2 ||
         stamps.length !== Number(streams[position]?.nb_read_frames)
       )
-        return false;
+        return undefined;
       const first = stamps[0]!;
       const last = stamps[stamps.length - 1]!;
       // Real tracks may have small encoder offset; larger unobserved head/tail
@@ -343,21 +344,31 @@ function hasDenseTimestampCoverage(
         !Number.isFinite(declaredStart) ||
         Math.abs(first - declaredStart) > MAX_MEDIA_FRAME_GAP_SECONDS
       )
-        return false;
+        return undefined;
       firsts.push(first);
-      for (let i = 1; i < stamps.length; i++) {
-        const delta = stamps[i]! - stamps[i - 1]!;
-        if (!(delta > 0 && delta <= MAX_MEDIA_FRAME_GAP_SECONDS + 1e-6)) return false;
-      }
-      const finalCadence = stamps[stamps.length - 1]! - stamps[stamps.length - 2]!;
+      const gaps = stamps.slice(1).map((stamp, i) => stamp - stamps[i]!);
+      if (gaps.some((gap) => !(gap > 0 && gap <= MAX_MEDIA_FRAME_GAP_SECONDS + 1e-6)))
+        return undefined;
+      // Re-encoded VFR or missing frames cannot be differentiated from a
+      // legitimate cadence shift without trusted timing metadata. Admit only
+      // near-constant cadence and compare the observed period across pieces.
+      const orderedGaps = [...gaps].sort((x, y) => x - y);
+      const cadence = orderedGaps[Math.floor(orderedGaps.length / 2)]!;
+      if (!Number.isFinite(cadence) || cadence <= 0 ||
+          gaps.some((gap) => Math.abs(gap - cadence) > Math.max(0.015, cadence * 0.15)))
+        return undefined;
+      cadences.push(cadence);
+      const finalCadence = gaps[gaps.length - 1]!;
       // Last presentation timestamp plus one observed cadence must cover the
       // declared segment time, but no missing interior can hide in duration.
       const observedCoverage = last + finalCadence - first;
-      if (Math.abs(observedCoverage - plannedSeconds) > MAX_MEDIA_FRAME_GAP_SECONDS) return false;
+      if (Math.abs(observedCoverage - plannedSeconds) > MAX_MEDIA_FRAME_GAP_SECONDS) return undefined;
     }
-    return Math.max(...firsts) - Math.min(...firsts) <= MAX_MEDIA_FRAME_GAP_SECONDS;
+    return Math.max(...firsts) - Math.min(...firsts) <= MAX_MEDIA_FRAME_GAP_SECONDS
+      ? cadences
+      : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -374,6 +385,11 @@ function runRealVerification(
   let previousStart: number | undefined;
   let previousDuration = 0;
   let expectedFrameCounts: number[] | undefined;
+  let referenceCadences: readonly number[] | undefined;
+  // No independent reference is available for an isolated piece: refuse to
+  // infer completeness from a self-consistent but potentially sparse stream.
+  if (entries.length < 2)
+    return insufficient('multiple temporal samples required for media coverage');
 
   for (const [index, entry] of entries.entries()) {
     const filepath = join(directory, `part-${index}.ts`);
@@ -386,8 +402,22 @@ function runRealVerification(
     if (observed === undefined || !matchesFrozenRendition(request, observed.streams)) {
       return insufficient('per-segment container or declared media did not match');
     }
-    if (!hasDenseTimestampCoverage(scanned.stdout, observed.streams, entry.durationSeconds)) {
+    const cadences = hasDenseTimestampCoverage(
+      scanned.stdout, observed.streams, entry.durationSeconds,
+    );
+    if (cadences === undefined) {
       return insufficient('segment has sparse, missing or unverifiable per-stream media timeline');
+    }
+    if (referenceCadences === undefined) {
+      referenceCadences = cadences;
+    } else if (
+      cadences.length !== referenceCadences.length ||
+      cadences.some((period, i) =>
+        Math.abs(period - referenceCadences![i]!) >
+        Math.max(0.015, referenceCadences![i]! * 0.15),
+      )
+    ) {
+      return insufficient('segment media cadence differs from frozen rendition peers');
     }
     // Each *individual* planned piece must be independently decodable and
     // provide actual frames; a null-only TS piece yields no stream evidence.
