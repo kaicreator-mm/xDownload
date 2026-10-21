@@ -765,7 +765,10 @@ export class WindowsIpcBridge {
               }
               const bytes = Buffer.alloc(4);
               let ok = this.getOverlappedResult(
-                pipeHandle, overlapped, this.vp(bytes), abnormalWait ? 1 : 0,
+                pipeHandle,
+                overlapped,
+                this.vp(bytes),
+                abnormalWait ? 1 : 0,
               );
               let gle = ok ? 0 : this.getLastError();
               if (!ok && gle === ERROR_IO_INCOMPLETE) {

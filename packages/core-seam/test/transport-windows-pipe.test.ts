@@ -492,9 +492,13 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
       },
     };
     const client = createWindowsPipeClientTransport({ bridge: clientBridge, platform: 'win32' });
-    await expect(client.connect({ pipeName: `${PIPE_ROOT}raw-client-${String(++pipeSeq)}`, host: '127.0.0.1', port: 0 })).rejects.toThrow(
-      'adoption must never be reached',
-    );
+    await expect(
+      client.connect({
+        pipeName: `${PIPE_ROOT}raw-client-${String(++pipeSeq)}`,
+        host: '127.0.0.1',
+        port: 0,
+      }),
+    ).rejects.toThrow('adoption must never be reached');
     expect(closes).toEqual([777n]);
   });
 
