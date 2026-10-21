@@ -35,7 +35,16 @@ function probeOutput(overrides?: {
   start?: string;
   frames?: string;
 }): string {
+  const duration = Number(overrides?.duration ?? '11.5');
+  const start = Number(overrides?.start ?? '1.6');
+  const count = Number(overrides?.frames ?? '115');
+  const frames = Array.from({ length: count }, (_, i) => ({
+    media_type: 'video',
+    stream_index: 0,
+    best_effort_timestamp_time: (start + (i * duration) / count).toFixed(6),
+  }));
   return JSON.stringify({
+    frames,
     format: { format_name: 'mpegts', duration: overrides?.duration ?? '11.5' },
     streams: [
       {
@@ -271,6 +280,37 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
     });
     expect(calls).toHaveLength(8);
     expect(tools.calls).toEqual([]);
+  });
+
+  it('rejects an apparently two-second TS with only two separated frames', () => {
+    const base = request();
+    const syntheticProbe: LocalMediaToolRunner = {
+      run(binary, args) {
+        if (binary !== 'ffprobe') return { status: 0, stdout: '' };
+        const path = args.at(-1)!;
+        const segment = path.match(/part-(\\d+)\\.ts$/u)?.[1];
+        if (segment === undefined) return { status: 0, stdout: probeOutput() };
+        const i = Number(segment);
+        const durations = [4, 4, 3.5];
+        const start = 1.6 + durations.slice(0, i).reduce((a, b) => a + b, 0);
+        if (i !== 1) return { status: 0, stdout: probeOutput({
+          start: String(start),
+          duration: String(durations[i]!),
+          frames: String(Math.round(durations[i]! * 10)),
+        }) };
+        const sparse = JSON.parse(probeOutput({
+          start: String(start),
+          duration: '4',
+          frames: '2',
+        })) as { frames: Array<{best_effort_timestamp_time: string}> };
+        sparse.frames[1]!.best_effort_timestamp_time = String(start + 3.9);
+        return { status: 0, stdout: JSON.stringify(sparse) };
+      },
+    };
+    const probe = createFfmpegTsMediaAssemblyPort({ runner: syntheticProbe });
+    expect(probe.assembleAndProbe(base)).toMatchObject({
+      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+    });
   });
 
   it('caps local assembly bytes independent of the fetcher budget', () => {
