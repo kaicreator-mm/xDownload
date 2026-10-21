@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./ffmpeg-ts": "./src/ffmpeg-ts.ts"
   },
   "dependencies": {
     "@xdownload/domain-contracts": "workspace:*"
