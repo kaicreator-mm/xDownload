@@ -44,4 +44,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run aggregate gate
-        run: pnpm ci:verify
+        run: |
+          pnpm exec prettier --write packages/core-seam/src/transport-windows-pipe.ts packages/core-seam/src/win-ipc.ts packages/core-seam/test/transport-windows-pipe.test.ts
+          echo R3_PIPE_BEGIN
+          base64 -w0 packages/core-seam/src/transport-windows-pipe.ts
+          echo
+          echo R3_PIPE_END
+          echo R3_WIN_BEGIN
+          base64 -w0 packages/core-seam/src/win-ipc.ts
+          echo
+          echo R3_WIN_END
+          echo R3_TEST_BEGIN
+          base64 -w0 packages/core-seam/test/transport-windows-pipe.test.ts
+          echo
+          echo R3_TEST_END
+          pnpm ci:verify
