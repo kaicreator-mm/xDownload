@@ -298,12 +298,17 @@ function hasDenseTimestampCoverage(
     const parsed: unknown = JSON.parse(json);
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
     const frames: unknown = (parsed as Record<string, unknown>)['frames'];
-    if (!Array.isArray(frames) || frames.length < 2 ||
-        frames.length > MAX_PROBED_FRAMES_PER_SEGMENT) return false;
+    if (
+      !Array.isArray(frames) ||
+      frames.length < 2 ||
+      frames.length > MAX_PROBED_FRAMES_PER_SEGMENT
+    )
+      return false;
     const indices = streams.map((s, index) => {
       const declaredIndex = (s as ProbeStream & { readonly index?: unknown }).index;
       return typeof declaredIndex === 'number' && Number.isSafeInteger(declaredIndex)
-        ? declaredIndex : index;
+        ? declaredIndex
+        : index;
     });
     if (new Set(indices).size !== indices.length) return false;
     const times = new Map<number, number[]>(indices.map((index) => [index, []]));
@@ -323,15 +328,22 @@ function hasDenseTimestampCoverage(
     const firsts: number[] = [];
     for (const [position, index] of indices.entries()) {
       const stamps = times.get(index);
-      if (stamps === undefined || stamps.length < 2 ||
-          stamps.length !== Number(streams[position]?.nb_read_frames)) return false;
+      if (
+        stamps === undefined ||
+        stamps.length < 2 ||
+        stamps.length !== Number(streams[position]?.nb_read_frames)
+      )
+        return false;
       const first = stamps[0]!;
       const last = stamps[stamps.length - 1]!;
       // Real tracks may have small encoder offset; larger unobserved head/tail
       // regions cannot be promoted to Media evidence.
       const declaredStart = Number(streams[position]?.start_time);
-      if (!Number.isFinite(declaredStart) ||
-          Math.abs(first - declaredStart) > MAX_MEDIA_FRAME_GAP_SECONDS) return false;
+      if (
+        !Number.isFinite(declaredStart) ||
+        Math.abs(first - declaredStart) > MAX_MEDIA_FRAME_GAP_SECONDS
+      )
+        return false;
       firsts.push(first);
       for (let i = 1; i < stamps.length; i++) {
         const delta = stamps[i]! - stamps[i - 1]!;
@@ -341,8 +353,7 @@ function hasDenseTimestampCoverage(
       // Last presentation timestamp plus one observed cadence must cover the
       // declared segment time, but no missing interior can hide in duration.
       const observedCoverage = last + finalCadence - first;
-      if (Math.abs(observedCoverage - plannedSeconds) >
-          MAX_MEDIA_FRAME_GAP_SECONDS) return false;
+      if (Math.abs(observedCoverage - plannedSeconds) > MAX_MEDIA_FRAME_GAP_SECONDS) return false;
     }
     return Math.max(...firsts) - Math.min(...firsts) <= MAX_MEDIA_FRAME_GAP_SECONDS;
   } catch {

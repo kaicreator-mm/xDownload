@@ -117,14 +117,36 @@ describe.skipIf(!ffmpegInstalled || !ffprobeInstalled)(
         // preserving the roughly two-second advertised TS timeline.
         // The file decodes and has valid H264, but interior coverage is lost.
         const sparsePath = join(dir, 'sparse-middle.ts');
-        const sparseBuild = spawnSync('ffmpeg', [
-          '-nostdin', '-hide_banner', '-loglevel', 'error',
-          '-copyts', '-i', join(dir, 'seg-1.ts'),
-          '-vf', "select='eq(n,0)+eq(n,19)'",
-          '-fps_mode', 'vfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
-          '-g', '1', '-muxdelay', '0', '-muxpreload', '0',
-          '-f', 'mpegts', sparsePath,
-        ], { timeout: 30000, maxBuffer: 32768, windowsHide: true });
+        const sparseBuild = spawnSync(
+          'ffmpeg',
+          [
+            '-nostdin',
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            '-copyts',
+            '-i',
+            join(dir, 'seg-1.ts'),
+            '-vf',
+            "select='eq(n,0)+eq(n,19)'",
+            '-fps_mode',
+            'vfr',
+            '-c:v',
+            'libx264',
+            '-pix_fmt',
+            'yuv420p',
+            '-g',
+            '1',
+            '-muxdelay',
+            '0',
+            '-muxpreload',
+            '0',
+            '-f',
+            'mpegts',
+            sparsePath,
+          ],
+          { timeout: 30000, maxBuffer: 32768, windowsHide: true },
+        );
         expect(sparseBuild.status).toBe(0);
         const sparseMiddle = [
           selected[0]!,
@@ -132,7 +154,9 @@ describe.skipIf(!ffmpegInstalled || !ffprobeInstalled)(
           selected[2]!,
         ];
         const sparse = port.assembleAndProbe({
-          binding, plan, transferred: sparseMiddle,
+          binding,
+          plan,
+          transferred: sparseMiddle,
         });
         expect(sparse).toMatchObject({
           ok: true,

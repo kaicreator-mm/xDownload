@@ -293,23 +293,30 @@ describe('S4 real host-only MPEG-TS media oracle (no synthetic PASS)', () => {
         const i = Number(segment);
         const durations = [4, 4, 3.5];
         const start = 1.6 + durations.slice(0, i).reduce((a, b) => a + b, 0);
-        if (i !== 1) return { status: 0, stdout: probeOutput({
-          start: String(start),
-          duration: String(durations[i]!),
-          frames: String(Math.round(durations[i]! * 10)),
-        }) };
-        const sparse = JSON.parse(probeOutput({
-          start: String(start),
-          duration: '4',
-          frames: '2',
-        })) as { frames: Array<{best_effort_timestamp_time: string}> };
+        if (i !== 1)
+          return {
+            status: 0,
+            stdout: probeOutput({
+              start: String(start),
+              duration: String(durations[i]!),
+              frames: String(Math.round(durations[i]! * 10)),
+            }),
+          };
+        const sparse = JSON.parse(
+          probeOutput({
+            start: String(start),
+            duration: '4',
+            frames: '2',
+          }),
+        ) as { frames: Array<{ best_effort_timestamp_time: string }> };
         sparse.frames[1]!.best_effort_timestamp_time = String(start + 3.9);
         return { status: 0, stdout: JSON.stringify(sparse) };
       },
     };
     const probe = createFfmpegTsMediaAssemblyPort({ runner: syntheticProbe });
     expect(probe.assembleAndProbe(base)).toMatchObject({
-      ok: true, value: { kind: 'INSUFFICIENT_EVIDENCE' },
+      ok: true,
+      value: { kind: 'INSUFFICIENT_EVIDENCE' },
     });
   });
 
