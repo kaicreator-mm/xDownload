@@ -74,7 +74,7 @@ export interface WindowsPipeServerTransportOptions {
   readonly bridge?: PipeIpcBridge;
   /** Test seam: defaults to process.platform; anything non-win32 refuses. */
   readonly platform?: string;
-  /** Admission additionally requires the Core logon session (default: user scope only). */
+  /** Admission always requires the Core logon session; false is rejected at construction. */
   readonly requireSameLogonSession?: boolean;
 }
 
@@ -162,6 +162,11 @@ export function createWindowsPipeServerTransport(
   if (!isWindowsIpcPlatform(platform)) {
     throw new WindowsPipeTransportUnsupportedError(platform);
   }
+  if (options.requireSameLogonSession === false) {
+    throw new WindowsIpcUnsupportedError(
+      'Windows Core IPC requires same-logon-session admission; opting out is forbidden',
+    );
+  }
   const bridge = resolveWindowsPipeBridge(options.bridge);
   const limits = options.limits ?? SEAM_MESSAGE_LIMITS;
   const registry = createVerifiedPeerSessionRegistry();
@@ -195,7 +200,7 @@ export function createWindowsPipeServerTransport(
     const facts = verification.facts;
     const sameUser = self.sameUser(facts.userSid);
     const sameSession = self.sameLogonSession(facts.logonSessionId);
-    if (!sameUser || (options.requireSameLogonSession === true && !sameSession)) {
+    if (!sameUser || !sameSession) {
       refuseAdmission(
         handle,
         `verified peer is outside the admitted OS scope (sameUser=${String(sameUser)}, sameLogonSession=${String(sameSession)})`,
