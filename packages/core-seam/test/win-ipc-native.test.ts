@@ -303,11 +303,11 @@ describeWin32('handle→fd→libuv ownership (real OS path, P1-03)', () => {
       },
     };
     expect(() => adoptPipeHandle(broken, client)).toThrow('uv_open_osfhandle failed');
-    // Raw handle unconsumed → the caller (transport refuseAdmission) closes
-    // it via closePipeHandle; the fd closer must never run.
+    // Raw handle unconsumed → adoptPipeHandle is the SOLE cleanup owner and
+    // closes it exactly once itself; neither the transport caller nor this
+    // test may CloseHandle it again (that would be a double-close).
     expect(rec.fdCloses).toHaveLength(0);
-    real.closePipeHandle(client);
-    expect(rec.handleCloses).toHaveLength(0);
+    expect(rec.handleCloses).toEqual([client]);
     real.closePipeHandle(server);
   });
 
