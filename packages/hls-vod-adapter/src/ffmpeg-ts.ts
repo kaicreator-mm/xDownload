@@ -354,15 +354,19 @@ function hasDenseTimestampCoverage(
       // near-constant cadence and compare the observed period across pieces.
       const orderedGaps = [...gaps].sort((x, y) => x - y);
       const cadence = orderedGaps[Math.floor(orderedGaps.length / 2)]!;
-      if (!Number.isFinite(cadence) || cadence <= 0 ||
-          gaps.some((gap) => Math.abs(gap - cadence) > Math.max(0.015, cadence * 0.15)))
+      if (
+        !Number.isFinite(cadence) ||
+        cadence <= 0 ||
+        gaps.some((gap) => Math.abs(gap - cadence) > Math.max(0.015, cadence * 0.15))
+      )
         return undefined;
       cadences.push(cadence);
       const finalCadence = gaps[gaps.length - 1]!;
       // Last presentation timestamp plus one observed cadence must cover the
       // declared segment time, but no missing interior can hide in duration.
       const observedCoverage = last + finalCadence - first;
-      if (Math.abs(observedCoverage - plannedSeconds) > MAX_MEDIA_FRAME_GAP_SECONDS) return undefined;
+      if (Math.abs(observedCoverage - plannedSeconds) > MAX_MEDIA_FRAME_GAP_SECONDS)
+        return undefined;
     }
     return Math.max(...firsts) - Math.min(...firsts) <= MAX_MEDIA_FRAME_GAP_SECONDS
       ? cadences
@@ -403,7 +407,9 @@ function runRealVerification(
       return insufficient('per-segment container or declared media did not match');
     }
     const cadences = hasDenseTimestampCoverage(
-      scanned.stdout, observed.streams, entry.durationSeconds,
+      scanned.stdout,
+      observed.streams,
+      entry.durationSeconds,
     );
     if (cadences === undefined) {
       return insufficient('segment has sparse, missing or unverifiable per-stream media timeline');
@@ -412,9 +418,10 @@ function runRealVerification(
       referenceCadences = cadences;
     } else if (
       cadences.length !== referenceCadences.length ||
-      cadences.some((period, i) =>
-        Math.abs(period - referenceCadences![i]!) >
-        Math.max(0.015, referenceCadences![i]! * 0.15),
+      cadences.some(
+        (period, i) =>
+          Math.abs(period - referenceCadences![i]!) >
+          Math.max(0.015, referenceCadences![i]! * 0.15),
       )
     ) {
       return insufficient('segment media cadence differs from frozen rendition peers');
