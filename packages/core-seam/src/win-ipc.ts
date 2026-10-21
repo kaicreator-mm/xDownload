@@ -735,7 +735,7 @@ export class WindowsIpcBridge {
       resolveResult = resolve;
       rejectResult = reject;
     });
-    let rc: number;
+    let rc = 0;
     try {
       rc = this.connectNamedPipe(pipeHandle, overlapped);
     } catch {
