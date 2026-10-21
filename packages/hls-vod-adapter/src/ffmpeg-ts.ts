@@ -315,7 +315,7 @@ function hasDenseTimestampCoverage(
       const streamPosition = indices.indexOf(index as number);
       if (streamPosition < 0 || type !== streams[streamPosition]?.codec_type) return false;
       const raw = frame['best_effort_timestamp_time'];
-      if (typeof raw !== 'string' || !/^\\d+(?:\\.\\d+)?$/u.test(raw)) return false;
+      if (typeof raw !== 'string' || !/^\d+(?:\.\d+)?$/u.test(raw)) return false;
       const pts = Number(raw);
       if (!Number.isFinite(pts) || pts < 0) return false;
       times.get(index as number)!.push(pts);
