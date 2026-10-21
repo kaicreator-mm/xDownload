@@ -37,7 +37,7 @@ import type {
 import {
   createVerifiedPeerSessionRegistry,
   type OsVerifiedPeerSession,
-  type VerifiedPeerSessionRegistry,
+  type VerifiedPeerSessionPort,
 } from './verified-session.ts';
 import {
   WindowsIpcBridge,
@@ -90,7 +90,7 @@ export class WindowsPipeTransportUnsupportedError extends WindowsIpcUnsupportedE
 
 export interface WindowsPipeServerTransport extends SeamServerTransport {
   /** Core-owned verified sessions, one per admitted connection. */
-  readonly verifiedSessions: VerifiedPeerSessionRegistry;
+  readonly verifiedSessions: VerifiedPeerSessionPort;
   /** SDDL rendering of the listener DACL (observation; undefined before start). */
   readonly listenerSecuritySddl: string | undefined;
   /** Reason the most recent connection was refused admission (observation). */
@@ -165,6 +165,11 @@ export function createWindowsPipeServerTransport(
   const bridge = resolveWindowsPipeBridge(options.bridge);
   const limits = options.limits ?? SEAM_MESSAGE_LIMITS;
   const registry = createVerifiedPeerSessionRegistry();
+  // Never expose record/forget through the published transport capability.
+  const readOnlySessions: VerifiedPeerSessionPort = Object.freeze({
+    verifiedSessionFor: (id: string) => registry.verifiedSessionFor(id),
+    get size() { return registry.size; },
+  });
   let listenerSddl: string | undefined;
   let admissionFailure: string | undefined;
   let running = false;
@@ -204,7 +209,7 @@ export function createWindowsPipeServerTransport(
     }
     const connectionId = `winpipe-${String(nextConnectionId)}`;
     nextConnectionId += 1;
-    const session: OsVerifiedPeerSession = {
+    const session: OsVerifiedPeerSession = Object.freeze({
       transportKind: WINDOWS_PIPE_TRANSPORT_KIND,
       connectionId,
       userSid: facts.userSid,
@@ -214,7 +219,7 @@ export function createWindowsPipeServerTransport(
       sameUserAsCore: sameUser,
       sameLogonSessionAsCore: sameSession,
       verifiedAt: new Date().toISOString(),
-    };
+    });
     registry.record(session);
     openSockets.add(socket);
     const accumulator = new FrameAccumulator(limits.maxFrameBytes);
@@ -299,7 +304,7 @@ export function createWindowsPipeServerTransport(
   }
 
   return {
-    verifiedSessions: registry,
+    verifiedSessions: readOnlySessions,
     get listenerSecuritySddl() {
       return listenerSddl;
     },
