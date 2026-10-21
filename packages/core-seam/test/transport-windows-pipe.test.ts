@@ -31,6 +31,7 @@ import {
   type PipeIpcBridge,
   type SeamServerTransport,
   type WindowsPeerVerification,
+  type WindowsPipeAccept,
   type WindowsSelfIdentity,
 } from './helpers.ts';
 
@@ -227,12 +228,44 @@ describeWin32('windows pipe transport over the real OS path', () => {
     expect(seam.connectionIds().length).toBe(0);
     raw.destroy();
   });
+
+  it('serves a rapid burst of connections through both overlapped accept paths', async () => {
+    const seam = await startPipeSeam();
+    const cycles = 24;
+    for (let i = 0; i < cycles; i++) {
+      const client = createSeamClient({
+        transport: createWindowsPipeClientTransport(),
+        target: seam.target as never,
+        peer: peer('CLI'),
+      });
+      const response = await client.submitCommand(
+        stampPeer(
+          rawCommand({
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: `contract-burst-${String(i)}`,
+            payload: rawSingleResourceContract({ contractId: `contract-burst-${String(i)}` }),
+            requestId: `req-burst-${String(i)}`,
+          }) as never,
+          peer('CLI'),
+        ),
+      );
+      expect(response.outcome, JSON.stringify(response.diagnostics)).toBe('ACCEPTED');
+      await client.close();
+      await until(() => seam.transport.verifiedSessions.size === 0, 8000);
+    }
+    expect(seam.connectionIds().length).toBe(cycles);
+    expect(seam.transport.lastAdmissionFailure).toBeUndefined();
+    expect(seam.transport.fatalState).toBeUndefined();
+    expect(seam.transport.isActive).toBe(true);
+  });
 });
 
 describe('pipe transport admission refusals with an injected bridge (portable)', () => {
-  function scriptedBridge(
-    verification: WindowsPeerVerification,
-  ): PipeIpcBridge & { readonly refusedHandles: () => number; readonly verifyCalls: () => number } {
+  function scriptedBridge(verification: WindowsPeerVerification): PipeIpcBridge & {
+    readonly refusedHandles: () => number;
+    readonly verifyCalls: () => number;
+    readonly disposedAccepts: () => number;
+  } {
     const self: WindowsSelfIdentity = {
       userSid: 'S-1-5-21-9-9-9-2001',
       logonSessionId: '0x000000000000beef',
@@ -240,6 +273,7 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
       sameLogonSession: (luid) => luid === '0x000000000000beef',
     };
     const refused: bigint[] = [];
+    const disposedAccepts: bigint[] = [];
     let waitCalls = 0;
     let verifyCalls = 0;
     let instance = 0;
@@ -248,11 +282,17 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
       buildProtectedSecurityDescriptor: () => Buffer.from([1, 2, 3]),
       securityDescriptorToSddl: () => 'D:(A;;GA;;;test)',
       createPipeInstance: () => BigInt(++instance),
-      waitForClientConnection: () => {
+      beginPipeAccept: (pipeHandle: bigint): WindowsPipeAccept => {
         waitCalls += 1;
-        return Promise.resolve(waitCalls === 1 ? 'CONNECTED' : ('ABORTED' as const));
+        const verdict = waitCalls === 1 ? 'CONNECTED' : ('ABORTED' as const);
+        return {
+          pipeHandle,
+          result: Promise.resolve(verdict),
+          dispose: () => {
+            disposedAccepts.push(pipeHandle);
+          },
+        };
       },
-      abortPendingConnection: () => undefined,
       verifyPipeClient: () => {
         verifyCalls += 1;
         return verification;
@@ -263,11 +303,15 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
       openTransportHandle: () => {
         throw new Error('adoption must never be reached for a refused connection');
       },
+      closeFileDescriptor: () => {
+        throw new Error('fd cleanup must never be reached for a refused connection');
+      },
       closePipeHandle: (handle: bigint) => {
         refused.push(handle);
       },
       refusedHandles: () => refused.length,
       verifyCalls: () => verifyCalls,
+      disposedAccepts: () => disposedAccepts.length,
     };
   }
 
@@ -299,6 +343,10 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
     // spoof Core OS token admission by calling record/forget.
     expect('record' in transport.verifiedSessions).toBe(false);
     expect('forget' in transport.verifiedSessions).toBe(false);
+    // Runtime boundary too: the frozen port rejects write attempts.
+    expect(() => {
+      (transport.verifiedSessions as unknown as { record: unknown }).record = () => undefined;
+    }).toThrow(TypeError);
     // Exactly one OS verification for the one connection; its handle was closed.
     expect(bridge.verifyCalls()).toBe(1);
     expect(bridge.refusedHandles()).toBeGreaterThanOrEqual(1);
@@ -354,6 +402,182 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
     expect(() =>
       transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined }),
     ).toThrow(WindowsIpcUnsupportedError);
+  });
+
+  it('rejects start() itself when the first pipe instance cannot bind (no silent listener)', async () => {
+    const bridge = scriptedBridge({ ok: false, reason: 'not reached' });
+    const broken = Object.assign(Object.create(Object.getPrototypeOf(bridge)), bridge, {
+      createPipeInstance: () => {
+        throw new Error('CreateNamedPipeW failed (GetLastError=183)'); // ERROR_ALREADY_EXISTS
+      },
+    }) as PipeIpcBridge;
+    const transport = createWindowsPipeServerTransport({
+      pipeName: `${PIPE_ROOT}injected-${String(++pipeSeq)}`,
+      bridge: broken,
+      platform: 'win32',
+    });
+    running.push(transport);
+    // start() is a synchronous fail-closed setup: the bind failure throws
+    // before any promise/listener exists (same contract as the descriptor
+    // failure test above).
+    expect(() =>
+      transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined }),
+    ).toThrow(WindowsIpcUnsupportedError);
+    expect(transport.isActive).toBe(false);
+    expect(transport.fatalState).toBeUndefined();
+  });
+
+  it('publishes fatalState when instance creation fails after start', async () => {
+    const self: WindowsSelfIdentity = {
+      userSid: 'S-1-5-21-9-9-9-2001',
+      logonSessionId: '0x000000000000beef',
+      sameUser: (sid) => sid === 'S-1-5-21-9-9-9-2001',
+      sameLogonSession: (luid) => luid === '0x000000000000beef',
+    };
+    let instance = 0;
+    const bridge: PipeIpcBridge = {
+      selfIdentity: () => self,
+      buildProtectedSecurityDescriptor: () => Buffer.from([1, 2, 3]),
+      securityDescriptorToSddl: () => 'D:(A;;GA;;;test)',
+      createPipeInstance: () => {
+        instance += 1;
+        if (instance > 2) {
+          throw new Error('CreateNamedPipeW failed (GetLastError=5)');
+        }
+        return BigInt(instance);
+      },
+      beginPipeAccept: (pipeHandle: bigint): WindowsPipeAccept => ({
+        pipeHandle,
+        result: Promise.resolve('CONNECTED'),
+        dispose: () => undefined,
+      }),
+      verifyPipeClient: () => ({
+        ok: true,
+        facts: {
+          userSid: self.userSid,
+          userName: undefined,
+          logonSessionId: self.logonSessionId,
+          clientPid: 4321,
+        },
+      }),
+      openNamedPipeClient: () => {
+        throw new Error('not expected');
+      },
+      openTransportHandle: () => {
+        throw new Error('not expected — scripted bridge cannot adopt real fds');
+      },
+      closeFileDescriptor: () => {
+        throw new Error('not expected');
+      },
+      closePipeHandle: () => undefined,
+    };
+    const transport = createWindowsPipeServerTransport({
+      pipeName: `${PIPE_ROOT}injected-${String(++pipeSeq)}`,
+      bridge,
+      platform: 'win32',
+    });
+    running.push(transport);
+    await transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined });
+    // First accept+admit succeeds (refused at adoption — the scripted bridge
+    // cannot produce real fds), the loop then fails to create instance #3 and
+    // must go DOWN publicly instead of idling silently.
+    await until(() => transport.fatalState !== undefined);
+    expect(transport.fatalState).toContain('pipe instance creation failed');
+    expect(transport.isActive).toBe(false);
+    expect(transport.verifiedSessions.size).toBe(0);
+    await transport.stop();
+  });
+
+  it('escalates a failed RevertToSelf to process-level fail-stop (not connection denial)', async () => {
+    const self: WindowsSelfIdentity = {
+      userSid: 'S-1-5-21-9-9-9-2001',
+      logonSessionId: '0x000000000000beef',
+      sameUser: (sid) => sid === 'S-1-5-21-9-9-9-2001',
+      sameLogonSession: (luid) => luid === '0x000000000000beef',
+    };
+    const failStopReasons: string[] = [];
+    let instanceCounter = 0;
+    const bridge: PipeIpcBridge = {
+      selfIdentity: () => self,
+      buildProtectedSecurityDescriptor: () => Buffer.from([1, 2, 3]),
+      securityDescriptorToSddl: () => 'D:(A;;GA;;;test)',
+      createPipeInstance: () => BigInt(++instanceCounter),
+      beginPipeAccept: (pipeHandle: bigint): WindowsPipeAccept => ({
+        pipeHandle,
+        result: Promise.resolve('CONNECTED'),
+        dispose: () => undefined,
+      }),
+      verifyPipeClient: () => ({
+        ok: false,
+        revertFailed: true,
+        reason: 'RevertToSelf failed; thread may remain in client security context',
+      }),
+      openNamedPipeClient: () => {
+        throw new Error('not expected');
+      },
+      openTransportHandle: () => {
+        throw new Error('not expected');
+      },
+      closeFileDescriptor: () => {
+        throw new Error('not expected');
+      },
+      closePipeHandle: () => undefined,
+    };
+    const transport = createWindowsPipeServerTransport({
+      pipeName: `${PIPE_ROOT}injected-${String(++pipeSeq)}`,
+      bridge,
+      platform: 'win32',
+      processFailStop: (reason) => {
+        failStopReasons.push(reason);
+        throw new Error('process fail-stop sentinel');
+      },
+    });
+    running.push(transport);
+    await transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined });
+    await until(() => transport.fatalState !== undefined);
+    expect(failStopReasons).toHaveLength(1);
+    expect(failStopReasons[0]).toContain('RevertToSelf');
+    expect(transport.fatalState).toContain('RevertToSelf fail-stop');
+    expect(transport.isActive).toBe(false);
+    expect(transport.verifiedSessions.size).toBe(0);
+    await transport.stop();
+  });
+
+  it('disposes the native accept state exactly once per queued instance (stop path)', async () => {
+    const bridge = scriptedBridge({ ok: false, reason: 'never verified' });
+    // Accept stays pending until its dispose cancels it (mirrors the real
+    // bridge: CancelIoEx completes the parked wait as ABORTED).
+    const bridgeDisposeCalls: bigint[] = [];
+    const resolvers = new Map<bigint, (v: 'CONNECTED' | 'ABORTED') => void>();
+    const pendingBridge: PipeIpcBridge = {
+      ...bridge,
+      beginPipeAccept: (pipeHandle: bigint): WindowsPipeAccept => {
+        let resolveResult!: (v: 'CONNECTED' | 'ABORTED') => void;
+        const result = new Promise<'CONNECTED' | 'ABORTED'>((resolve) => {
+          resolveResult = resolve;
+        });
+        resolvers.set(pipeHandle, resolveResult);
+        return {
+          pipeHandle,
+          result,
+          dispose: () => {
+            bridgeDisposeCalls.push(pipeHandle);
+            resolvers.get(pipeHandle)?.('ABORTED');
+          },
+        };
+      },
+    };
+    const transport = createWindowsPipeServerTransport({
+      pipeName: `${PIPE_ROOT}injected-${String(++pipeSeq)}`,
+      bridge: pendingBridge,
+      platform: 'win32',
+    });
+    running.push(transport);
+    await transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined });
+    expect(transport.isActive).toBe(true);
+    await transport.stop();
+    expect(bridgeDisposeCalls.length).toBeGreaterThanOrEqual(1);
+    expect(transport.isActive).toBe(false);
   });
 });
 
