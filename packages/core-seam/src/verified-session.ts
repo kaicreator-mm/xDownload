@@ -66,6 +66,8 @@ export interface OsVerifiedPeerSession {
 export interface VerifiedPeerSessionPort {
   /** The verified session bound to this connection id, or undefined. */
   verifiedSessionFor(connectionId: string): OsVerifiedPeerSession | undefined;
+  /** Read-only diagnostic observation; never a mutation capability. */
+  readonly size: number;
 }
 
 /** Writable side, restricted to the transport that performs OS verification. */
