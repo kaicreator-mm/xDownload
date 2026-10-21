@@ -168,7 +168,9 @@ export function createWindowsPipeServerTransport(
   // Never expose record/forget through the published transport capability.
   const readOnlySessions: VerifiedPeerSessionPort = Object.freeze({
     verifiedSessionFor: (id: string) => registry.verifiedSessionFor(id),
-    get size() { return registry.size; },
+    get size() {
+      return registry.size;
+    },
   });
   let listenerSddl: string | undefined;
   let admissionFailure: string | undefined;
