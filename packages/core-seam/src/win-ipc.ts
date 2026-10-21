@@ -80,6 +80,8 @@ const FILE_FLAG_FIRST_PIPE_INSTANCE = 0x00080000;
 const FILE_FLAG_OVERLAPPED = 0x40000000;
 const FILE_FLAG_WRITE_DAC = 0x00040000;
 const PIPE_ACCESS_DUPLEX = 3;
+// Security boundary: named-pipe IPC must never accept remote clients.
+const PIPE_REJECT_REMOTE_CLIENTS = 0x00000008;
 const SECURITY_SQOS_PRESENT = 0x00100000;
 const SECURITY_IMPERSONATION = 0x00020000;
 const GENERIC_READ = 0x80000000;
@@ -454,7 +456,10 @@ export class WindowsIpcBridge {
       throw new Error(`OpenProcessToken failed (GetLastError=${String(this.getLastError())})`);
     }
     const token = tokOut.readBigUInt64LE(0);
-    const userSidPtr = this.tokenBuffer(token, TOKEN_USER).readBigUInt64LE(0);
+    // TokenUser contains a SID pointer INTO this native output buffer.
+    // Keep the buffer live past the last native ACL call; do not GC it early.
+    const userTokenBuffer = this.tokenBuffer(token, TOKEN_USER);
+    const userSidPtr = userTokenBuffer.readBigUInt64LE(0);
     const groupsBuf = this.tokenBuffer(token, TOKEN_GROUPS, 4096);
     const groupCount = groupsBuf.readUInt32LE(0);
     let logonSidPtr: bigint | null = null;
@@ -510,6 +515,10 @@ export class WindowsIpcBridge {
       null,
       this.vp(newAcl),
     );
+    // Force both SID backing buffers to stay reachable until the native call
+    // has finished; pointers inside them are invalid after GC.
+    if (userTokenBuffer.byteLength === 0 || groupsBuf.byteLength === 0)
+      throw new Error('empty token SID backing buffer');
     if (rc !== 0) {
       this.freeSid(systemSid);
       throw new Error(`SetEntriesInAclA failed (rc=${String(rc)})`);
@@ -573,7 +582,7 @@ export class WindowsIpcBridge {
     const handle = this.createNamedPipeW(
       this.vp(nameBuf),
       openMode,
-      0 /* byte mode, blocking read mode */,
+      PIPE_REJECT_REMOTE_CLIENTS /* byte mode, remote clients rejected */,
       255,
       65536,
       65536,
