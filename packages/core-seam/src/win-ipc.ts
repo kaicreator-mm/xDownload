@@ -592,6 +592,12 @@ export class WindowsIpcBridge {
         null,
         this.vp(newAcl),
       );
+      // Native explicit-access trustee pointers refer into both live JS
+      // TokenInformation buffers. Retain both *after* the final foreign
+      // call, not only before it (GC and lifetime boundary, R2 P1-03).
+      if (userTokenBuffer.byteLength === 0 || groupsBuf.byteLength === 0) {
+        throw new Error('native ACL SID backing buffer no longer present');
+      }
       if (rc !== 0) {
         throw new Error(`SetEntriesInAclA failed (rc=${String(rc)})`);
       }
@@ -830,7 +836,14 @@ export class WindowsIpcBridge {
         };
       } else {
         token = tokOut.readBigUInt64LE(0);
-        const userSid = this.sidToString(this.tokenBuffer(token, TOKEN_USER).readBigUInt64LE(0));
+        // The returned SID pointer aliases TokenUser's JS-backed buffer.
+        // Root it across the native ConvertSidToStringSidA call and explicitly
+        // use it after conversion to prohibit an early-last-reference GC.
+        const peerUserTokenBuffer = this.tokenBuffer(token, TOKEN_USER);
+        const userSid = this.sidToString(peerUserTokenBuffer.readBigUInt64LE(0));
+        if (peerUserTokenBuffer.byteLength === 0) {
+          throw new Error('peer TokenUser SID backing buffer no longer present');
+        }
         const statsBuf = this.tokenBuffer(token, TOKEN_STATISTICS, 128);
         const logonSessionId = WindowsIpcBridge.formatLuid(
           statsBuf.readInt32LE(12),
