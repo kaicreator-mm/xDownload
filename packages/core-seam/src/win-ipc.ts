@@ -124,6 +124,8 @@ const OPEN_EXISTING = 3;
 const INFINITE = 0xffffffff;
 const ERROR_IO_PENDING = 997;
 const ERROR_OPERATION_ABORTED = 995;
+const ERROR_IO_INCOMPLETE = 996;
+const WAIT_OBJECT_0 = 0;
 // A client connected between CreateNamedPipeW and ConnectNamedPipe: the
 // connection is fully established, but no completable I/O is parked (the
 // kernel answers CancelIoEx with ERROR_NOT_FOUND and never completes the
@@ -690,35 +692,42 @@ export class WindowsIpcBridge {
     declareSecurityStructs(this.koffi);
     const OVERLAPPED_TYPE = 'XDOWNLOAD_OVERLAPPED';
     const event = this.createEventW(null, 1, 0, null);
-    if (event === INVALID_HANDLE_VALUE) {
+    // CreateEventW documents NULL (0) on failure, not INVALID_HANDLE_VALUE.
+    if (event === 0n || event === INVALID_HANDLE_VALUE) {
       throw new Error(`CreateEventW failed (GetLastError=${String(this.getLastError())})`);
     }
     let overlapped: unknown;
     try {
       overlapped = this.koffi.alloc(OVERLAPPED_TYPE, 1);
+      this.koffi.encode(overlapped, OVERLAPPED_TYPE, {
+        Internal: 0n,
+        InternalHigh: 0n,
+        Offset: 0,
+        OffsetHigh: 0,
+        hEvent: event,
+      });
     } catch (error) {
+      // Encode/alloc failed before any request reached the kernel.
+      if (overlapped !== undefined) this.koffi.free(overlapped);
       this.closeHandle(event);
       throw error;
     }
-    this.koffi.encode(overlapped, OVERLAPPED_TYPE, {
-      Internal: 0n,
-      InternalHigh: 0n,
-      Offset: 0,
-      OffsetHigh: 0,
-      hEvent: event,
-    });
     let released = false;
     let waitArmed = false;
     const release = (): void => {
-      if (released) {
-        return;
-      }
+      if (released) return;
       released = true;
-      // Belt-and-braces: no-op (ERROR_NOT_FOUND) unless an I/O is still
-      // parked; never safe to free native memory a kernel I/O references.
-      this.cancelIoEx(pipeHandle, overlapped);
+      // Call ONLY when no I/O was queued, or GetOverlappedResult proves
+      // completion. CancelIoEx by itself does not prove kernel termination.
       this.closeHandle(event);
       this.koffi.free(overlapped);
+    };
+    const failStop = (reason: string): never => {
+      // An unproven kernel pointer lifetime is process unsafe: intentionally
+      // leak pending allocations until the process exits rather than freeing
+      // memory that the OS might still dereference.
+      process.stderr.write(`xdownload native OVERLAPPED FAIL-STOP: ${reason}\n`);
+      process.exit(70);
     };
     let resolveResult!: (value: 'CONNECTED' | 'ABORTED') => void;
     let rejectResult!: (error: Error) => void;
@@ -726,50 +735,70 @@ export class WindowsIpcBridge {
       resolveResult = resolve;
       rejectResult = reject;
     });
-    const fail = (message: string): void => {
-      release();
-      rejectResult(new Error(message));
-    };
-    const rc = this.connectNamedPipe(pipeHandle, overlapped);
+    let rc: number;
+    try {
+      rc = this.connectNamedPipe(pipeHandle, overlapped);
+    } catch {
+      failStop('ConnectNamedPipe threw; native pending ownership unknown');
+    }
     if (rc === 0) {
       const err = this.getLastError();
       if (err === ERROR_PIPE_CONNECTED) {
-        // The client connected before the call: the connection is real and
-        // usable, and no completion will ever arrive for this OVERLAPPED.
         resolveResult('CONNECTED');
-        release();
+        release(); // No asynchronous I/O was queued.
       } else if (err === ERROR_OPERATION_ABORTED) {
         resolveResult('ABORTED');
-        release();
+        release(); // No asynchronous I/O was queued.
       } else if (err !== ERROR_IO_PENDING && err !== 0) {
-        fail(`ConnectNamedPipe failed (GetLastError=${String(err)})`);
+        rejectResult(new Error(`ConnectNamedPipe failed (GetLastError=${String(err)})`));
+        release();
       } else {
         waitArmed = true;
-        this.waitForSingleObject.async(event, INFINITE, () => {
-          try {
-            const bytes = Buffer.alloc(4);
-            const ok = this.getOverlappedResult(pipeHandle, overlapped, this.vp(bytes), 0);
-            if (ok) {
-              resolveResult('CONNECTED');
-            } else {
-              const gle = this.getLastError();
-              if (gle === ERROR_OPERATION_ABORTED) {
+        try {
+          this.waitForSingleObject.async(event, INFINITE, (waitError, waitStatus) => {
+            let terminal = false;
+            try {
+              const abnormalWait = waitError != null || waitStatus !== WAIT_OBJECT_0;
+              if (abnormalWait) {
+                // A failed wait is not I/O completion. Cancel and drain.
+                this.cancelIoEx(pipeHandle, overlapped);
+              }
+              const bytes = Buffer.alloc(4);
+              let ok = this.getOverlappedResult(
+                pipeHandle, overlapped, this.vp(bytes), abnormalWait ? 1 : 0,
+              );
+              let gle = ok ? 0 : this.getLastError();
+              if (!ok && gle === ERROR_IO_INCOMPLETE) {
+                this.cancelIoEx(pipeHandle, overlapped);
+                ok = this.getOverlappedResult(pipeHandle, overlapped, this.vp(bytes), 1);
+                gle = ok ? 0 : this.getLastError();
+              }
+              if (ok) {
+                terminal = true;
+                if (abnormalWait) {
+                  rejectResult(new Error('native pipe wait failed after completed I/O drain'));
+                } else {
+                  resolveResult('CONNECTED');
+                }
+              } else if (gle === ERROR_OPERATION_ABORTED) {
+                terminal = true;
                 resolveResult('ABORTED');
               } else {
-                rejectResult(new Error(`GetOverlappedResult failed (GetLastError=${String(gle)})`));
+                failStop(`GetOverlappedResult cannot prove I/O terminality (error=${String(gle)})`);
               }
+            } catch {
+              failStop('native wait/GetOverlappedResult threw; I/O terminality unproven');
+            } finally {
+              if (terminal) release();
             }
-          } catch (error) {
-            rejectResult(error instanceof Error ? error : new Error(String(error)));
-          } finally {
-            // Drain happened above; the kernel no longer references the
-            // memory — this is the ONLY release point while a wait is armed.
-            release();
-          }
-        });
+          });
+        } catch {
+          // Kernel I/O may be pending, but callback registration failed.
+          // No safe asynchronous release owner exists; process must die.
+          failStop('WaitForSingleObject async registration failed');
+        }
       }
     } else {
-      // Nonzero return: the connect call succeeded without queueing I/O.
       resolveResult('CONNECTED');
       release();
     }
@@ -777,17 +806,11 @@ export class WindowsIpcBridge {
       pipeHandle,
       result,
       dispose: (): void => {
-        if (released) {
-          return;
-        }
-        // Force any pending kernel I/O to complete (the armed wait's callback
-        // then drains and releases). While a wait is armed this function must
-        // NOT close the event or free the allocation: the callback registered
-        // on those very objects is the sole release owner.
+        if (released) return;
+        // Cancellation is a REQUEST, not kernel completion. Armed callbacks
+        // exclusively own the eventual terminal GetOverlappedResult/release.
         this.cancelIoEx(pipeHandle, overlapped);
-        if (!waitArmed) {
-          release();
-        }
+        if (!waitArmed) release();
       },
     };
   }
