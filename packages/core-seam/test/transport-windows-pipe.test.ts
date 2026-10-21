@@ -258,6 +258,26 @@ describeWin32('windows pipe transport over the real OS path', () => {
     expect(seam.transport.fatalState).toBeUndefined();
     expect(seam.transport.isActive).toBe(true);
   });
+
+  it('rejects a second start on an occupied pipe name synchronously (real bind collision)', async () => {
+    const seam = await startPipeSeam();
+    const result = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
+    if (!result.ok) {
+      throw new Error('server construction failed');
+    }
+    const colliding = createWindowsPipeServerTransport({ pipeName: seam.target.pipeName });
+    running.push(colliding);
+    // The FIRST instance claims the name exclusively; the colliding start
+    // must fail closed at start() itself — never a silent no-op listener.
+    expect(() =>
+      colliding.start({ onFrame: () => undefined, onConnectionEnded: () => undefined }),
+    ).toThrow(WindowsIpcUnsupportedError);
+    expect(colliding.isActive).toBe(false);
+    expect(colliding.fatalState).toBeUndefined();
+    // The original listener is unaffected.
+    expect(seam.transport.isActive).toBe(true);
+    expect(seam.transport.fatalState).toBeUndefined();
+  });
 });
 
 describe('pipe transport admission refusals with an injected bridge (portable)', () => {
