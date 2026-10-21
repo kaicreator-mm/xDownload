@@ -31,6 +31,9 @@ const TOOL_TIMEOUT_MS = 20_000;
 const TOOL_MAX_OUTPUT_BYTES = 1024 * 1024;
 // Each tool invocation is bounded; also cap the number of invoked programs.
 const MAX_REAL_TS_SEGMENTS = 32;
+/** Bounded conservative CFR-ish media subset. Sparse/VFR must return INSUFFICIENT_EVIDENCE. */
+const MAX_MEDIA_FRAME_GAP_SECONDS = 0.25;
+const MAX_PROBED_FRAMES_PER_SEGMENT = 8192;
 
 export interface LocalMediaToolResult {
   readonly status: number | null;
@@ -249,8 +252,9 @@ function probeArgs(filepath: string): string[] {
     '-v',
     'error',
     '-count_frames',
+    '-show_frames',
     '-show_entries',
-    'format=format_name,duration:stream=codec_type,codec_name,width,height,start_time,duration,nb_read_frames',
+    'format=format_name,duration:stream=index,codec_type,codec_name,width,height,start_time,duration,nb_read_frames:frame=media_type,stream_index,best_effort_timestamp_time',
     '-of',
     'json',
     filepath,
@@ -277,6 +281,75 @@ function decodeArgs(filepath: string): string[] {
   ];
 }
 
+/**
+ * Actual per-stream presentation timestamp coverage, not container duration or
+ * total frame count. A sparse two-frame TS segment can advertise a two-second
+ * duration and decode successfully; the missing interior must still fail.
+ *
+ * v0.1 admits only dense, temporally verifiable streams. Lower-FPS/sparse VFR
+ * clips are conservatively INSUFFICIENT_EVIDENCE until a reviewed profile exists.
+ */
+function hasDenseTimestampCoverage(
+  json: string,
+  streams: readonly ProbeStream[],
+  plannedSeconds: number,
+): boolean {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    const frames: unknown = (parsed as Record<string, unknown>)['frames'];
+    if (!Array.isArray(frames) || frames.length < 2 ||
+        frames.length > MAX_PROBED_FRAMES_PER_SEGMENT) return false;
+    const indices = streams.map((s, index) => {
+      const declaredIndex = (s as ProbeStream & { readonly index?: unknown }).index;
+      return typeof declaredIndex === 'number' && Number.isSafeInteger(declaredIndex)
+        ? declaredIndex : index;
+    });
+    if (new Set(indices).size !== indices.length) return false;
+    const times = new Map<number, number[]>(indices.map((index) => [index, []]));
+    for (const item of frames as unknown[]) {
+      if (item === null || typeof item !== 'object' || Array.isArray(item)) return false;
+      const frame = item as Record<string, unknown>;
+      const index = frame['stream_index'];
+      const type = frame['media_type'];
+      const streamPosition = indices.indexOf(index as number);
+      if (streamPosition < 0 || type !== streams[streamPosition]?.codec_type) return false;
+      const raw = frame['best_effort_timestamp_time'];
+      if (typeof raw !== 'string' || !/^\\d+(?:\\.\\d+)?$/u.test(raw)) return false;
+      const pts = Number(raw);
+      if (!Number.isFinite(pts) || pts < 0) return false;
+      times.get(index as number)!.push(pts);
+    }
+    const firsts: number[] = [];
+    for (const [position, index] of indices.entries()) {
+      const stamps = times.get(index);
+      if (stamps === undefined || stamps.length < 2 ||
+          stamps.length !== Number(streams[position]?.nb_read_frames)) return false;
+      const first = stamps[0]!;
+      const last = stamps[stamps.length - 1]!;
+      // Real tracks may have small encoder offset; larger unobserved head/tail
+      // regions cannot be promoted to Media evidence.
+      const declaredStart = Number(streams[position]?.start_time);
+      if (!Number.isFinite(declaredStart) ||
+          Math.abs(first - declaredStart) > MAX_MEDIA_FRAME_GAP_SECONDS) return false;
+      firsts.push(first);
+      for (let i = 1; i < stamps.length; i++) {
+        const delta = stamps[i]! - stamps[i - 1]!;
+        if (!(delta > 0 && delta <= MAX_MEDIA_FRAME_GAP_SECONDS + 1e-6)) return false;
+      }
+      const finalCadence = stamps[stamps.length - 1]! - stamps[stamps.length - 2]!;
+      // Last presentation timestamp plus one observed cadence must cover the
+      // declared segment time, but no missing interior can hide in duration.
+      const observedCoverage = last + finalCadence - first;
+      if (Math.abs(observedCoverage - plannedSeconds) >
+          MAX_MEDIA_FRAME_GAP_SECONDS) return false;
+    }
+    return Math.max(...firsts) - Math.min(...firsts) <= MAX_MEDIA_FRAME_GAP_SECONDS;
+  } catch {
+    return false;
+  }
+}
+
 function runRealVerification(
   request: MediaAssemblyRequest,
   verified: { readonly bytes: Uint8Array; readonly plannedDuration: number },
@@ -301,6 +374,9 @@ function runRealVerification(
     const observed = parseProbe(scanned.stdout);
     if (observed === undefined || !matchesFrozenRendition(request, observed.streams)) {
       return insufficient('per-segment container or declared media did not match');
+    }
+    if (!hasDenseTimestampCoverage(scanned.stdout, observed.streams, entry.durationSeconds)) {
+      return insufficient('segment has sparse, missing or unverifiable per-stream media timeline');
     }
     // Each *individual* planned piece must be independently decodable and
     // provide actual frames; a null-only TS piece yields no stream evidence.
