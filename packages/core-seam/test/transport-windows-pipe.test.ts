@@ -295,6 +295,10 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
     await until(() => transport.lastAdmissionFailure !== undefined);
     expect(transport.lastAdmissionFailure).toContain('outside the admitted OS scope');
     expect(transport.verifiedSessions.size).toBe(0);
+    // Transport publishes a read-only query capability; callers may never
+    // spoof Core OS token admission by calling record/forget.
+    expect('record' in transport.verifiedSessions).toBe(false);
+    expect('forget' in transport.verifiedSessions).toBe(false);
     // Exactly one OS verification for the one connection; its handle was closed.
     expect(bridge.verifyCalls()).toBe(1);
     expect(bridge.refusedHandles()).toBeGreaterThanOrEqual(1);
@@ -313,14 +317,25 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
     const transport = createWindowsPipeServerTransport({
       pipeName: `${PIPE_ROOT}injected-${String(++pipeSeq)}`,
       bridge,
-      platform: 'win32',
-      requireSameLogonSession: true,
+      platform: 'win32', // strict same-logon requirement is now the default
     });
     running.push(transport);
     await transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined });
     await until(() => transport.lastAdmissionFailure !== undefined);
     expect(transport.lastAdmissionFailure).toContain('sameLogonSession=false');
     expect(transport.verifiedSessions.size).toBe(0);
+  });
+
+  it('forbids opting out of same-logon session admission', () => {
+    const bridge = scriptedBridge(crossUserVerification());
+    expect(() =>
+      createWindowsPipeServerTransport({
+        pipeName: `${PIPE_ROOT}injected-${String(++pipeSeq)}`,
+        bridge,
+        platform: 'win32',
+        requireSameLogonSession: false,
+      }),
+    ).toThrow(WindowsIpcUnsupportedError);
   });
 
   it('fails closed at start when the security descriptor cannot be built', async () => {
