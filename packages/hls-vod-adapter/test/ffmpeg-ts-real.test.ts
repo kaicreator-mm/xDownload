@@ -165,6 +165,36 @@ describe.skipIf(!ffmpegInstalled || !ffprobeInstalled)(
             detail: 'segment has sparse, missing or unverifiable per-stream media timeline',
           },
         });
+        // Independent R3 counterexample: 20 / 10 / 20 frames after retaining
+        // alternating middle-frame PTS. Each 0.2s gap is below the old 0.25s
+        // limit, but peer pieces have 0.1s cadence: refuse false completeness.
+        const thinnedPath = join(dir, 'thinned-middle.ts');
+        const thinnedBuild = spawnSync(
+          'ffmpeg',
+          [
+            '-nostdin', '-hide_banner', '-loglevel', 'error',
+            '-copyts', '-i', join(dir, 'seg-1.ts'),
+            '-vf', "select='not(mod(n,2))'",
+            '-fps_mode', 'vfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+            '-g', '1', '-muxdelay', '0', '-muxpreload', '0',
+            '-f', 'mpegts', thinnedPath,
+          ],
+          { timeout: 30000, maxBuffer: 32768, windowsHide: true },
+        );
+        expect(thinnedBuild.status).toBe(0);
+        const thinnedMiddle = [
+          selected[0]!,
+          { ...selected[1]!, bytes: new Uint8Array(readFileSync(thinnedPath)) },
+          selected[2]!,
+        ];
+        const thinned = port.assembleAndProbe({ binding, plan, transferred: thinnedMiddle });
+        expect(thinned).toMatchObject({
+          ok: true,
+          value: {
+            kind: 'INSUFFICIENT_EVIDENCE',
+            detail: 'segment media cadence differs from frozen rendition peers',
+          },
+        });
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
