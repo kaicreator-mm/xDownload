@@ -113,6 +113,31 @@ describe.skipIf(!ffmpegInstalled || !ffprobeInstalled)(
           ok: true,
           value: { kind: 'INSUFFICIENT_EVIDENCE' },
         });
+        // R2/F03 actual media repro: keep original frames 0 and 19 only,
+        // preserving the roughly two-second advertised TS timeline.
+        // The file decodes and has valid H264, but interior coverage is lost.
+        const sparsePath = join(dir, 'sparse-middle.ts');
+        const sparseBuild = spawnSync('ffmpeg', [
+          '-nostdin', '-hide_banner', '-loglevel', 'error',
+          '-copyts', '-i', join(dir, 'seg-1.ts'),
+          '-vf', "select='eq(n,0)+eq(n,19)'",
+          '-fps_mode', 'vfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+          '-g', '1', '-muxdelay', '0', '-muxpreload', '0',
+          '-f', 'mpegts', sparsePath,
+        ], { timeout: 30000, maxBuffer: 32768, windowsHide: true });
+        expect(sparseBuild.status).toBe(0);
+        const sparseMiddle = [
+          selected[0]!,
+          { ...selected[1]!, bytes: new Uint8Array(readFileSync(sparsePath)) },
+          selected[2]!,
+        ];
+        const sparse = port.assembleAndProbe({
+          binding, plan, transferred: sparseMiddle,
+        });
+        expect(sparse).toMatchObject({
+          ok: true,
+          value: { kind: 'INSUFFICIENT_EVIDENCE' },
+        });
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
