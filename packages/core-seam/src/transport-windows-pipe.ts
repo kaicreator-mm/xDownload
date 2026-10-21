@@ -144,43 +144,50 @@ function resolvePipeWrap(): PipeWrapConstructor {
 }
 
 /**
- * Adopt a verified raw pipe HANDLE into the Node event loop as a socket.
- *
- * Ownership stages (P1-03): raw HANDLE → CRT fd (uv_open_osfhandle; the OS
- * handle is CONSUMED at that instant) → libuv pipe → net.Socket. Every
- * failure closes exactly the current owner via the matching API:
- * - a throw before `openTransportHandle` succeeds leaves the raw HANDLE
- *   unconsumed — the CALLER closes it with `closePipeHandle`;
- * - a throw after the fd exists closes the fd (`closeFileDescriptor`) and
- *   never touches the raw HANDLE again (that would be a double-close).
+ * Adopt one raw OS HANDLE. The function owns and closes exactly one resource
+ * stage (raw → CRT fd → libuv pipe → Socket) on *every* failed adoption.
+ * Callers must NEVER CloseHandle after this function throws: ownership has
+ * already been unwound inside this function.
  */
 export function adoptPipeHandle(bridge: PipeIpcBridge, handle: bigint): net.Socket {
-  const { fd } = bridge.openTransportHandle(handle);
+  let fd: number;
+  try {
+    ({ fd } = bridge.openTransportHandle(handle));
+  } catch (error) {
+    // The raw HANDLE was never consumed by a CRT descriptor.
+    bridge.closePipeHandle(handle);
+    throw error;
+  }
+  let pipe: InstanceType<PipeWrapConstructor> | undefined;
+  let ownedByLibuv = false;
   try {
     const Pipe = resolvePipeWrap();
-    const pipe = new Pipe(1);
+    pipe = new Pipe(1);
     const rc = pipe.open(fd);
     if (rc !== 0) {
       throw new WindowsIpcUnsupportedError(
         `uv_pipe_open failed (${String(rc)}); refusing to serve an unverifiable handle`,
       );
     }
-    // net.Socket's constructor officially accepts `{ handle }` for stream
-    // adoption (same path child_process/cluster use); the public TS type omits
-    // it, hence the narrow cast.
+    ownedByLibuv = true;
+    // net.Socket takes ownership of an already-opened libuv pipe here.
     return new net.Socket({ handle: pipe } as unknown as net.SocketConstructorOpts);
   } catch (error) {
-    // The fd now owns the raw HANDLE: close the fd, not the handle. A failed
-    // fd close must not mask the original adoption error.
-    let closeFailure: unknown;
+    // After successful uv_pipe_open, only libuv owns the fd. On earlier
+    // failure the CRT fd is still the owner. Never close both.
+    let cleanupFailure: unknown;
     try {
-      bridge.closeFileDescriptor(fd);
-    } catch (closeError) {
-      closeFailure = closeError;
+      if (ownedByLibuv) {
+        pipe!.close();
+      } else {
+        bridge.closeFileDescriptor(fd);
+      }
+    } catch (failure) {
+      cleanupFailure = failure;
     }
-    if (closeFailure !== undefined) {
+    if (cleanupFailure !== undefined) {
       throw new WindowsIpcUnsupportedError(
-        `pipe handle adoption failed (${String(error)}) and its fd cleanup also failed (${String(closeFailure)})`,
+        `pipe adoption failed (${String(error)}) and current-owner cleanup failed (${String(cleanupFailure)})`,
         { cause: error },
       );
     }
@@ -296,9 +303,9 @@ export function createWindowsPipeServerTransport(
     try {
       socket = adoptPipeHandle(bridge, handle);
     } catch (error) {
-      // adoptPipeHandle guarantees the raw HANDLE is unconsumed when it
-      // throws — closing it here is the correct and ONLY cleanup.
-      refuseAdmission(handle, `handle adoption failed: ${String(error)}`);
+      // adoptPipeHandle owns and unwinds the raw / fd / libuv stage itself.
+      // Closing the consumed raw HANDLE here would double-close a reused slot.
+      admissionFailure = `handle adoption failed: ${String(error)}`;
       return;
     }
     const connectionId = `winpipe-${String(nextConnectionId)}`;
@@ -370,12 +377,15 @@ export function createWindowsPipeServerTransport(
     handler: SeamConnectionHandler,
     securityDescriptor: Buffer,
     firstHandle: bigint,
+    firstAccept: WindowsPipeAccept,
   ): Promise<void> {
     let handle: bigint = firstHandle;
+    let initialAccept: WindowsPipeAccept | undefined = firstAccept;
     let ownsHandle = true;
     try {
       while (running) {
-        const pending = bridge.beginPipeAccept(handle);
+        const pending = initialAccept ?? bridge.beginPipeAccept(handle);
+        initialAccept = undefined;
         pendingAccepts.add(pending);
         let result: 'CONNECTED' | 'ABORTED';
         try {
@@ -449,8 +459,17 @@ export function createWindowsPipeServerTransport(
         // failure (name collision, ACL problem) rejects start() itself
         // instead of surfacing as a silent no-op listener (P2-02).
         const firstHandle = bridge.createPipeInstance(options.pipeName, securityDescriptor, true);
+        let firstAccept: WindowsPipeAccept;
+        try {
+          // A synchronous failure of the first native accept MUST reject
+          // start, not publish a dead listener with fatalState already set.
+          firstAccept = bridge.beginPipeAccept(firstHandle);
+        } catch (error) {
+          bridge.closePipeHandle(firstHandle);
+          throw error;
+        }
         running = true;
-        loopFinished = acceptLoop(self, handler, securityDescriptor, firstHandle);
+        loopFinished = acceptLoop(self, handler, securityDescriptor, firstHandle, firstAccept);
       } catch (error) {
         // Any start failure is a fail-closed condition: typed, no fallback.
         running = false;
@@ -506,14 +525,8 @@ export function createWindowsPipeClientTransport(
         let socket: net.Socket;
         try {
           const handle = bridge.openNamedPipeClient(target.pipeName);
-          // adoptPipeHandle's contract: when it throws, the raw HANDLE was
-          // never consumed — closing it here is the exact-owner cleanup.
-          try {
-            socket = adoptPipeHandle(bridge, handle);
-          } catch (adoptionError) {
-            bridge.closePipeHandle(handle);
-            throw adoptionError;
-          }
+          // All raw / fd / libuv cleanup belongs to adoptPipeHandle.
+          socket = adoptPipeHandle(bridge, handle);
         } catch (error) {
           reject(error instanceof Error ? error : new Error(String(error)));
           return;
