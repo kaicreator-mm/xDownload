@@ -424,6 +424,80 @@ describe('pipe transport admission refusals with an injected bridge (portable)',
     ).toThrow(WindowsIpcUnsupportedError);
   });
 
+  it('rejects start when the FIRST native accept setup fails, closing its raw handle once', () => {
+    const base = scriptedBridge(crossUserVerification());
+    const handles: bigint[] = [];
+    const broken: PipeIpcBridge = {
+      ...base,
+      beginPipeAccept: () => {
+        throw new Error('native first accept setup failed');
+      },
+      closePipeHandle: (handle) => {
+        handles.push(handle);
+        base.closePipeHandle(handle);
+      },
+    };
+    const transport = createWindowsPipeServerTransport({
+      pipeName: `${PIPE_ROOT}first-accept-${String(++pipeSeq)}`,
+      bridge: broken,
+      platform: 'win32',
+    });
+    running.push(transport);
+    expect(() =>
+      transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined }),
+    ).toThrow(WindowsIpcUnsupportedError);
+    expect(handles).toEqual([1n]);
+    expect(transport.isActive).toBe(false);
+  });
+
+  it('closes raw server HANDLE once if OS fd adoption fails before consuming it', async () => {
+    const base = scriptedBridge({
+      ok: true,
+      facts: {
+        userSid: 'S-1-5-21-9-9-9-2001',
+        userName: undefined,
+        logonSessionId: '0x000000000000beef',
+        clientPid: 987,
+      },
+    });
+    const closes: bigint[] = [];
+    const injected: PipeIpcBridge = {
+      ...base,
+      closePipeHandle: (handle) => {
+        closes.push(handle);
+        base.closePipeHandle(handle);
+      },
+    };
+    const transport = createWindowsPipeServerTransport({
+      pipeName: `${PIPE_ROOT}raw-stage-${String(++pipeSeq)}`,
+      bridge: injected,
+      platform: 'win32',
+    });
+    running.push(transport);
+    await transport.start({ onFrame: () => undefined, onConnectionEnded: () => undefined });
+    await until(() => transport.lastAdmissionFailure !== undefined);
+    expect(transport.lastAdmissionFailure).toContain('handle adoption failed');
+    expect(closes.filter((handle) => handle === 1n)).toHaveLength(1);
+  });
+
+  it('closes raw client HANDLE once when pre-fd adoption refuses', async () => {
+    const base = scriptedBridge(crossUserVerification());
+    const closes: bigint[] = [];
+    const clientBridge: PipeIpcBridge = {
+      ...base,
+      openNamedPipeClient: () => 777n,
+      closePipeHandle: (handle) => {
+        closes.push(handle);
+        base.closePipeHandle(handle);
+      },
+    };
+    const client = createWindowsPipeClientTransport({ bridge: clientBridge, platform: 'win32' });
+    await expect(client.connect({ pipeName: `${PIPE_ROOT}raw-client-${String(++pipeSeq)}`, host: '127.0.0.1', port: 0 })).rejects.toThrow(
+      'adoption must never be reached',
+    );
+    expect(closes).toEqual([777n]);
+  });
+
   it('rejects start() itself when the first pipe instance cannot bind (no silent listener)', async () => {
     const bridge = scriptedBridge({ ok: false, reason: 'not reached' });
     const broken = Object.assign(Object.create(Object.getPrototypeOf(bridge)), bridge, {
