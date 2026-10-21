@@ -160,7 +160,10 @@ describe.skipIf(!ffmpegInstalled || !ffprobeInstalled)(
         });
         expect(sparse).toMatchObject({
           ok: true,
-          value: { kind: 'INSUFFICIENT_EVIDENCE' },
+          value: {
+            kind: 'INSUFFICIENT_EVIDENCE',
+            detail: 'segment has sparse, missing or unverifiable per-stream media timeline',
+          },
         });
       } finally {
         rmSync(dir, { recursive: true, force: true });
