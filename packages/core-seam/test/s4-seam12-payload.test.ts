@@ -56,22 +56,34 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
     if (a.ok) expect(a.value.payload).toEqual(payload);
   });
 
-  it.each(['1.0.0', '1.1.0', '2.0.0', '0.99.99', '1.2.0-beta.1', '1.2.0+unsafe', '1.02.0', 'one', '', null])(
-    'refuses unsupported/non-final seam version %s',
-    (version) => {
-      const r = decode('PREVIEW_S4_HLS_VOD', preview, version);
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.diagnostics[0]?.code).toBe('UNSUPPORTED_ENVELOPE_VERSION');
-    },
-  );
+  it.each([
+    '1.0.0',
+    '1.1.0',
+    '2.0.0',
+    '0.99.99',
+    '1.2.0-beta.1',
+    '1.2.0+unsafe',
+    '1.02.0',
+    'one',
+    '',
+    null,
+  ])('refuses unsupported/non-final seam version %s', (version) => {
+    const r = decode('PREVIEW_S4_HLS_VOD', preview, version);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.diagnostics[0]?.code).toBe('UNSUPPORTED_ENVELOPE_VERSION');
+  });
 
   it.each(['1.2.0', '1.3.0'])('accepts a valid final major-1, minor>=2 schema version %s', (v) => {
     expect(decode('PREVIEW_S4_HLS_VOD', preview, v).ok).toBe(true);
   });
 
   it.each([
-    'CONFIRM_S3_CANDIDATE', 'EXECUTE_S3_SELECTED_MEDIA',
-    'EXECUTE_S1_DIRECT_ACQUISITION', 'READ_PROJECTION', 'DELETE_ALL', '',
+    'CONFIRM_S3_CANDIDATE',
+    'EXECUTE_S3_SELECTED_MEDIA',
+    'EXECUTE_S1_DIRECT_ACQUISITION',
+    'READ_PROJECTION',
+    'DELETE_ALL',
+    '',
   ])('rejects unapproved command names: %s', (kind) => {
     const r = decode(kind, preview);
     expect(r.ok).toBe(false);
@@ -80,12 +92,25 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
 
   it.each([
     ['unknown authority key', { ...preview, allowHost: 'evil.example.net' }],
-    ['credential-bearing manifest', { ...preview, manifestUri: 'https://user:secret@cdn.example.org/video/main.m3u8' }],
+    [
+      'credential-bearing manifest',
+      { ...preview, manifestUri: 'https://user:secret@cdn.example.org/video/main.m3u8' },
+    ],
     ['HTTP manifest', { ...preview, manifestUri: 'http://cdn.example.org/video/main.m3u8' }],
-    ['query credential', { ...preview, manifestUri: 'https://cdn.example.org/video/main.m3u8?token=x' }],
+    [
+      'query credential',
+      { ...preview, manifestUri: 'https://cdn.example.org/video/main.m3u8?token=x' },
+    ],
     ['relative manifest', { ...preview, manifestUri: '/video/main.m3u8' }],
     ['nested mutation', { ...preview, policy: { budget: 99999999 } }],
-    ['missing target', { snapshotId: 'snapshot-1', manifestUri: preview.manifestUri, mediaProfileId: S4_PUBLIC_MEDIA_PROFILE_ID }],
+    [
+      'missing target',
+      {
+        snapshotId: 'snapshot-1',
+        manifestUri: preview.manifestUri,
+        mediaProfileId: S4_PUBLIC_MEDIA_PROFILE_ID,
+      },
+    ],
     ['different profile', { ...preview, mediaProfileId: 'ARBITRARY_MEDIA_ALL' }],
     ['non-object', []],
   ])('rejects malformed preview candidate: %s', (_label, raw) => {
@@ -123,8 +148,12 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
     for (const commandType of S4_SEAM12_COMMAND_TYPES) {
       const envelope = rawCommand({
         commandType,
-        payload: commandType === 'PREVIEW_S4_HLS_VOD' ? preview :
-          commandType === 'CONFIRM_S4_SELECTION' ? begin : execute,
+        payload:
+          commandType === 'PREVIEW_S4_HLS_VOD'
+            ? preview
+            : commandType === 'CONFIRM_S4_SELECTION'
+              ? begin
+              : execute,
       });
       envelope.schemaIdentity = { schema: 'xdownload.core-seam', version: '1.2.0' };
       const result = decodeSeamEnvelope(envelope);

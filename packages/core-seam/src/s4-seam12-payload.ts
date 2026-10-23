@@ -63,25 +63,37 @@ export type S4Seam12Decoded =
 
 const PREVIEW_KEYS = ['snapshotId', 'memberId', 'manifestUri', 'mediaProfileId'] as const;
 const BEGIN_KEYS = [
-  'phase', 'snapshotId', 'memberId', 'previewId', 'renditionKey', 'displayedTupleDigest',
+  'phase',
+  'snapshotId',
+  'memberId',
+  'previewId',
+  'renditionKey',
+  'displayedTupleDigest',
 ] as const;
 const COMMIT_KEYS = [...BEGIN_KEYS, 'confirmationChallenge'] as const;
 const EXECUTE_KEYS = ['snapshotId', 'memberId', 'confirmedSelectionId'] as const;
-const ID_FIELDS = ['snapshotId', 'memberId', 'previewId', 'renditionKey', 'confirmedSelectionId'] as const;
+const ID_FIELDS = [
+  'snapshotId',
+  'memberId',
+  'previewId',
+  'renditionKey',
+  'confirmedSelectionId',
+] as const;
 
 function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+  );
 }
 
 function malformed(path: string, message: string): SeamResult<never> {
   return seamFail([seamDiagnostic('ENVELOPE_MALFORMED', path, message)]);
 }
 
-function validateKeys(
-  value: Record<string, unknown>,
-  keys: readonly string[],
-): SeamResult<void> {
+function validateKeys(value: Record<string, unknown>, keys: readonly string[]): SeamResult<void> {
   const allowed = new Set(keys);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
   if (unknown.length > 0) {
@@ -96,23 +108,38 @@ function validateKeys(
 }
 
 function boundedId(value: unknown): value is string {
-  return typeof value === 'string' &&
+  return (
+    typeof value === 'string' &&
     value.length >= 1 &&
     value.length <= 128 &&
-    /^[A-Za-z0-9_.:-]+$/u.test(value);
+    /^[A-Za-z0-9_.:-]+$/u.test(value)
+  );
 }
 
 function publicManifestSyntax(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length > 2048 || value.length < 14 ||
-      !/^[\x21-\x7e]+$/u.test(value) || /[?#%@\\]/u.test(value)) return false;
+  if (
+    typeof value !== 'string' ||
+    value.length > 2048 ||
+    value.length < 14 ||
+    !/^[\x21-\x7e]+$/u.test(value) ||
+    /[?#%@\\]/u.test(value)
+  )
+    return false;
   try {
     const url = new URL(value);
-    return url.href === value && url.protocol === 'https:' &&
-      url.username === '' && url.password === '' &&
-      url.search === '' && url.hash === '' &&
-      url.port === '' && url.pathname.endsWith('.m3u8') &&
+    return (
+      url.href === value &&
+      url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
+      url.search === '' &&
+      url.hash === '' &&
+      url.port === '' &&
+      url.pathname.endsWith('.m3u8') &&
       /^[a-z0-9.-]+$/u.test(url.hostname) &&
-      url.hostname.includes('.') && !url.hostname.endsWith('.');
+      url.hostname.includes('.') &&
+      !url.hostname.endsWith('.')
+    );
   } catch {
     return false;
   }
@@ -140,15 +167,22 @@ export function decodeS4Seam12Payload(
   if (!compatibleS4Minor(schemaVersion)) {
     return seamFail([
       seamDiagnostic(
-        'UNSUPPORTED_ENVELOPE_VERSION', 'schemaIdentity.version',
+        'UNSUPPORTED_ENVELOPE_VERSION',
+        'schemaIdentity.version',
         'S4 commands require a final core-seam 1.2.0-or-newer minor of major 1',
       ),
     ]);
   }
-  if (typeof commandType !== 'string' ||
-      !S4_SEAM12_COMMAND_TYPES.includes(commandType as S4Seam12CommandType)) {
+  if (
+    typeof commandType !== 'string' ||
+    !S4_SEAM12_COMMAND_TYPES.includes(commandType as S4Seam12CommandType)
+  ) {
     return seamFail([
-      seamDiagnostic('UNKNOWN_COMMAND_TYPE', 'commandType', 'S4 command is not in the closed 1.2 vocabulary'),
+      seamDiagnostic(
+        'UNKNOWN_COMMAND_TYPE',
+        'commandType',
+        'S4 command is not in the closed 1.2 vocabulary',
+      ),
     ]);
   }
   if (!record(raw)) return malformed('payload', 'S4 payload must be a closed object');
@@ -174,36 +208,57 @@ export function decodeS4Seam12Payload(
   }
   if (commandType === 'PREVIEW_S4_HLS_VOD') {
     if (!publicManifestSyntax(raw['manifestUri'])) {
-      return malformed('payload.manifestUri', 'expected a canonical credential-free HTTPS .m3u8 URI candidate');
+      return malformed(
+        'payload.manifestUri',
+        'expected a canonical credential-free HTTPS .m3u8 URI candidate',
+      );
     }
     if (raw['mediaProfileId'] !== S4_PUBLIC_MEDIA_PROFILE_ID) {
       return malformed('payload.mediaProfileId', 'unsupported public-only fixed HLS profile');
     }
-    return seamOk(Object.freeze({
-      commandType, payload: Object.freeze(raw as unknown as S4PreviewPayload),
-    }));
+    return seamOk(
+      Object.freeze({
+        commandType,
+        payload: Object.freeze(raw as unknown as S4PreviewPayload),
+      }),
+    );
   }
   if (commandType === 'EXECUTE_S4_SELECTED_HLS_VOD') {
-    return seamOk(Object.freeze({
-      commandType, payload: Object.freeze(raw as unknown as S4ExecutePayload),
-    }));
+    return seamOk(
+      Object.freeze({
+        commandType,
+        payload: Object.freeze(raw as unknown as S4ExecutePayload),
+      }),
+    );
   }
-  if (typeof raw['displayedTupleDigest'] !== 'string' ||
-      !/^[0-9a-f]{64}$/u.test(raw['displayedTupleDigest'])) {
+  if (
+    typeof raw['displayedTupleDigest'] !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(raw['displayedTupleDigest'])
+  ) {
     return malformed('payload.displayedTupleDigest', 'expected a lowercase 64-hex tuple digest');
   }
-  if (raw['phase'] === 'COMMIT' && (
-    typeof raw['confirmationChallenge'] !== 'string' ||
-    !/^[A-Za-z0-9_-]{22,128}$/u.test(raw['confirmationChallenge'])
-  )) {
-    return malformed('payload.confirmationChallenge', 'expected a bounded opaque base64url challenge');
+  if (
+    raw['phase'] === 'COMMIT' &&
+    (typeof raw['confirmationChallenge'] !== 'string' ||
+      !/^[A-Za-z0-9_-]{22,128}$/u.test(raw['confirmationChallenge']))
+  ) {
+    return malformed(
+      'payload.confirmationChallenge',
+      'expected a bounded opaque base64url challenge',
+    );
   }
   if (raw['phase'] === 'BEGIN') {
-    return seamOk(Object.freeze({
-      commandType, payload: Object.freeze(raw as unknown as S4ConfirmBeginPayload),
-    }));
+    return seamOk(
+      Object.freeze({
+        commandType,
+        payload: Object.freeze(raw as unknown as S4ConfirmBeginPayload),
+      }),
+    );
   }
-  return seamOk(Object.freeze({
-    commandType, payload: Object.freeze(raw as unknown as S4ConfirmCommitPayload),
-  }));
+  return seamOk(
+    Object.freeze({
+      commandType,
+      payload: Object.freeze(raw as unknown as S4ConfirmCommitPayload),
+    }),
+  );
 }
