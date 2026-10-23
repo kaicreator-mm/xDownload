@@ -11,7 +11,10 @@
  */
 
 import net from 'node:net';
-import { hasExactExpectedUserAce, resolveActualMachineAdministratorSid } from './sddl-local-admin-oracle.ts';
+import {
+  hasExactExpectedUserAce,
+  resolveActualMachineAdministratorSid,
+} from './sddl-local-admin-oracle.ts';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createCoreSeamServer,
@@ -142,13 +145,9 @@ describeWin32('windows pipe transport over the real OS path', () => {
     // (local Administrator, RID 500) on GitHub hosted Windows runners.
     // Reject LA for every other user identity.
     const actualMachineAdministratorSid = resolveActualMachineAdministratorSid();
-    expect(
-      hasExactExpectedUserAce(
-        sddl!,
-        session!.userSid,
-        actualMachineAdministratorSid,
-      ),
-    ).toBe(true);
+    expect(hasExactExpectedUserAce(sddl!, session!.userSid, actualMachineAdministratorSid)).toBe(
+      true,
+    );
     expect(sddl).not.toMatch(/\(A;;GA;;;(WD|AN|AU|BU)\)/);
     await client.close();
     // Disconnect forgets the session (one session per live connection).

@@ -22,7 +22,10 @@
  */
 
 import { createRequire } from 'node:module';
-import { hasExactExpectedUserAce, resolveActualMachineAdministratorSid } from './sddl-local-admin-oracle.ts';
+import {
+  hasExactExpectedUserAce,
+  resolveActualMachineAdministratorSid,
+} from './sddl-local-admin-oracle.ts';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -278,9 +281,7 @@ describeWin32('native bridge token/ACL hygiene (real OS path)', () => {
       const sd = real.buildProtectedSecurityDescriptor();
       const sddl = real.securityDescriptorToSddl(sd);
       expect(sddl).toContain('(A;;GA;;;SY)');
-      expect(
-        hasExactExpectedUserAce(sddl, self.userSid, actualMachineAdministratorSid),
-      ).toBe(true);
+      expect(hasExactExpectedUserAce(sddl, self.userSid, actualMachineAdministratorSid)).toBe(true);
       expect(sddl).not.toMatch(/\(A;;GA;;;(WD|AN|AU|BU)\)/);
       // A freshly built descriptor must produce a usable pipe instance.
       const name = uniquePipeName();

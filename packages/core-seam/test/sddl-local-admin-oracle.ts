@@ -19,15 +19,14 @@ export function resolveActualMachineAdministratorSid(): string | undefined {
     const script = [
       "$accounts = @(Get-CimInstance -ClassName Win32_UserAccount -Filter 'LocalAccount = TRUE' -ErrorAction Stop)",
       "$matches = @($accounts | Where-Object { $_.SID -match '^S-1-5-21-(?:[0-9]+-){3}500$' } | Select-Object -ExpandProperty SID)",
-      "if ($matches.Count -ne 1) { exit 12 }",
-      "[Console]::Out.Write($matches[0])",
+      'if ($matches.Count -ne 1) { exit 12 }',
+      '[Console]::Out.Write($matches[0])',
     ].join('; ');
-    const value = execFileSync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      script,
-    ], { encoding: 'utf8', windowsHide: true, timeout: 10000, maxBuffer: 16_384 }).trim();
+    const value = execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { encoding: 'utf8', windowsHide: true, timeout: 10000, maxBuffer: 16_384 },
+    ).trim();
     return MACHINE_ADMIN_SID_FORMAT.test(value) ? value : undefined;
   } catch {
     // A missing CIM privilege/provider is NOT an excuse to trust LA.
