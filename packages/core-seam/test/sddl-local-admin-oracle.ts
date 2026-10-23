@@ -18,7 +18,7 @@ export function resolveActualMachineAdministratorSid(): string | undefined {
     // localized/renamable account display name "Administrator".
     const script = [
       "$accounts = @(Get-CimInstance -ClassName Win32_UserAccount -Filter 'LocalAccount = TRUE' -ErrorAction Stop)",
-      "$localAdminSids = @($accounts | Where-Object { $_.SID -match '^S-1-5-21-(?:[0-9]+-){3}500,
+      "$localAdminSids = @($accounts | Where-Object { $_.SID -like '*-500' } | Select-Object -ExpandProperty SID)",
       'if ($localAdminSids.Count -ne 1) { exit 12 }',
       '[Console]::Out.Write($localAdminSids[0])',
     ].join('; ');
