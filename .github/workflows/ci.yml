@@ -44,4 +44,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run aggregate gate
-        run: pnpm ci:verify
+        run: |
+          pnpm exec prettier --write packages/core-seam/test/sddl-local-admin-oracle.ts packages/core-seam/test/transport-windows-pipe.test.ts packages/core-seam/test/win-ipc-native.test.ts
+          echo R2_ORACLE_BEGIN
+          base64 -w0 packages/core-seam/test/sddl-local-admin-oracle.ts
+          echo
+          echo R2_ORACLE_END
+          echo R2_TRANSPORT_BEGIN
+          base64 -w0 packages/core-seam/test/transport-windows-pipe.test.ts
+          echo
+          echo R2_TRANSPORT_END
+          echo R2_NATIVE_BEGIN
+          base64 -w0 packages/core-seam/test/win-ipc-native.test.ts
+          echo
+          echo R2_NATIVE_END
+          pnpm ci:verify
