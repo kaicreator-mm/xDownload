@@ -1,0 +1,33 @@
+name: xDownload PR143 R2 real Windows security oracle
+on:
+  push:
+    branches:
+      - integration/xd-v010-pr143-windows-r2
+jobs:
+  windows-security-r2:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Pin identity and OS session
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          node -v
+          pnpm -v
+          whoami /user
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Verify native security and all standard gates
+        run: pnpm ci:verify
+      - name: Verify four package artifacts
+        run: pnpm build
+      - name: Installed artifact smoke
+        run: pnpm smoke
