@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@xdownload/domain-contracts": "workspace:*"
+    "@xdownload/domain-contracts": "workspace:*",
+    "koffi": "^3.3.3"
   }
 }
