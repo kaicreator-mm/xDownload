@@ -137,13 +137,7 @@ describeWin32('windows pipe transport over the real OS path', () => {
     const sddl = seam.transport.listenerSecuritySddl;
     expect(sddl).toBeDefined();
     expect(sddl).toContain('(A;;GA;;;SY)');
-    // Win32's SDDL writer may canonicalize the *same* account SID to LA
-    // (local Administrator, RID 500) on GitHub hosted Windows runners.
-    // Reject LA for every other user identity.
-    const rawUserAce = `(A;;GA;;;${session?.userSid})`;
-    const localAdminAce =
-      session?.userSid?.endsWith('-500') === true && sddl?.includes('(A;;GA;;;LA)') === true;
-    expect(sddl?.includes(rawUserAce) || localAdminAce).toBe(true);
+    expect(sddl).toContain(`(A;;GA;;;${session?.userSid})`);
     expect(sddl).not.toMatch(/\(A;;GA;;;(WD|AN|AU|BU)\)/);
     await client.close();
     // Disconnect forgets the session (one session per live connection).
