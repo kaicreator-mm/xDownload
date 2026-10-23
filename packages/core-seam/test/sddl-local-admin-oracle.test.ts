@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { hasExactExpectedUserAce, resolveActualMachineAdministratorSid } from './sddl-local-admin-oracle.ts';
+import {
+  hasExactExpectedUserAce,
+  resolveActualMachineAdministratorSid,
+} from './sddl-local-admin-oracle.ts';
 
 const LOCAL_ADMIN = 'S-1-5-21-111-222-333-500';
 const DOMAIN_ADMIN = 'S-1-5-21-444-555-666-500';
@@ -44,6 +47,8 @@ describe('Windows LA SID alias must refer to the exact local machine principal',
 const describeWin32 = process.platform === 'win32' ? describe : describe.skip;
 describeWin32('real Windows OS local Administrator identity lookup', () => {
   it('retrieves one full machine Administrator SID without trusting an arbitrary RID500', () => {
-    expect(resolveActualMachineAdministratorSid()).toMatch(/^S-1-5-21-(?:[0-9]+-){3}500$/u);
+    expect(resolveActualMachineAdministratorSid()).toMatch(
+      /^S-1-5-21-(?:[0-9]+-){3}500$/u,
+    );
   });
 });
