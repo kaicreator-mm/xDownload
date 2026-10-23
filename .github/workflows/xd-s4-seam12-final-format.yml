@@ -1,0 +1,26 @@
+name: xDownload S4 seam12 codec final format diagnostic
+on:
+  push:
+    branches:
+      - diagnostic/xd-v010-s4-codec-format-r2
+jobs:
+  scoped:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - name: Format code-only and execute same full CI gate
+        run: |
+          pnpm exec prettier --write packages/core-seam/src/s4-seam12-payload.ts
+          echo S4_FINAL_SOURCE_BEGIN
+          base64 -w0 packages/core-seam/src/s4-seam12-payload.ts
+          echo
+          echo S4_FINAL_SOURCE_END
+          pnpm ci:verify
