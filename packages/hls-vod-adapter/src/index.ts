@@ -27,4 +27,5 @@ export * from './acquire-async.ts';
 export * from './pipeline-async.ts';
 export * from './manifest-http.ts';
 export * from './public-uri-candidate.ts';
+export * from './public-ipv4-text-candidate.ts';
 export * from './manifest-admission.ts';
