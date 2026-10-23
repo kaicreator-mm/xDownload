@@ -433,6 +433,12 @@ export class WindowsIpcBridge {
   }
 
   private readAnsiStringAt(address: bigint, max = 512): string {
+    // ReadProcessMemory requires the *entire* span to be readable. For SDDL
+    // text, ConvertSecurityDescriptorToStringSecurityDescriptorA supplies the
+    // actual allocation extent; blindly reading 512 bytes can cross its end.
+    if (!Number.isSafeInteger(max) || max < 1 || max > 4096) {
+      throw new Error('invalid bounded native ANSI string read extent');
+    }
     const buf = Buffer.alloc(max);
     const read = Buffer.alloc(8);
     if (
@@ -636,7 +642,10 @@ export class WindowsIpcBridge {
       return undefined;
     }
     try {
-      return this.readAnsiStringAt(out.readBigUInt64LE(0));
+      // The API supplies the SDDL buffer size in ANSI TCHARs. Do not read
+      // beyond that caller-owned LocalAlloc allocation (unlike SID rendering,
+      // which has no separately returned exact string-length parameter).
+      return this.readAnsiStringAt(out.readBigUInt64LE(0), len.readUInt32LE(0));
     } finally {
       this.localFree(out.readBigUInt64LE(0));
     }
