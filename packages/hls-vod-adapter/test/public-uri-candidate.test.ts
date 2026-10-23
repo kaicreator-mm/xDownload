@@ -3,7 +3,10 @@ import { parsePublicHlsUriCandidate } from '../src/public-uri-candidate.ts';
 
 describe('S4 public HLS URI candidate syntax (non-authoritative)', () => {
   it('accepts a canonical public HTTPS manifest candidate and frozen typed identity', () => {
-    const value = parsePublicHlsUriCandidate('https://media.example.org/hls/master.m3u8', 'manifest');
+    const value = parsePublicHlsUriCandidate(
+      'https://media.example.org/hls/master.m3u8',
+      'manifest',
+    );
     expect(value).toEqual({
       href: 'https://media.example.org/hls/master.m3u8',
       origin: 'https://media.example.org',
@@ -14,13 +17,21 @@ describe('S4 public HLS URI candidate syntax (non-authoritative)', () => {
   });
 
   it('admits only the MPEG-TS segment suffix for the explicit first profile', () => {
-    expect(parsePublicHlsUriCandidate('https://cdn.example.org/chunk-001.ts', 'mpegts-segment')).toMatchObject({
+    expect(
+      parsePublicHlsUriCandidate('https://cdn.example.org/chunk-001.ts', 'mpegts-segment'),
+    ).toMatchObject({
       hostname: 'cdn.example.org',
       kind: 'mpegts-segment',
     });
-    expect(parsePublicHlsUriCandidate('https://cdn.example.org/chunk-001.ts', 'manifest')).toBeUndefined();
-    expect(parsePublicHlsUriCandidate('https://cdn.example.org/chunk-001.m4s', 'mpegts-segment')).toBeUndefined();
-    expect(parsePublicHlsUriCandidate('https://cdn.example.org/hls/live.m3u8', 'mpegts-segment')).toBeUndefined();
+    expect(
+      parsePublicHlsUriCandidate('https://cdn.example.org/chunk-001.ts', 'manifest'),
+    ).toBeUndefined();
+    expect(
+      parsePublicHlsUriCandidate('https://cdn.example.org/chunk-001.m4s', 'mpegts-segment'),
+    ).toBeUndefined();
+    expect(
+      parsePublicHlsUriCandidate('https://cdn.example.org/hls/live.m3u8', 'mpegts-segment'),
+    ).toBeUndefined();
   });
 
   it.each([
@@ -62,14 +73,24 @@ describe('S4 public HLS URI candidate syntax (non-authoritative)', () => {
   it('rejects malformed API inputs and over-budget URL text', () => {
     expect(parsePublicHlsUriCandidate({}, 'manifest')).toBeUndefined();
     expect(parsePublicHlsUriCandidate(null, 'manifest')).toBeUndefined();
-    expect(parsePublicHlsUriCandidate('https://media.example.org/master.m3u8', 'not-a-kind' as never)).toBeUndefined();
-    expect(parsePublicHlsUriCandidate('https://media.example.org/' + 'a'.repeat(2050) + '.m3u8', 'manifest')).toBeUndefined();
+    expect(
+      parsePublicHlsUriCandidate('https://media.example.org/master.m3u8', 'not-a-kind' as never),
+    ).toBeUndefined();
+    expect(
+      parsePublicHlsUriCandidate(
+        'https://media.example.org/' + 'a'.repeat(2050) + '.m3u8',
+        'manifest',
+      ),
+    ).toBeUndefined();
   });
 
   it('does not infer authority from a parsed CDN host', () => {
     // Parsing a "public-looking" hostname proves nothing about Core-owned
     // origin policy, playlist ancestry, DNS or connected-IP pinning.
-    const candidate = parsePublicHlsUriCandidate('https://unapproved.example.net/seg.ts', 'mpegts-segment');
+    const candidate = parsePublicHlsUriCandidate(
+      'https://unapproved.example.net/seg.ts',
+      'mpegts-segment',
+    );
     expect(candidate?.hostname).toBe('unapproved.example.net');
     expect(candidate).not.toHaveProperty('authorized');
     expect(candidate).not.toHaveProperty('ip');

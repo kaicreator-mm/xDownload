@@ -39,9 +39,7 @@ function hasCanonicalPublicHost(hostname: string): boolean {
   if (labels.length < 2) return false;
   return labels.every(
     (label) =>
-      label.length >= 1 &&
-      label.length <= 63 &&
-      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label),
+      label.length >= 1 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label),
   );
 }
 
@@ -61,7 +59,7 @@ export function parsePublicHlsUriCandidate(
     typeof raw !== 'string' ||
     raw.length < 14 ||
     raw.length > MAX_PUBLIC_HLS_URL_LENGTH ||
-    kind !== 'manifest' && kind !== 'mpegts-segment'
+    (kind !== 'manifest' && kind !== 'mpegts-segment')
   ) {
     return undefined;
   }
