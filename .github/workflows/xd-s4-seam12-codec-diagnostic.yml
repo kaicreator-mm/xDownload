@@ -1,0 +1,30 @@
+name: xDownload S4 seam12 codec formatting diagnostic
+on:
+  push:
+    branches:
+      - diagnostic/xd-v010-s4-seam12-codec-format
+jobs:
+  format-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - name: Format isolated source and expose deterministic blobs
+        run: |
+          pnpm exec prettier --write packages/core-seam/src/s4-seam12-payload.ts packages/core-seam/test/s4-seam12-payload.test.ts
+          echo S4SRCBEGIN
+          base64 -w0 packages/core-seam/src/s4-seam12-payload.ts
+          echo
+          echo S4SRCEND
+          echo S4TESTBEGIN
+          base64 -w0 packages/core-seam/test/s4-seam12-payload.test.ts
+          echo
+          echo S4TESTEND
+          pnpm ci:verify
