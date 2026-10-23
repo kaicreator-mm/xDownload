@@ -1,0 +1,33 @@
+name: xDownload T023 combined exact native Windows
+on:
+  push:
+    branches:
+      - integration/xd-v010-win-ipc-pr143-pr146
+jobs:
+  windows-native-combined:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Record version and native identity
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          node --version
+          pnpm --version
+          whoami /user
+      - name: Install exact lockfile
+        run: pnpm install --frozen-lockfile
+      - name: Real Windows SID alias and native bridge tests
+        run: pnpm exec vitest run packages/core-seam/test/sddl-local-admin-oracle.test.ts packages/core-seam/test/transport-windows-pipe.test.ts packages/core-seam/test/win-ipc-native.test.ts --maxWorkers=1 --testTimeout=30000
+      - name: Build all distributable artifacts
+        run: pnpm build
+      - name: Installed package smoke
+        run: pnpm smoke
