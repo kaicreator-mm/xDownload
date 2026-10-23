@@ -250,14 +250,14 @@ export function decodeS4Seam12Payload(
   if (raw['phase'] === 'BEGIN') {
     return seamOk(
       Object.freeze({
-        commandType,
+        commandType: 'CONFIRM_S4_SELECTION',
         payload: Object.freeze(raw as unknown as S4ConfirmBeginPayload),
       }),
     );
   }
   return seamOk(
     Object.freeze({
-      commandType,
+      commandType: 'CONFIRM_S4_SELECTION',
       payload: Object.freeze(raw as unknown as S4ConfirmCommitPayload),
     }),
   );
