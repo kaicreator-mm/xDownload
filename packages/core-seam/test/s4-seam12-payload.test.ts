@@ -155,6 +155,7 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
         // Inject the future discriminant only AFTER constructing a legacy
         // helper frame so this exercises raw untrusted JSON decoding.
         commandType: 'SUBMIT_CONTRACT',
+        aggregateId: 'contract-1',
         payload:
           commandType === 'PREVIEW_S4_HLS_VOD'
             ? preview
