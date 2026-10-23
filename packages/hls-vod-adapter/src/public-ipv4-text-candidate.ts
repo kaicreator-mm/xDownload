@@ -18,24 +18,24 @@ export interface PublicIpv4TextCandidate {
 }
 
 const BLOCKED_V4_CIDRS = [
-  ['0.0.0.0', 8],        // current network / unspecified
-  ['10.0.0.0', 8],       // RFC1918
-  ['100.64.0.0', 10],    // shared carrier NAT
-  ['127.0.0.0', 8],      // loopback
-  ['169.254.0.0', 16],   // link local
-  ['172.16.0.0', 12],    // RFC1918
-  ['192.0.0.0', 24],     // IETF protocol assignments
-  ['192.0.2.0', 24],     // TEST-NET-1
+  ['0.0.0.0', 8], // current network / unspecified
+  ['10.0.0.0', 8], // RFC1918
+  ['100.64.0.0', 10], // shared carrier NAT
+  ['127.0.0.0', 8], // loopback
+  ['169.254.0.0', 16], // link local
+  ['172.16.0.0', 12], // RFC1918
+  ['192.0.0.0', 24], // IETF protocol assignments
+  ['192.0.2.0', 24], // TEST-NET-1
   ['192.31.196.0', 24], // AS112 service
   ['192.52.193.0', 24], // AMT
-  ['192.88.99.0', 24],  // deprecated 6to4 relay
-  ['192.168.0.0', 16],  // RFC1918
+  ['192.88.99.0', 24], // deprecated 6to4 relay
+  ['192.168.0.0', 16], // RFC1918
   ['192.175.48.0', 24], // AS112 service
-  ['198.18.0.0', 15],   // benchmark
+  ['198.18.0.0', 15], // benchmark
   ['198.51.100.0', 24], // TEST-NET-2
-  ['203.0.113.0', 24],  // TEST-NET-3
-  ['224.0.0.0', 4],     // multicast
-  ['240.0.0.0', 4],     // reserved and broadcast
+  ['203.0.113.0', 24], // TEST-NET-3
+  ['224.0.0.0', 4], // multicast
+  ['240.0.0.0', 4], // reserved and broadcast
 ] as const;
 
 function parseStrictIpv4(raw: unknown): number | undefined {
@@ -55,12 +55,7 @@ function parseStrictIpv4(raw: unknown): number | undefined {
     return undefined;
   }
   const numbers = octets.map(Number);
-  return (
-    ((numbers[0]! << 24) |
-      (numbers[1]! << 16) |
-      (numbers[2]! << 8) |
-      numbers[3]!) >>> 0
-  );
+  return ((numbers[0]! << 24) | (numbers[1]! << 16) | (numbers[2]! << 8) | numbers[3]!) >>> 0;
 }
 
 function isInsideCidr(ip: number, network: number, bits: number): boolean {
