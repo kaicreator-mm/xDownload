@@ -1,0 +1,33 @@
+name: xDownload PR143 R2 final real Windows security
+on:
+  push:
+    branches:
+      - integration/xd-v010-pr143-r2final-windows
+jobs:
+  windows-native-security:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Pin physical runner identity
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          whoami /user
+          node --version
+          pnpm --version
+      - name: Install exact frozen dependency closure
+        run: pnpm install --frozen-lockfile
+      - name: Windows native IPC and entire standard regression
+        run: pnpm ci:verify
+      - name: Real packaging and content audit
+        run: pnpm build
+      - name: Installed artifact smoke
+        run: pnpm smoke
