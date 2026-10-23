@@ -34,6 +34,7 @@ import type {
   SeamServerConnection,
   SeamServerTransport,
 } from './transport.ts';
+import type { VerifiedPeerSessionRegistry } from './verified-session.ts';
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -52,6 +53,14 @@ export interface LoopbackServerTransportOptions {
   /** 0 lets the OS assign a free port (concern tests use this). */
   readonly port: number;
   readonly limits?: SeamMessageLimits;
+  /**
+   * Optional shared verified-session registry (#101 S3-WIN-IPC-001). Loopback
+   * TCP has no OS-level peer verification, so the transport NEVER writes a
+   * session into it: a shared registry stays empty for loopback connections
+   * by construction, keeping them structurally ineligible for OS-verified
+   * (S3 1.2) authority.
+   */
+  readonly verifiedSessions?: VerifiedPeerSessionRegistry;
 }
 
 export class NonLoopbackTransportRefusedError extends Error {

@@ -114,6 +114,11 @@ export class FrameAccumulator {
 export interface SeamListenTarget {
   readonly host: string;
   readonly port: number;
+  /**
+   * Windows named-pipe transports identify their endpoint by pipe namespace
+   * path (`\\.\pipe\<name>`); loopback transports ignore this field.
+   */
+  readonly pipeName?: string;
 }
 
 /** Server-side view of one peer connection. */
