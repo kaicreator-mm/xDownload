@@ -277,7 +277,9 @@ describeWin32('native bridge token/ACL hygiene (real OS path)', () => {
       const sd = real.buildProtectedSecurityDescriptor();
       const sddl = real.securityDescriptorToSddl(sd);
       expect(sddl).toContain('(A;;GA;;;SY)');
-      expect(sddl).toContain(expectedUser);
+      const localAdminAce =
+        self.userSid.endsWith('-500') && sddl?.includes('(A;;GA;;;LA)') === true;
+      expect(sddl?.includes(expectedUser) || localAdminAce).toBe(true);
       expect(sddl).not.toMatch(/\(A;;GA;;;(WD|AN|AU|BU)\)/);
       // A freshly built descriptor must produce a usable pipe instance.
       const name = uniquePipeName();
