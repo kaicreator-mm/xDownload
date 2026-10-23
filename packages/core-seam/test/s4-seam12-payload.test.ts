@@ -42,6 +42,7 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
     expect(result.value.commandType).toBe('PREVIEW_S4_HLS_VOD');
     expect(result.value.payload).toEqual(preview);
     expect(Object.isFrozen(result.value.payload)).toBe(true);
+    expect(Object.isFrozen(preview)).toBe(false); // decoder must not mutate caller input
     expect(result.value).not.toHaveProperty('accepted');
     expect(result.value).not.toHaveProperty('transportAuthorized');
   });
@@ -97,6 +98,9 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
       { ...preview, manifestUri: 'https://user:secret@cdn.example.org/video/main.m3u8' },
     ],
     ['HTTP manifest', { ...preview, manifestUri: 'http://cdn.example.org/video/main.m3u8' }],
+    ['loopback literal', { ...preview, manifestUri: 'https://127.0.0.1/video/main.m3u8' }],
+    ['private network literal', { ...preview, manifestUri: 'https://10.0.0.5/video/main.m3u8' }],
+    ['internal zone', { ...preview, manifestUri: 'https://x.internal/video/main.m3u8' }],
     [
       'query credential',
       { ...preview, manifestUri: 'https://cdn.example.org/video/main.m3u8?token=x' },
