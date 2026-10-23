@@ -8,6 +8,7 @@
  * L2_S4_SEAM12_CLOSED_COMMAND_CONTRACT_v0.1.0.md. Activation is a separate,
  * independently security-reviewed Core handler and transport change.
  */
+import { isIP } from 'node:net';
 import { parseSemVer } from '@xdownload/domain-contracts';
 import { seamDiagnostic, seamFail, seamOk, type SeamResult } from './diagnostics.ts';
 
@@ -138,7 +139,11 @@ function publicManifestSyntax(value: unknown): value is string {
       url.pathname.endsWith('.m3u8') &&
       /^[a-z0-9.-]+$/u.test(url.hostname) &&
       url.hostname.includes('.') &&
-      !url.hostname.endsWith('.')
+      !url.hostname.endsWith('.') &&
+      isIP(url.hostname) === 0 &&
+      !['.localhost', '.local', '.internal', '.onion', '.test', '.invalid'].some(
+        (suffix) => url.hostname.endsWith(suffix),
+      )
     );
   } catch {
     return false;
@@ -147,7 +152,7 @@ function publicManifestSyntax(value: unknown): value is string {
 
 /** Explicitly refuse prereleases, major != 1, and minors < 2. */
 function compatibleS4Minor(version: unknown): boolean {
-  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/u.test(version)) return false;
+  if (typeof version !== 'string' || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version)) return false;
   const parsed = parseSemVer(version);
   return parsed !== undefined && parsed.major === 1 && parsed.minor >= 2;
 }
@@ -219,7 +224,7 @@ export function decodeS4Seam12Payload(
     return seamOk(
       Object.freeze({
         commandType,
-        payload: Object.freeze(raw as unknown as S4PreviewPayload),
+        payload: Object.freeze({ ...raw } as unknown as S4PreviewPayload),
       }),
     );
   }
@@ -227,7 +232,7 @@ export function decodeS4Seam12Payload(
     return seamOk(
       Object.freeze({
         commandType,
-        payload: Object.freeze(raw as unknown as S4ExecutePayload),
+        payload: Object.freeze({ ...raw } as unknown as S4ExecutePayload),
       }),
     );
   }
@@ -251,14 +256,14 @@ export function decodeS4Seam12Payload(
     return seamOk(
       Object.freeze({
         commandType: 'CONFIRM_S4_SELECTION',
-        payload: Object.freeze(raw as unknown as S4ConfirmBeginPayload),
+        payload: Object.freeze({ ...raw } as unknown as S4ConfirmBeginPayload),
       }),
     );
   }
   return seamOk(
     Object.freeze({
       commandType: 'CONFIRM_S4_SELECTION',
-      payload: Object.freeze(raw as unknown as S4ConfirmCommitPayload),
+      payload: Object.freeze({ ...raw } as unknown as S4ConfirmCommitPayload),
     }),
   );
 }
