@@ -141,8 +141,8 @@ function publicManifestSyntax(value: unknown): value is string {
       url.hostname.includes('.') &&
       !url.hostname.endsWith('.') &&
       isIP(url.hostname) === 0 &&
-      !['.localhost', '.local', '.internal', '.onion', '.test', '.invalid'].some(
-        (suffix) => url.hostname.endsWith(suffix),
+      !['.localhost', '.local', '.internal', '.onion', '.test', '.invalid'].some((suffix) =>
+        url.hostname.endsWith(suffix),
       )
     );
   } catch {
@@ -152,7 +152,8 @@ function publicManifestSyntax(value: unknown): value is string {
 
 /** Explicitly refuse prereleases, major != 1, and minors < 2. */
 function compatibleS4Minor(version: unknown): boolean {
-  if (typeof version !== 'string' || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version)) return false;
+  if (typeof version !== 'string' || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version))
+    return false;
   const parsed = parseSemVer(version);
   return parsed !== undefined && parsed.major === 1 && parsed.minor >= 2;
 }
