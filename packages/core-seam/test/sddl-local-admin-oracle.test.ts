@@ -47,8 +47,6 @@ describe('Windows LA SID alias must refer to the exact local machine principal',
 const describeWin32 = process.platform === 'win32' ? describe : describe.skip;
 describeWin32('real Windows OS local Administrator identity lookup', () => {
   it('retrieves one full machine Administrator SID without trusting an arbitrary RID500', () => {
-    expect(resolveActualMachineAdministratorSid()).toMatch(
-      /^S-1-5-21-(?:[0-9]+-){3}500$/u,
-    );
+    expect(resolveActualMachineAdministratorSid()).toMatch(/^S-1-5-21-(?:[0-9]+-){3}500$/u);
   });
 });
