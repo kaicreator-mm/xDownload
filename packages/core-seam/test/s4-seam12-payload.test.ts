@@ -147,7 +147,10 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
     expect(S4_SEAM12_COMMAND_TYPES).toHaveLength(3);
     for (const commandType of S4_SEAM12_COMMAND_TYPES) {
       const envelope = rawCommand({
-        commandType,
+        // The currently shipped command type is deliberately closed at 1.1.
+        // Inject the future discriminant only AFTER constructing a legacy
+        // helper frame so this exercises raw untrusted JSON decoding.
+        commandType: 'SUBMIT_CONTRACT',
         payload:
           commandType === 'PREVIEW_S4_HLS_VOD'
             ? preview
@@ -155,6 +158,7 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
               ? begin
               : execute,
       });
+      envelope.commandType = commandType;
       envelope.schemaIdentity = { schema: 'xdownload.core-seam', version: '1.2.0' };
       const result = decodeSeamEnvelope(envelope);
       expect(result.ok).toBe(false);
