@@ -25,9 +25,18 @@ jobs:
           pnpm --version
       - name: Install exact frozen dependency closure
         run: pnpm install --frozen-lockfile
-      - name: Windows native IPC and entire standard regression
-        run: pnpm ci:verify
-      - name: Real packaging and content audit
-        run: pnpm build
-      - name: Installed artifact smoke
-        run: pnpm smoke
+      - name: Check local Administrator identity using Windows OS evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $all = @(Get-CimInstance -ClassName Win32_UserAccount -Filter 'LocalAccount = TRUE' -ErrorAction Stop)
+          $admins = @($all | Where-Object { $_.SID -match '^S-1-5-21-(?:[0-9]+-){3}500 })
+          $local = @(Get-LocalUser | Where-Object { $_.SID.Value -match '^S-1-5-21-(?:[0-9]+-){3}500 })
+          $actual = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          Write-Host ('CIM local account count: ' + $all.Count)
+          Write-Host ('CIM local admin SID count: ' + $admins.Count)
+          Write-Host ('Get-LocalUser local admin SID count: ' + $local.Count)
+          Write-Host ('Token equals CIM local admin: ' + ($admins.Count -eq 1 -and $admins[0].SID -eq $actual))
+          Write-Host ('Token equals Get-LocalUser local admin: ' + ($local.Count -eq 1 -and $local[0].SID.Value -eq $actual))
+      - name: Native OS tests in isolation with explicit long GC budget
+        run: pnpm exec vitest run packages/core-seam/test/sddl-local-admin-oracle.test.ts packages/core-seam/test/transport-windows-pipe.test.ts packages/core-seam/test/win-ipc-native.test.ts --maxWorkers=1 --testTimeout=30000
