@@ -202,10 +202,9 @@ interface ReleaseCounters {
 
 /**
  * Count the exactly-once release signals (native koffi free + event close)
- * around one accept drill, and swap the wait for an abnormal WAIT_FAILED
- * completion delivered via microtask.
+ * around one accept drill.
  */
-function installAbnormalWaitAndCounters(real: WindowsIpcBridge): ReleaseCounters {
+function installReleaseCounters(real: WindowsIpcBridge): ReleaseCounters {
   const raw = rawFields(real);
   const counters: ReleaseCounters = {
     frees: 0,
@@ -217,7 +216,6 @@ function installAbnormalWaitAndCounters(real: WindowsIpcBridge): ReleaseCounters
   const originalFree = koffi.free;
   const originalCreateEvent = raw.createEventW as (...args: unknown[]) => bigint;
   const originalCloseHandle = raw.closeHandle as (...args: unknown[]) => number;
-  const originalWait = raw.waitForSingleObject;
   koffi.free = (ptr: unknown) => {
     counters.frees += 1;
     originalFree(ptr);
@@ -233,16 +231,31 @@ function installAbnormalWaitAndCounters(real: WindowsIpcBridge): ReleaseCounters
     }
     return originalCloseHandle(...args);
   };
+  counters.restore = () => {
+    koffi.free = originalFree;
+    raw.createEventW = originalCreateEvent;
+    raw.closeHandle = originalCloseHandle;
+  };
+  return counters;
+}
+
+/**
+ * Release counters plus a wait swapped for an abnormal WAIT_FAILED
+ * completion delivered via microtask (installed BEFORE the accept arms it).
+ */
+function installAbnormalWaitAndCounters(real: WindowsIpcBridge): ReleaseCounters {
+  const counters = installReleaseCounters(real);
+  const raw = rawFields(real);
+  const originalWait = raw.waitForSingleObject;
   raw.waitForSingleObject = {
     async: (_handle: bigint, _ms: number, cb: (err: unknown, res: unknown) => void) => {
       queueMicrotask(() => cb(new Error('injected WAIT_FAILED'), 4294967295));
     },
   };
+  const previousRestore = counters.restore;
   counters.restore = () => {
-    koffi.free = originalFree;
-    raw.createEventW = originalCreateEvent;
-    raw.closeHandle = originalCloseHandle;
     raw.waitForSingleObject = originalWait;
+    previousRestore();
   };
   return counters;
 }
@@ -272,6 +285,52 @@ describeWin32('OVERLAPPED lifetime fault injection (real OS path)', () => {
     } finally {
       real.closePipeHandle(server);
     }
+  });
+
+  it('frees pre-kernel owned allocations exactly once when koffi alloc/encode throws', async () => {
+    const real = loadReal();
+    const sd = real.buildProtectedSecurityDescriptor();
+    const name = uniquePipeName();
+    const server = real.createPipeInstance(name, sd, false);
+    const counters = installReleaseCounters(real);
+    const raw = rawFields(real);
+    const koffi = raw.koffi as {
+      alloc: (...args: unknown[]) => unknown;
+      encode: (...args: unknown[]) => void;
+    };
+    const originalAlloc = koffi.alloc;
+    const originalEncode = koffi.encode;
+    try {
+      // alloc throws before anything is owned: only the event is closed once.
+      koffi.alloc = () => {
+        throw new Error('injected koffi.alloc failure');
+      };
+      expect(() => real.beginPipeAccept(server)).toThrow(/injected koffi.alloc failure/);
+      expect(counters.frees).toBe(0);
+      expect(counters.eventCloses).toBe(1);
+      counters.frees = 0;
+      counters.eventCloses = 0;
+      // encode throws after a successful alloc: free + event close, exactly
+      // once each — still before any request reached the kernel.
+      koffi.alloc = originalAlloc;
+      koffi.encode = () => {
+        throw new Error('injected koffi.encode failure');
+      };
+      expect(() => real.beginPipeAccept(server)).toThrow(/injected koffi.encode failure/);
+      expect(counters.frees).toBe(1);
+      expect(counters.eventCloses).toBe(1);
+    } finally {
+      koffi.alloc = originalAlloc;
+      koffi.encode = originalEncode;
+      counters.restore();
+    }
+    // No kernel I/O was ever queued in either drill: the instance accepts.
+    const client = real.openNamedPipeClient(name);
+    const accept = real.beginPipeAccept(server);
+    await expect(accept.result).resolves.toBe('CONNECTED');
+    accept.dispose();
+    real.closePipeHandle(client);
+    real.closePipeHandle(server);
   });
 
   it('rejects start() on a NULL-event first accept, closes the first instance exactly once and releases the name', async () => {
