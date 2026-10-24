@@ -1490,6 +1490,17 @@ function applyCommand(
       return applyExecuteS2Acquisition(state, gateway, envelope, s2Executor);
     case 'EXECUTE_S1_DIRECT_ACQUISITION':
       return applyExecuteS1DirectAcquisition(state, envelope, s1Beginner, s1Intents);
+    default:
+      // This internal authority application also runs during journal reopen.
+      // No S4 command may be silently promoted through old journal replay,
+      // even if a crafted journal bypasses the live verified-peer gate.
+      return seamFail([
+        seamDiagnostic(
+          'TRANSPORT_UNAUTHORIZED',
+          'commandType',
+          'S4 1.2 execution has no installed verified Core handler; fail closed',
+        ),
+      ]);
   }
 }
 
