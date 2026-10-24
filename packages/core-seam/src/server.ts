@@ -63,6 +63,8 @@ import {
   type SeamResponse,
 } from './envelope.ts';
 import type { CommandRequestId } from './ids.ts';
+import { S4_SEAM12_COMMAND_TYPES } from './s4-seam12-payload.ts';
+import { assertPeerTransportAuthorization } from './verified-session.ts';
 import { authorizePeer, type ExpectedPeerScope, type PeerIdentity } from './peer.ts';
 import { projectAggregate, type SeamProjectionView } from './projection.ts';
 import {
@@ -422,6 +424,34 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     }
     if (envelope.kind === 'query') {
       return handleQuery(envelope);
+    }
+    if (
+      S4_SEAM12_COMMAND_TYPES.includes(
+        envelope.commandType as (typeof S4_SEAM12_COMMAND_TYPES)[number],
+      )
+    ) {
+      // A syntactically valid S4 1.2 command is NOT installed authority.
+      // This transport-neutral entry does not carry a trusted *live* Windows
+      // named-pipe connection ID. Refuse before prior requestId lookup,
+      // revision/state inspection, journal replay or network. Future #148
+      // integration must bind the real connection to the OS-verified session
+      // port (not trust the envelope peer) and only then handle S4.
+      const verified = assertPeerTransportAuthorization({
+        commandType: envelope.commandType,
+        verifiedPeer: undefined,
+      });
+      return rejected(
+        envelope.requestId,
+        verified.ok
+          ? [
+              seamDiagnostic(
+                'TRANSPORT_UNAUTHORIZED',
+                'connection',
+                'S4 requires a live Core-verified named-pipe session; no authenticated connection was supplied',
+              ),
+            ]
+          : verified.diagnostics,
+      );
     }
     return handleCommand(envelope);
   }
