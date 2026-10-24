@@ -70,7 +70,7 @@ function simulate(input: FakeResponse = {}) {
             ...(input.contentRange === undefined ? {} : { 'content-range': input.contentRange }),
           },
         });
-        (onResponse as (response: typeof response) => void)(response);
+        (onResponse as (message: unknown) => void)(response);
         response.emit('data', body);
         response.emit('end');
       },
