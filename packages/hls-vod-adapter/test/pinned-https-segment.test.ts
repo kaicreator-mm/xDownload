@@ -170,9 +170,12 @@ describe('S4 production pinned HTTPS MPEG-TS segments (Core-private)', () => {
     vi.useFakeTimers();
     try {
       let resolveDns: ((value: string[]) => void) | undefined;
-      mock.resolve4.mockImplementationOnce(() => new Promise<string[]>((resolve) => {
-        resolveDns = resolve;
-      }));
+      mock.resolve4.mockImplementationOnce(
+        () =>
+          new Promise<string[]>((resolve) => {
+            resolveDns = resolve;
+          }),
+      );
       const before = port().fetch(entry());
       await vi.advanceTimersByTimeAsync(2001);
       expect(await before).toEqual({ ok: false, failure: 'UNREACHABLE' });
