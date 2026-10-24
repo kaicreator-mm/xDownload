@@ -24,11 +24,16 @@ function rejected(failure: 'FAILED' | 'UNREACHABLE' | 'TRUNCATED'): SegmentFetch
 
 function checkedOrigins(config: HttpSegmentSourceAuthority): ReadonlySet<string> {
   if (
-    !Number.isSafeInteger(config.maxBytes) || config.maxBytes < 1 ||
-    config.maxBytes > MAX_SEGMENT_BYTES || !Number.isSafeInteger(config.timeoutMs) ||
-    config.timeoutMs < 1 || config.timeoutMs > MAX_TIMEOUT_MS ||
-    !Array.isArray(config.allowedOrigins) || config.allowedOrigins.length === 0 ||
-    config.allowedOrigins.length > 32 || config.allowLoopbackHttpFixture === true
+    !Number.isSafeInteger(config.maxBytes) ||
+    config.maxBytes < 1 ||
+    config.maxBytes > MAX_SEGMENT_BYTES ||
+    !Number.isSafeInteger(config.timeoutMs) ||
+    config.timeoutMs < 1 ||
+    config.timeoutMs > MAX_TIMEOUT_MS ||
+    !Array.isArray(config.allowedOrigins) ||
+    config.allowedOrigins.length === 0 ||
+    config.allowedOrigins.length > 32 ||
+    config.allowLoopbackHttpFixture === true
   ) {
     throw new Error('invalid pinned S4 segment bounds');
   }
@@ -61,14 +66,18 @@ async function pinDns(
       clearTimeout(timer);
       resolve(value);
     }
-    void Promise.resolve().then(() => resolve4(hostname)).then(
-      (value) => finish(value),
-      () => finish(undefined),
-    );
+    void Promise.resolve()
+      .then(() => resolve4(hostname))
+      .then(
+        (value) => finish(value),
+        () => finish(undefined),
+      );
   });
   const remainingMs = Math.floor(deadline - performance.now());
   if (
-    remainingMs <= 0 || !Array.isArray(answers) || answers.length === 0 ||
+    remainingMs <= 0 ||
+    !Array.isArray(answers) ||
+    answers.length === 0 ||
     answers.length > MAX_DNS_A ||
     answers.some((ip) => parsePublicIpv4TextCandidate(ip) === undefined)
   ) {
@@ -106,9 +115,10 @@ function fetchPinned(
           servername: hostname,
           rejectUnauthorized: true,
           maxHeaderSize: 8192,
-          headers: range === undefined
-            ? {}
-            : { Range: 'bytes=' + range.offset + '-' + (range.offset + range.length - 1) },
+          headers:
+            range === undefined
+              ? {}
+              : { Range: 'bytes=' + range.offset + '-' + (range.offset + range.length - 1) },
           lookup: (observedHost, options, callback) => {
             if (observedHost !== hostname || options.all === true) {
               callback(new Error('S4 pinned hostname changed'), '', 4);
@@ -119,11 +129,7 @@ function fetchPinned(
         },
         (response: IncomingMessage) => {
           const peer = response.socket as TLSSocket;
-          if (
-            peer.encrypted !== true ||
-            peer.authorized !== true ||
-            peer.remoteAddress !== ip
-          ) {
+          if (peer.encrypted !== true || peer.authorized !== true || peer.remoteAddress !== ip) {
             finish(rejected('UNREACHABLE'));
             return;
           }
@@ -133,9 +139,8 @@ function fetchPinned(
           }
           if (range !== undefined) {
             const value = response.headers['content-range'];
-            const match = typeof value === 'string'
-              ? /^bytes (\d+)-(\d+)\/(\d+|\*)$/u.exec(value)
-              : null;
+            const match =
+              typeof value === 'string' ? /^bytes (\d+)-(\d+)\/(\d+|\*)$/u.exec(value) : null;
             if (
               match === null ||
               Number(match[1]) !== range.offset ||
@@ -148,7 +153,8 @@ function fetchPinned(
           const declared = response.headers['content-length'];
           if (
             declared !== undefined &&
-            (typeof declared !== 'string' || !/^\d+$/u.test(declared) ||
+            (typeof declared !== 'string' ||
+              !/^\d+$/u.test(declared) ||
               !Number.isSafeInteger(Number(declared)) ||
               Number(declared) > maxBytes ||
               (range !== undefined && Number(declared) !== range.length))
@@ -191,11 +197,7 @@ function fetchPinned(
       req.on('socket', (socket) => {
         const peer = socket as TLSSocket;
         peer.once('secureConnect', () => {
-          if (
-            peer.encrypted !== true ||
-            peer.authorized !== true ||
-            peer.remoteAddress !== ip
-          ) {
+          if (peer.encrypted !== true || peer.authorized !== true || peer.remoteAddress !== ip) {
             finish(rejected('UNREACHABLE'));
           }
         });
@@ -231,8 +233,10 @@ export function createPinnedPublicHlsSegmentFetcher(
       const range = entry.byterange;
       if (
         range !== undefined &&
-        (!Number.isSafeInteger(range.offset) || range.offset < 0 ||
-          !Number.isSafeInteger(range.length) || range.length < 1 ||
+        (!Number.isSafeInteger(range.offset) ||
+          range.offset < 0 ||
+          !Number.isSafeInteger(range.length) ||
+          range.length < 1 ||
           range.length > maxBytes ||
           !Number.isSafeInteger(range.offset + range.length - 1))
       ) {
@@ -240,7 +244,14 @@ export function createPinnedPublicHlsSegmentFetcher(
       }
       const pinned = await pinDns(source.hostname, performance.now() + timeoutMs);
       if (pinned === undefined) return rejected('UNREACHABLE');
-      return fetchPinned(source.href, source.hostname, pinned.ip, maxBytes, pinned.remainingMs, range);
+      return fetchPinned(
+        source.href,
+        source.hostname,
+        pinned.ip,
+        maxBytes,
+        pinned.remainingMs,
+        range,
+      );
     },
   });
 }
