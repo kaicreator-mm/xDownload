@@ -12,6 +12,7 @@
  * observed TLS remoteAddress equality. Redirects are NOT followed.
  */
 import { resolve4 } from 'node:dns/promises';
+import { performance } from 'node:perf_hooks';
 import { request as httpsRequest } from 'node:https';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import type { TLSSocket } from 'node:tls';
@@ -189,26 +190,61 @@ function readPinnedManifest(
 }
 
 /**
+ * DNS is part of the same monotonic network deadline. Node's resolve4()
+ * has no per-call abort API, so fence late DNS completions: the deadline
+ * resolves this promise and any subsequent DNS result has no HTTPS effect.
+ */
+async function resolve4WithinDeadline(
+  hostname: string,
+  timeoutMs: number,
+): Promise<{ readonly answers: readonly string[]; readonly remainingMs: number } | undefined> {
+  const deadline = performance.now() + timeoutMs;
+  const answers = await new Promise<readonly string[] | undefined>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => finish(undefined), timeoutMs);
+    function finish(value: readonly string[] | undefined): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    }
+    // Catch both synchronous resolver failure and asynchronous rejection.
+    void Promise.resolve()
+      .then(() => resolve4(hostname))
+      .then((value) => finish(value), () => finish(undefined));
+  });
+  const remainingMs = Math.floor(deadline - performance.now());
+  if (answers === undefined || remainingMs <= 0) return undefined;
+  return { answers, remainingMs };
+}
+
+/**
  * Instantiate only from a trusted Core/host installation profile.
  * No fixture HTTP escape hatch and no guest-provided DNS or TLS transport.
  */
 export function createPinnedPublicHlsManifestPort(
   authority: HlsManifestAuthority,
 ): AuthorizedHlsManifestPort {
-  const allowed = exactOrigins(authority);
+  // Snapshot all primitive limits BEFORE checking them. TypeScript readonly
+  // does not prevent another JS caller from mutating its original object.
+  const maxBytes = authority.maxBytes;
+  const timeoutMs = authority.timeoutMs;
+  const allowed = exactOrigins({
+    allowedOrigins: authority.allowedOrigins,
+    maxBytes,
+    timeoutMs,
+    allowLoopbackHttpFixture: authority.allowLoopbackHttpFixture,
+  });
   return Object.freeze({
-    maxResponseBytes: authority.maxBytes,
+    maxResponseBytes: maxBytes,
     async fetchManifest(uri: string): Promise<HlsManifestFetchResult> {
       const source = parsePublicHlsUriCandidate(uri, 'manifest');
       if (source === undefined || !allowed.has(source.origin)) {
         return refuse('UNSUPPORTED');
       }
-      let answers: readonly string[];
-      try {
-        answers = await resolve4(source.hostname);
-      } catch {
-        return refuse('UNREACHABLE');
-      }
+      const resolution = await resolve4WithinDeadline(source.hostname, timeoutMs);
+      if (resolution === undefined) return refuse('UNREACHABLE');
+      const { answers, remainingMs } = resolution;
       // Reject on ANY unsafe A answer instead of selecting a safe-looking
       // address from a mixed private/public response. The actual connection
       // can use ONLY the selected, independently verified IPv4 address.
@@ -220,7 +256,7 @@ export function createPinnedPublicHlsManifestPort(
       ) {
         return refuse('UNREACHABLE');
       }
-      return readPinnedManifest(source, answers[0]!, authority.maxBytes, authority.timeoutMs);
+      return readPinnedManifest(source, answers[0]!, maxBytes, remainingMs);
     },
   });
 }
