@@ -170,6 +170,7 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
       if (!result.ok) expect(result.diagnostics[0]?.code).toBe('UNKNOWN_COMMAND_TYPE');
     }
   });
+
   it('rejects accessor-backed values before any second read can bypass lexical validation', () => {
     let getterCalls = 0;
     const source = { ...preview };
@@ -178,9 +179,7 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
       configurable: true,
       get() {
         getterCalls += 1;
-        return getterCalls === 1
-          ? 'https://cdn.example.org/main.m3u8'
-          : 'file:///etc/passwd';
+        return getterCalls === 1 ? 'https://cdn.example.org/main.m3u8' : 'file:///etc/passwd';
       },
     });
     const result = decode('PREVIEW_S4_HLS_VOD', source);
@@ -224,5 +223,4 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
       if (!result.ok) expect(result.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
     }
   });
-
 });
