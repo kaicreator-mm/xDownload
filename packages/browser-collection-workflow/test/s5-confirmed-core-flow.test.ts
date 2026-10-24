@@ -8,15 +8,12 @@ import {
   openRuntime,
   removeTempDir,
 } from '../../core-runtime/test/helpers.ts';
-import { runConfirmedCurrentPageGroup, validateConfirmedPageGroup } from '../src/s5-confirmed-group.ts';
-import type { MemberDelivery } from '../src/collection-flow.ts';
 import {
-  budgetsOpen,
-  currentPageContract,
-  payload,
-  sha256,
-  snapshotFor,
-} from './fixtures.ts';
+  runConfirmedCurrentPageGroup,
+  validateConfirmedPageGroup,
+} from '../src/s5-confirmed-group.ts';
+import type { MemberDelivery } from '../src/collection-flow.ts';
+import { budgetsOpen, currentPageContract, payload, sha256, snapshotFor } from './fixtures.ts';
 
 const members = ['member-page-001', 'member-page-002'] as const;
 const fixtures: ControlledHttpFixture[] = [];
