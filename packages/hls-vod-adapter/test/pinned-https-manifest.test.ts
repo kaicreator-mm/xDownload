@@ -42,44 +42,42 @@ function transport() {
 function simulateTlsResponse(overrides: ResponseStub = {}) {
   let observed: TestRequestOptions | undefined;
   const destroys = vi.fn();
-  network.request.mockImplementation(
-    (_url: unknown, rawOptions: unknown, onResponse: unknown) => {
-      const options = rawOptions as TestRequestOptions;
-      observed = options;
-      const req = new EventEmitter() as EventEmitter & {
-        destroy: () => void;
-        end: () => void;
-      };
-      req.destroy = destroys;
-      req.end = () => {
-        let pinned: string | undefined;
-        options.lookup('media.example.org', { all: false }, (error, address, family) => {
-          if (!error && family === 4) pinned = address;
-        });
-        const socket = Object.assign(new EventEmitter(), {
-          remoteAddress: overrides.remoteAddress ?? pinned,
-          encrypted: true,
-          authorized: overrides.authorized ?? true,
-        });
-        req.emit('socket', socket);
-        socket.emit('secureConnect');
-        if (destroys.mock.calls.length > 0) return;
-        const bytes = Buffer.from(overrides.body ?? '#EXTM3U\n#EXT-X-ENDLIST\n');
-        const response = Object.assign(new EventEmitter(), {
-          socket,
-          statusCode: overrides.statusCode ?? 200,
-          headers:
-            overrides.declaredLength === undefined
-              ? {}
-              : { 'content-length': overrides.declaredLength },
-        });
-        (onResponse as (result: typeof response) => void)(response);
-        response.emit('data', bytes);
-        response.emit('end');
-      };
-      return req;
-    },
-  );
+  network.request.mockImplementation((_url: unknown, rawOptions: unknown, onResponse: unknown) => {
+    const options = rawOptions as TestRequestOptions;
+    observed = options;
+    const req = new EventEmitter() as EventEmitter & {
+      destroy: () => void;
+      end: () => void;
+    };
+    req.destroy = destroys;
+    req.end = () => {
+      let pinned: string | undefined;
+      options.lookup('media.example.org', { all: false }, (error, address, family) => {
+        if (!error && family === 4) pinned = address;
+      });
+      const socket = Object.assign(new EventEmitter(), {
+        remoteAddress: overrides.remoteAddress ?? pinned,
+        encrypted: true,
+        authorized: overrides.authorized ?? true,
+      });
+      req.emit('socket', socket);
+      socket.emit('secureConnect');
+      if (destroys.mock.calls.length > 0) return;
+      const bytes = Buffer.from(overrides.body ?? '#EXTM3U\n#EXT-X-ENDLIST\n');
+      const response = Object.assign(new EventEmitter(), {
+        socket,
+        statusCode: overrides.statusCode ?? 200,
+        headers:
+          overrides.declaredLength === undefined
+            ? {}
+            : { 'content-length': overrides.declaredLength },
+      });
+      (onResponse as (result: typeof response) => void)(response);
+      response.emit('data', bytes);
+      response.emit('end');
+    };
+    return req;
+  });
   return {
     options: () => observed,
     destroys,
