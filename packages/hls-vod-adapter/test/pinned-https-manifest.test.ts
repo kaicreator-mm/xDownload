@@ -13,7 +13,6 @@ const MANIFEST = ORIGIN + '/vod/master.m3u8';
 interface TestRequestOptions {
   readonly agent: boolean;
   readonly family: number;
-  readonly autoSelectFamily: boolean;
   readonly servername: string;
   readonly rejectUnauthorized: boolean;
   readonly lookup: (
@@ -103,7 +102,6 @@ describe('S4 pinned public HTTPS manifest transport (isolated, not Core-enabled)
     expect(spy.options()).toMatchObject({
       agent: false,
       family: 4,
-      autoSelectFamily: false,
       servername: 'media.example.org',
       rejectUnauthorized: true,
     });
