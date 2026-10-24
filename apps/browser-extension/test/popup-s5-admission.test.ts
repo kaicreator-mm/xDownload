@@ -85,7 +85,7 @@ function startPopup(options: { total?: number; changed?: boolean; staleMembers?:
       },
       runtime: {
         sendMessage: async (payload: unknown) => {
-          sent.push(payload);
+          sent.push(structuredClone(payload));
           return { ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' };
         },
       },
