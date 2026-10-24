@@ -341,7 +341,8 @@ export async function executePinnedPublicS3Acquisition(
     !Array.isArray(transfer.mediaPolicy.signatures) ||
     transfer.mediaPolicy.signatures.length === 0 ||
     transfer.mediaPolicy.signatures.length > 16 ||
-    !/^(video|audio)\\/ / u.test(transfer.expectedContentTypePrefix ?? '')
+    (transfer.expectedContentTypePrefix?.startsWith('video/') !== true &&
+      transfer.expectedContentTypePrefix?.startsWith('audio/') !== true)
   ) {
     throw new CoreRuntimeFlowError('S3_SELECTED_MEDIA_INTENT_NOT_BOUND');
   }
