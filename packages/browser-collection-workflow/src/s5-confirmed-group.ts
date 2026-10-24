@@ -35,6 +35,7 @@ export function validateConfirmedPageGroup(
   const conformance = assertSliceCollectionConformance('S5', contract);
   if (!conformance.ok) return fail(conformance.diagnostics);
   if (
+    contract.status !== 'CONFIRMED' ||
     contract.intentType !== 'COLLECTION' ||
     contract.requestedScope.kind !== 'current_page' ||
     snapshot.requestedScope.kind !== 'current_page' ||
@@ -136,5 +137,35 @@ export async function runConfirmedCurrentPageGroup(
       },
     };
   }
-  return runCollectionFlow({ ...input, slice: 'S5' });
+  // The installed Core has already persisted the confirmed BATCH selection
+  // as part of the immutable snapshot above. The generic T016 runner expects
+  // a confirmation outcome *source* for ASSISTED scope, even for a confirmed
+  // snapshot; with no source it currently refuses before real acquisition.
+  // Bridge ONLY the already validated member set. Never accept a new caller
+  // confirmationSource or synthesize USER_CONFIRMATION evidence from a
+  // previously persisted selection. INJECTED_SOURCE marks this internal
+  // replay as distinct from a freshly observed human decision.
+  const selectedIds = new Set(admitted.value.selectedMemberIds);
+  return runCollectionFlow({
+    ...input,
+    slice: 'S5',
+    confirmationSource: {
+      resolve: ({ confirmationType, memberRefs }) => {
+        if (
+          confirmationType !== 'CONFIRM_SELECTION' ||
+          memberRefs.length === 0 ||
+          memberRefs.length !== selectedIds.size ||
+          memberRefs.some((id) => !selectedIds.has(id)) ||
+          new Set(memberRefs).size !== selectedIds.size
+        ) {
+          return { kind: 'NOT_AVAILABLE', reason: 'S5_CONFIRMED_MEMBER_SET_MISMATCH' };
+        }
+        return {
+          kind: 'RESOLVED',
+          origin: 'INJECTED_SOURCE',
+          outcomes: memberRefs.map(() => 'CONFIRMED' as const),
+        };
+      },
+    },
+  });
 }
