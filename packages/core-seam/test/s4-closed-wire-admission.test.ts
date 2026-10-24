@@ -69,15 +69,12 @@ describe('#148 closed S4 1.2 wire admission — NO installed S4 authority', () =
         const old = decodeSeamEnvelope(frame(name, payload, version));
         expect(old.ok).toBe(false);
         if (!old.ok)
-          expect(old.diagnostics.some((d) => d.code === 'UNSUPPORTED_ENVELOPE_VERSION')).toBe(
-            true,
-          );
+          expect(old.diagnostics.some((d) => d.code === 'UNSUPPORTED_ENVELOPE_VERSION')).toBe(true);
       }
     }
     const unapproved = decodeSeamEnvelope(frame('EXECUTE_S3_SELECTED_MEDIA', {}));
     expect(unapproved.ok).toBe(false);
-    if (!unapproved.ok)
-      expect(unapproved.diagnostics[0]?.code).toBe('UNKNOWN_COMMAND_TYPE');
+    if (!unapproved.ok) expect(unapproved.diagnostics[0]?.code).toBe('UNKNOWN_COMMAND_TYPE');
   });
 
   it('refuses extra/forged S4 authority fields and wrong manifest URI at decode', () => {
