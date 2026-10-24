@@ -31,8 +31,12 @@ function makeNode(): StubNode {
     value: '',
     children: [],
     handlers: {},
-    appendChild(child) { this.children.push(child); },
-    addEventListener(type, handler) { this.handlers[type] = handler; },
+    appendChild(child) {
+      this.children.push(child);
+    },
+    addEventListener(type, handler) {
+      this.handlers[type] = handler;
+    },
     setAttribute() {},
   };
 }
@@ -58,18 +62,25 @@ function startPopup(options: { total?: number; changed?: boolean; staleMembers?:
     chrome: {
       tabs: {
         query: async () => [
-          options.changed && scans > 0 ? { ...tab, url: 'https://publisher.example.org/next' } : tab,
+          options.changed && scans > 0
+            ? { ...tab, url: 'https://publisher.example.org/next' }
+            : tab,
         ],
       },
       scripting: {
         executeScript: async () => {
           scans += 1;
-          return [{ result: {
-            links: options.staleMembers && scans > 1
-              ? [{ ...links[0], href: 'https://publisher.example.org/changed.mp4' }, links[1]]
-              : links,
-            observedCount: options.total ?? links.length,
-          } }];
+          return [
+            {
+              result: {
+                links:
+                  options.staleMembers && scans > 1
+                    ? [{ ...links[0], href: 'https://publisher.example.org/changed.mp4' }, links[1]]
+                    : links,
+                observedCount: options.total ?? links.length,
+              },
+            },
+          ];
         },
       },
       runtime: {
