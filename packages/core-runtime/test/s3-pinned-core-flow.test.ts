@@ -52,11 +52,10 @@ afterEach(() => {
 function inputFor(uri = URI, overrides: Partial<DirectTransferRequest> = {}): DirectFlowInput {
   const targetId = unwrapOrThrow(makeLogicalTargetId('target-file-001'));
   const binding = unwrapOrThrow(
-    bindLocator(
-      { kind: 'direct', uri },
-      targetId,
-      { binding: 'SELECTED_RESOURCE_PROVENANCE', originLocatorUri: uri },
-    ),
+    bindLocator({ kind: 'direct', uri }, targetId, {
+      binding: 'SELECTED_RESOURCE_PROVENANCE',
+      originLocatorUri: uri,
+    }),
   );
   return {
     contractId: 'contract-single-001',
@@ -68,7 +67,9 @@ function inputFor(uri = URI, overrides: Partial<DirectTransferRequest> = {}): Di
     authorizationContextRef: 'authctx/local-001',
     budgetProfile: rawSingleResourceContract()['budgetProfile'],
     transfer: {
-      effectId: unwrapOrThrow(makeEffectId('effect:contract-single-001:snapshot-001:target-file-001')),
+      effectId: unwrapOrThrow(
+        makeEffectId('effect:contract-single-001:snapshot-001:target-file-001'),
+      ),
       contractId: 'contract-single-001',
       slice: 'S3',
       selectedMemberId: unwrapOrThrow(makeMemberId('member-file-001')),
@@ -118,9 +119,9 @@ describe('#150 installed-policy S3 Core boundary and durable effects', () => {
     ];
     try {
       for (const item of cases) {
-        await expect(executePinnedPublicS3Acquisition(runtime, item, policy)).rejects.toBeInstanceOf(
-          CoreRuntimeFlowError,
-        );
+        await expect(
+          executePinnedPublicS3Acquisition(runtime, item, policy),
+        ).rejects.toBeInstanceOf(CoreRuntimeFlowError);
         expect(runtime.writer.reader.workItems()).toHaveLength(0);
         expect(fetchSpy).not.toHaveBeenCalled();
       }
@@ -148,9 +149,9 @@ describe('#150 installed-policy S3 Core boundary and durable effects', () => {
       const result = await executePinnedPublicS3Acquisition(runtime, inputFor(), policy);
       expect(result.attemptReplayed).toBe(false);
       expect(result.transfer?.reason).toBe('COMPLETED');
-      expect(result.transfer?.validations.map((v) => v.layer + ':' + String(v.passed)).sort()).toEqual(
-        ['format:true', 'media:true', 'target:true', 'transfer:true'],
-      );
+      expect(
+        result.transfer?.validations.map((v) => v.layer + ':' + String(v.passed)).sort(),
+      ).toEqual(['format:true', 'media:true', 'target:true', 'transfer:true']);
       expect(result.acceptance).toBeDefined();
       expect(result.schedulerAcceptance?.ok).toBe(true);
       expect(runtime.writer.reader.workItems()).toHaveLength(1);
