@@ -12,7 +12,8 @@
  * observed TLS remoteAddress equality. Redirects are NOT followed.
  */
 import { resolve4 } from 'node:dns/promises';
-import { request as httpsRequest, type ClientRequest, type IncomingMessage } from 'node:https';
+import { request as httpsRequest } from 'node:https';
+import type { ClientRequest, IncomingMessage } from 'node:http';
 import type { TLSSocket } from 'node:tls';
 import {
   parsePublicHlsUriCandidate,
