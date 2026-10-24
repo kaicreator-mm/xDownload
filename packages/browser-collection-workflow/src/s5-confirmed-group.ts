@@ -35,6 +35,7 @@ export function validateConfirmedPageGroup(
   const conformance = assertSliceCollectionConformance('S5', contract);
   if (!conformance.ok) return fail(conformance.diagnostics);
   if (
+    contract.status !== 'CONFIRMED' ||
     contract.intentType !== 'COLLECTION' ||
     contract.requestedScope.kind !== 'current_page' ||
     snapshot.requestedScope.kind !== 'current_page' ||
@@ -76,13 +77,18 @@ export function validateConfirmedPageGroup(
       ),
     ]);
   }
-  const matchingBatch = snapshot.selectionClaims.some(
-    (claim) =>
-      claim.kind === 'BATCH' &&
-      claim.confirmationType === 'CONFIRM_SELECTION' &&
-      claim.memberRefs.length === selected.length &&
-      claim.memberRefs.every((member) => unique.has(member)),
-  );
+  // A Core-confirmed current-page group is ONE BATCH covering every
+  // frozen member EXACTLY ONCE. Length and subset checks are insufficient:
+  // BATCH [A,A] plus a separate SINGLE [B] must not authorize [A,B].
+  // Conflicting/multiple claims are ambiguous and cannot be silently
+  // replayed as one approved group.
+  const matchingBatch =
+    snapshot.selectionClaims.length === 1 &&
+    snapshot.selectionClaims[0]?.kind === 'BATCH' &&
+    snapshot.selectionClaims[0].confirmationType === 'CONFIRM_SELECTION' &&
+    snapshot.selectionClaims[0].memberRefs.length === selected.length &&
+    new Set(snapshot.selectionClaims[0].memberRefs).size === selected.length &&
+    snapshot.selectionClaims[0].memberRefs.every((member) => unique.has(member));
   if (!matchingBatch) {
     return fail([
       diagnostic(
@@ -136,5 +142,35 @@ export async function runConfirmedCurrentPageGroup(
       },
     };
   }
-  return runCollectionFlow({ ...input, slice: 'S5' });
+  // The installed Core has already persisted the confirmed BATCH selection
+  // as part of the immutable snapshot above. The generic T016 runner expects
+  // a confirmation outcome *source* for ASSISTED scope, even for a confirmed
+  // snapshot; with no source it currently refuses before real acquisition.
+  // Bridge ONLY the already validated member set. Never accept a new caller
+  // confirmationSource or synthesize USER_CONFIRMATION evidence from a
+  // previously persisted selection. INJECTED_SOURCE marks this internal
+  // replay as distinct from a freshly observed human decision.
+  const selectedIds = new Set(admitted.value.selectedMemberIds);
+  return runCollectionFlow({
+    ...input,
+    slice: 'S5',
+    confirmationSource: {
+      resolve: ({ confirmationType, memberRefs }) => {
+        if (
+          confirmationType !== 'CONFIRM_SELECTION' ||
+          memberRefs.length === 0 ||
+          memberRefs.length !== selectedIds.size ||
+          memberRefs.some((id) => !selectedIds.has(id)) ||
+          new Set(memberRefs).size !== selectedIds.size
+        ) {
+          return { kind: 'NOT_AVAILABLE', reason: 'S5_CONFIRMED_MEMBER_SET_MISMATCH' };
+        }
+        return {
+          kind: 'RESOLVED',
+          origin: 'INJECTED_SOURCE',
+          outcomes: memberRefs.map(() => 'CONFIRMED' as const),
+        };
+      },
+    },
+  });
 }
