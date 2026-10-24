@@ -203,6 +203,110 @@ describe('S4 pinned public HTTPS manifest transport (isolated, not Core-enabled)
     });
   });
 
+
+  it('enforces a DNS-inclusive monotonic deadline, fencing late DNS answers', async () => {
+    vi.useFakeTimers();
+    try {
+      let finishDns: ((addresses: string[]) => void) | undefined;
+      network.resolve4.mockImplementationOnce(
+        () =>
+          new Promise<string[]>((resolve) => {
+            finishDns = resolve;
+          }),
+      );
+      const resultPromise = transport().fetchManifest(MANIFEST);
+      await vi.advanceTimersByTimeAsync(2001);
+      expect(await resultPromise).toEqual({ ok: false, reason: 'UNREACHABLE' });
+      expect(network.request).not.toHaveBeenCalled();
+
+      finishDns?.(['8.8.8.8']);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(network.request).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses one immutable validated authority snapshot for Core budget and network limits', async () => {
+    const authority = {
+      allowedOrigins: [ORIGIN],
+      maxBytes: 32,
+      timeoutMs: 2000,
+    };
+    const port = createPinnedPublicHlsManifestPort(authority);
+    expect(port.maxResponseBytes).toBe(32);
+    authority.maxBytes = Number.MAX_SAFE_INTEGER;
+    authority.timeoutMs = Number.POSITIVE_INFINITY;
+    authority.allowedOrigins.push('https://other.example.net');
+    simulateTlsResponse({ body: '#EXTM3U\\n' + 'x'.repeat(100) });
+    expect(await port.fetchManifest(MANIFEST)).toEqual({
+      ok: false,
+      reason: 'OVERSIZE',
+    });
+    expect(port.maxResponseBytes).toBe(32);
+    expect(await port.fetchManifest('https://other.example.net/file.m3u8')).toEqual({
+      ok: false,
+      reason: 'UNSUPPORTED',
+    });
+  });
+
+  it('terminates a stalled TLS handshake and incomplete body inside the original deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const destroyed = vi.fn();
+      network.request.mockImplementationOnce(() => {
+        const req = Object.assign(new EventEmitter(), {
+          destroy: destroyed,
+          end() {
+            this.emit('socket', Object.assign(new EventEmitter(), {
+              remoteAddress: '8.8.8.8',
+              encrypted: true,
+              authorized: true,
+            }));
+            // No secureConnect event: trusted peer handshake never completes.
+          },
+        });
+        return req;
+      });
+      const handshake = transport().fetchManifest(MANIFEST);
+      await vi.advanceTimersByTimeAsync(2001);
+      expect(await handshake).toEqual({ ok: false, reason: 'UNREACHABLE' });
+      expect(destroyed).toHaveBeenCalled();
+
+      network.request.mockImplementationOnce(
+        (_uri: unknown, _options: unknown, onResponse: unknown) => {
+          const req = Object.assign(new EventEmitter(), {
+            destroy: vi.fn(),
+            end() {
+              const socket = Object.assign(new EventEmitter(), {
+                remoteAddress: '8.8.8.8',
+                encrypted: true,
+                authorized: true,
+              });
+              this.emit('socket', socket);
+              socket.emit('secureConnect');
+              const response = Object.assign(new EventEmitter(), {
+                socket,
+                statusCode: 200,
+                headers: {},
+              });
+              (onResponse as (message: typeof response) => void)(response);
+              response.emit('data', Buffer.from('#EXTM3U\\n'));
+              // No end event: incomplete body cannot become successful.
+            },
+          });
+          return req;
+        },
+      );
+      const stalledBody = transport().fetchManifest(MANIFEST);
+      await vi.advanceTimersByTimeAsync(2001);
+      expect(await stalledBody).toEqual({ ok: false, reason: 'UNREACHABLE' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('binds the lookup to the expected hostname, never a different DNS hostname', async () => {
     const spy = simulateTlsResponse();
     await transport().fetchManifest(MANIFEST);
