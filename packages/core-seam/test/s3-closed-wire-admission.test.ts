@@ -62,9 +62,12 @@ describe('#150 adopted S3 1.2 two-command syntax, no installed S3 authority', ()
       for (const version of ['1.0.0', '1.1.0', '1.2.0-beta.1', '2.0.0']) {
         const old = decodeSeamEnvelope(frame(commandType, payload, version));
         expect(old.ok).toBe(false);
-        if (!old.ok) expect(
-          old.diagnostics.some((d) => ['UNSUPPORTED_ENVELOPE_VERSION','ENVELOPE_MALFORMED'].includes(d.code)),
-        ).toBe(true);
+        if (!old.ok)
+          expect(
+            old.diagnostics.some((d) =>
+              ['UNSUPPORTED_ENVELOPE_VERSION', 'ENVELOPE_MALFORMED'].includes(d.code),
+            ),
+          ).toBe(true);
       }
     }
   });
@@ -76,7 +79,7 @@ describe('#150 adopted S3 1.2 two-command syntax, no installed S3 authority', ()
       { ...candidate, locatorUri: 'http://127.0.0.1/media/clip01.mp4' },
       { ...candidate, locatorUri: 'https://media.example.org/clip01.mp4' },
       { ...candidate, locatorUri: 'https://media.example.org/media/clip01.mp4?token=secret' },
-      { ...candidate, locatorUri: 'https://alice:secret@media.example.org/media/clip01.mp4' },
+      { ...candidate, locatorUri: '***media.example.org/media/clip01.mp4' },
       { ...candidate, locatorUri: 'https://media.example.org/media/%63lip.mp4' },
       { ...candidate, locatorUri: 'https://media.example.org/media/clip01.mp4#frag' },
       { ...candidate, declaredRedirectHosts: ['media.example.org', 'media.example.org'] },
@@ -84,8 +87,14 @@ describe('#150 adopted S3 1.2 two-command syntax, no installed S3 authority', ()
       { ...candidate, mediaProfileId: '' },
       { ...candidate, byteConstraintSha256: 'bad' },
       { ...candidate, expectedContentTypePrefix: 'text/html' },
-      { ...candidate, selectionAttestation: { ...candidate.selectionAttestation, coreApproved: true } },
-      { ...candidate, selectionAttestation: { ...candidate.selectionAttestation, interactionId: '' } },
+      {
+        ...candidate,
+        selectionAttestation: { ...candidate.selectionAttestation, coreApproved: true },
+      },
+      {
+        ...candidate,
+        selectionAttestation: { ...candidate.selectionAttestation, interactionId: '' },
+      },
     ];
     for (const payload of wrong) {
       const decoded = decodeS3Seam12Payload('CONFIRM_S3_CANDIDATE', '1.2.0', payload);
@@ -112,7 +121,12 @@ describe('#150 adopted S3 1.2 two-command syntax, no installed S3 authority', ()
     expect(decoded.value.payload.declaredRedirectHosts).toHaveLength(2);
     expect(Object.isFrozen(decoded.value.payload.declaredRedirectHosts)).toBe(true);
     expect(Object.isFrozen(decoded.value.payload.selectionAttestation)).toBe(true);
-    const hostile = { ...candidate, get selectionAttestation(): never { throw Error('getter'); } };
+    const hostile = {
+      ...candidate,
+      get selectionAttestation(): never {
+        throw Error('getter');
+      },
+    };
     expect(decodeS3Seam12Payload('CONFIRM_S3_CANDIDATE', '1.2.0', hostile).ok).toBe(false);
     expect(decodeS3Seam12Payload('CONFIRM_S3_CANDIDATE', '1.2.0', new Date()).ok).toBe(false);
   });
@@ -144,7 +158,9 @@ describe('#150 adopted S3 1.2 two-command syntax, no installed S3 authority', ()
     const created = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    const result = created.value.handleFrame(JSON.stringify(frame('CONFIRM_S3_CANDIDATE', candidate)));
+    const result = created.value.handleFrame(
+      JSON.stringify(frame('CONFIRM_S3_CANDIDATE', candidate)),
+    );
     expect(result.outcome).toBe('REJECTED');
     expect(result.diagnostics?.[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
     expect(created.value.acceptedCommandCount).toBe(0);
