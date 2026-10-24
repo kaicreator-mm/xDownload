@@ -36,8 +36,9 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) =>
-    Object.prototype.hasOwnProperty.call(value, key),
+  return (
+    Object.keys(value).length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
   );
 }
 
@@ -48,7 +49,8 @@ function canonicalObservedUri(raw: unknown): raw is string {
     raw.length < 8 ||
     raw.length > 2048 ||
     /[\\\x00-\x20\x7f]/u.test(raw)
-  ) return false;
+  )
+    return false;
   try {
     const parsed = new URL(raw);
     return (
@@ -67,9 +69,11 @@ function canonicalObservedUri(raw: unknown): raw is string {
 export function isS5PageGroupGesture(value: unknown): boolean {
   const raw = record(value);
   try {
-    return raw !== undefined &&
+    return (
+      raw !== undefined &&
       Object.prototype.hasOwnProperty.call(raw, 'kind') &&
-      raw['kind'] === 'S5_PREPARE_CURRENT_PAGE_GROUP';
+      raw['kind'] === 'S5_PREPARE_CURRENT_PAGE_GROUP'
+    );
   } catch {
     return false;
   }
