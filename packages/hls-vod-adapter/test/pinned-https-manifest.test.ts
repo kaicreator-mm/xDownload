@@ -98,7 +98,7 @@ describe('S4 pinned public HTTPS manifest transport (isolated, not Core-enabled)
     expect(result).toEqual({
       ok: true,
       text: '#EXTM3U\n#EXT-X-ENDLIST\n',
-      byteLength: 22,
+      byteLength: 23,
     });
     expect(network.resolve4).toHaveBeenCalledExactlyOnceWith('media.example.org');
     expect(network.request).toHaveBeenCalledTimes(1);
