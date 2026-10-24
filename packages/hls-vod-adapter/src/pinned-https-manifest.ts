@@ -95,7 +95,6 @@ function readPinnedManifest(
           method: 'GET',
           agent: false,
           family: 4,
-          autoSelectFamily: false,
           servername: source.hostname,
           rejectUnauthorized: true,
           maxHeaderSize: 8 * 1024,
