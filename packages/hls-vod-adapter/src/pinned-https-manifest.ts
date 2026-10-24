@@ -15,10 +15,7 @@ import { resolve4 } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import type { TLSSocket } from 'node:tls';
-import {
-  parsePublicHlsUriCandidate,
-  type PublicHlsUriCandidate,
-} from './public-uri-candidate.ts';
+import { parsePublicHlsUriCandidate, type PublicHlsUriCandidate } from './public-uri-candidate.ts';
 import { parsePublicIpv4TextCandidate } from './public-ipv4-text-candidate.ts';
 import type {
   AuthorizedHlsManifestPort,
@@ -65,15 +62,10 @@ function exactOrigins(authority: HlsManifestAuthority): ReadonlySet<string> {
   return origins;
 }
 
-function validResponsePeer(
-  response: IncomingMessage,
-  pinnedAddress: string,
-): boolean {
+function validResponsePeer(response: IncomingMessage, pinnedAddress: string): boolean {
   const peer = response.socket as TLSSocket;
   return (
-    peer.encrypted === true &&
-    peer.authorized === true &&
-    peer.remoteAddress === pinnedAddress
+    peer.encrypted === true && peer.authorized === true && peer.remoteAddress === pinnedAddress
   );
 }
 
