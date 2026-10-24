@@ -124,6 +124,48 @@ describe('#151 S5 already-Core-confirmed snapshot -> real member effects', () =>
     }
   });
 
+  it('blocks duplicate/mixed BATCH claims before authorization, HTTP or durable Core writes', async () => {
+    const ctx = await environment();
+    try {
+      const batch = (refs: readonly string[]) => ({
+        kind: 'BATCH',
+        confirmationType: 'CONFIRM_SELECTION',
+        memberRefs: refs,
+      });
+      const single = (refs: readonly string[]) => ({
+        kind: 'SINGLE',
+        confirmationType: 'CONFIRM_SELECTION',
+        memberRefs: refs,
+      });
+      const hostileClaims = [
+        [batch([members[0], members[0]]), single([members[1]])],
+        [batch([members[0], members[0]])],
+        [batch([members[0]])],
+        [batch([members[0], 'unselected-member'])],
+        [batch([...members]), batch([...members].reverse())],
+        [batch([...members]), single([members[1]])],
+      ];
+      for (const selectionClaims of hostileClaims) {
+        const corrupted = {
+          ...ctx.snapshot,
+          selectionClaims,
+        } as unknown as typeof ctx.snapshot;
+        expect(validateConfirmedPageGroup(ctx.contract, corrupted).ok).toBe(false);
+        const result = await runConfirmedCurrentPageGroup({
+          ...ctx.input,
+          snapshot: corrupted,
+        });
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('ambiguous group became authorized');
+        expect(result.rejection.stage).toBe('MEMBERSHIP_IDENTITY');
+        expect(ctx.fixture.requests).toHaveLength(0);
+        expect(ctx.runtime.writer.reader.workItems()).toHaveLength(0);
+      }
+    } finally {
+      closeRuntime(ctx.runtime);
+    }
+  });
+
   it('denies unconfirmed status or a new caller-provided confirmation source', async () => {
     const ctx = await environment();
     try {
