@@ -94,8 +94,7 @@ describe('#151 S5 already-Core-confirmed snapshot -> real member effects', () =>
       const admitted = validateConfirmedPageGroup(ctx.contract, ctx.snapshot);
       expect(admitted.ok).toBe(true);
       const result = await runConfirmedCurrentPageGroup(ctx.input);
-      expect(result.ok).toBe(true);
-      if (!result.ok) throw new Error('confirmed group unexpectedly blocked');
+      if (!result.ok) throw new Error(JSON.stringify(result.rejection));
       expect(result.result.memberOutcomes.map((member) => member.memberId)).toEqual(members);
       expect(result.result.memberOutcomes.every((member) => member.accepted)).toBe(true);
       expect(ctx.runtime.writer.reader.workItems()).toHaveLength(members.length);
