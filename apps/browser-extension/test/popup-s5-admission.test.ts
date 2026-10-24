@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { decodeS5PageGroupGesture } from '../src/background/s5-group-intent.ts';
 
 const popupSource = readFileSync(new URL('../src/popup/popup.js', import.meta.url), 'utf8');
