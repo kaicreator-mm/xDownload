@@ -258,7 +258,7 @@ describe('S4 pinned public HTTPS manifest transport (isolated, not Core-enabled)
         const req = Object.assign(new EventEmitter(), {
           destroy: destroyed,
           end() {
-            this.emit(
+            req.emit(
               'socket',
               Object.assign(new EventEmitter(), {
                 remoteAddress: '8.8.8.8',
