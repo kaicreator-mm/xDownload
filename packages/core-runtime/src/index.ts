@@ -40,6 +40,7 @@ export {
   CoreRuntimeFlowError,
   effectIdFor,
   executeDirectAcquisition,
+  executePinnedPublicS3Acquisition,
   executeHlsAcquisition,
   stopHlsAcquisition,
   projectLineageResult,
