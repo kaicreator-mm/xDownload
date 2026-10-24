@@ -81,13 +81,42 @@ const ID_FIELDS = [
   'confirmedSelectionId',
 ] as const;
 
-function record(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
-  );
+/**
+ * Materialize exactly one stable set of own DATA fields before validation.
+ * This codec is also exported to JS callers, not only JSON frame parsers:
+ * getters/proxies must never change validated fields while copying a result.
+ */
+function stablePayload(value: unknown): SeamResult<Record<string, unknown>> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return malformed('payload', 'S4 payload must be a closed object');
+  }
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return malformed('payload', 'S4 payload must be a plain data object');
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const snapshot = Object.create(null) as Record<string, unknown>;
+    for (const key of Reflect.ownKeys(descriptors)) {
+      if (typeof key !== 'string') {
+        return malformed('payload', 'symbol fields are not allowed');
+      }
+      const descriptor = descriptors[key];
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+        return malformed(`payload.${key}`, 'S4 payload must use enumerable data fields');
+      }
+      Object.defineProperty(snapshot, key, {
+        value: descriptor.value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    return seamOk(snapshot);
+  } catch {
+    // Revoked Proxy / hostile ownKeys / descriptor trap: typed failure.
+    return malformed('payload', 'S4 payload cannot be inspected safely');
+  }
 }
 
 function malformed(path: string, message: string): SeamResult<never> {
@@ -191,7 +220,9 @@ export function decodeS4Seam12Payload(
       ),
     ]);
   }
-  if (!record(raw)) return malformed('payload', 'S4 payload must be a closed object');
+  const stable = stablePayload(raw);
+  if (!stable.ok) return stable;
+  const payload = stable.value;
 
   let allowed: readonly string[];
   if (commandType === 'PREVIEW_S4_HLS_VOD') {
@@ -199,33 +230,33 @@ export function decodeS4Seam12Payload(
   } else if (commandType === 'EXECUTE_S4_SELECTED_HLS_VOD') {
     allowed = EXECUTE_KEYS;
   } else {
-    if (raw['phase'] !== 'BEGIN' && raw['phase'] !== 'COMMIT') {
+    if (payload['phase'] !== 'BEGIN' && payload['phase'] !== 'COMMIT') {
       return malformed('payload.phase', 'expected closed BEGIN or COMMIT phase');
     }
-    allowed = raw['phase'] === 'BEGIN' ? BEGIN_KEYS : COMMIT_KEYS;
+    allowed = payload['phase'] === 'BEGIN' ? BEGIN_KEYS : COMMIT_KEYS;
   }
-  const keys = validateKeys(raw, allowed);
+  const keys = validateKeys(payload, allowed);
   if (!keys.ok) return keys;
 
   for (const field of ID_FIELDS) {
-    if (allowed.includes(field) && !boundedId(raw[field])) {
+    if (allowed.includes(field) && !boundedId(payload[field])) {
       return malformed(`payload.${field}`, 'expected a bounded 1..128 character identifier');
     }
   }
   if (commandType === 'PREVIEW_S4_HLS_VOD') {
-    if (!publicManifestSyntax(raw['manifestUri'])) {
+    if (!publicManifestSyntax(payload['manifestUri'])) {
       return malformed(
         'payload.manifestUri',
         'expected a canonical credential-free HTTPS .m3u8 URI candidate',
       );
     }
-    if (raw['mediaProfileId'] !== S4_PUBLIC_MEDIA_PROFILE_ID) {
+    if (payload['mediaProfileId'] !== S4_PUBLIC_MEDIA_PROFILE_ID) {
       return malformed('payload.mediaProfileId', 'unsupported public-only fixed HLS profile');
     }
     return seamOk(
       Object.freeze({
         commandType,
-        payload: Object.freeze({ ...raw } as unknown as S4PreviewPayload),
+        payload: Object.freeze({ ...payload } as unknown as S4PreviewPayload),
       }),
     );
   }
@@ -233,38 +264,38 @@ export function decodeS4Seam12Payload(
     return seamOk(
       Object.freeze({
         commandType,
-        payload: Object.freeze({ ...raw } as unknown as S4ExecutePayload),
+        payload: Object.freeze({ ...payload } as unknown as S4ExecutePayload),
       }),
     );
   }
   if (
-    typeof raw['displayedTupleDigest'] !== 'string' ||
-    !/^[0-9a-f]{64}$/u.test(raw['displayedTupleDigest'])
+    typeof payload['displayedTupleDigest'] !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(payload['displayedTupleDigest'])
   ) {
     return malformed('payload.displayedTupleDigest', 'expected a lowercase 64-hex tuple digest');
   }
   if (
-    raw['phase'] === 'COMMIT' &&
-    (typeof raw['confirmationChallenge'] !== 'string' ||
-      !/^[A-Za-z0-9_-]{22,128}$/u.test(raw['confirmationChallenge']))
+    payload['phase'] === 'COMMIT' &&
+    (typeof payload['confirmationChallenge'] !== 'string' ||
+      !/^[A-Za-z0-9_-]{22,128}$/u.test(payload['confirmationChallenge']))
   ) {
     return malformed(
       'payload.confirmationChallenge',
       'expected a bounded opaque base64url challenge',
     );
   }
-  if (raw['phase'] === 'BEGIN') {
+  if (payload['phase'] === 'BEGIN') {
     return seamOk(
       Object.freeze({
         commandType: 'CONFIRM_S4_SELECTION',
-        payload: Object.freeze({ ...raw } as unknown as S4ConfirmBeginPayload),
+        payload: Object.freeze({ ...payload } as unknown as S4ConfirmBeginPayload),
       }),
     );
   }
   return seamOk(
     Object.freeze({
       commandType: 'CONFIRM_S4_SELECTION',
-      payload: Object.freeze({ ...raw } as unknown as S4ConfirmCommitPayload),
+      payload: Object.freeze({ ...payload } as unknown as S4ConfirmCommitPayload),
     }),
   );
 }

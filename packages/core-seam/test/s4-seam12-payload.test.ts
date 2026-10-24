@@ -170,4 +170,59 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
       if (!result.ok) expect(result.diagnostics[0]?.code).toBe('UNKNOWN_COMMAND_TYPE');
     }
   });
+  it('rejects accessor-backed values before any second read can bypass lexical validation', () => {
+    let getterCalls = 0;
+    const source = { ...preview };
+    Object.defineProperty(source, 'manifestUri', {
+      enumerable: true,
+      configurable: true,
+      get() {
+        getterCalls += 1;
+        return getterCalls === 1
+          ? 'https://cdn.example.org/main.m3u8'
+          : 'file:///etc/passwd';
+      },
+    });
+    const result = decode('PREVIEW_S4_HLS_VOD', source);
+    expect(result.ok).toBe(false);
+    expect(getterCalls).toBe(0);
+  });
+
+  it('rejects accessor phase, nonenumerable authority keys and symbol keys', () => {
+    const accessor = { ...begin };
+    Object.defineProperty(accessor, 'phase', {
+      enumerable: true,
+      get() {
+        throw new Error('getter must never run');
+      },
+    });
+    const hidden = { ...preview };
+    Object.defineProperty(hidden, 'allowedOrigins', { value: ['localhost'] });
+    const symbol = { ...preview, [Symbol('override')]: true };
+    for (const payload of [accessor, hidden, symbol]) {
+      const result = decode(
+        payload === accessor ? 'CONFIRM_S4_SELECTION' : 'PREVIEW_S4_HLS_VOD',
+        payload,
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
+    }
+  });
+
+  it('returns typed rejection for hostile and revoked proxies', () => {
+    const hostile = new Proxy({ ...preview }, {
+      ownKeys() {
+        throw new Error('ownKeys trap');
+      },
+    });
+    const revocable = Proxy.revocable({ ...preview }, {});
+    revocable.revoke();
+    for (const payload of [hostile, revocable.proxy]) {
+      expect(() => decode('PREVIEW_S4_HLS_VOD', payload)).not.toThrow();
+      const result = decode('PREVIEW_S4_HLS_VOD', payload);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
+    }
+  });
+
 });
