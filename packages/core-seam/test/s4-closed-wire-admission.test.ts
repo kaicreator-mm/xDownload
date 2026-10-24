@@ -77,9 +77,12 @@ describe('#148 closed S4 1.2 wire admission — NO installed S4 authority', () =
         }
       }
     }
-    const unapproved = decodeSeamEnvelope(frame('EXECUTE_S3_SELECTED_MEDIA', {}));
-    expect(unapproved.ok).toBe(false);
-    if (!unapproved.ok) expect(unapproved.diagnostics[0]?.code).toBe('UNKNOWN_COMMAND_TYPE');
+    // S3 1.2 is now syntactically recognized under its own closed codec;
+    // an empty caller-provided payload remains invalid, not an authority.
+    const malformedS3 = decodeSeamEnvelope(frame('EXECUTE_S3_SELECTED_MEDIA', {}));
+    expect(malformedS3.ok).toBe(false);
+    if (!malformedS3.ok)
+      expect(malformedS3.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
   });
 
   it('refuses extra/forged S4 authority fields and wrong manifest URI at decode', () => {
