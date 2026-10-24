@@ -203,7 +203,6 @@ describe('S4 pinned public HTTPS manifest transport (isolated, not Core-enabled)
     });
   });
 
-
   it('enforces a DNS-inclusive monotonic deadline, fencing late DNS answers', async () => {
     vi.useFakeTimers();
     try {
@@ -259,11 +258,14 @@ describe('S4 pinned public HTTPS manifest transport (isolated, not Core-enabled)
         const req = Object.assign(new EventEmitter(), {
           destroy: destroyed,
           end() {
-            this.emit('socket', Object.assign(new EventEmitter(), {
-              remoteAddress: '8.8.8.8',
-              encrypted: true,
-              authorized: true,
-            }));
+            this.emit(
+              'socket',
+              Object.assign(new EventEmitter(), {
+                remoteAddress: '8.8.8.8',
+                encrypted: true,
+                authorized: true,
+              }),
+            );
             // No secureConnect event: trusted peer handshake never completes.
           },
         });
