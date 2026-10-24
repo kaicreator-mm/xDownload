@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { decodeS5PageGroupGesture } from '../src/background/s5-group-intent.ts';
 
 const popupSource = readFileSync(new URL('../src/popup/popup.js', import.meta.url), 'utf8');
@@ -95,14 +95,14 @@ function startPopup(options: { total?: number; changed?: boolean; staleMembers?:
   return { nodes, sent, links };
 }
 
-async function ready() {
-  for (let tick = 0; tick < 4; tick += 1) await Promise.resolve();
+async function ready(nodes: Record<string, StubNode>) {
+  await vi.waitFor(() => expect(nodes['attachments']!.children.length).toBe(2));
 }
 
 describe('#152 packaged S5 popup -> worker gesture (Core not installed)', () => {
   it('sends one bounded full-page gesture and renders the real worker refusal', async () => {
     const { nodes, sent } = startPopup();
-    await ready();
+    await ready(nodes);
     const list = nodes['attachments']!;
     expect(list.children.length).toBe(2);
     for (const li of list.children) li.children[1]!.checked = true;
@@ -116,7 +116,7 @@ describe('#152 packaged S5 popup -> worker gesture (Core not installed)', () => 
   it('does not submit partial group, truncated scan, tab change or changed membership', async () => {
     for (const scenario of [{}, { total: 21 }, { changed: true }, { staleMembers: true }]) {
       const { nodes, sent } = startPopup(scenario);
-      await ready();
+      await ready(nodes);
       const list = nodes['attachments']!;
       list.children[0]!.children[1]!.checked = true;
       if (scenario.total || scenario.changed || scenario.staleMembers) {
