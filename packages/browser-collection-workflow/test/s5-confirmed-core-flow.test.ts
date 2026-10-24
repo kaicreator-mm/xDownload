@@ -80,7 +80,7 @@ async function environment() {
         origin,
         provenanceChain: 'tab-7/frame-0/http://127.0.0.1:9/-/-',
         ttlMs: 60_000,
-        issueDecisionToken: 'core-confirmed-s5-test',
+        issueDecisionToken: 'user-confirm:s5-core-confirmed',
       },
       recordedAt: '2026-10-24T04:00:00Z',
     },
