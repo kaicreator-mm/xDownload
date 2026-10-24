@@ -107,7 +107,12 @@ export function createVerifiedPeerSessionRegistry(): VerifiedPeerSessionRegistry
  * explicit and testable BEFORE the 1.2 Contract PR lands; the contract slice
  * must never introduce an S3 command that is absent from this set.
  */
-export const OS_VERIFIED_PEER_COMMANDS: readonly string[] = ['EXECUTE_S3_SELECTED_MEDIA'];
+export const OS_VERIFIED_PEER_COMMANDS: readonly string[] = [
+  'EXECUTE_S3_SELECTED_MEDIA',
+  'PREVIEW_S4_HLS_VOD',
+  'CONFIRM_S4_SELECTION',
+  'EXECUTE_S4_SELECTED_HLS_VOD',
+];
 
 /** True when a command type may only be dispatched for an OS-verified peer. */
 export function requiresOsVerifiedPeer(commandType: string): boolean {
