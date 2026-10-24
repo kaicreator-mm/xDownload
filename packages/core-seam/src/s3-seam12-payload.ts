@@ -43,18 +43,30 @@ export type S3Seam12Decoded =
 
 const IDENTIFIER = /^[A-Za-z0-9_.:-]{1,128}$/u;
 const SHA = /^[0-9a-f]{64}$/u;
-const HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/u;
+const HOST =
+  /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/u;
 const MEDIA_PATH = /^\/media\/[A-Za-z0-9_-]{1,64}\.(?:mp4|m4a|mp3|webm)$/u;
 const CONFIRM_REQUIRED = [
-  'snapshotId', 'memberId', 'variantKey', 'locatorUri',
-  'declaredRedirectHosts', 'mediaProfileId', 'selectionAttestation',
+  'snapshotId',
+  'memberId',
+  'variantKey',
+  'locatorUri',
+  'declaredRedirectHosts',
+  'mediaProfileId',
+  'selectionAttestation',
 ] as const;
 const CONFIRM_OPTIONAL = [
-  'byteConstraintSha256', 'expectedTotalBytes', 'expectedContentTypePrefix',
+  'byteConstraintSha256',
+  'expectedTotalBytes',
+  'expectedContentTypePrefix',
 ] as const;
 const EXECUTE_KEYS = ['snapshotId', 'memberId'] as const;
 const ATTEST_KEYS = [
-  'kind', 'interactionId', 'displayTupleDigest', 'confirmedAt', 'expectedRevision',
+  'kind',
+  'interactionId',
+  'displayTupleDigest',
+  'confirmedAt',
+  'expectedRevision',
 ] as const;
 
 function malformed(path: string, reason: string): SeamResult<never> {
@@ -79,42 +91,68 @@ function safeDataObject(value: unknown): Record<string, unknown> | undefined {
     return undefined;
   }
 }
-function ownFields(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = []): boolean {
+function ownFields(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
   const keys = Object.keys(value);
-  return required.every((k) => Object.hasOwn(value, k)) &&
-    keys.every((k) => required.includes(k) || optional.includes(k));
+  return (
+    required.every((k) => Object.hasOwn(value, k)) &&
+    keys.every((k) => required.includes(k) || optional.includes(k))
+  );
 }
 function id(value: unknown): value is string {
   return typeof value === 'string' && IDENTIFIER.test(value);
 }
 function hostname(value: string): boolean {
-  return HOST.test(value) && value.includes('.') &&
-    !value.endsWith('.') && isIP(value) === 0 &&
-    !['.localhost','.local','.internal','.onion','.test','.invalid'].some((suffix) => value.endsWith(suffix));
+  return (
+    HOST.test(value) &&
+    value.includes('.') &&
+    !value.endsWith('.') &&
+    isIP(value) === 0 &&
+    !['.localhost', '.local', '.internal', '.onion', '.test', '.invalid'].some((suffix) =>
+      value.endsWith(suffix),
+    )
+  );
 }
 function publicMediaSyntax(value: unknown): value is string {
   if (
-    typeof value !== 'string' || value.length < 25 || value.length > 2048 ||
-    !/^[\x21-\x7e]+$/u.test(value) || /[%?#@\\]/u.test(value)
-  ) return false;
+    typeof value !== 'string' ||
+    value.length < 25 ||
+    value.length > 2048 ||
+    !/^[\x21-\x7e]+$/u.test(value) ||
+    /[%?#@\\]/u.test(value)
+  )
+    return false;
   const match = /^https:\/\/([a-z0-9.-]+)(?::([0-9]{1,5}))?(\/.*)$/u.exec(value);
   if (!match || !hostname(match[1]!) || !MEDIA_PATH.test(match[3]!)) return false;
   const rawPort = match[2];
-  if (rawPort !== undefined && (
-    String(Number(rawPort)) !== rawPort || Number(rawPort) < 1 || Number(rawPort) > 65535
-  )) return false;
+  if (
+    rawPort !== undefined &&
+    (String(Number(rawPort)) !== rawPort || Number(rawPort) < 1 || Number(rawPort) > 65535)
+  )
+    return false;
   try {
     const parsed = new URL(value);
-    return parsed.protocol === 'https:' && parsed.username === '' && parsed.password === '' &&
-      parsed.search === '' && parsed.hash === '' && parsed.hostname === match[1] &&
-      parsed.pathname === match[3] && parsed.href === value &&
-      (rawPort === undefined || Number(parsed.port || '443') === Number(rawPort));
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.search === '' &&
+      parsed.hash === '' &&
+      parsed.hostname === match[1] &&
+      parsed.pathname === match[3] &&
+      parsed.href === value &&
+      (rawPort === undefined || Number(parsed.port || '443') === Number(rawPort))
+    );
   } catch {
     return false;
   }
 }
 function version12(value: unknown): boolean {
-  if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u.test(value)) return false;
+  if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u.test(value))
+    return false;
   const version = parseSemVer(value);
   return version !== undefined && version.major === 1 && version.minor >= 2;
 }
@@ -126,81 +164,133 @@ export function decodeS3Seam12Payload(
   raw: unknown,
 ): SeamResult<S3Seam12Decoded> {
   if (!version12(schemaVersion)) {
-    return seamFail([seamDiagnostic(
-      'UNSUPPORTED_ENVELOPE_VERSION','schemaIdentity.version',
-      'S3 commands require final core-seam 1.2.0 or newer minor of major 1',
-    )]);
+    return seamFail([
+      seamDiagnostic(
+        'UNSUPPORTED_ENVELOPE_VERSION',
+        'schemaIdentity.version',
+        'S3 commands require final core-seam 1.2.0 or newer minor of major 1',
+      ),
+    ]);
   }
-  if (typeof commandType !== 'string' || !S3_SEAM12_COMMAND_TYPES.includes(commandType as S3Seam12CommandType)) {
-    return seamFail([seamDiagnostic('UNKNOWN_COMMAND_TYPE','commandType','S3 opcode is not in closed 1.2 vocabulary')]);
+  if (
+    typeof commandType !== 'string' ||
+    !S3_SEAM12_COMMAND_TYPES.includes(commandType as S3Seam12CommandType)
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'UNKNOWN_COMMAND_TYPE',
+        'commandType',
+        'S3 opcode is not in closed 1.2 vocabulary',
+      ),
+    ]);
   }
   const input = safeDataObject(raw);
-  if (input === undefined) return malformed('payload', 'S3 payload must be a stable plain data object');
+  if (input === undefined)
+    return malformed('payload', 'S3 payload must be a stable plain data object');
   if (commandType === 'EXECUTE_S3_SELECTED_MEDIA') {
     if (!ownFields(input, EXECUTE_KEYS) || !id(input['snapshotId']) || !id(input['memberId'])) {
-      return malformed('payload', 'EXECUTE_S3_SELECTED_MEDIA may carry only frozen snapshotId and memberId');
+      return malformed(
+        'payload',
+        'EXECUTE_S3_SELECTED_MEDIA may carry only frozen snapshotId and memberId',
+      );
     }
-    return seamOk(Object.freeze({
-      commandType: 'EXECUTE_S3_SELECTED_MEDIA',
-      payload: Object.freeze({ snapshotId: input['snapshotId'], memberId: input['memberId'] }),
-    }));
+    return seamOk(
+      Object.freeze({
+        commandType: 'EXECUTE_S3_SELECTED_MEDIA',
+        payload: Object.freeze({ snapshotId: input['snapshotId'], memberId: input['memberId'] }),
+      }),
+    );
   }
-  if (!ownFields(input, CONFIRM_REQUIRED, CONFIRM_OPTIONAL) ||
-      !id(input['snapshotId']) || !id(input['memberId']) ||
-      !id(input['variantKey']) || !id(input['mediaProfileId']) ||
-      !publicMediaSyntax(input['locatorUri'])) {
+  if (
+    !ownFields(input, CONFIRM_REQUIRED, CONFIRM_OPTIONAL) ||
+    !id(input['snapshotId']) ||
+    !id(input['memberId']) ||
+    !id(input['variantKey']) ||
+    !id(input['mediaProfileId']) ||
+    !publicMediaSyntax(input['locatorUri'])
+  ) {
     return malformed('payload', 'S3 confirmation requires one closed public media candidate');
   }
   const hosts = input['declaredRedirectHosts'];
-  if (!Array.isArray(hosts) || hosts.length < 1 || hosts.length > 8 ||
-      hosts.some((host) => typeof host !== 'string' || !hostname(host))) {
+  if (
+    !Array.isArray(hosts) ||
+    hosts.length < 1 ||
+    hosts.length > 8 ||
+    hosts.some((host) => typeof host !== 'string' || !hostname(host))
+  ) {
     return malformed('payload.declaredRedirectHosts', 'expected 1..8 exact public DNS hosts');
   }
   const unique = new Set(hosts as string[]);
-  if (unique.size !== hosts.length) return malformed('payload.declaredRedirectHosts', 'duplicate host');
+  if (unique.size !== hosts.length)
+    return malformed('payload.declaredRedirectHosts', 'duplicate host');
   const attestation = safeDataObject(input['selectionAttestation']);
-  if (attestation === undefined || !ownFields(attestation, ATTEST_KEYS) ||
-      attestation['kind'] !== 'EXPLICIT_CLI_GESTURE' ||
-      !id(attestation['interactionId']) ||
-      typeof attestation['displayTupleDigest'] !== 'string' || !SHA.test(attestation['displayTupleDigest']) ||
-      typeof attestation['confirmedAt'] !== 'string' ||
-      !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/u.test(attestation['confirmedAt']) ||
-      !Number.isSafeInteger(attestation['expectedRevision']) ||
-      (attestation['expectedRevision'] as number) < 0) {
-    return malformed('payload.selectionAttestation','syntax cannot authenticate a self-asserted CLI gesture');
+  if (
+    attestation === undefined ||
+    !ownFields(attestation, ATTEST_KEYS) ||
+    attestation['kind'] !== 'EXPLICIT_CLI_GESTURE' ||
+    !id(attestation['interactionId']) ||
+    typeof attestation['displayTupleDigest'] !== 'string' ||
+    !SHA.test(attestation['displayTupleDigest']) ||
+    typeof attestation['confirmedAt'] !== 'string' ||
+    !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/u.test(attestation['confirmedAt']) ||
+    !Number.isSafeInteger(attestation['expectedRevision']) ||
+    (attestation['expectedRevision'] as number) < 0
+  ) {
+    return malformed(
+      'payload.selectionAttestation',
+      'syntax cannot authenticate a self-asserted CLI gesture',
+    );
   }
-  if (input['byteConstraintSha256'] !== undefined &&
-      (typeof input['byteConstraintSha256'] !== 'string' || !SHA.test(input['byteConstraintSha256']))) {
-    return malformed('payload.byteConstraintSha256','untrusted SHA constraint requires 64 lowercase hex chars');
+  if (
+    input['byteConstraintSha256'] !== undefined &&
+    (typeof input['byteConstraintSha256'] !== 'string' || !SHA.test(input['byteConstraintSha256']))
+  ) {
+    return malformed(
+      'payload.byteConstraintSha256',
+      'untrusted SHA constraint requires 64 lowercase hex chars',
+    );
   }
-  if (input['expectedTotalBytes'] !== undefined &&
-      (!Number.isSafeInteger(input['expectedTotalBytes']) || (input['expectedTotalBytes'] as number) <= 0)) {
-    return malformed('payload.expectedTotalBytes','expected positive safe byte count');
+  if (
+    input['expectedTotalBytes'] !== undefined &&
+    (!Number.isSafeInteger(input['expectedTotalBytes']) ||
+      (input['expectedTotalBytes'] as number) <= 0)
+  ) {
+    return malformed('payload.expectedTotalBytes', 'expected positive safe byte count');
   }
-  if (input['expectedContentTypePrefix'] !== undefined &&
-      (typeof input['expectedContentTypePrefix'] !== 'string' ||
-       !/^(?:video|audio)\/[a-z0-9.+-]{1,64}$/u.test(input['expectedContentTypePrefix']))) {
+  if (
+    input['expectedContentTypePrefix'] !== undefined &&
+    (typeof input['expectedContentTypePrefix'] !== 'string' ||
+      !/^(?:video|audio)\/[a-z0-9.+-]{1,64}$/u.test(input['expectedContentTypePrefix']))
+  ) {
     return malformed('payload.expectedContentTypePrefix', 'expected bounded video/audio MIME');
   }
-  return seamOk(Object.freeze({
-    commandType: 'CONFIRM_S3_CANDIDATE',
-    payload: Object.freeze({
-      snapshotId: input['snapshotId'] as string,
-      memberId: input['memberId'] as string,
-      variantKey: input['variantKey'] as string,
-      locatorUri: input['locatorUri'] as string,
-      declaredRedirectHosts: Object.freeze([...(hosts as string[])]),
-      mediaProfileId: input['mediaProfileId'] as string,
-      selectionAttestation: Object.freeze({
-        kind: 'EXPLICIT_CLI_GESTURE' as const,
-        interactionId: attestation['interactionId'] as string,
-        displayTupleDigest: attestation['displayTupleDigest'] as string,
-        confirmedAt: attestation['confirmedAt'] as string,
-        expectedRevision: attestation['expectedRevision'] as number,
+  return seamOk(
+    Object.freeze({
+      commandType: 'CONFIRM_S3_CANDIDATE',
+      payload: Object.freeze({
+        snapshotId: input['snapshotId'] as string,
+        memberId: input['memberId'] as string,
+        variantKey: input['variantKey'] as string,
+        locatorUri: input['locatorUri'] as string,
+        declaredRedirectHosts: Object.freeze([...(hosts as string[])]),
+        mediaProfileId: input['mediaProfileId'] as string,
+        selectionAttestation: Object.freeze({
+          kind: 'EXPLICIT_CLI_GESTURE' as const,
+          interactionId: attestation['interactionId'] as string,
+          displayTupleDigest: attestation['displayTupleDigest'] as string,
+          confirmedAt: attestation['confirmedAt'] as string,
+          expectedRevision: attestation['expectedRevision'] as number,
+        }),
+        ...(input['byteConstraintSha256'] === undefined
+          ? {}
+          : { byteConstraintSha256: input['byteConstraintSha256'] as string }),
+        ...(input['expectedTotalBytes'] === undefined
+          ? {}
+          : { expectedTotalBytes: input['expectedTotalBytes'] as number }),
+        ...(input['expectedContentTypePrefix'] === undefined
+          ? {}
+          : { expectedContentTypePrefix: input['expectedContentTypePrefix'] as string }),
       }),
-      ...(input['byteConstraintSha256'] === undefined ? {} : {byteConstraintSha256:input['byteConstraintSha256'] as string}),
-      ...(input['expectedTotalBytes'] === undefined ? {} : {expectedTotalBytes:input['expectedTotalBytes'] as number}),
-      ...(input['expectedContentTypePrefix'] === undefined ? {} : {expectedContentTypePrefix:input['expectedContentTypePrefix'] as string}),
     }),
-  }));
+  );
 }
