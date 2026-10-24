@@ -87,10 +87,13 @@ const ID_FIELDS = [
  * getters/proxies must never change validated fields while copying a result.
  */
 function stablePayload(value: unknown): SeamResult<Record<string, unknown>> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (typeof value !== 'object' || value === null) {
     return malformed('payload', 'S4 payload must be a closed object');
   }
   try {
+    if (Array.isArray(value)) {
+      return malformed('payload', 'S4 payload must be a closed object');
+    }
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
       return malformed('payload', 'S4 payload must be a plain data object');
