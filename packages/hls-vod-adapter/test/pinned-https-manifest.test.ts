@@ -286,7 +286,7 @@ describe('S4 pinned public HTTPS manifest transport (isolated, not Core-enabled)
                 encrypted: true,
                 authorized: true,
               });
-              this.emit('socket', socket);
+              req.emit('socket', socket);
               socket.emit('secureConnect');
               const response = Object.assign(new EventEmitter(), {
                 socket,
