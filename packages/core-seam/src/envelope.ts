@@ -23,7 +23,11 @@ import {
 } from './diagnostics.ts';
 import { makeCommandRequestId, makeSeamRevision, type CommandRequestId } from './ids.ts';
 import { decodePeerIdentity, type PeerIdentity } from './peer.ts';
-import { decodeS3Seam12Payload, S3_SEAM12_COMMAND_TYPES, type S3Seam12CommandType } from './s3-seam12-payload.ts';
+import {
+  decodeS3Seam12Payload,
+  S3_SEAM12_COMMAND_TYPES,
+  type S3Seam12CommandType,
+} from './s3-seam12-payload.ts';
 import {
   decodeS4Seam12Payload,
   S4_SEAM12_COMMAND_TYPES,
@@ -71,7 +75,8 @@ export const COMMAND_TYPES = [
 ] as const;
 
 /** The 1.2 S4 authority vocabulary is distinct from legacy 1.0/1.1. */
-export type CommandType = (typeof COMMAND_TYPES)[number] | S4Seam12CommandType | S3Seam12CommandType;
+export type CommandType =
+  (typeof COMMAND_TYPES)[number] | S4Seam12CommandType | S3Seam12CommandType;
 
 /** Closed v1 read vocabulary: the only surface query is the projection read. */
 export const QUERY_TYPES = ['READ_PROJECTION'] as const;
@@ -371,7 +376,9 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
     S4_SEAM12_COMMAND_TYPES.includes(commandType as S4Seam12CommandType);
   if (
     typeof commandType !== 'string' ||
-    (!COMMAND_TYPES.includes(commandType as (typeof COMMAND_TYPES)[number]) && !s4Command && !s3Command)
+    (!COMMAND_TYPES.includes(commandType as (typeof COMMAND_TYPES)[number]) &&
+      !s4Command &&
+      !s3Command)
   ) {
     return seamFail([
       seamDiagnostic(
@@ -444,7 +451,11 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
     expectedRevision: expectedRevision.value,
     correlation: correlation.value,
     issuedAt: issuedAt.value,
-    payload: s4Payload?.ok ? s4Payload.value.payload : s3Payload?.ok ? s3Payload.value.payload : record['payload'],
+    payload: s4Payload?.ok
+      ? s4Payload.value.payload
+      : s3Payload?.ok
+        ? s3Payload.value.payload
+        : record['payload'],
   });
 }
 
