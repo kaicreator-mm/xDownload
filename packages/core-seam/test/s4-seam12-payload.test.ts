@@ -209,11 +209,14 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
   });
 
   it('returns typed rejection for hostile and revoked proxies', () => {
-    const hostile = new Proxy({ ...preview }, {
-      ownKeys() {
-        throw new Error('ownKeys trap');
+    const hostile = new Proxy(
+      { ...preview },
+      {
+        ownKeys() {
+          throw new Error('ownKeys trap');
+        },
       },
-    });
+    );
     const revocable = Proxy.revocable({ ...preview }, {});
     revocable.revoke();
     for (const payload of [hostile, revocable.proxy]) {
