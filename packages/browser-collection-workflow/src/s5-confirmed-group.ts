@@ -77,13 +77,18 @@ export function validateConfirmedPageGroup(
       ),
     ]);
   }
-  const matchingBatch = snapshot.selectionClaims.some(
-    (claim) =>
-      claim.kind === 'BATCH' &&
-      claim.confirmationType === 'CONFIRM_SELECTION' &&
-      claim.memberRefs.length === selected.length &&
-      claim.memberRefs.every((member) => unique.has(member)),
-  );
+  // A Core-confirmed current-page group is ONE BATCH covering every
+  // frozen member EXACTLY ONCE. Length and subset checks are insufficient:
+  // BATCH [A,A] plus a separate SINGLE [B] must not authorize [A,B].
+  // Conflicting/multiple claims are ambiguous and cannot be silently
+  // replayed as one approved group.
+  const matchingBatch =
+    snapshot.selectionClaims.length === 1 &&
+    snapshot.selectionClaims[0]?.kind === 'BATCH' &&
+    snapshot.selectionClaims[0].confirmationType === 'CONFIRM_SELECTION' &&
+    snapshot.selectionClaims[0].memberRefs.length === selected.length &&
+    new Set(snapshot.selectionClaims[0].memberRefs).size === selected.length &&
+    snapshot.selectionClaims[0].memberRefs.every((member) => unique.has(member));
   if (!matchingBatch) {
     return fail([
       diagnostic(
