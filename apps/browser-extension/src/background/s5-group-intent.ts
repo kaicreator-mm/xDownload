@@ -48,8 +48,9 @@ function canonicalObservedUri(raw: unknown): raw is string {
     typeof raw !== 'string' ||
     raw.length < 8 ||
     raw.length > 2048 ||
-    Array.from(raw).some((character) =>
-      character === '\\' || character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
+    Array.from(raw).some(
+      (character) =>
+        character === '\\' || character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
     )
   )
     return false;
