@@ -100,9 +100,9 @@ describe('OS-verified peer transport authorization gate', () => {
     }
   });
 
-  it('keeps S3 1.2 DISABLED at the wire: the reserved command name and a 1.2 envelope both reject', () => {
-    // The reserved S3 command name is not in the closed vocabulary, so the
-    // envelope decoder rejects it before any dispatch — no S3 path exists.
+  it('keeps S3 DISABLED on 1.1 and refuses malformed S3 syntax on 1.2', () => {
+    // S3 syntax recognition is now 1.2-only, but the installed Core still
+    // advertises 1.1 and refuses all S3 even with a forged claimed CLI peer.
     const envelope = {
       schemaIdentity: currentSeamSchemaIdentity(),
       kind: 'command',
@@ -118,11 +118,10 @@ describe('OS-verified peer transport authorization gate', () => {
     const decoded = decodeSeamEnvelope(envelope);
     expect(decoded.ok).toBe(false);
     if (!decoded.ok) {
-      expect(decoded.diagnostics.some((d) => d.code === 'UNKNOWN_COMMAND_TYPE')).toBe(true);
+      expect(decoded.diagnostics.some((d) => d.code === 'UNSUPPORTED_ENVELOPE_VERSION')).toBe(true);
     }
-    // Even declared as schema 1.2 the S3 command name is unknown to the closed
-    // vocabulary — no S3 1.2 wire path exists until the Contract PR adds one
-    // through the documented amendment gate.
+    // At schema 1.2 the command name is recognized but an empty EXECUTE
+    // payload cannot furnish the mandatory closed snapshot/member tuple.
     const v12 = {
       ...envelope,
       schemaIdentity: { schema: 'xdownload.core-seam', version: '1.2.0' },
@@ -130,7 +129,7 @@ describe('OS-verified peer transport authorization gate', () => {
     const decodedV12 = decodeSeamEnvelope(v12);
     expect(decodedV12.ok).toBe(false);
     if (!decodedV12.ok) {
-      expect(decodedV12.diagnostics.some((d) => d.code === 'UNKNOWN_COMMAND_TYPE')).toBe(true);
+      expect(decodedV12.diagnostics.some((d) => d.code === 'ENVELOPE_MALFORMED')).toBe(true);
     }
     expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.1.0');
   });

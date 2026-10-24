@@ -64,6 +64,7 @@ import {
 } from './envelope.ts';
 import type { CommandRequestId } from './ids.ts';
 import { S4_SEAM12_COMMAND_TYPES } from './s4-seam12-payload.ts';
+import { S3_SEAM12_COMMAND_TYPES } from './s3-seam12-payload.ts';
 import { assertPeerTransportAuthorization } from './verified-session.ts';
 import { authorizePeer, type ExpectedPeerScope, type PeerIdentity } from './peer.ts';
 import { projectAggregate, type SeamProjectionView } from './projection.ts';
@@ -428,6 +429,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     if (
       S4_SEAM12_COMMAND_TYPES.includes(
         envelope.commandType as (typeof S4_SEAM12_COMMAND_TYPES)[number],
+      ) ||
+      S3_SEAM12_COMMAND_TYPES.includes(
+        envelope.commandType as (typeof S3_SEAM12_COMMAND_TYPES)[number],
       )
     ) {
       // A syntactically valid S4 1.2 command is NOT installed authority.
@@ -447,7 +451,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
               seamDiagnostic(
                 'TRANSPORT_UNAUTHORIZED',
                 'connection',
-                'S4 requires a live Core-verified named-pipe session; no authenticated connection was supplied',
+                'S3/S4 requires a live Core-verified named-pipe session; no authenticated connection was supplied',
               ),
             ]
           : verified.diagnostics,
@@ -1498,7 +1502,7 @@ function applyCommand(
         seamDiagnostic(
           'TRANSPORT_UNAUTHORIZED',
           'commandType',
-          'S4 1.2 execution has no installed verified Core handler; fail closed',
+          'S3/S4 1.2 execution has no installed verified Core handler; fail closed',
         ),
       ]);
   }
