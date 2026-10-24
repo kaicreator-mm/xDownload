@@ -211,7 +211,10 @@ async function resolve4WithinDeadline(
     // Catch both synchronous resolver failure and asynchronous rejection.
     void Promise.resolve()
       .then(() => resolve4(hostname))
-      .then((value) => finish(value), () => finish(undefined));
+      .then(
+        (value) => finish(value),
+        () => finish(undefined),
+      );
   });
   const remainingMs = Math.floor(deadline - performance.now());
   if (answers === undefined || remainingMs <= 0) return undefined;
