@@ -46,10 +46,7 @@ import {
   MAX_S2_ATTACHMENT_BYTES,
   type S2Selection,
 } from './s2-glue.ts';
-import {
-  decodeS5PageGroupGesture,
-  isS5PageGroupGesture,
-} from './s5-group-intent.ts';
+import { decodeS5PageGroupGesture, isS5PageGroupGesture } from './s5-group-intent.ts';
 
 /**
  * Module-scoped ambient surface for the browser fetch used by the byte lane
