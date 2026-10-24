@@ -145,24 +145,28 @@ describe('T015 transfer-and-media', () => {
 
     const runtime = openRuntime(rootDir);
     try {
-      const flow = await executePinnedPublicS3Acquisition(runtime, {
-        contractId: CONTRACT,
-        snapshotId: SNAPSHOT,
-        targetId: TARGET,
-        authorizationContextRef: 'authctx/local-001',
-        budgetProfile: rawSingleResourceContract()['budgetProfile'],
-        commandId: 'cmd-media-001',
-        memberId: MEMBER,
-        artifactId: 'artifact:media-001',
-        transfer: directRequest(baseUri, bytes, {
-          slice: 'S3',
-          expectedSha256: undefined,
-          expectedContentTypePrefix: 'video/mp4',
-          mediaPolicy: {
-            signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
-          },
-        }),
-      }, fixtureS3Policy(baseUri));
+      const flow = await executePinnedPublicS3Acquisition(
+        runtime,
+        {
+          contractId: CONTRACT,
+          snapshotId: SNAPSHOT,
+          targetId: TARGET,
+          authorizationContextRef: 'authctx/local-001',
+          budgetProfile: rawSingleResourceContract()['budgetProfile'],
+          commandId: 'cmd-media-001',
+          memberId: MEMBER,
+          artifactId: 'artifact:media-001',
+          transfer: directRequest(baseUri, bytes, {
+            slice: 'S3',
+            expectedSha256: undefined,
+            expectedContentTypePrefix: 'video/mp4',
+            mediaPolicy: {
+              signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
+            },
+          }),
+        },
+        fixtureS3Policy(baseUri),
+      );
       if (flow.attemptReplayed || flow.transfer === undefined) {
         throw new Error('unexpected replay in fixture flow');
       }
@@ -190,28 +194,36 @@ describe('T015 transfer-and-media', () => {
     // Bytes WITHOUT the required media structure; the digest matches the
     // frozen anchor, so only media validation fails (C27 shape).
     const bytes = payload(1024, 9);
-    fixture.serveFile('/file.bin', { body: bytes, etag: 'media-missing-etag', contentType: 'video/mp4' });
+    fixture.serveFile('/file.bin', {
+      body: bytes,
+      etag: 'media-missing-etag',
+      contentType: 'video/mp4',
+    });
 
     const runtime = openRuntime(rootDir);
     try {
-      const flow = await executePinnedPublicS3Acquisition(runtime, {
-        contractId: CONTRACT,
-        snapshotId: SNAPSHOT,
-        targetId: TARGET,
-        authorizationContextRef: 'authctx/local-001',
-        budgetProfile: rawSingleResourceContract()['budgetProfile'],
-        commandId: 'cmd-media-002',
-        memberId: MEMBER,
-        artifactId: 'artifact:media-002',
-        transfer: directRequest(baseUri, bytes, {
-          slice: 'S3',
-          expectedSha256: undefined,
-          expectedContentTypePrefix: 'video/mp4',
-          mediaPolicy: {
-            signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
-          },
-        }),
-      }, fixtureS3Policy(baseUri));
+      const flow = await executePinnedPublicS3Acquisition(
+        runtime,
+        {
+          contractId: CONTRACT,
+          snapshotId: SNAPSHOT,
+          targetId: TARGET,
+          authorizationContextRef: 'authctx/local-001',
+          budgetProfile: rawSingleResourceContract()['budgetProfile'],
+          commandId: 'cmd-media-002',
+          memberId: MEMBER,
+          artifactId: 'artifact:media-002',
+          transfer: directRequest(baseUri, bytes, {
+            slice: 'S3',
+            expectedSha256: undefined,
+            expectedContentTypePrefix: 'video/mp4',
+            mediaPolicy: {
+              signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
+            },
+          }),
+        },
+        fixtureS3Policy(baseUri),
+      );
       if (flow.attemptReplayed || flow.transfer === undefined) {
         throw new Error('unexpected replay in fixture flow');
       }
