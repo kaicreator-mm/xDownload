@@ -29,9 +29,11 @@
   const stateBox = document.getElementById('state');
   const s5Group = document.getElementById('s5-group');
   const s5PreviewButton = document.getElementById('s5-preview');
+  const s5PrepareButton = document.getElementById('s5-prepare');
   const s5PreviewResult = document.getElementById('s5-preview-result');
   const s5ObservedRows = [];
   let s5ObservedTab = null;
+  let s5ObservedComplete = false;
 
   function setState(kind, text) {
     stateBox.className = `state ${kind}`;
@@ -41,10 +43,10 @@
   /** Injected into the page (self-contained; returns plain data only). */
   function scrapeAttachmentLinks() {
     const anchors = Array.from(document.querySelectorAll('a[href]'));
-    return anchors
+    const candidates = anchors
       .map((anchor) => ({ href: anchor.href, text: (anchor.textContent || '').trim() }))
-      .filter((item) => /^https?:\/\//i.test(item.href))
-      .slice(0, 20);
+      .filter((item) => /^https?:\/\//i.test(item.href));
+    return { links: candidates.slice(0, 20), observedCount: candidates.length };
   }
 
   async function activeTab() {
@@ -201,6 +203,80 @@
     list.appendChild(li);
   }
 
+  // This is only a browser-observed gesture; Core #151 will independently
+  // validate the durable current-page snapshot before any group effect.
+  // The installed worker currently refuses this typed message, rather than
+  // quietly running N independent S2 downloads or fabricating coverage.
+  s5PrepareButton.addEventListener('click', async () => {
+    s5PrepareButton.disabled = true;
+    try {
+      const currentTab = await activeTab();
+      if (
+        !currentTab ||
+        !s5ObservedTab ||
+        currentTab.id !== s5ObservedTab.id ||
+        (currentTab.url || '') !== s5ObservedTab.url
+      ) {
+        s5PreviewResult.textContent =
+          'S5 refused: tab changed since observation; rescan the page before group confirmation.';
+        return;
+      }
+      if (!s5ObservedComplete) {
+        s5PreviewResult.textContent =
+          'S5 refused: the page has more than 20 observed links; partial membership cannot be called a whole current-page group.';
+        return;
+      }
+      const latest = await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        func: scrapeAttachmentLinks,
+      });
+      const observed = latest && latest[0] ? latest[0].result : null;
+      if (
+        !observed ||
+        !Array.isArray(observed.links) ||
+        observed.observedCount !== s5ObservedRows.length ||
+        observed.links.length !== s5ObservedRows.length ||
+        observed.links.some(
+          (item, index) =>
+            item.href !== s5ObservedRows[index].href || item.text !== s5ObservedRows[index].text,
+        )
+      ) {
+        s5PreviewResult.textContent =
+          'S5 refused: the page membership changed since observation; reopen the popup.';
+        return;
+      }
+      const selected = s5ObservedRows.filter((row) => row.checkbox.checked);
+      if (selected.length !== s5ObservedRows.length || selected.length === 0) {
+        s5PreviewResult.textContent =
+          'S5 current-page scope requires confirmation of every observed member; a subset needs a separately approved scope.';
+        return;
+      }
+      if (new Set(selected.map((item) => item.href)).size !== selected.length) {
+        s5PreviewResult.textContent =
+          'S5 refused: duplicate resource locators require trusted distinct member identities.';
+        return;
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: 'S5_PREPARE_CURRENT_PAGE_GROUP',
+        tabId: currentTab.id,
+        pageUrl: currentTab.url,
+        observedMemberCount: selected.length,
+        members: selected.map((item) => ({ href: item.href, text: item.text })),
+      });
+      // A typed Core transport and durable snapshot are not yet installed.
+      // Even an unexpected future positive response must not be interpreted
+      // as an accepted member or a completed download in this UI.
+      s5PreviewResult.textContent =
+        response && response.ok === false
+          ? `S5 admission refused without downloading: ${String(response.error || 'UNKNOWN')}`
+          : 'S5 admission response is not an installed Core terminal; no group download can be claimed.';
+    } catch (error) {
+      s5PreviewResult.textContent = `S5 admission failed without downloading: ${String(error)}`;
+    } finally {
+      s5PrepareButton.disabled = false;
+    }
+  });
+
   s5PreviewButton.addEventListener('click', async () => {
     // Selection is frozen against the initially observed page and tab.
     // A navigation between scanning and confirmation must never silently
@@ -252,18 +328,24 @@
         target: { tabId: tab.id },
         func: scrapeAttachmentLinks,
       });
-      const links = results && results[0] && results[0].result ? results[0].result : [];
+      const observed = results && results[0] && results[0].result ? results[0].result : null;
+      const links = observed && Array.isArray(observed.links) ? observed.links : [];
       if (links.length === 0) {
         setState('UNKNOWN', 'no http(s) attachment links found on the current page');
         return;
       }
       list.textContent = '';
       s5ObservedTab = { id: tab.id, url: tab.url || '' };
+      s5ObservedComplete = observed.observedCount === links.length;
       s5ObservedRows.length = 0;
       for (const item of links) {
         renderRow(tab, item);
       }
       s5Group.hidden = false;
+      if (!s5ObservedComplete) {
+        s5PreviewResult.textContent =
+          'Only the first 20 page links were scanned; complete S5 current-page membership is unavailable.';
+      }
       setState(
         'RUNNING',
         'Select an S2 attachment to Download, or preview an S5 page group without acquisition.',

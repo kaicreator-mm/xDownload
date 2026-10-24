@@ -46,6 +46,7 @@ import {
   MAX_S2_ATTACHMENT_BYTES,
   type S2Selection,
 } from './s2-glue.ts';
+import { decodeS5PageGroupGesture, isS5PageGroupGesture } from './s5-group-intent.ts';
 
 /**
  * Module-scoped ambient surface for the browser fetch used by the byte lane
@@ -429,6 +430,18 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
   // popup) may submit an explicit S2 selection decision or poll journey
   // status. Content scripts and any other sender can never reach the journey.
   if (sender.id === chrome.runtime.id && sender.tab === undefined) {
+    // #152 S5 gesture can be prepared by the shipped popup, but must never
+    // silently fall through to the S2 downloader. The actual Core-owned
+    // S5 membership and durable batch carrier (#151) are not yet installed.
+    // Return a typed refusal BEFORE Native Messaging or any HTTP effect.
+    if (isS5PageGroupGesture(raw)) {
+      const prepared = decodeS5PageGroupGesture(raw);
+      sendResponse({
+        ok: false,
+        error: prepared.ok ? 'S5_CORE_CARRIER_NOT_INSTALLED' : prepared.detail,
+      });
+      return false;
+    }
     const decoded = decodeInternalS2Message(raw);
     if (!decoded.ok) {
       sendResponse({ ok: false, error: decoded.detail });
