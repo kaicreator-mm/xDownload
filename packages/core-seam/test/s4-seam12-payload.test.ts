@@ -5,7 +5,7 @@ import {
   S4_PUBLIC_MEDIA_PROFILE_ID,
   S4_SEAM12_COMMAND_TYPES,
 } from '../src/s4-seam12-payload.ts';
-import { rawCommand } from './helpers.ts';
+import { createCoreSeamServer, EXPECTED_PEER, rawCommand } from './helpers.ts';
 
 const preview = {
   snapshotId: 'snapshot-1',
@@ -146,7 +146,7 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
     }
   });
 
-  it('does not silently activate three S4 command names in installed v1.1 Core envelope', () => {
+  it('admits only closed 1.2 syntax but never activates S4 effects on installed v1.1 Core', () => {
     expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.1.0');
     expect(S4_SEAM12_COMMAND_TYPES).toHaveLength(3);
     for (const commandType of S4_SEAM12_COMMAND_TYPES) {
@@ -166,8 +166,14 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
       envelope.commandType = commandType;
       envelope.schemaIdentity = { schema: 'xdownload.core-seam', version: '1.2.0' };
       const result = decodeSeamEnvelope(envelope);
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.diagnostics[0]?.code).toBe('UNKNOWN_COMMAND_TYPE');
+      expect(result.ok).toBe(true); // syntactic recognition only
+      const created = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
+      expect(created.ok).toBe(true);
+      if (!created.ok) continue;
+      const denied = created.value.handleFrame(JSON.stringify(envelope));
+      expect(denied.outcome).toBe('REJECTED');
+      expect(denied.diagnostics?.[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
+      expect(created.value.acceptedCommandCount).toBe(0);
     }
   });
 
