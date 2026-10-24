@@ -23,6 +23,11 @@ import {
 } from './diagnostics.ts';
 import { makeCommandRequestId, makeSeamRevision, type CommandRequestId } from './ids.ts';
 import { decodePeerIdentity, type PeerIdentity } from './peer.ts';
+import {
+  decodeS4Seam12Payload,
+  S4_SEAM12_COMMAND_TYPES,
+  type S4Seam12CommandType,
+} from './s4-seam12-payload.ts';
 
 /** Seam wire schema identity — independent of the domain-contracts version space. */
 export const CORE_SEAM_SCHEMA_ID = 'xdownload.core-seam' as const;
@@ -64,7 +69,8 @@ export const COMMAND_TYPES = [
   'EXECUTE_S1_DIRECT_ACQUISITION',
 ] as const;
 
-export type CommandType = (typeof COMMAND_TYPES)[number];
+/** The 1.2 S4 authority vocabulary is distinct from legacy 1.0/1.1. */
+export type CommandType = (typeof COMMAND_TYPES)[number] | S4Seam12CommandType;
 
 /** Closed v1 read vocabulary: the only surface query is the projection read. */
 export const QUERY_TYPES = ['READ_PROJECTION'] as const;
@@ -356,7 +362,13 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
     return peer;
   }
   const commandType = record['commandType'];
-  if (typeof commandType !== 'string' || !COMMAND_TYPES.includes(commandType as CommandType)) {
+  const s4Command =
+    typeof commandType === 'string' &&
+    S4_SEAM12_COMMAND_TYPES.includes(commandType as S4Seam12CommandType);
+  if (
+    typeof commandType !== 'string' ||
+    (!COMMAND_TYPES.includes(commandType as (typeof COMMAND_TYPES)[number]) && !s4Command)
+  ) {
     return seamFail([
       seamDiagnostic(
         'UNKNOWN_COMMAND_TYPE',
@@ -365,6 +377,14 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
       ),
     ]);
   }
+  // S4 1.2 has an independently reviewed closed payload shape and final
+  // 1.2-only version gate. Decoding is NOT Core authority or a permission to
+  // preview/confirm/execute; server.ts refuses prior to replay/journal/effect
+  // until installed trusted-session admission and private command handling.
+  const s4Payload = s4Command
+    ? decodeS4Seam12Payload(commandType, schemaIdentity.value.version, record['payload'])
+    : undefined;
+  if (s4Payload !== undefined && !s4Payload.ok) return s4Payload;
   // EXECUTE_S1_DIRECT_ACQUISITION is introduced only in seam 1.1.
   // Major-1 backwards decoding remains valid for the old closed vocabulary,
   // but a 1.0 frame can never gain the new network-effect authority.
@@ -414,7 +434,7 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
     expectedRevision: expectedRevision.value,
     correlation: correlation.value,
     issuedAt: issuedAt.value,
-    payload: record['payload'],
+    payload: s4Payload?.ok ? s4Payload.value.payload : record['payload'],
   });
 }
 
