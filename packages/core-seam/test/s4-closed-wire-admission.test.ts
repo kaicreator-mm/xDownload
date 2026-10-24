@@ -68,8 +68,13 @@ describe('#148 closed S4 1.2 wire admission — NO installed S4 authority', () =
       for (const version of ['1.0.0', '1.1.0', '1.2.0-beta.1']) {
         const old = decodeSeamEnvelope(frame(name, payload, version));
         expect(old.ok).toBe(false);
-        if (!old.ok)
-          expect(old.diagnostics.some((d) => ['UNSUPPORTED_ENVELOPE_VERSION', 'ENVELOPE_MALFORMED'].includes(d.code))).toBe(true);
+        if (!old.ok) {
+          expect(
+            old.diagnostics.some((d) =>
+              ['UNSUPPORTED_ENVELOPE_VERSION', 'ENVELOPE_MALFORMED'].includes(d.code),
+            ),
+          ).toBe(true);
+        }
       }
     }
     const unapproved = decodeSeamEnvelope(frame('EXECUTE_S3_SELECTED_MEDIA', {}));
