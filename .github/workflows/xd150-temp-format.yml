@@ -1,0 +1,29 @@
+name: xd150 temporary exact formatter diagnostic
+on:
+  pull_request:
+    branches:
+      - version/v0.1.0
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.21.0
+      - run: pnpm install --frozen-lockfile
+      - name: Capture exact formatter output
+        run: |
+          pnpm exec prettier --write packages/core-runtime/src/flow.ts packages/core-runtime/test/s3-pinned-core-flow.test.ts packages/core-runtime/test/transfer-and-media.test.ts
+          echo XD150_0_START
+          cat packages/core-runtime/src/flow.ts
+          echo XD150_0_END
+          echo XD150_1_START
+          cat packages/core-runtime/test/s3-pinned-core-flow.test.ts
+          echo XD150_1_END
+          echo XD150_2_START
+          cat packages/core-runtime/test/transfer-and-media.test.ts
+          echo XD150_2_END
