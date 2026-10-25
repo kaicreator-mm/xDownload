@@ -94,13 +94,23 @@ describe('#150 deny unsafe public S3 Core effects until installed pinning exists
     dirs.push(dir);
     const runtime = openRuntime(dir);
     const input = s3Input();
-    input.transfer.slice = 'S1';
+    Object.defineProperty(input.transfer, 'slice', {
+      value: 'S1',
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
     let getterReads = 0;
     Object.defineProperty(input, 'commandId', {
       enumerable: true,
       get: () => {
         getterReads += 1;
-        input.transfer.slice = 'S3';
+        Object.defineProperty(input.transfer, 'slice', {
+          value: 'S3',
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
         return 'command:s3-getter-flip';
       },
     });
