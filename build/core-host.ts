@@ -58,8 +58,7 @@ export const CORE_HOST_EXIT = {
  */
 export function coreHostTransportStartRefused(error: unknown): boolean {
   return (
-    error instanceof NonLoopbackTransportRefusedError ||
-    error instanceof WindowsIpcUnsupportedError
+    error instanceof NonLoopbackTransportRefusedError || error instanceof WindowsIpcUnsupportedError
   );
 }
 
