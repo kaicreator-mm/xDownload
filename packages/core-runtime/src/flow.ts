@@ -319,8 +319,7 @@ function s1DataSnapshot(value: unknown): Record<string, unknown> {
     if (
       typeof value !== 'object' ||
       value === null ||
-      (Object.getPrototypeOf(value) !== Object.prototype &&
-        Object.getPrototypeOf(value) !== null)
+      (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
     ) {
       throw new Error('not plain data');
     }
@@ -355,7 +354,10 @@ export async function executeDirectAcquisition(
   if (transfer['slice'] !== 'S1') {
     throw new CoreRuntimeFlowError('S3_REQUIRES_CORE_PINNED_MEDIA_SOURCE');
   }
-  const stableTransfer = Object.freeze({ ...transfer, slice: 'S1' }) as unknown as DirectFlowInput['transfer'];
+  const stableTransfer = Object.freeze({
+    ...transfer,
+    slice: 'S1',
+  }) as unknown as DirectFlowInput['transfer'];
   const stableInput = Object.freeze({
     ...fields,
     transfer: stableTransfer,
