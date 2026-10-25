@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { CoreRuntime, CoreRuntimeOptions } from '@xdownload/core-runtime';
 
 const probe = vi.hoisted(() => ({
   mode: 'bind-fail' as 'bind-fail' | 'runtime-fail' | 'success',
@@ -17,7 +18,7 @@ const probe = vi.hoisted(() => ({
 }));
 
 vi.mock('@xdownload/core-seam', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@xdownload/core-seam')>();
+  const original = await importOriginal<Record<string, unknown>>();
   return {
     ...original,
     createWindowsPipeServerTransport: (options: { pipeName: string }) => ({
@@ -50,18 +51,20 @@ vi.mock('@xdownload/core-seam', async (importOriginal) => {
 });
 
 vi.mock('@xdownload/core-runtime', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@xdownload/core-runtime')>();
+  const original = await importOriginal<Record<string, unknown>>();
+  const originalCreate = original['createCoreRuntime'] as (args: CoreRuntimeOptions) => CoreRuntime;
+  const originalReopen = original['reopenCoreRuntime'] as (args: CoreRuntimeOptions) => CoreRuntime;
   return {
     ...original,
-    createCoreRuntime: (...args: Parameters<typeof original.createCoreRuntime>) => {
+    createCoreRuntime: (options: CoreRuntimeOptions) => {
       probe.events.push('runtime-create');
       if (probe.mode === 'runtime-fail') throw Error('synthetic Core composition failure');
-      return original.createCoreRuntime(...args);
+      return originalCreate(options);
     },
-    reopenCoreRuntime: (...args: Parameters<typeof original.reopenCoreRuntime>) => {
+    reopenCoreRuntime: (options: CoreRuntimeOptions) => {
       probe.events.push('runtime-reopen-start');
       // A failed bind must never start this eager S1 recovery path.
-      return original.reopenCoreRuntime(...args);
+      return originalReopen(options);
     },
   };
 });
