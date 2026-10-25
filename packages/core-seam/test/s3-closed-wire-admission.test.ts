@@ -131,6 +131,63 @@ describe('#150 adopted S3 1.2 two-command syntax, no installed S3 authority', ()
     expect(decodeS3Seam12Payload('CONFIRM_S3_CANDIDATE', '1.2.0', new Date()).ok).toBe(false);
   });
 
+  it('blocks the reviewed changing-getter redirect host counterexample, never copying unchecked IP', () => {
+    const changing: string[] = ['media.example.org'];
+    let reads = 0;
+    Object.defineProperty(changing, '0', {
+      enumerable: true,
+      configurable: true,
+      get: () => (++reads < 3 ? 'media.example.org' : '127.0.0.1'),
+    });
+    const result = decodeS3Seam12Payload('CONFIRM_S3_CANDIDATE', '1.2.0', {
+      ...candidate,
+      declaredRedirectHosts: changing,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
+    // The descriptor is rejected before invoking an accessor or before
+    // interpreting the public hostname as proof of what was copied.
+    expect(reads).toBe(0);
+  });
+
+  it('rejects hostile, revoked, sparse and extra-property host arrays with typed refusal', () => {
+    const revoked = Proxy.revocable(['media.example.org'], {});
+    revoked.revoke();
+    const holey = new Array<string>(2);
+    holey[0] = 'media.example.org';
+    const extra = ['media.example.org'] as string[] & { authority?: string };
+    extra.authority = 'private-host';
+    const hostile: unknown[] = [
+      revoked.proxy,
+      holey,
+      extra,
+      new Proxy(['media.example.org'], {
+        getOwnPropertyDescriptor() {
+          throw new Error('descriptor trap');
+        },
+      }),
+      new Proxy(['media.example.org'], {
+        getPrototypeOf() {
+          throw new Error('prototype trap');
+        },
+      }),
+    ];
+    for (const hosts of hostile) {
+      expect(() =>
+        decodeS3Seam12Payload('CONFIRM_S3_CANDIDATE', '1.2.0', {
+          ...candidate,
+          declaredRedirectHosts: hosts,
+        }),
+      ).not.toThrow();
+      const result = decodeS3Seam12Payload('CONFIRM_S3_CANDIDATE', '1.2.0', {
+        ...candidate,
+        declaredRedirectHosts: hosts,
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
+    }
+  });
+
   it('fails before accepted-request replay or any Core persistent effect even when peer claims CLI', () => {
     const result = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
     expect(result.ok).toBe(true);
