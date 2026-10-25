@@ -52,9 +52,15 @@ describe('#150 CLI Windows same-install pipe target, no TCP fallback', () => {
     [...base, '--pipe-name', pipe, '--port', '1234'],
     [...base, '--pipe-name', pipe, '--host', '127.0.0.1'],
     [
-      'status', '--contract', 'contract-001',
-      '--install-id', 'myinstall/../other', '--user-id', 'operator',
-      '--pipe-name', pipe,
+      'status',
+      '--contract',
+      'contract-001',
+      '--install-id',
+      'myinstall/../other',
+      '--user-id',
+      'operator',
+      '--pipe-name',
+      pipe,
     ],
   ])('rejects mismatched/remote/conflicting namespace before Core interaction (%s)', (argv) => {
     expect(() => parseArgv(argv)).toThrow(CliInputError);
