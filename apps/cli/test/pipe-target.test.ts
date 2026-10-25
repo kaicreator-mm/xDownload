@@ -45,7 +45,8 @@ describe('#150 CLI Windows same-install pipe target, no TCP fallback', () => {
     });
   });
 
-  it.each([
+  it('rejects mismatched/remote/conflicting namespace before Core interaction', () => {
+    const invalid = [
     [...base, '--pipe-name', String.raw`\\otherhost\pipe\xdownload-core-myinstall`],
     [...base, '--pipe-name', String.raw`\\.\pipe\arbitrary`],
     [...base, '--pipe-name', String.raw`\\.\pipe\xdownload-core-otherinstall`],
@@ -62,8 +63,10 @@ describe('#150 CLI Windows same-install pipe target, no TCP fallback', () => {
       '--pipe-name',
       pipe,
     ],
-  ])('rejects mismatched/remote/conflicting namespace before Core interaction (%s)', (argv) => {
-    expect(() => parseArgv(argv)).toThrow(CliInputError);
+    ];
+    for (const argv of invalid) {
+      expect(() => parseArgv(argv)).toThrow(CliInputError);
+    }
   });
 
   it('forwards checked named pipe only as listen target; no unverified S3 command or TCP invocation', async () => {
