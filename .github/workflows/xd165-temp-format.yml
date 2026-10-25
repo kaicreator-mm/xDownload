@@ -1,0 +1,24 @@
+name: xd165 temporary exact formatter
+on:
+  pull_request:
+    branches: [version/v0.1.0]
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.21.0
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          pnpm exec prettier --write packages/core-seam/src/win-ipc.ts packages/core-seam/test/windows-logon-ace.test.ts
+          echo XD165_0_START
+          cat packages/core-seam/src/win-ipc.ts
+          echo XD165_0_END
+          echo XD165_1_START
+          cat packages/core-seam/test/windows-logon-ace.test.ts
+          echo XD165_1_END
