@@ -256,29 +256,43 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
     options.pipeName === undefined
       ? createLoopbackServerTransport({ host: options.host, port: options.port })
       : createWindowsPipeServerTransport({ pipeName: options.pipeName });
-  const runtime = existing ? reopenCoreRuntime(runtimeOptions) : createCoreRuntime(runtimeOptions);
+  // LISTENER-FIRST admission barrier: reopenCoreRuntime() eagerly re-drives
+  // pending S1 work. A failed pipe bind must NEVER start any of those effects.
+  // While the sole listener is awaiting Core initialization, connections are
+  // closed without decoding frames or conferring authority.
+  let runtime: ReturnType<typeof createCoreRuntime> | undefined;
+  let listenerStarted = false;
   let target: { host: string; port: number; pipeName?: string };
   try {
     target = await transport.start({
       onFrame: (connection, frame) => {
-        // Core deliberately still refuses S3 1.2: an OS-verified pipe alone
-        // is not the Core-issued nonce/journal/selection authority.
-        const response = runtime.seam.handleFrame(frame);
+        const activeRuntime = runtime;
+        if (activeRuntime === undefined) {
+          connection.close();
+          return;
+        }
+        // Even an OS-verified pipe does not install positive S3 authority.
+        const response = activeRuntime.seam.handleFrame(frame);
         connection.send(JSON.stringify(response));
       },
       onConnectionEnded: () => undefined,
     });
+    listenerStarted = true;
+    runtime = existing ? reopenCoreRuntime(runtimeOptions) : createCoreRuntime(runtimeOptions);
   } catch (error) {
-    closeCoreRuntime(runtime);
+    // If Core reopen rejects, never strand a live listener pretending to be
+    // ready. A first-bind failure has not opened Core or its SQLite writer.
+    if (listenerStarted) await transport.stop();
     throw error;
   }
+  const activeRuntime = runtime;
   return {
     host: target.host,
     port: target.port,
     ...(target.pipeName === undefined ? {} : { pipeName: target.pipeName }),
     shutdown: async () => {
       await transport.stop();
-      closeCoreRuntime(runtime);
+      closeCoreRuntime(activeRuntime);
     },
   };
 }
