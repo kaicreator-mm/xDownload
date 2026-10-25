@@ -60,7 +60,6 @@ import {
 import {
   DirectHttpAdapter,
   targetCertaintyOf,
-  type PinnedPublicMediaSourcePolicy,
   type DirectTransferOutcome,
   type DirectTransferRequest,
 } from '@xdownload/direct-acquisition';
@@ -315,56 +314,18 @@ export async function executeDirectAcquisition(
   if (input.transfer.slice !== 'S1') {
     throw new CoreRuntimeFlowError('S3_REQUIRES_CORE_PINNED_MEDIA_SOURCE');
   }
-  return executeDirectAcquisitionWithPolicy(runtime, input);
+  return executeDirectAcquisitionS1(runtime, input);
 }
 
 /**
- * Core-only S3 entry. The policy is read from the trusted installation
- * composition, never the CLI/browser/Recipe/LLM. This exported composition
- * port is NOT a public S3 wire opcode or a user-confirmation authority.
- * A caller of the untrusted seam cannot pass a pinned policy object.
+ * Only S1 currently has an installed, reviewed positive direct-HTTP Core
+ * transport. S3 remains fail closed until a trusted Core-owned selection and
+ * installation policy AND TLS-connected public IP-pinned network port exist.
+ * No caller-supplied policy is permitted to authorize a S3 external effect.
  */
-export async function executePinnedPublicS3Acquisition(
+async function executeDirectAcquisitionS1(
   runtime: FlowRuntime,
   input: DirectFlowInput,
-  pinnedSource: PinnedPublicMediaSourcePolicy,
-): Promise<DirectFlowOutcome> {
-  const transfer = input.transfer;
-  if (
-    transfer.slice !== 'S3' ||
-    transfer.contractId !== input.contractId ||
-    transfer.selectedMemberId !== input.memberId ||
-    transfer.binding.identity !== input.targetId ||
-    transfer.expectedSha256 !== undefined ||
-    transfer.locatorRefresher !== undefined ||
-    transfer.mediaPolicy?.signatures === undefined ||
-    !Array.isArray(transfer.mediaPolicy.signatures) ||
-    transfer.mediaPolicy.signatures.length === 0 ||
-    transfer.mediaPolicy.signatures.length > 16 ||
-    (transfer.expectedContentTypePrefix?.startsWith('video/') !== true &&
-      transfer.expectedContentTypePrefix?.startsWith('audio/') !== true)
-  ) {
-    throw new CoreRuntimeFlowError('S3_SELECTED_MEDIA_INTENT_NOT_BOUND');
-  }
-  // Critically, initial-source admission precedes registerLineage and every
-  // persistent scheduler/SQLite record and network request.
-  let initialAdmitted = false;
-  try {
-    initialAdmitted = pinnedSource.admitInitial(transfer.binding.locator.uri).ok;
-  } catch {
-    // A missing/malformed Core installation policy is never a fallback to S1.
-  }
-  if (!initialAdmitted) {
-    throw new CoreRuntimeFlowError('S3_PUBLIC_MEDIA_SOURCE_NOT_ADMITTED');
-  }
-  return executeDirectAcquisitionWithPolicy(runtime, input, pinnedSource);
-}
-
-/** One canonical Core scheduler/ledger/persistence pipeline for S1 and S3. */
-async function executeDirectAcquisitionWithPolicy(
-  runtime: FlowRuntime,
-  input: DirectFlowInput,
-  pinnedSource?: PinnedPublicMediaSourcePolicy,
 ): Promise<DirectFlowOutcome> {
   const { submission, workItemId } = registerLineage(runtime, input, {
     commandId: input.commandId,
@@ -398,10 +359,7 @@ async function executeDirectAcquisitionWithPolicy(
   }
 
   const adapter = new DirectHttpAdapter(schedulerTransferBudgetPort(runtime, lineageKey));
-  const acquired =
-    pinnedSource === undefined
-      ? await adapter.acquire(input.transfer)
-      : await adapter.acquirePublicS3(input.transfer, pinnedSource);
+  const acquired = await adapter.acquire(input.transfer);
   const transfer = mustDomain('transfer', acquired);
   runtime.writer.recordExternalEffectObserved(workItemId);
 
