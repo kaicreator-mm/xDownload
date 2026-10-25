@@ -236,7 +236,7 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
     // startCoreHost() is also a programmatic exported API: enforce the same
     // exact namespace rule here rather than trusting only argv parsing.
     const safeInstall = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(options.installId);
-    const canonicalName = String.raw`\\.\pipe\xdownload-core-${installId}`;
+    const canonicalName = String.raw`\\.\pipe\xdownload-core-${options.installId}`;
     if (
       !safeInstall ||
       options.pipeName !== canonicalName ||
