@@ -21,10 +21,13 @@
 
 import {
   createLoopbackServerTransport,
+  createWindowsPipeServerTransport,
+  WindowsPipeTransportUnsupportedError,
   makePeerInstallId,
   makePeerUserId,
   NonLoopbackTransportRefusedError,
   type ExpectedPeerScope,
+  type SeamServerTransport,
 } from '@xdownload/core-seam';
 import {
   closeCoreRuntime,
@@ -53,6 +56,7 @@ export interface CoreHostOptions {
   readonly userId: string;
   readonly host: string;
   readonly port: number;
+  readonly pipeName?: string;
 }
 
 export interface CoreHostUsageError {
@@ -73,6 +77,9 @@ export function parseCoreHostArgv(
   let userId: string | undefined;
   let host = '127.0.0.1';
   let port = 0;
+  let pipeName: string | undefined;
+  let explicitHost = false;
+  let explicitPort = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const next = (): string | undefined => {
@@ -91,9 +98,15 @@ export function parseCoreHostArgv(
         userId = next();
         break;
       case '--host':
+        explicitHost = true;
         host = next() ?? host;
         break;
+      case '--pipe-name':
+        pipeName = next();
+        if (pipeName === undefined) return usage('--pipe-name requires a value');
+        break;
       case '--port': {
+        explicitPort = true;
         const raw = next();
         const parsed = raw === undefined ? Number.NaN : Number(raw);
         if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
@@ -122,6 +135,19 @@ export function parseCoreHostArgv(
   const brandedUser = makePeerUserId(userId);
   if (!brandedUser.ok) {
     return usage('--user-id is not a valid peer identity');
+  }
+  if (pipeName !== undefined) {
+    if (explicitHost || explicitPort) {
+      return usage('--pipe-name cannot be combined with --host or --port');
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(installId)) {
+      return usage('--pipe-name requires a safe local Core install-id suffix');
+    }
+    const expected = String.raw`\\\\.\\pipe\\xdownload-core-${installId}`;
+    if (pipeName !== expected) {
+      return usage('--pipe-name must exactly match the local Core install namespace');
+    }
+    return { ok: true, options: { rootDir, installId, userId, host, port, pipeName: expected } };
   }
   return { ok: true, options: { rootDir, installId, userId, host, port } };
 }
@@ -170,6 +196,7 @@ async function loadNodeSqlite(): Promise<unknown> {
 export interface StartedCoreHost {
   readonly host: string;
   readonly port: number;
+  readonly pipeName?: string;
   readonly shutdown: () => Promise<void>;
 }
 
@@ -202,18 +229,36 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
       );
     },
   };
+  // The CLI's explicit --pipe-name can only connect when this SAME installed
+  // Core hosts the matching OS-verified listener. Enforce platform before
+  // opening SQLite or journal resources; never downgrade pipe to loopback.
+  if (options.pipeName !== undefined && process.platform !== 'win32') {
+    throw new WindowsPipeTransportUnsupportedError(process.platform);
+  }
+  // A core-host instance listens on exactly ONE transport, never both.
+  const transport: SeamServerTransport = options.pipeName === undefined
+    ? createLoopbackServerTransport({ host: options.host, port: options.port })
+    : createWindowsPipeServerTransport({ pipeName: options.pipeName });
   const runtime = existing ? reopenCoreRuntime(runtimeOptions) : createCoreRuntime(runtimeOptions);
-  const transport = createLoopbackServerTransport({ host: options.host, port: options.port });
-  const target = await transport.start({
-    onFrame: (connection, frame) => {
-      const response = runtime.seam.handleFrame(frame);
-      connection.send(JSON.stringify(response));
-    },
-    onConnectionEnded: () => undefined,
-  });
+  let target: { host: string; port: number; pipeName?: string };
+  try {
+    target = await transport.start({
+      onFrame: (connection, frame) => {
+        // Core deliberately still refuses S3 1.2: an OS-verified pipe alone
+        // is not the Core-issued nonce/journal/selection authority.
+        const response = runtime.seam.handleFrame(frame);
+        connection.send(JSON.stringify(response));
+      },
+      onConnectionEnded: () => undefined,
+    });
+  } catch (error) {
+    closeCoreRuntime(runtime);
+    throw error;
+  }
   return {
     host: target.host,
     port: target.port,
+    ...(target.pipeName === undefined ? {} : { pipeName: target.pipeName }),
     shutdown: async () => {
       await transport.stop();
       closeCoreRuntime(runtime);
@@ -234,7 +279,7 @@ async function main(): Promise<void> {
       `${JSON.stringify({ document: 'xdownload.core-host.usage', message: parsed.error.message })}\n`,
     );
     process.stderr.write(
-      `usage: xdownload-core-host --root <dir> --install-id <id> --user-id <id> [--host 127.0.0.1] [--port 0]\n`,
+      `usage: xdownload-core-host --root <dir> --install-id <id> --user-id <id> [--host 127.0.0.1] [--port 0] OR [--pipe-name \\\\.\\pipe\\xdownload-core-<install-id>]\n`,
     );
     process.exitCode = CORE_HOST_EXIT.USAGE;
     return;
@@ -249,7 +294,7 @@ async function main(): Promise<void> {
   try {
     host = await startCoreHost(parsed.options);
   } catch (error) {
-    if (error instanceof NonLoopbackTransportRefusedError) {
+    if (error instanceof NonLoopbackTransportRefusedError || error instanceof WindowsPipeTransportUnsupportedError) {
       writeErrorDoc({ error: 'TRANSPORT_REFUSED', message: error.message });
       process.exitCode = CORE_HOST_EXIT.TRANSPORT_REFUSED;
       return;
