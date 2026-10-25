@@ -243,7 +243,9 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
       options.host !== '127.0.0.1' ||
       options.port !== 0
     ) {
-      throw new NonLoopbackTransportRefusedError('invalid Windows Core pipe namespace or TCP coexistence');
+      throw new NonLoopbackTransportRefusedError(
+        'invalid Windows Core pipe namespace or TCP coexistence',
+      );
     }
     if (process.platform !== 'win32') {
       throw new WindowsPipeTransportUnsupportedError(process.platform);
