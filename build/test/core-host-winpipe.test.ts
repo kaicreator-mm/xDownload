@@ -41,14 +41,16 @@ describe('#150 packaged Windows native bridge bind failure exit classification',
       ),
     ).toBe(true);
     expect(
-      coreHostTransportStartRefused(new WindowsIpcUnsupportedError('native koffi module not installed')),
+      coreHostTransportStartRefused(
+        new WindowsIpcUnsupportedError('native koffi module not installed'),
+      ),
     ).toBe(true);
-    expect(
-      coreHostTransportStartRefused(new WindowsPipeTransportUnsupportedError('linux')),
-    ).toBe(true);
-    expect(
-      coreHostTransportStartRefused(new NonLoopbackTransportRefusedError('0.0.0.0')),
-    ).toBe(true);
+    expect(coreHostTransportStartRefused(new WindowsPipeTransportUnsupportedError('linux'))).toBe(
+      true,
+    );
+    expect(coreHostTransportStartRefused(new NonLoopbackTransportRefusedError('0.0.0.0'))).toBe(
+      true,
+    );
   });
 
   it('never relabels general Core composition errors as network refusals', () => {
