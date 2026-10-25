@@ -143,7 +143,7 @@ export function parseCoreHostArgv(
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(installId)) {
       return usage('--pipe-name requires a safe local Core install-id suffix');
     }
-    const expected = String.raw`\\\\.\\pipe\\xdownload-core-${installId}`;
+    const expected = String.raw`\\.\pipe\xdownload-core-${installId}`;
     if (pipeName !== expected) {
       return usage('--pipe-name must exactly match the local Core install namespace');
     }
