@@ -77,6 +77,29 @@ describe('#150 Core-host Windows pipe, exact CLI namespace, no downgrade', () =>
     if (legacy.ok) expect(legacy.options).toMatchObject({ port: 0, host: '127.0.0.1' });
   });
 
+  it('denies direct programmatic host API with forged pipe namespace or TCP coexistence', async () => {
+    const root = path.join(os.tmpdir(), 'xd-core-invalid-pipe-' + Date.now());
+    roots.push(root);
+    const baseOptions: CoreHostOptions = {
+      rootDir: root,
+      installId: 'myinstall',
+      userId: 'operator',
+      host: '127.0.0.1',
+      port: 0,
+      pipeName: pathFor('myinstall'),
+    };
+    for (const hostile of [
+      { ...baseOptions, pipeName: pathFor('someone-else') },
+      { ...baseOptions, pipeName: String.raw`\\remote\pipe\xdownload-core-myinstall` },
+      { ...baseOptions, port: 39999 },
+      { ...baseOptions, host: '0.0.0.0' },
+      { ...baseOptions, installId: 'myinstall/../other' },
+    ]) {
+      await expect(startCoreHost(hostile)).rejects.toThrow();
+      expect(fs.existsSync(root)).toBe(false);
+    }
+  });
+
   it.skipIf(process.platform === 'win32')(
     'rejects Windows pipe before touching SQLite on unsupported platforms',
     async () => {
