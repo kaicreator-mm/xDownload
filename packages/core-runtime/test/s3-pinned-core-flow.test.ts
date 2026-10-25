@@ -54,11 +54,10 @@ function s3Input(uri = URI, overrides: Partial<DirectTransferRequest> = {}): Dir
       slice: 'S3',
       selectedMemberId: unwrapOrThrow(makeMemberId('member-file-001')),
       binding: unwrapOrThrow(
-        bindLocator(
-          { kind: 'direct', uri },
-          targetId,
-          { binding: 'SELECTED_RESOURCE_PROVENANCE', originLocatorUri: uri },
-        ),
+        bindLocator({ kind: 'direct', uri }, targetId, {
+          binding: 'SELECTED_RESOURCE_PROVENANCE',
+          originLocatorUri: uri,
+        }),
       ),
       allowedRedirectHosts: ['media.example.org', 'cdn.example.org'],
       expectedContentTypePrefix: 'video/mp4',
