@@ -100,13 +100,13 @@ function directRequest(
 }
 
 describe('T015 transfer-and-media', () => {
-  it('executes a full S3 media acquisition under runtime dispatch and gates acceptance on the validate chain', async () => {
+  it('executes a full S1 direct-byte acquisition without claiming S3 Media validation', async () => {
     const rootDir = makeTempDir('t015-media-ok');
     dirs.push(rootDir);
     const fixture = new ControlledHttpFixture();
     fixtures.push(fixture);
     const baseUri = await fixture.start();
-    // Media bytes with an MP4 ftyp box: media policy requires it at offset 4.
+    // A media-looking direct file in S1 remains S1; no independent Media truth is minted.
     const bytes = new Uint8Array(2048);
     bytes.set([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70], 0);
     for (let index = 8; index < bytes.length; index += 1) {
@@ -126,7 +126,8 @@ describe('T015 transfer-and-media', () => {
         memberId: MEMBER,
         artifactId: 'artifact:media-001',
         transfer: directRequest(baseUri, bytes, {
-          slice: 'S3',
+          slice: 'S1',
+          expectedContentTypePrefix: 'video/mp4',
           mediaPolicy: {
             signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
           },
@@ -139,7 +140,7 @@ describe('T015 transfer-and-media', () => {
       expect(flow.transfer.reason).toBe('COMPLETED');
       expect(
         flow.transfer.validations.map((check) => `${check.layer}:${check.passed}`).sort(),
-      ).toEqual(['format:true', 'media:true', 'target:true', 'transfer:true']);
+      ).toEqual(['format:true', 'target:true', 'transfer:true']);
       expect(flow.acceptance).toBeDefined();
       expect(flow.schedulerAcceptance?.ok).toBe(true);
       // The bytes physically persisted under the digest binding.
@@ -150,16 +151,20 @@ describe('T015 transfer-and-media', () => {
     }
   });
 
-  it('blocks acceptance when the validate chain fails (C27) and never projects COMPLETE', async () => {
+  it('never interprets caller-supplied MediaPolicy as an S3 gate on an S1 download', async () => {
     const rootDir = makeTempDir('t015-media-fail');
     dirs.push(rootDir);
     const fixture = new ControlledHttpFixture();
     fixtures.push(fixture);
     const baseUri = await fixture.start();
-    // Bytes WITHOUT the required media structure; the digest matches the
-    // frozen anchor, so only media validation fails (C27 shape).
+    // An S1 direct file is not a confirmed S3 media candidate. These bytes
+    // match the S1 digest, but the caller's MP4 hint cannot claim Media PASS.
     const bytes = payload(1024, 9);
-    fixture.serveFile('/file.bin', { body: bytes, etag: 'media-missing-etag' });
+    fixture.serveFile('/file.bin', {
+      body: bytes,
+      etag: 'media-missing-etag',
+      contentType: 'video/mp4',
+    });
 
     const runtime = openRuntime(rootDir);
     try {
@@ -173,7 +178,8 @@ describe('T015 transfer-and-media', () => {
         memberId: MEMBER,
         artifactId: 'artifact:media-002',
         transfer: directRequest(baseUri, bytes, {
-          slice: 'S3',
+          slice: 'S1',
+          expectedContentTypePrefix: 'video/mp4',
           mediaPolicy: {
             signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
           },
@@ -183,15 +189,14 @@ describe('T015 transfer-and-media', () => {
         throw new Error('unexpected replay in fixture flow');
       }
 
-      expect(flow.transfer.reason).toBe('MEDIA_INVALID');
-      expect(flow.transfer.allApplicableValidationPassed).toBe(false);
-      // The writer's AcceptanceValidation gate rejected the acceptance.
-      expect(flow.acceptance).toBeUndefined();
-      expect(flow.acceptanceError?.code).toBe('ACCEPTANCE_INVALID');
-      expect(flow.schedulerAcceptance).toBeUndefined();
-      // The terminal-failure fact is durable and truthful.
-      const facts = runtime.writer.reader.facts(flow.workItemId);
-      expect(facts.some((fact) => fact.kind === 'TERMINAL_FAILURE')).toBe(true);
+      expect(flow.transfer.reason).toBe('COMPLETED');
+      // S1's three-layer truth is distinct from S3's mandatory media layer.
+      expect(flow.transfer.validations.some((layer) => layer.layer === 'media')).toBe(false);
+      expect(flow.transfer.allApplicableValidationPassed).toBe(true);
+      expect(flow.acceptance).toBeDefined();
+      expect(flow.schedulerAcceptance?.ok).toBe(true);
+      const finalBytes = runtime.store.readFinalBytes('artifact:media-002');
+      expect(finalBytes && sha256(finalBytes)).toBe(sha256(bytes));
     } finally {
       closeRuntime(runtime);
     }
