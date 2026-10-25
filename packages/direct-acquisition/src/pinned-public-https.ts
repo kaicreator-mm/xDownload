@@ -276,7 +276,7 @@ function hop(
               finish({ kind: 'failure', reason: 'BODY_INVALID' });
               return;
             }
-            finish({ kind: 'body', bytes: Buffer.concat(chunks), contentType });
+            finish({ kind: 'body', bytes: new Uint8Array(Buffer.concat(chunks)), contentType });
           });
         },
       );
