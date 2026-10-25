@@ -12,7 +12,12 @@ import {
   WindowsPipeTransportUnsupportedError,
 } from '@xdownload/core-seam';
 import { parseArgv as parseCliArgv } from '../../apps/cli/src/args.ts';
-import { coreHostTransportStartRefused, parseCoreHostArgv, startCoreHost, type CoreHostOptions } from '../core-host.ts';
+import {
+  coreHostTransportStartRefused,
+  parseCoreHostArgv,
+  startCoreHost,
+  type CoreHostOptions,
+} from '../core-host.ts';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -30,16 +35,20 @@ const base = (root: string, id: string) => [
 
 describe('#150 packaged Windows native bridge bind failure exit classification', () => {
   it('classifies native first-instance collision and missing bridge as transport refusal', () => {
-    expect(coreHostTransportStartRefused(
-      new WindowsIpcUnsupportedError('CreateNamedPipeW failed (GetLastError=231)'),
-    )).toBe(true);
-    expect(coreHostTransportStartRefused(
-      new WindowsIpcUnsupportedError('native koffi module not installed'),
-    )).toBe(true);
-    expect(coreHostTransportStartRefused(
-      new WindowsPipeTransportUnsupportedError('linux'),
-    )).toBe(true);
-    expect(coreHostTransportStartRefused(new NonLoopbackTransportRefusedError('0.0.0.0'))).toBe(true);
+    expect(
+      coreHostTransportStartRefused(
+        new WindowsIpcUnsupportedError('CreateNamedPipeW failed (GetLastError=231)'),
+      ),
+    ).toBe(true);
+    expect(
+      coreHostTransportStartRefused(new WindowsIpcUnsupportedError('native koffi module not installed')),
+    ).toBe(true);
+    expect(
+      coreHostTransportStartRefused(new WindowsPipeTransportUnsupportedError('linux')),
+    ).toBe(true);
+    expect(
+      coreHostTransportStartRefused(new NonLoopbackTransportRefusedError('0.0.0.0')),
+    ).toBe(true);
   });
 
   it('never relabels general Core composition errors as network refusals', () => {
