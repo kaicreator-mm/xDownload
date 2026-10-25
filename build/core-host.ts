@@ -23,6 +23,7 @@ import {
   createLoopbackServerTransport,
   createWindowsPipeServerTransport,
   WindowsPipeTransportUnsupportedError,
+  WindowsIpcUnsupportedError,
   makePeerInstallId,
   makePeerUserId,
   NonLoopbackTransportRefusedError,
@@ -49,6 +50,18 @@ export const CORE_HOST_EXIT = {
   COMPOSITION_FAILED: 4,
   TRANSPORT_REFUSED: 5,
 } as const;
+
+/**
+ * Startup failures from the Windows native pipe bridge are transport
+ * refusals, not Core runtime/SQLite composition failures. Keep the installed
+ * JSON error document and exit 5 aligned with the actual fail-closed port.
+ */
+export function coreHostTransportStartRefused(error: unknown): boolean {
+  return (
+    error instanceof NonLoopbackTransportRefusedError ||
+    error instanceof WindowsIpcUnsupportedError
+  );
+}
 
 export interface CoreHostOptions {
   readonly rootDir: string;
@@ -325,10 +338,7 @@ async function main(): Promise<void> {
   try {
     host = await startCoreHost(parsed.options);
   } catch (error) {
-    if (
-      error instanceof NonLoopbackTransportRefusedError ||
-      error instanceof WindowsPipeTransportUnsupportedError
-    ) {
+    if (coreHostTransportStartRefused(error)) {
       writeErrorDoc({ error: 'TRANSPORT_REFUSED', message: error.message });
       process.exitCode = CORE_HOST_EXIT.TRANSPORT_REFUSED;
       return;
