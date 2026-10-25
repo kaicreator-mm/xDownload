@@ -281,6 +281,7 @@ describeWin32('native bridge token/ACL hygiene (real OS path)', () => {
       const sd = real.buildProtectedSecurityDescriptor();
       const sddl = real.securityDescriptorToSddl(sd);
       expect(sddl).toContain('(A;;GA;;;SY)');
+      expect(sddl).toMatch(/\(A;;GA;;;S-1-5-5-[0-9]+-[0-9]+\)/u);
       expect(hasExactExpectedUserAce(sddl ?? '', self.userSid, actualMachineAdministratorSid)).toBe(
         true,
       );

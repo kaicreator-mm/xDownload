@@ -106,6 +106,15 @@ const TOKEN_GROUPS = 2;
 const TOKEN_STATISTICS = 10;
 const DACL_SECURITY_INFORMATION = 4;
 const SE_GROUP_LOGON_ID = 0xc0000000;
+/** Win32 TOKEN_GROUPS attributes are unsigned DWORDs; JS & yields Int32. */
+export function hasWindowsLogonGroupAttributes(attributes: number): boolean {
+  return (
+    Number.isSafeInteger(attributes) &&
+    attributes >= 0 &&
+    attributes <= 0xffffffff &&
+    (attributes & SE_GROUP_LOGON_ID) >>> 0 === SE_GROUP_LOGON_ID
+  );
+}
 const GENERIC_ALL = 0x10000000;
 const SET_ACCESS = 2;
 const TRUSTEE_IS_SID = 0;
@@ -541,10 +550,15 @@ export class WindowsIpcBridge {
     let logonSidPtr: bigint | null = null;
     for (let i = 0; i < groupCount; i++) {
       const off = 8 + i * 16;
-      if ((groupsBuf.readUInt32LE(off + 8) & SE_GROUP_LOGON_ID) === SE_GROUP_LOGON_ID) {
+      if (hasWindowsLogonGroupAttributes(groupsBuf.readUInt32LE(off + 8))) {
         logonSidPtr = groupsBuf.readBigUInt64LE(off);
         break;
       }
+    }
+    // The intended per-logon DACL cannot be weakened silently when the
+    // Windows token lacks (or fails to expose) its actual logon group.
+    if (logonSidPtr === null) {
+      throw new Error('Core token lacks required logon SID; refusing protected pipe ACL');
     }
     const authority = Buffer.from([0, 0, 0, 0, 0, 5]); // SECURITY_NT_AUTHORITY
     const systemOut = Buffer.alloc(8);
