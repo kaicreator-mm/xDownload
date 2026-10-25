@@ -307,14 +307,60 @@ export function acceptanceValidationOf(
  * profile, which would let a caller skip S3's public-only origin/redirect
  * restriction while still receiving durable Core acceptance.
  */
+/**
+ * Capture a top-level input/transfer data snapshot without invoking caller
+ * getters. Any Proxy trap, symbol, accessor, exotic prototype or field
+ * descriptor ambiguity is a failed S1 admission, before any Core side effect.
+ * A shallow owned transfer is sufficient to fence the security-critical slice
+ * from later caller mutation; no original transfer object reaches the adapter.
+ */
+function s1DataSnapshot(value: unknown): Record<string, unknown> {
+  try {
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      (Object.getPrototypeOf(value) !== Object.prototype &&
+        Object.getPrototypeOf(value) !== null)
+    ) {
+      throw new Error('not plain data');
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const copy: Record<string, unknown> = Object.create(null);
+    for (const key of Reflect.ownKeys(descriptors)) {
+      if (typeof key !== 'string') throw new Error('symbol field');
+      const descriptor = descriptors[key];
+      if (
+        descriptor === undefined ||
+        !descriptor.enumerable ||
+        !Object.hasOwn(descriptor, 'value')
+      ) {
+        throw new Error('accessor or hidden field');
+      }
+      copy[key] = descriptor.value;
+    }
+    return Object.freeze(copy);
+  } catch {
+    throw new CoreRuntimeFlowError('S1_UNSTABLE_PUBLIC_INPUT');
+  }
+}
+
 export async function executeDirectAcquisition(
   runtime: FlowRuntime,
   input: DirectFlowInput,
 ): Promise<DirectFlowOutcome> {
-  if (input.transfer.slice !== 'S1') {
+  // Authoritative single-read snapshots BEFORE reading commandId/memberId,
+  // invoking hooks, recording lineage, opening sockets or budget work.
+  const fields = s1DataSnapshot(input);
+  const transfer = s1DataSnapshot(fields['transfer']);
+  if (transfer['slice'] !== 'S1') {
     throw new CoreRuntimeFlowError('S3_REQUIRES_CORE_PINNED_MEDIA_SOURCE');
   }
-  return executeDirectAcquisitionS1(runtime, input);
+  const stableTransfer = Object.freeze({ ...transfer, slice: 'S1' }) as unknown as DirectFlowInput['transfer'];
+  const stableInput = Object.freeze({
+    ...fields,
+    transfer: stableTransfer,
+  }) as unknown as DirectFlowInput;
+  return executeDirectAcquisitionS1(runtime, stableInput);
 }
 
 /**
