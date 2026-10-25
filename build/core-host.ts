@@ -22,8 +22,8 @@
 import {
   createLoopbackServerTransport,
   createWindowsPipeServerTransport,
-  WindowsPipeTransportUnsupportedError,
   WindowsIpcUnsupportedError,
+  WindowsPipeTransportUnsupportedError,
   makePeerInstallId,
   makePeerUserId,
   NonLoopbackTransportRefusedError,
