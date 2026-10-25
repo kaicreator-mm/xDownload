@@ -112,7 +112,7 @@ export function hasWindowsLogonGroupAttributes(attributes: number): boolean {
     Number.isSafeInteger(attributes) &&
     attributes >= 0 &&
     attributes <= 0xffffffff &&
-    ((attributes & SE_GROUP_LOGON_ID) >>> 0) === SE_GROUP_LOGON_ID
+    (attributes & SE_GROUP_LOGON_ID) >>> 0 === SE_GROUP_LOGON_ID
   );
 }
 const GENERIC_ALL = 0x10000000;
