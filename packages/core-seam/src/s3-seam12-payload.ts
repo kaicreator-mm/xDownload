@@ -101,7 +101,9 @@ function safeHostArray(value: unknown): readonly string[] | undefined {
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
       return undefined;
     }
-    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const descriptors: Record<string, PropertyDescriptor> = Object.getOwnPropertyDescriptors(
+      value as object,
+    );
     const length = descriptors['length'];
     if (
       length === undefined ||
