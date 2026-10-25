@@ -56,7 +56,9 @@ export const CORE_HOST_EXIT = {
  * refusals, not Core runtime/SQLite composition failures. Keep the installed
  * JSON error document and exit 5 aligned with the actual fail-closed port.
  */
-export function coreHostTransportStartRefused(error: unknown): boolean {
+export function coreHostTransportStartRefused(
+  error: unknown,
+): error is NonLoopbackTransportRefusedError | WindowsIpcUnsupportedError {
   return (
     error instanceof NonLoopbackTransportRefusedError || error instanceof WindowsIpcUnsupportedError
   );
