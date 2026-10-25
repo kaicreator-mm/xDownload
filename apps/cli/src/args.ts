@@ -50,6 +50,8 @@ export interface TargetOptions {
   readonly port: number;
   readonly installId: string;
   readonly userId: string;
+  /** Checked Core named-pipe endpoint, never an arbitrary IPC namespace. */
+  readonly pipeName?: string;
 }
 
 export interface WaitOptions {
@@ -133,7 +135,8 @@ Commands:
 
 Common options:
   --host <h>          Seam host (default 127.0.0.1; loopback only)
-  --port <n>          Seam port (required)
+  --port <n>          Seam port (legacy TCP only; not with --pipe-name)
+  --pipe-name <path>  Local Windows Core named pipe (exclusive with --host/--port)
   --install-id <id>   Peer install identity (required)
   --user-id <id>      Peer user identity (required)
   --request-id <id>   Explicit idempotent command identity (generated when omitted)
@@ -170,6 +173,7 @@ type ArgValues = Record<string, string | boolean | undefined>;
 const OPTIONS = {
   host: { type: 'string' },
   port: { type: 'string' },
+  'pipe-name': { type: 'string' },
   'install-id': { type: 'string' },
   'user-id': { type: 'string' },
   'request-id': { type: 'string' },
@@ -234,6 +238,23 @@ function parseIdentifier(value: string | undefined, option: string, path: string
 }
 
 function parseTarget(values: ArgValues): TargetOptions {
+  const installId = parseIdentifier(str(values, 'install-id'), 'install-id', 'peer.installId');
+  const userId = parseIdentifier(str(values, 'user-id'), 'user-id', 'peer.userId');
+  const pipeName = str(values, 'pipe-name');
+  if (pipeName !== undefined) {
+    if (str(values, 'host') !== undefined || str(values, 'port') !== undefined) {
+      fail('--pipe-name cannot be combined with --host or --port (no TCP fallback)');
+    }
+    // No arbitrary named-pipe path, UNC/remote host, or traversal suffix.
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(installId)) {
+      fail('--install-id must be a safe local Core pipe suffix');
+    }
+    const expected = String.raw`\\.\pipe\xdownload-core-${installId}`;
+    if (pipeName !== expected) {
+      fail('--pipe-name must exactly match the local Core install-id namespace');
+    }
+    return { host: '127.0.0.1', port: 0, installId, userId, pipeName: expected };
+  }
   const port = parseInteger(str(values, 'port'), 'port', 1);
   if (port > 65535) {
     fail('--port must be <= 65535');
@@ -241,8 +262,8 @@ function parseTarget(values: ArgValues): TargetOptions {
   return {
     host: str(values, 'host') ?? '127.0.0.1',
     port,
-    installId: parseIdentifier(str(values, 'install-id'), 'install-id', 'peer.installId'),
-    userId: parseIdentifier(str(values, 'user-id'), 'user-id', 'peer.userId'),
+    installId,
+    userId,
   };
 }
 
