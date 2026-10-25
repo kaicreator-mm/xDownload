@@ -91,6 +91,50 @@ function safeDataObject(value: unknown): Record<string, unknown> | undefined {
     return undefined;
   }
 }
+/**
+ * Snapshot one hostile array with descriptor-only reads. Never validate one
+ * set of values and then copy a later accessor/proxy mutation into authority.
+ * Reject sparse, exotic, accessor-backed, symbol and extra-property arrays.
+ */
+function safeHostArray(value: unknown): readonly string[] | undefined {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+      return undefined;
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const length = descriptors['length'];
+    if (
+      length === undefined ||
+      !Object.hasOwn(length, 'value') ||
+      !Number.isSafeInteger(length.value) ||
+      length.value < 1 ||
+      length.value > 8 ||
+      Reflect.ownKeys(descriptors).length !== length.value + 1
+    ) {
+      return undefined;
+    }
+    const snapshot: string[] = [];
+    for (let index = 0; index < length.value; index += 1) {
+      const item = descriptors[String(index)];
+      if (
+        item === undefined ||
+        !item.enumerable ||
+        !Object.hasOwn(item, 'value') ||
+        typeof item.value !== 'string' ||
+        !hostname(item.value)
+      ) {
+        return undefined;
+      }
+      snapshot.push(item.value);
+    }
+    return new Set(snapshot).size === snapshot.length ? Object.freeze(snapshot) : undefined;
+  } catch {
+    // Revoked Proxy or hostile descriptor/prototype trap: fail typed and
+    // always before a Core journal, replay or external effect.
+    return undefined;
+  }
+}
+
 function ownFields(
   value: Record<string, unknown>,
   required: readonly string[],
@@ -211,18 +255,13 @@ export function decodeS3Seam12Payload(
   ) {
     return malformed('payload', 'S3 confirmation requires one closed public media candidate');
   }
-  const hosts = input['declaredRedirectHosts'];
-  if (
-    !Array.isArray(hosts) ||
-    hosts.length < 1 ||
-    hosts.length > 8 ||
-    hosts.some((host) => typeof host !== 'string' || !hostname(host))
-  ) {
-    return malformed('payload.declaredRedirectHosts', 'expected 1..8 exact public DNS hosts');
+  const hosts = safeHostArray(input['declaredRedirectHosts']);
+  if (hosts === undefined) {
+    return malformed(
+      'payload.declaredRedirectHosts',
+      'expected an immutable snapshot of 1..8 unique public DNS hosts',
+    );
   }
-  const unique = new Set(hosts as string[]);
-  if (unique.size !== hosts.length)
-    return malformed('payload.declaredRedirectHosts', 'duplicate host');
   const attestation = safeDataObject(input['selectionAttestation']);
   if (
     attestation === undefined ||
@@ -272,7 +311,7 @@ export function decodeS3Seam12Payload(
         memberId: input['memberId'] as string,
         variantKey: input['variantKey'] as string,
         locatorUri: input['locatorUri'] as string,
-        declaredRedirectHosts: Object.freeze([...(hosts as string[])]),
+        declaredRedirectHosts: hosts,
         mediaProfileId: input['mediaProfileId'] as string,
         selectionAttestation: Object.freeze({
           kind: 'EXPLICIT_CLI_GESTURE' as const,
