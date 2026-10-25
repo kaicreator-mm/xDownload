@@ -72,11 +72,13 @@ async function main(): Promise<void> {
     }
   } catch {
     process.stdout.write(
-      `${toJson(renderErrorDocument({
-        error: 'USAGE',
-        message: 'requested Core named-pipe transport is unavailable; TCP fallback is forbidden',
-        usage: true,
-      }))}\n`,
+      `${toJson(
+        renderErrorDocument({
+          error: 'USAGE',
+          message: 'requested Core named-pipe transport is unavailable; TCP fallback is forbidden',
+          usage: true,
+        }),
+      )}\n`,
     );
     process.stderr.write('Core transport unavailable\n');
     process.exitCode = 1;
