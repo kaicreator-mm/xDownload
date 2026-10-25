@@ -47,22 +47,22 @@ describe('#150 CLI Windows same-install pipe target, no TCP fallback', () => {
 
   it('rejects mismatched/remote/conflicting namespace before Core interaction', () => {
     const invalid = [
-    [...base, '--pipe-name', String.raw`\\otherhost\pipe\xdownload-core-myinstall`],
-    [...base, '--pipe-name', String.raw`\\.\pipe\arbitrary`],
-    [...base, '--pipe-name', String.raw`\\.\pipe\xdownload-core-otherinstall`],
-    [...base, '--pipe-name', pipe, '--port', '1234'],
-    [...base, '--pipe-name', pipe, '--host', '127.0.0.1'],
-    [
-      'status',
-      '--contract',
-      'contract-001',
-      '--install-id',
-      'myinstall/../other',
-      '--user-id',
-      'operator',
-      '--pipe-name',
-      pipe,
-    ],
+      [...base, '--pipe-name', String.raw`\\otherhost\pipe\xdownload-core-myinstall`],
+      [...base, '--pipe-name', String.raw`\\.\pipe\arbitrary`],
+      [...base, '--pipe-name', String.raw`\\.\pipe\xdownload-core-otherinstall`],
+      [...base, '--pipe-name', pipe, '--port', '1234'],
+      [...base, '--pipe-name', pipe, '--host', '127.0.0.1'],
+      [
+        'status',
+        '--contract',
+        'contract-001',
+        '--install-id',
+        'myinstall/../other',
+        '--user-id',
+        'operator',
+        '--pipe-name',
+        pipe,
+      ],
     ];
     for (const argv of invalid) {
       expect(() => parseArgv(argv)).toThrow(CliInputError);
