@@ -108,6 +108,7 @@ export function createVerifiedPeerSessionRegistry(): VerifiedPeerSessionRegistry
  * must never introduce an S3 command that is absent from this set.
  */
 export const OS_VERIFIED_PEER_COMMANDS: readonly string[] = [
+  'CONFIRM_S3_CANDIDATE',
   'EXECUTE_S3_SELECTED_MEDIA',
   'PREVIEW_S4_HLS_VOD',
   'CONFIRM_S4_SELECTION',
