@@ -89,6 +89,66 @@ describe('#150 deny unsafe public S3 Core effects until installed pinning exists
     }
   });
 
+  it('blocks a commandId getter that flips S1 into S3 before the real adapter call', async () => {
+    const dir = makeTempDir('xd-s3-flip-getter');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    const input = s3Input();
+    input.transfer.slice = 'S1';
+    let getterReads = 0;
+    Object.defineProperty(input, 'commandId', {
+      enumerable: true,
+      get: () => {
+        getterReads += 1;
+        input.transfer.slice = 'S3';
+        return 'command:s3-getter-flip';
+      },
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      await expect(executeDirectAcquisition(runtime, input)).rejects.toThrow(
+        'S1_UNSTABLE_PUBLIC_INPUT',
+      );
+      expect(getterReads).toBe(0);
+      expect(runtime.writer.reader.workItems()).toHaveLength(0);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('blocks an unstable transfer.slice getter and revoked transfer proxy without Core effects', async () => {
+    const dir = makeTempDir('xd-s3-transfer-getter');
+    dirs.push(dir);
+    const runtime = openRuntime(dir);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const withGetter = s3Input();
+    let sliceReads = 0;
+    Object.defineProperty(withGetter.transfer, 'slice', {
+      enumerable: true,
+      get: () => (++sliceReads === 1 ? 'S1' : 'S3'),
+    });
+    const withProxy = s3Input();
+    const revoked = Proxy.revocable(withProxy.transfer, {});
+    revoked.revoke();
+    Object.defineProperty(withProxy, 'transfer', {
+      value: revoked.proxy,
+      enumerable: true,
+    });
+    try {
+      for (const hostile of [withGetter, withProxy]) {
+        await expect(executeDirectAcquisition(runtime, hostile)).rejects.toThrow(
+          'S1_UNSTABLE_PUBLIC_INPUT',
+        );
+        expect(runtime.writer.reader.workItems()).toHaveLength(0);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      }
+      expect(sliceReads).toBe(0);
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
   it('refuses every forged policy-like or malformed S3 request without positive fallback', async () => {
     const dir = makeTempDir('xd-s3-forged-policy');
     dirs.push(dir);
