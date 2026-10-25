@@ -124,7 +124,11 @@ function openSession(ports: AdapterPorts, input: ParsedInput): Session {
     throw new CliInputError('USAGE', 'help is handled by the process entry');
   }
   const peer = buildPeer(input.target);
-  const target: SeamListenTarget = { host: input.target.host, port: input.target.port };
+  const target: SeamListenTarget = {
+    host: input.target.host,
+    port: input.target.port,
+    ...(input.target.pipeName === undefined ? {} : { pipeName: input.target.pipeName }),
+  };
   const client = createSeamClient({
     transport: ports.clientTransport,
     target,
