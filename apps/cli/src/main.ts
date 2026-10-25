@@ -9,7 +9,11 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import process from 'node:process';
-import { createLoopbackClientTransport } from '@xdownload/core-seam';
+import {
+  createLoopbackClientTransport,
+  createWindowsPipeClientTransport,
+  type SeamClientTransport,
+} from '@xdownload/core-seam';
 import { parseArgv } from './args.ts';
 import { runAdapter, type AdapterPorts, type SourceRequest } from './adapter.ts';
 import { CLI_USAGE } from './args.ts';
@@ -54,8 +58,32 @@ async function main(): Promise<void> {
     process.stdout.write(`${CLI_USAGE}\n`);
     return;
   }
+  // S3 cannot borrow loopback TCP's caller-presented peer identity.
+  // A requested Windows verified Core pipe never degrades into TCP on error.
+  let clientTransport: SeamClientTransport;
+  try {
+    if (input.target.pipeName !== undefined) {
+      if (process.platform !== 'win32') {
+        throw new Error('Windows Core named-pipe transport is supported only on Windows');
+      }
+      clientTransport = createWindowsPipeClientTransport();
+    } else {
+      clientTransport = createLoopbackClientTransport();
+    }
+  } catch {
+    process.stdout.write(
+      `${toJson(renderErrorDocument({
+        error: 'USAGE',
+        message: 'requested Core named-pipe transport is unavailable; TCP fallback is forbidden',
+        usage: true,
+      }))}\n`,
+    );
+    process.stderr.write('Core transport unavailable\n');
+    process.exitCode = 1;
+    return;
+  }
   const ports: AdapterPorts = {
-    clientTransport: createLoopbackClientTransport(),
+    clientTransport,
     readSource,
     now: () => new Date().toISOString(),
     makeRequestId: () => `req-${randomUUID()}`,
