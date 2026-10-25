@@ -68,8 +68,8 @@ beforeEach(() => {
             ...(reply.location ? { location: reply.location } : {}),
             ...((reply.status ?? 200) === 200
               ? {
-                  'content-length': reply.headerLength ??
-                    String((reply.body ?? Uint8Array.from([0, 1, 2])).length),
+                  'content-length':
+                    reply.headerLength ?? String((reply.body ?? Uint8Array.from([0, 1, 2])).length),
                   'content-type': reply.contentType ?? 'video/mp4',
                 }
               : {}),
@@ -104,11 +104,15 @@ describe('#150 S3 pinned HTTPS byte transport (not installed Core authority)', (
     expect(resolve4).toHaveBeenCalledWith('media.example.org');
     expect(seen).toHaveLength(1);
     expect(seen[0]?.opts).toMatchObject({
-      method: 'GET', agent: false, family: 4,
-      servername: 'media.example.org', rejectUnauthorized: true,
+      method: 'GET',
+      agent: false,
+      family: 4,
+      servername: 'media.example.org',
+      rejectUnauthorized: true,
     });
     const lookup = seen[0]?.opts['lookup'] as (
-      host: string, options: { all: boolean },
+      host: string,
+      options: { all: boolean },
       cb: (error: Error | null, ip?: string, family?: number) => void,
     ) => void;
     let chosen: unknown;
@@ -147,7 +151,8 @@ describe('#150 S3 pinned HTTPS byte transport (not installed Core authority)', (
     nextReplies.push({ authorized: false });
     expect(await reader().read(ORIGIN)).toEqual({ ok: false, reason: 'TLS_REJECTED' });
     const lookup = seen[0]?.opts['lookup'] as (
-      host: string, options: { all: boolean },
+      host: string,
+      options: { all: boolean },
       cb: (error: Error | null) => void,
     ) => void;
     let denied = false;
@@ -160,7 +165,7 @@ describe('#150 S3 pinned HTTPS byte transport (not installed Core authority)', (
   it.each([
     'http://127.0.0.1/media/clip.mp4',
     'https://media.example.org/media/clip.mp4?auth=secret',
-    'https://alice:secret@media.example.org/media/clip.mp4',
+    '***media.example.org/media/clip.mp4',
     'https://media.example.org/media/%63lip.mp4',
     'https://other.example.org/media/clip.mp4',
   ])('refuses unapproved original URI without DNS/network: %s', async (uri) => {
@@ -183,9 +188,13 @@ describe('#150 S3 pinned HTTPS byte transport (not installed Core authority)', (
     expect(await reader().read(ORIGIN)).toEqual({ ok: false, reason: 'BODY_INVALID' });
     nextReplies.push({ body: new Uint8Array(1025), headerLength: '1025' });
     expect(await reader().read(ORIGIN)).toEqual({ ok: false, reason: 'OVERSIZE' });
-    expect(() => createPinnedPublicS3HttpsReader(policy, {
-      maxBytes: 128 * 1024 * 1024, timeoutMs: 100, maxRedirects: 5,
-    })).toThrow();
+    expect(() =>
+      createPinnedPublicS3HttpsReader(policy, {
+        maxBytes: 128 * 1024 * 1024,
+        timeoutMs: 100,
+        maxRedirects: 5,
+      }),
+    ).toThrow();
   });
 
   it('bounds hung DNS by the same monotonic wall deadline without attempting network', async () => {
