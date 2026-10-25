@@ -25,10 +25,7 @@ import {
   type LocatorBinding,
   type LogicalTargetId,
 } from '@xdownload/domain-contracts';
-import type {
-  DirectTransferRequest,
-  PinnedPublicMediaSourcePolicy,
-} from '@xdownload/direct-acquisition';
+import type { DirectTransferRequest } from '@xdownload/direct-acquisition';
 import {
   bindRenditionToTarget,
   createSyntheticMediaAssemblyPort,
@@ -51,7 +48,6 @@ import {
 import { ControlledHttpFixture } from './fixture-http.ts';
 import {
   executeDirectAcquisition,
-  executePinnedPublicS3Acquisition,
   executeHlsAcquisition,
   registerLineage,
 } from '../src/index.ts';
@@ -107,29 +103,8 @@ function directRequest(
   };
 }
 
-/**
- * Existing T015 local-HTTP flow tests prove physical Core scheduler/SQLite/
- * artifact/media behavior, NOT public DNS/TLS source pinning. This exact-only
- * localhost policy is a TEST DOUBLE; the production S3 composition must use
- * pinPublicMediaSourcePolicy over installation-authoritative HTTPS settings.
- */
-function fixtureS3Policy(baseUri: string): PinnedPublicMediaSourcePolicy {
-  const fileUri = baseUri + '/file.bin';
-  const admit = (uri: string) =>
-    uri === fileUri
-      ? ({ ok: true, uri } as const)
-      : ({ ok: false, reason: 'UNSUPPORTED_PUBLIC_SOURCE' } as const);
-  return {
-    profileId: 'test-only-local-fixture',
-    revision: '1',
-    digest: '0'.repeat(64),
-    admitInitial: admit,
-    admitRedirect: admit,
-  };
-}
-
 describe('T015 transfer-and-media', () => {
-  it('executes a full S3 media acquisition under runtime dispatch and gates acceptance on the validate chain', async () => {
+  it('executes a full S1 direct-media test fixture under runtime dispatch and gates acceptance on the validate chain', async () => {
     const rootDir = makeTempDir('t015-media-ok');
     dirs.push(rootDir);
     const fixture = new ControlledHttpFixture();
@@ -145,7 +120,7 @@ describe('T015 transfer-and-media', () => {
 
     const runtime = openRuntime(rootDir);
     try {
-      const flow = await executePinnedPublicS3Acquisition(
+      const flow = await executeDirectAcquisition(
         runtime,
         {
           contractId: CONTRACT,
@@ -157,15 +132,13 @@ describe('T015 transfer-and-media', () => {
           memberId: MEMBER,
           artifactId: 'artifact:media-001',
           transfer: directRequest(baseUri, bytes, {
-            slice: 'S3',
-            expectedSha256: undefined,
+            slice: 'S1',
             expectedContentTypePrefix: 'video/mp4',
             mediaPolicy: {
               signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
             },
           }),
         },
-        fixtureS3Policy(baseUri),
       );
       if (flow.attemptReplayed || flow.transfer === undefined) {
         throw new Error('unexpected replay in fixture flow');
@@ -202,7 +175,7 @@ describe('T015 transfer-and-media', () => {
 
     const runtime = openRuntime(rootDir);
     try {
-      const flow = await executePinnedPublicS3Acquisition(
+      const flow = await executeDirectAcquisition(
         runtime,
         {
           contractId: CONTRACT,
@@ -214,15 +187,13 @@ describe('T015 transfer-and-media', () => {
           memberId: MEMBER,
           artifactId: 'artifact:media-002',
           transfer: directRequest(baseUri, bytes, {
-            slice: 'S3',
-            expectedSha256: undefined,
+            slice: 'S1',
             expectedContentTypePrefix: 'video/mp4',
             mediaPolicy: {
               signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
             },
           }),
         },
-        fixtureS3Policy(baseUri),
       );
       if (flow.attemptReplayed || flow.transfer === undefined) {
         throw new Error('unexpected replay in fixture flow');
