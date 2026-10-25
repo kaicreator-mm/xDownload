@@ -201,8 +201,8 @@ export interface StartedCoreHost {
 }
 
 /**
- * Compose the authoritative Core runtime behind the loopback seam
- * transport. Composition glue only — the runtime, the transport and the
+ * Compose the authoritative Core runtime behind the explicitly selected
+ * loopback or OS-verified Windows named-pipe seam transport. Composition glue only — the runtime, the transport and the
  * per-frame authorization are the consumed packages' own behavior.
  */
 export async function startCoreHost(options: CoreHostOptions): Promise<StartedCoreHost> {
@@ -232,8 +232,22 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
   // The CLI's explicit --pipe-name can only connect when this SAME installed
   // Core hosts the matching OS-verified listener. Enforce platform before
   // opening SQLite or journal resources; never downgrade pipe to loopback.
-  if (options.pipeName !== undefined && process.platform !== 'win32') {
-    throw new WindowsPipeTransportUnsupportedError(process.platform);
+  if (options.pipeName !== undefined) {
+    // startCoreHost() is also a programmatic exported API: enforce the same
+    // exact namespace rule here rather than trusting only argv parsing.
+    const safeInstall = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u.test(options.installId);
+    const canonicalName = String.raw`\\.\pipe\xdownload-core-${installId}`;
+    if (
+      !safeInstall ||
+      options.pipeName !== canonicalName ||
+      options.host !== '127.0.0.1' ||
+      options.port !== 0
+    ) {
+      throw new NonLoopbackTransportRefusedError('invalid Windows Core pipe namespace or TCP coexistence');
+    }
+    if (process.platform !== 'win32') {
+      throw new WindowsPipeTransportUnsupportedError(process.platform);
+    }
   }
   // A core-host instance listens on exactly ONE transport, never both.
   const transport: SeamServerTransport =
@@ -320,6 +334,7 @@ async function main(): Promise<void> {
       document: 'xdownload.core-host.ready',
       host: host.host,
       port: host.port,
+      ...(host.pipeName === undefined ? {} : { pipeName: host.pipeName }),
       pid: process.pid,
       installId: parsed.options.installId,
       userId: parsed.options.userId,
