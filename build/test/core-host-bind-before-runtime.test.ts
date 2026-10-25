@@ -28,14 +28,23 @@ vi.mock('@xdownload/core-seam', async (importOriginal) => {
         if (probe.mode === 'bind-fail') throw Error('synthetic Windows first-pipe collision');
         // A client may arrive immediately after native first bind, while
         // the Core journal/SQLite runtime is still initializing.
-        handler.onFrame({
-          close: () => { probe.framesClosed += 1; },
-          send: () => { probe.framesSent += 1; },
-        }, '{"kind":"command"}');
+        handler.onFrame(
+          {
+            close: () => {
+              probe.framesClosed += 1;
+            },
+            send: () => {
+              probe.framesSent += 1;
+            },
+          },
+          '{"kind":"command"}',
+        );
         probe.events.push('listener-bound');
         return { host: 'WINDOWS_NAMED_PIPE', port: 0, pipeName: options.pipeName };
       },
-      async stop() { probe.events.push('listener-stop'); },
+      async stop() {
+        probe.events.push('listener-stop');
+      },
     }),
   };
 });
@@ -90,7 +99,9 @@ describe('#164 listener admission before Core recovery and side effects', () => 
     const journal = path.join(root, 'seam-journal.jsonl');
     const marker = '{"pendingS1":"existing durable journal retained exactly"}\n';
     fs.writeFileSync(journal, marker);
-    await expect(startCoreHost(opts(root))).rejects.toThrow('synthetic Windows first-pipe collision');
+    await expect(startCoreHost(opts(root))).rejects.toThrow(
+      'synthetic Windows first-pipe collision',
+    );
     expect(probe.events).toEqual(['listener-start']);
     expect(probe.framesSent).toBe(0);
     expect(fs.readFileSync(journal, 'utf8')).toBe(marker);
@@ -101,7 +112,9 @@ describe('#164 listener admission before Core recovery and side effects', () => 
     Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
     const root = path.join(os.tmpdir(), 'xd-pipe-collision-no-create-' + Date.now());
     roots.push(root);
-    await expect(startCoreHost(opts(root))).rejects.toThrow('synthetic Windows first-pipe collision');
+    await expect(startCoreHost(opts(root))).rejects.toThrow(
+      'synthetic Windows first-pipe collision',
+    );
     expect(probe.events).toEqual(['listener-start']);
     expect(fs.existsSync(root)).toBe(false);
   });
@@ -113,7 +126,10 @@ describe('#164 listener admission before Core recovery and side effects', () => 
     probe.mode = 'runtime-fail';
     await expect(startCoreHost(opts(root))).rejects.toThrow('synthetic Core composition failure');
     expect(probe.events).toEqual([
-      'listener-start', 'listener-bound', 'runtime-create', 'listener-stop',
+      'listener-start',
+      'listener-bound',
+      'runtime-create',
+      'listener-stop',
     ]);
     expect(probe.framesClosed).toBe(1);
     expect(probe.framesSent).toBe(0);
