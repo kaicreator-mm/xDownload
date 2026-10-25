@@ -1,11 +1,9 @@
 /**
- * #150: Core-only S3 selected-media path — installation-pinned public source
- * policy is REQUIRED before any durable dispatch, and the same original
- * authority is enforced by the real direct adapter on HTTPS redirects.
- * Network-positive cases use a deterministic fetch stub (NOT physical TLS).
- * Persistence uses the real Core writer, SQLite and filesystem artifact store.
+ * #150 independent R1 P1 closure: Core deliberately has NO positive S3
+ * transfer authority until it owns both an immutable installed source/selection
+ * AND DNS/TLS actual connected-address enforcement for each HTTPS hop.
+ * The earlier callable positive-effect function was unsafe and is removed.
  */
-import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bindLocator,
@@ -14,12 +12,7 @@ import {
   makeMemberId,
   unwrapOrThrow,
 } from '@xdownload/domain-contracts';
-import {
-  digestPublicMediaSourceProfile,
-  pinPublicMediaSourcePolicy,
-  type DirectTransferRequest,
-  type PublicMediaSourceProfile,
-} from '@xdownload/direct-acquisition';
+import type { DirectTransferRequest } from '@xdownload/direct-acquisition';
 import {
   closeRuntime,
   makeTempDir,
@@ -27,36 +20,23 @@ import {
   rawSingleResourceContract,
   removeTempDir,
 } from './helpers.ts';
+import * as CoreRuntimePublicApi from '../src/index.ts';
 import {
   CoreRuntimeFlowError,
   executeDirectAcquisition,
-  executePinnedPublicS3Acquisition,
   type DirectFlowInput,
 } from '../src/index.ts';
 
 const dirs: string[] = [];
 const URI = 'https://media.example.org/media/clip01.mp4';
-const PROFILE: PublicMediaSourceProfile = {
-  profileId: 'installed-public-s3',
-  revision: '1',
-  origins: [{ scheme: 'https', hostname: 'media.example.org', port: 443 }],
-  redirectOrigins: [{ scheme: 'https', hostname: 'cdn.example.org', port: 443 }],
-};
-const policy = pinPublicMediaSourcePolicy(PROFILE, digestPublicMediaSourceProfile(PROFILE));
 
 afterEach(() => {
   vi.restoreAllMocks();
   for (const dir of dirs.splice(0)) removeTempDir(dir);
 });
 
-function inputFor(uri = URI, overrides: Partial<DirectTransferRequest> = {}): DirectFlowInput {
+function s3Input(uri = URI, overrides: Partial<DirectTransferRequest> = {}): DirectFlowInput {
   const targetId = unwrapOrThrow(makeLogicalTargetId('target-file-001'));
-  const binding = unwrapOrThrow(
-    bindLocator({ kind: 'direct', uri }, targetId, {
-      binding: 'SELECTED_RESOURCE_PROVENANCE',
-      originLocatorUri: uri,
-    }),
-  );
   return {
     contractId: 'contract-single-001',
     snapshotId: 'snapshot-001',
@@ -73,27 +53,35 @@ function inputFor(uri = URI, overrides: Partial<DirectTransferRequest> = {}): Di
       contractId: 'contract-single-001',
       slice: 'S3',
       selectedMemberId: unwrapOrThrow(makeMemberId('member-file-001')),
-      binding,
+      binding: unwrapOrThrow(
+        bindLocator(
+          { kind: 'direct', uri },
+          targetId,
+          { binding: 'SELECTED_RESOURCE_PROVENANCE', originLocatorUri: uri },
+        ),
+      ),
       allowedRedirectHosts: ['media.example.org', 'cdn.example.org'],
       expectedContentTypePrefix: 'video/mp4',
-      mediaPolicy: {
-        signatures: [{ hex: '66747970', offset: 4, label: 'MP4 ftyp box' }],
-      },
+      mediaPolicy: { signatures: [{ hex: '66747970', offset: 4, label: 'MP4 ftyp box' }] },
       attempt: 0,
       ...overrides,
     },
   };
 }
 
-describe('#150 installed-policy S3 Core boundary and durable effects', () => {
-  it('refuses generic S3 as an unguarded S1 call before fetch, SQLite or scheduler mutation', async () => {
-    const dir = makeTempDir('xd-s3-bypass');
+describe('#150 deny unsafe public S3 Core effects until installed pinning exists', () => {
+  it('does not expose the former arbitrary caller-supplied source policy entrypoint', () => {
+    expect(Object.hasOwn(CoreRuntimePublicApi, 'executePinnedPublicS3Acquisition')).toBe(false);
+  });
+
+  it('rejects even a valid-looking S3 public-media source before SQLite, fetch and scheduler', async () => {
+    const dir = makeTempDir('xd-s3-no-transport');
     dirs.push(dir);
     const runtime = openRuntime(dir);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     try {
-      await expect(executeDirectAcquisition(runtime, inputFor())).rejects.toBeInstanceOf(
-        CoreRuntimeFlowError,
+      await expect(executeDirectAcquisition(runtime, s3Input())).rejects.toThrow(
+        'S3_REQUIRES_CORE_PINNED_MEDIA_SOURCE',
       );
       expect(runtime.writer.reader.workItems()).toHaveLength(0);
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -102,66 +90,36 @@ describe('#150 installed-policy S3 Core boundary and durable effects', () => {
     }
   });
 
-  it('rejects unpinned URLs, media identity drift and missing media checks before durable effects', async () => {
-    const dir = makeTempDir('xd-s3-deny');
+  it('refuses every forged policy-like or malformed S3 request without positive fallback', async () => {
+    const dir = makeTempDir('xd-s3-forged-policy');
     dirs.push(dir);
     const runtime = openRuntime(dir);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    const cases = [
-      inputFor('https://other.example.org/media/clip01.mp4'),
-      inputFor('https://media.example.org/media/clip01.mp4?token=secret'),
-      inputFor('http://127.0.0.1/media/clip01.mp4'),
-      inputFor(URI, { expectedSha256: 'a'.repeat(64) }),
-      inputFor(URI, { locatorRefresher: async (item) => item }),
-      inputFor(URI, { mediaPolicy: { signatures: [] } }),
-      inputFor(URI, { expectedContentTypePrefix: 'text/html' }),
-      inputFor(URI, { selectedMemberId: unwrapOrThrow(makeMemberId('other-member')) }),
+    const forgedPolicy = {
+      profileId: 'forged-installed-policy',
+      revision: '1',
+      digest: 'a'.repeat(64),
+      admitInitial: () => ({ ok: true }),
+      admitRedirect: () => ({ ok: true }),
+    };
+    const requests = [
+      s3Input(),
+      s3Input('https://media.example.org/media/clip01.mp4?token=secret'),
+      s3Input('http://127.0.0.1/media/clip01.mp4'),
+      s3Input('https://other.example.org/media/clip01.mp4'),
+      s3Input(URI, { expectedSha256: 'a'.repeat(64) }),
+      s3Input(URI, { selectedMemberId: unwrapOrThrow(makeMemberId('other-member')) }),
+      s3Input(URI, { mediaPolicy: { signatures: [] } }),
     ];
     try {
-      for (const item of cases) {
-        await expect(
-          executePinnedPublicS3Acquisition(runtime, item, policy),
-        ).rejects.toBeInstanceOf(CoreRuntimeFlowError);
+      expect(forgedPolicy.admitInitial().ok).toBe(true);
+      for (const request of requests) {
+        await expect(executeDirectAcquisition(runtime, request)).rejects.toBeInstanceOf(
+          CoreRuntimeFlowError,
+        );
         expect(runtime.writer.reader.workItems()).toHaveLength(0);
         expect(fetchSpy).not.toHaveBeenCalled();
       }
-    } finally {
-      closeRuntime(runtime);
-    }
-  });
-
-  it('routes a pinned HTTPS media candidate through genuine Core budget/SQLite/artifact validation', async () => {
-    const dir = makeTempDir('xd-s3-authorized');
-    dirs.push(dir);
-    const runtime = openRuntime(dir);
-    const bytes = new Uint8Array(512);
-    bytes.set([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70], 0);
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(Buffer.from(bytes), {
-        status: 200,
-        headers: {
-          'content-type': 'video/mp4',
-          'content-length': String(bytes.length),
-        },
-      }),
-    );
-    try {
-      const result = await executePinnedPublicS3Acquisition(runtime, inputFor(), policy);
-      expect(result.attemptReplayed).toBe(false);
-      expect(result.transfer?.reason).toBe('COMPLETED');
-      expect(
-        result.transfer?.validations.map((v) => v.layer + ':' + String(v.passed)).sort(),
-      ).toEqual(['format:true', 'media:true', 'target:true', 'transfer:true']);
-      expect(result.acceptance).toBeDefined();
-      expect(result.schedulerAcceptance?.ok).toBe(true);
-      expect(runtime.writer.reader.workItems()).toHaveLength(1);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(fetchSpy.mock.calls[0]?.[0]).toBe(URI);
-      const artifact = runtime.store.readFinalBytes('artifact:s3-media-001');
-      expect(artifact).toBeDefined();
-      expect(createHash('sha256').update(artifact!).digest('hex')).toBe(
-        createHash('sha256').update(bytes).digest('hex'),
-      );
     } finally {
       closeRuntime(runtime);
     }
