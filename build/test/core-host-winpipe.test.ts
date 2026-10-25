@@ -6,8 +6,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  NonLoopbackTransportRefusedError,
+  WindowsIpcUnsupportedError,
+  WindowsPipeTransportUnsupportedError,
+} from '@xdownload/core-seam';
 import { parseArgv as parseCliArgv } from '../../apps/cli/src/args.ts';
-import { parseCoreHostArgv, startCoreHost, type CoreHostOptions } from '../core-host.ts';
+import { coreHostTransportStartRefused, parseCoreHostArgv, startCoreHost, type CoreHostOptions } from '../core-host.ts';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -22,6 +27,27 @@ const base = (root: string, id: string) => [
   '--user-id',
   'operator',
 ];
+
+describe('#150 packaged Windows native bridge bind failure exit classification', () => {
+  it('classifies native first-instance collision and missing bridge as transport refusal', () => {
+    expect(coreHostTransportStartRefused(
+      new WindowsIpcUnsupportedError('CreateNamedPipeW failed (GetLastError=231)'),
+    )).toBe(true);
+    expect(coreHostTransportStartRefused(
+      new WindowsIpcUnsupportedError('native koffi module not installed'),
+    )).toBe(true);
+    expect(coreHostTransportStartRefused(
+      new WindowsPipeTransportUnsupportedError('linux'),
+    )).toBe(true);
+    expect(coreHostTransportStartRefused(new NonLoopbackTransportRefusedError('0.0.0.0'))).toBe(true);
+  });
+
+  it('never relabels general Core composition errors as network refusals', () => {
+    expect(coreHostTransportStartRefused(new Error('SQLite file corrupt'))).toBe(false);
+    expect(coreHostTransportStartRefused(new Error('another Core failed'))).toBe(false);
+    expect(coreHostTransportStartRefused(undefined)).toBe(false);
+  });
+});
 
 describe('#150 Core-host Windows pipe, exact CLI namespace, no downgrade', () => {
   it('accepts one exact listener and CLI target without TCP side channel', () => {
