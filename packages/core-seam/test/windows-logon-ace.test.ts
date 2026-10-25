@@ -11,8 +11,16 @@ describe('#150 required Windows logon SID ACE unsigned group flags', () => {
   });
 
   it.each([
-    0, 7, 0x80000007, 0x40000007, 0x00000007,
-    -1073741817, -1, 0x1c0000007, Number.NaN, Infinity,
+    0,
+    7,
+    0x80000007,
+    0x40000007,
+    0x00000007,
+    -1073741817,
+    -1,
+    0x1c0000007,
+    Number.NaN,
+    Infinity,
   ])('rejects incomplete, negative, overflow and invalid flags: %s', (flags) => {
     expect(hasWindowsLogonGroupAttributes(flags)).toBe(false);
   });
