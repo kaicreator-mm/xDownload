@@ -46,11 +46,7 @@ import {
   removeTempDir,
 } from './helpers.ts';
 import { ControlledHttpFixture } from './fixture-http.ts';
-import {
-  executeDirectAcquisition,
-  executeHlsAcquisition,
-  registerLineage,
-} from '../src/index.ts';
+import { executeDirectAcquisition, executeHlsAcquisition, registerLineage } from '../src/index.ts';
 
 const dirs: string[] = [];
 const fixtures: ControlledHttpFixture[] = [];
@@ -120,26 +116,23 @@ describe('T015 transfer-and-media', () => {
 
     const runtime = openRuntime(rootDir);
     try {
-      const flow = await executeDirectAcquisition(
-        runtime,
-        {
-          contractId: CONTRACT,
-          snapshotId: SNAPSHOT,
-          targetId: TARGET,
-          authorizationContextRef: 'authctx/local-001',
-          budgetProfile: rawSingleResourceContract()['budgetProfile'],
-          commandId: 'cmd-media-001',
-          memberId: MEMBER,
-          artifactId: 'artifact:media-001',
-          transfer: directRequest(baseUri, bytes, {
-            slice: 'S1',
-            expectedContentTypePrefix: 'video/mp4',
-            mediaPolicy: {
-              signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
-            },
-          }),
-        },
-      );
+      const flow = await executeDirectAcquisition(runtime, {
+        contractId: CONTRACT,
+        snapshotId: SNAPSHOT,
+        targetId: TARGET,
+        authorizationContextRef: 'authctx/local-001',
+        budgetProfile: rawSingleResourceContract()['budgetProfile'],
+        commandId: 'cmd-media-001',
+        memberId: MEMBER,
+        artifactId: 'artifact:media-001',
+        transfer: directRequest(baseUri, bytes, {
+          slice: 'S1',
+          expectedContentTypePrefix: 'video/mp4',
+          mediaPolicy: {
+            signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
+          },
+        }),
+      });
       if (flow.attemptReplayed || flow.transfer === undefined) {
         throw new Error('unexpected replay in fixture flow');
       }
@@ -175,26 +168,23 @@ describe('T015 transfer-and-media', () => {
 
     const runtime = openRuntime(rootDir);
     try {
-      const flow = await executeDirectAcquisition(
-        runtime,
-        {
-          contractId: CONTRACT,
-          snapshotId: SNAPSHOT,
-          targetId: TARGET,
-          authorizationContextRef: 'authctx/local-001',
-          budgetProfile: rawSingleResourceContract()['budgetProfile'],
-          commandId: 'cmd-media-002',
-          memberId: MEMBER,
-          artifactId: 'artifact:media-002',
-          transfer: directRequest(baseUri, bytes, {
-            slice: 'S1',
-            expectedContentTypePrefix: 'video/mp4',
-            mediaPolicy: {
-              signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
-            },
-          }),
-        },
-      );
+      const flow = await executeDirectAcquisition(runtime, {
+        contractId: CONTRACT,
+        snapshotId: SNAPSHOT,
+        targetId: TARGET,
+        authorizationContextRef: 'authctx/local-001',
+        budgetProfile: rawSingleResourceContract()['budgetProfile'],
+        commandId: 'cmd-media-002',
+        memberId: MEMBER,
+        artifactId: 'artifact:media-002',
+        transfer: directRequest(baseUri, bytes, {
+          slice: 'S1',
+          expectedContentTypePrefix: 'video/mp4',
+          mediaPolicy: {
+            signatures: [{ hex: '66747970', offset: 4, label: 'mp4 ftyp container box' }],
+          },
+        }),
+      });
       if (flow.attemptReplayed || flow.transfer === undefined) {
         throw new Error('unexpected replay in fixture flow');
       }
