@@ -236,9 +236,10 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
     throw new WindowsPipeTransportUnsupportedError(process.platform);
   }
   // A core-host instance listens on exactly ONE transport, never both.
-  const transport: SeamServerTransport = options.pipeName === undefined
-    ? createLoopbackServerTransport({ host: options.host, port: options.port })
-    : createWindowsPipeServerTransport({ pipeName: options.pipeName });
+  const transport: SeamServerTransport =
+    options.pipeName === undefined
+      ? createLoopbackServerTransport({ host: options.host, port: options.port })
+      : createWindowsPipeServerTransport({ pipeName: options.pipeName });
   const runtime = existing ? reopenCoreRuntime(runtimeOptions) : createCoreRuntime(runtimeOptions);
   let target: { host: string; port: number; pipeName?: string };
   try {
@@ -294,7 +295,10 @@ async function main(): Promise<void> {
   try {
     host = await startCoreHost(parsed.options);
   } catch (error) {
-    if (error instanceof NonLoopbackTransportRefusedError || error instanceof WindowsPipeTransportUnsupportedError) {
+    if (
+      error instanceof NonLoopbackTransportRefusedError ||
+      error instanceof WindowsPipeTransportUnsupportedError
+    ) {
       writeErrorDoc({ error: 'TRANSPORT_REFUSED', message: error.message });
       process.exitCode = CORE_HOST_EXIT.TRANSPORT_REFUSED;
       return;
