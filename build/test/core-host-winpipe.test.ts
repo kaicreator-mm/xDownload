@@ -15,22 +15,42 @@ afterEach(() => {
 });
 const pathFor = (id: string) => String.raw`\\.\pipe\xdownload-core-` + id;
 const base = (root: string, id: string) => [
-  '--root', root, '--install-id', id, '--user-id', 'operator',
+  '--root',
+  root,
+  '--install-id',
+  id,
+  '--user-id',
+  'operator',
 ];
 
 describe('#150 Core-host Windows pipe, exact CLI namespace, no downgrade', () => {
   it('accepts one exact listener and CLI target without TCP side channel', () => {
     const pipe = pathFor('myinstall');
-    const parsed = parseCoreHostArgv([...base('C:/xdownload-core', 'myinstall'), '--pipe-name', pipe]);
+    const parsed = parseCoreHostArgv([
+      ...base('C:/xdownload-core', 'myinstall'),
+      '--pipe-name',
+      pipe,
+    ]);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.options).toMatchObject({
-      rootDir: 'C:/xdownload-core', host: '127.0.0.1', port: 0,
-      installId: 'myinstall', userId: 'operator', pipeName: pipe,
+      rootDir: 'C:/xdownload-core',
+      host: '127.0.0.1',
+      port: 0,
+      installId: 'myinstall',
+      userId: 'operator',
+      pipeName: pipe,
     });
     const cli = parseCliArgv([
-      'status', '--contract', 'contract-001', '--install-id', 'myinstall',
-      '--user-id', 'operator', '--pipe-name', pipe,
+      'status',
+      '--contract',
+      'contract-001',
+      '--install-id',
+      'myinstall',
+      '--user-id',
+      'operator',
+      '--pipe-name',
+      pipe,
     ]);
     expect(cli.kind).toBe('status');
     if (cli.kind !== 'status') return;
@@ -45,7 +65,11 @@ describe('#150 Core-host Windows pipe, exact CLI namespace, no downgrade', () =>
       [...baseArgs, '--pipe-name', pathFor('otherinstall')],
       [...baseArgs, '--pipe-name', pathFor('myinstall'), '--port', '0'],
       [...baseArgs, '--pipe-name', pathFor('myinstall'), '--host', '127.0.0.1'],
-      [...base('C:/xdownload-core', 'myinstall/../../other'), '--pipe-name', pathFor('myinstall/../../other')],
+      [
+        ...base('C:/xdownload-core', 'myinstall/../../other'),
+        '--pipe-name',
+        pathFor('myinstall/../../other'),
+      ],
     ];
     for (const argv of unsafe) expect(parseCoreHostArgv(argv).ok).toBe(false);
     const legacy = parseCoreHostArgv(baseArgs);
@@ -59,8 +83,12 @@ describe('#150 Core-host Windows pipe, exact CLI namespace, no downgrade', () =>
       const root = path.join(os.tmpdir(), 'xd-core-winpipe-not-created-' + Date.now());
       roots.push(root);
       const opts: CoreHostOptions = {
-        rootDir: root, installId: 'myinstall', userId: 'operator',
-        host: '127.0.0.1', port: 0, pipeName: pathFor('myinstall'),
+        rootDir: root,
+        installId: 'myinstall',
+        userId: 'operator',
+        host: '127.0.0.1',
+        port: 0,
+        pipeName: pathFor('myinstall'),
       };
       await expect(startCoreHost(opts)).rejects.toThrow('requires win32');
       expect(fs.existsSync(root)).toBe(false);
