@@ -1,0 +1,25 @@
+name: xd162 temporary Prettier diagnostic
+on:
+  pull_request:
+    branches:
+      - version/v0.1.0
+jobs:
+  formatter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.21.0
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          pnpm exec prettier --write packages/direct-acquisition/src/pinned-public-https.ts packages/direct-acquisition/test/pinned-public-https.test.ts
+          echo XD162_0_START
+          cat packages/direct-acquisition/src/pinned-public-https.ts
+          echo XD162_0_END
+          echo XD162_1_START
+          cat packages/direct-acquisition/test/pinned-public-https.test.ts
+          echo XD162_1_END
