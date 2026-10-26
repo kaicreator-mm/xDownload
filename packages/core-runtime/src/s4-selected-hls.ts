@@ -59,6 +59,7 @@ import {
   createFfmpegTsMediaAssemblyPort,
   decodeMasterPlaylist,
   executeHlsVodAcquisitionAsync,
+  parsePublicHlsUriCandidate,
 } from '@xdownload/hls-vod-adapter';
 import {
   cancelLineage,
@@ -114,6 +115,24 @@ function originOf(uri: string): string | undefined {
     return new URL(uri).origin;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Review F1 (#171): the public lane admits only canonical public-DNS HTTPS
+ * targets (no IP literals, private/internal/local suffixes, ports or
+ * credentials — the reviewed classifier enforces all of it). The explicit
+ * in-repo loopback fixture lane is the single documented exception.
+ */
+function publicOrFixtureSource(uri: string, fixture: boolean): boolean {
+  const kind = uri.endsWith('.m3u8') ? 'manifest' : 'mpegts-segment';
+  if (parsePublicHlsUriCandidate(uri, kind) !== undefined) return true;
+  if (!fixture) return false;
+  try {
+    const url = new URL(uri);
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1';
+  } catch {
+    return false;
   }
 }
 
@@ -251,6 +270,20 @@ export async function driveS4Preview(
       ? {}
       : { width: variant.resolution.width, height: variant.resolution.height }),
   }));
+  // Review F1 (#171): a hostile master that declares a non-public rendition
+  // target (IP literal / internal name / credentialed form) refuses the
+  // whole preview truthfully — it is never renderable selection material.
+  if (
+    variants.some(
+      (variant) => !publicOrFixtureSource(variant.uri, options.allowLoopbackHttpFixture === true),
+    )
+  ) {
+    return publishPreviewResult(runtime, input.aggregateId, {
+      ...preview,
+      status: 'FAILED',
+      failureReason: 'MANIFEST_UNSUPPORTED',
+    });
+  }
   return publishPreviewResult(runtime, input.aggregateId, {
     ...preview,
     status: 'AVAILABLE',
@@ -356,6 +389,49 @@ export async function driveS4SelectedHlsExecution(
     });
   }
 
+  const manifestOrigin = originOf(selection.manifestUri);
+  const fixtureLane = options.allowLoopbackHttpFixture === true;
+  if (manifestOrigin === undefined || !publicOrFixtureSource(selection.manifestUri, fixtureLane)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'selection.manifestUri',
+        'the confirmed manifest source is not a canonical public HTTPS target (or the explicit test fixture lane)',
+        'L2-S4-§5',
+      ),
+    ]);
+  }
+  // Review F4 (#171): the confirmed rendition is master-declared immediate
+  // playlist ancestry — its origin joins the execution manifest read scope
+  // (cross-origin CDN renditions stay supported), but only when it is itself
+  // a canonical public target (review F1).
+  if (!publicOrFixtureSource(selection.renditionUri, fixtureLane)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'selection.renditionUri',
+        'the confirmed rendition target is not a canonical public HTTPS target (or the explicit test fixture lane)',
+        'L2-S4-§5',
+      ),
+    ]);
+  }
+  const renditionOrigin = originOf(selection.renditionUri);
+  const manifestLocator = bindLocator(
+    { kind: 'direct', uri: selection.manifestUri },
+    input.contract.requestedTarget,
+    {
+      binding: 'SELECTED_RESOURCE_PROVENANCE',
+      originLocatorUri: selection.manifestUri,
+    },
+  );
+  if (!manifestLocator.ok) {
+    return seamFail(
+      manifestLocator.diagnostics.map((d) =>
+        seamDiagnostic(d.code, d.path, d.message, d.invariant),
+      ),
+    );
+  }
+
   // Cancellation checkpoint before dispatch (no transfer, no socket).
   if (seamLineageStatus(runtime, input.aggregateId) === 'CANCELLED') {
     const registered = registerLineage(runtime, seed, {
@@ -394,39 +470,14 @@ export async function driveS4SelectedHlsExecution(
     });
   }
 
-  const manifestOrigin = originOf(selection.manifestUri);
-  if (manifestOrigin === undefined) {
-    return seamFail([
-      seamDiagnostic(
-        'ADMISSION_REJECTED',
-        'selection.manifestUri',
-        'the confirmed manifest source does not form a canonical origin',
-        'L2-S4-§5',
-      ),
-    ]);
-  }
-  const manifestLocator = bindLocator(
-    { kind: 'direct', uri: selection.manifestUri },
-    input.contract.requestedTarget,
-    {
-      binding: 'SELECTED_RESOURCE_PROVENANCE',
-      originLocatorUri: selection.manifestUri,
-    },
-  );
-  if (!manifestLocator.ok) {
-    return seamFail(
-      manifestLocator.diagnostics.map((d) =>
-        seamDiagnostic(d.code, d.path, d.message, d.invariant),
-      ),
-    );
-  }
-
   const ledger = schedulerHlsTransferLedger(runtime, started.lineageKey);
   const manifestPort = createAuthorizedHlsManifestPort({
-    allowedOrigins: [manifestOrigin],
+    allowedOrigins: [
+      ...new Set([manifestOrigin, ...(renditionOrigin === undefined ? [] : [renditionOrigin])]),
+    ],
     maxBytes: PREVIEW_MANIFEST_MAX_BYTES,
     timeoutMs: EXECUTION_MANIFEST_TIMEOUT_MS,
-    allowLoopbackHttpFixture: options.allowLoopbackHttpFixture === true,
+    allowLoopbackHttpFixture: fixtureLane,
   });
 
   // The selected rendition is re-observed through immediate playlist
@@ -450,7 +501,9 @@ export async function driveS4SelectedHlsExecution(
     );
   }
   if (!selected.ok) {
-    const external = selected.diagnostics.some((d) => d.path.includes('anifest'));
+    const external = selected.diagnostics.some(
+      (d) => d.path === 'masterManifest' || d.path === 'mediaManifest',
+    );
     return finishFlow(
       runtime,
       input.aggregateId,
@@ -465,11 +518,9 @@ export async function driveS4SelectedHlsExecution(
   const observedOrigins = new Set<string>();
   for (const entry of selected.value.segmentPlan.entries) {
     const origin = originOf(entry.locator.locator.uri);
-    const schemeAdmitted =
-      origin !== undefined &&
-      (origin.startsWith('https://') ||
-        (options.allowLoopbackHttpFixture === true && origin.startsWith('http://127.0.0.1')));
-    if (!schemeAdmitted) {
+    const admitted =
+      origin !== undefined && publicOrFixtureSource(entry.locator.locator.uri, fixtureLane);
+    if (!admitted) {
       return finishFlow(
         runtime,
         input.aggregateId,

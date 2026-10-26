@@ -588,7 +588,12 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     CommandRequestId,
     { readonly response: SeamResponse; readonly payloadDigest: string }
   >();
-  const makeChallengeMint = (now: () => number): S3ChallengeMint => {
+  const makeChallengeMint = (
+    now: () => number,
+  ): S3ChallengeMint & {
+    /** #153 review F3 (#171): revoke pending challenges of one connection+aggregate. */
+    revokePending(connectionId: string, aggregateId: string): void;
+  } => {
     const challenges = new Map<
       string,
       {
@@ -640,6 +645,13 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         if (record !== undefined) {
           record.consumed = true;
           challenges.delete(challenge);
+        }
+      },
+      revokePending(connectionId, aggregateId) {
+        for (const [key, record] of challenges) {
+          if (record.connectionId === connectionId && record.aggregateId === aggregateId) {
+            challenges.delete(key);
+          }
         }
       },
     };
@@ -1053,8 +1065,20 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         ),
       ]);
     }
+    // #153 review F7 (#171): the same declared payload byte bound as every
+    // journaled command, before any challenge material is derived.
+    const previewBytes = payloadByteLength(envelope.payload);
+    if (previewBytes > SEAM_MESSAGE_LIMITS.maxPayloadBytes) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'PAYLOAD_TOO_LARGE',
+          'payload',
+          `serialized payload of ${String(previewBytes)} bytes exceeds declared bound ${String(SEAM_MESSAGE_LIMITS.maxPayloadBytes)}`,
+        ),
+      ]);
+    }
     const payload = envelope.payload as S4ConfirmBeginPayload;
-    const tuple = s4RenditionTupleOf(state, envelope, payload);
+    const tuple = s4RenditionTupleOf(state, envelope, payload, now);
     if (!tuple.ok) {
       return rejected(envelope.requestId, tuple.diagnostics);
     }
@@ -1083,6 +1107,10 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         ),
       ]);
     }
+    // #153 review F3 (#171): a fresh BEGIN (fresh requestId) revokes the
+    // previous pending challenge of this connection+aggregate — only the
+    // newest confirmation intent stays answerable (L2 SEAM12 §4).
+    s4ChallengeMint.revokePending(connectionId, envelope.aggregateId);
     const expiresAtMs = now() + ttlMs;
     const minted = s4ChallengeMint.mint({
       connectionId,
@@ -4097,6 +4125,7 @@ function s4RenditionTupleOf(
   state: SeamAuthorityState,
   envelope: CommandEnvelope,
   payload: { readonly previewId: string; readonly renditionKey: string },
+  now?: () => number,
 ): SeamResult<{ readonly variant: S4RenditionFact; readonly digest: string }> {
   const lineage = state.lineages.get(envelope.aggregateId);
   if (lineage === undefined) {
@@ -4118,6 +4147,21 @@ function s4RenditionTupleOf(
         'L2-S4-§3',
       ),
     ]);
+  }
+  // #153 review F2 (#171): the preview record's own Core-enforced TTL gates
+  // every challenge derived from it (L2 SEAM12 §3), not just the mint TTL.
+  if (now !== undefined) {
+    const expiresAtMs = Date.parse(preview.expiresAt);
+    if (!Number.isFinite(expiresAtMs) || now() >= expiresAtMs) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.previewId',
+          'the observed preview has expired; a fresh preview and confirmation are required',
+          'L2-S4-§3',
+        ),
+      ]);
+    }
   }
   const matches = (preview.variants ?? []).filter(
     (variant) => variant.key === payload.renditionKey,
@@ -4194,6 +4238,7 @@ function applyConfirmS4Selection(
     // Journal replay: the durable secret-free record is the already-gated
     // truth; revalidate it against the observed preview, never the clock.
     const replay = raw as unknown as S4ConfirmedSelectionRecord;
+    // Replay path: durable truth only — never the clock.
     const tuple = s4RenditionTupleOf(state, envelope, replay);
     if (!tuple.ok) {
       return tuple;
@@ -4240,7 +4285,7 @@ function applyConfirmS4Selection(
       ]);
     }
     const payload = envelope.payload as S4ConfirmCommitPayload;
-    const tuple = s4RenditionTupleOf(state, envelope, payload);
+    const tuple = s4RenditionTupleOf(state, envelope, payload, s4Live.now);
     if (!tuple.ok) {
       return tuple;
     }

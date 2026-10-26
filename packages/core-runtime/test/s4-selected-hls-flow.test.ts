@@ -29,9 +29,11 @@ import {
   type S4PreviewRecord,
   type S4RenditionFact,
 } from '@xdownload/core-seam';
+import { parsePublicHlsUriCandidate } from '@xdownload/hls-vod-adapter';
 import { reopenCoreRuntime } from '../src/runtime.ts';
 import {
   driveS4Preview,
+  driveS4SelectedHlsExecution,
   type CoreRuntime,
   type S4DriveRuntime,
   type S4HlsHttpOptions,
@@ -709,6 +711,117 @@ describe.skipIf(!ffmpegOk)('#153 S4 selected-HLS Core flow (real FFmpeg)', () =>
       expect(segmentReads).toBe(0);
     } finally {
       closeRuntime(after);
+    }
+  });
+});
+
+describe('#153 S4 public-lane target classification (review F1/F5, no FFmpeg)', () => {
+  it('the production lane refuses non-public rendition/segment targets before any network', async () => {
+    const root = makeTempDir('s4-hls-httptarget');
+    roots.push(root);
+    const contractId = 'contract-s4-flow-001';
+    const runtime = reopenCoreRuntime({ rootDir: root, expectedPeer: EXPECTED_PEER });
+    try {
+      prepareLineage(runtime, contractId);
+      const decoded = decodeAcquisitionContract(contractPayload(contractId));
+      if (!decoded.ok) throw new Error('fixture contract rejected');
+      const selection: S4ConfirmedSelectionRecord = {
+        confirmedSelectionId: 's4select:contract-s4-flow-001:s4snap-flow-001:s4member-flow-001',
+        previewId: 's4preview:contract-s4-flow-001:s4snap-flow-001:s4member-flow-001',
+        snapshotId: 's4snap-flow-001',
+        memberId: 's4member-flow-001',
+        manifestUri: 'https://cdn.example.org/vod/master.m3u8',
+        mediaProfileId: 'BASIC_HLS_VOD_MPEGTS_H264_AAC_V1',
+        renditionKey: 'rend-0',
+        renditionUri: 'http://127.0.0.1:9/vod/rend.m3u8',
+        displayedTupleDigest: '0'.repeat(64),
+        confirmedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      };
+      const refused = await driveS4SelectedHlsExecution(
+        { ...runtime } satisfies S4DriveRuntime,
+        { aggregateId: contractId, contract: decoded.value, selection },
+        {},
+      );
+      expect(refused.ok).toBe(false);
+      expect(
+        runtime.writer.reader
+          .workItems()
+          .filter((w) => w.effectId.startsWith('effect:contract-s4-flow-001')),
+      ).toHaveLength(0);
+      // The pure classifier the driver composes: canonical public targets
+      // only (no IP literals, internal names, ports or credentials).
+      expect(
+        parsePublicHlsUriCandidate('http://127.0.0.1:9/vod/rend.m3u8', 'manifest'),
+      ).toBeUndefined();
+      expect(
+        parsePublicHlsUriCandidate('https://cdn.internal/vod/rend.m3u8', 'manifest'),
+      ).toBeUndefined();
+      expect(
+        parsePublicHlsUriCandidate('https://10.1.2.3/vod/rend.m3u8', 'manifest'),
+      ).toBeUndefined();
+      expect(
+        parsePublicHlsUriCandidate('https://media.127.0.0.1.sslip.io/vod/rend.m3u8', 'manifest'),
+      ).toBeDefined();
+      expect(
+        parsePublicHlsUriCandidate('https://cdn.example.org/vod/seg0.ts', 'mpegts-segment'),
+      ).toBeDefined();
+      expect(
+        parsePublicHlsUriCandidate('https://192.168.0.9/vod/seg0.ts', 'mpegts-segment'),
+      ).toBeUndefined();
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('records a truthful MANIFEST_OVERSIZE refusal for an oversized master', async () => {
+    const server = new ControlledHttpFixture();
+    await server.start();
+    fixtures.push(server);
+    server.serveFile('/big/master.m3u8', {
+      body: new Uint8Array(600 * 1024),
+      contentType: 'application/vnd.apple.mpegurl',
+    });
+    const root = makeTempDir('s4-hls-oversize');
+    roots.push(root);
+    const contractId = 'contract-s4-flow-001';
+    // The wire grammar is https-only; the fixture-URI preview intent is
+    // seeded exactly as the journaled command (the S3 flow-test pattern).
+    const live = reopenCoreRuntime({
+      rootDir: root,
+      expectedPeer: EXPECTED_PEER,
+      s4Hls: S4_FIXTURE_HTTP,
+    });
+    prepareLineage(live, contractId);
+    appendFileSync(
+      join(root, 'seam-journal.jsonl'),
+      acceptedEntry({
+        commandType: 'PREVIEW_S4_HLS_VOD',
+        aggregateId: contractId,
+        requestId: 'seed-s4-oversize-preview',
+        expectedRevision: 2,
+        revision: 3,
+        payload: {
+          snapshotId: 's4snap-flow-001',
+          memberId: 's4member-flow-001',
+          manifestUri: server.uri('/big/master.m3u8'),
+          mediaProfileId: 'BASIC_HLS_VOD_MPEGTS_H264_AAC_V1',
+        },
+        correlation: { contractId, snapshotId: 's4snap-flow-001' },
+      }),
+    );
+    closeRuntime(live);
+    const runtime = reopenCoreRuntime({
+      rootDir: root,
+      expectedPeer: EXPECTED_PEER,
+      s4Hls: S4_FIXTURE_HTTP,
+    });
+    try {
+      const preview = await awaitPreview(runtime, contractId);
+      expect(preview.status).toBe('FAILED');
+      expect(preview.failureReason).toBe('MANIFEST_OVERSIZE');
+    } finally {
+      closeRuntime(runtime);
     }
   });
 });

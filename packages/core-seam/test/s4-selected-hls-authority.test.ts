@@ -524,6 +524,67 @@ describe('#153 S4 confirmation challenges (BEGIN/COMMIT)', () => {
     }
   });
 
+  it('review F2: rejects BEGIN after the preview record itself expired', () => {
+    const composition = composeInstalled();
+    const revision = prepareAvailablePreview(composition);
+    composition.clock.now += 121_000;
+    const response = frame(composition.server, composition.sessions, {
+      ...s4Command({
+        commandType: 'CONFIRM_S4_SELECTION',
+        payload: beginPayload(),
+        expectedRevision: revision,
+      }),
+    });
+    expect(response.outcome).toBe('REJECTED');
+    expect(response.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
+  });
+
+  it('review F3: a fresh BEGIN revokes the previously pending challenge', () => {
+    const composition = composeInstalled();
+    const revision = prepareAvailablePreview(composition);
+    const first = frame(composition.server, composition.sessions, {
+      ...s4Command({
+        commandType: 'CONFIRM_S4_SELECTION',
+        payload: beginPayload(),
+        expectedRevision: revision,
+      }),
+    });
+    const firstChallenge = first.s4PrivateChallenge?.value;
+    expect(firstChallenge).toBeDefined();
+    const second = frame(composition.server, composition.sessions, {
+      ...s4Command({
+        commandType: 'CONFIRM_S4_SELECTION',
+        payload: beginPayload(),
+        expectedRevision: revision,
+        requestId: requestId(),
+      }),
+    });
+    expect(second.s4PrivateChallenge?.value).not.toBe(firstChallenge);
+    // The revoked first challenge can no longer confirm anything.
+    const committed = frame(composition.server, composition.sessions, {
+      ...s4Command({
+        commandType: 'CONFIRM_S4_SELECTION',
+        payload: commitPayload(firstChallenge!),
+        expectedRevision: revision,
+      }),
+    });
+    expect(committed.outcome).toBe('REJECTED');
+    expect(
+      composition.server.inspectProjection('contract-s4-001')?.s4ConfirmedSelection,
+    ).toBeUndefined();
+  });
+
+  it('review F5: a legacy 1.0 frame carrying an S4 opcode rejects before semantics', () => {
+    const composition = composeInstalled();
+    const response = frame(composition.server, composition.sessions, {
+      ...s4Command({ commandType: 'PREVIEW_S4_HLS_VOD', payload: previewPayload() }),
+      schemaIdentity: { schema: 'xdownload.core-seam', version: '1.0.0' },
+    });
+    expect(response.outcome).toBe('REJECTED');
+    expect(response.diagnostics?.[0]?.code).toBe('UNSUPPORTED_ENVELOPE_VERSION');
+    expect(composition.begunPreviews).toHaveLength(0);
+  });
+
   it('never replays the raw challenge value on a duplicate BEGIN', () => {
     const composition = composeInstalled();
     const revision = prepareAvailablePreview(composition);
