@@ -32,6 +32,8 @@ import {
   type CoreSeamServer,
   type ExpectedPeerScope,
   type SeamJournal,
+  type S5ExecutionIntentInput,
+  type SeamResult,
 } from '@xdownload/core-seam';
 import { CoreScheduler, serializeFacts } from '@xdownload/core-scheduler';
 import {
@@ -102,6 +104,19 @@ export interface CoreRuntimeOptions {
    * deterministic tests. Absent → the S4 1.2 commands stay failing closed.
    */
   readonly s4Hls?: S4HlsHttpOptions;
+  /**
+   * #151: the installed S5 collection execution drive, injected by the
+   * composition root (it lives in @xdownload/browser-collection-workflow,
+   * which depends on this package — dependency inversion, never a cycle).
+   * The factory receives the composed Core runtime and returns the drive
+   * function; the runtime wraps every drive in the same supervised
+   * bounded-retry discipline as S1/S3/S4 and reconciles registered intents
+   * after composition and on restart. Absent → every S5 1.2 command stays
+   * failing closed exactly as before (legacy compositions).
+   */
+  readonly s5Collection?: (
+    runtime: CoreRuntime,
+  ) => (input: S5ExecutionIntentInput) => Promise<SeamResult<void>>;
 }
 
 /** The composed authoritative Core Runtime (one instance per install). */
@@ -162,6 +177,10 @@ function bindSeam(
   supervisor: S1DriveSupervisor,
   transferAbort: S1TransferAbortHub,
   s4Options: S4HlsHttpOptions = {},
+  s5Factory?: (
+    runtime: CoreRuntime,
+  ) => (input: S5ExecutionIntentInput) => Promise<SeamResult<void>>,
+  s5RuntimeHolder?: { current?: CoreRuntime },
 ): CoreSeamServer {
   // #95 R1/F04: chunked delivered streams stage inside the composition so
   // journal replay during seam construction rebuilds staged truth through
@@ -171,6 +190,10 @@ function bindSeam(
   // constructed (chicken-and-egg resolved with a holder populated before
   // any frame or reconcile can run).
   const seamHolder: { current?: CoreSeamServer } = {};
+  // #151: the injected S5 drive composes over the FULL Core runtime, which
+  // exists only after bindSeam returns — the holder is populated before any
+  // post-commit drive or reconcile can run.
+  const runtimeHolder: { current?: CoreRuntime } = s5RuntimeHolder ?? {};
   // #101 R1/F03: a rejected/thrown drive is a supervised bounded-retry
   // episode with an observable health record — never a silent swallow. The
   // verbatim seam rejection becomes the episode's diagnostic message.
@@ -263,6 +286,32 @@ function bindSeam(
         }
       },
     },
+    // #151: install the private S5 current-page collection authority behind
+    // the OS-verified session gate — the injected execution drive over the
+    // full authoritative composition (real per-member acquisition through
+    // the trusted collection flow; never browser-delivered bytes).
+    ...(s5Factory === undefined
+      ? {}
+      : {
+          s5PageGroup: {
+            begin: (input: S5ExecutionIntentInput): void => {
+              const runtime = runtimeHolder.current;
+              if (runtime === undefined) {
+                return;
+              }
+              void supervisor.drive(input.aggregateId, async () => {
+                const result = await s5Factory(runtime)(input);
+                if (!result.ok) {
+                  throw new Error(
+                    `s5 drive rejected: ${result.diagnostics
+                      .map((d) => `${d.code}:${d.path}`)
+                      .join(', ')}`,
+                  );
+                }
+              });
+            },
+          },
+        }),
     // #95: the one narrowly typed execution command is served by the Core
     // runtime's own delivered-bytes flow over this same authoritative
     // composition (writer/scheduler/store) — a second authority never
@@ -552,6 +601,35 @@ function reconcileS4Lanes(
 }
 
 /**
+ * #151: reconcile registered S5 collection execution intents against durable
+ * truth (identical discipline to S1/S3/S4): journal replay re-registered
+ * every intent; non-terminal intents re-drive through the injected drive
+ * (reconcile-first — accepted members never re-download).
+ */
+function reconcileS5Executions(
+  runtime: CoreRuntime,
+  supervisor: S1DriveSupervisor,
+  s5Factory: (
+    runtime: CoreRuntime,
+  ) => (input: S5ExecutionIntentInput) => Promise<SeamResult<void>>,
+): void {
+  for (const pending of runtime.seam.pendingS5Executions()) {
+    const view = runtime.seam.inspectProjection(pending.aggregateId);
+    if (view === undefined || view.lineage.status === 'TERMINAL') {
+      continue;
+    }
+    void supervisor.drive(pending.aggregateId, async () => {
+      const result = await s5Factory(runtime)(pending);
+      if (!result.ok) {
+        throw new Error(
+          `s5 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
+    });
+  }
+}
+
+/**
  * Compose a FRESH authoritative Core Runtime over an empty durable root.
  * Refuses to clobber existing durable truth (use `reopenCoreRuntime`).
  */
@@ -565,6 +643,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const terminalStore = createTerminalResultStore();
   const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const transferAbort = createS1TransferAbortHub();
+  const s5RuntimeHolder: { current?: CoreRuntime } = {};
   const runtime: CoreRuntime = Object.freeze({
     seam: bindSeam(
       options.expectedPeer,
@@ -579,6 +658,8 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
       supervisor,
       transferAbort,
       options.s4Hls,
+      options.s5Collection,
+      s5RuntimeHolder,
     ),
     scheduler,
     writer,
@@ -590,9 +671,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     recoveryAtComposition: Object.freeze([]),
     s1DriveHealth: supervisor.health,
   });
+  s5RuntimeHolder.current = runtime;
   reconcileS1Executions(runtime, supervisor, transferAbort);
   reconcileS3Executions(runtime, supervisor, transferAbort);
   reconcileS4Lanes(runtime, supervisor, options.s4Hls ?? {});
+  if (options.s5Collection !== undefined) {
+    reconcileS5Executions(runtime, supervisor, options.s5Collection);
+  }
   return runtime;
 }
 
@@ -630,6 +715,7 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const terminalStore = createTerminalResultStore();
   const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const transferAbort = createS1TransferAbortHub();
+  const s5RuntimeHolder: { current?: CoreRuntime } = {};
   const runtime: CoreRuntime = Object.freeze({
     seam: bindSeam(
       options.expectedPeer,
@@ -644,6 +730,8 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
       supervisor,
       transferAbort,
       options.s4Hls,
+      options.s5Collection,
+      s5RuntimeHolder,
     ),
     scheduler,
     writer,
@@ -655,11 +743,15 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     recoveryAtComposition: Object.freeze(classifications),
     s1DriveHealth: supervisor.health,
   });
+  s5RuntimeHolder.current = runtime;
   // Restart reconcile: replay re-registered every S1 intent but never the
   // unjournaled terminal — re-drive non-terminal intents from durable truth.
   reconcileS1Executions(runtime, supervisor, transferAbort);
   reconcileS3Executions(runtime, supervisor, transferAbort);
   reconcileS4Lanes(runtime, supervisor, options.s4Hls ?? {});
+  if (options.s5Collection !== undefined) {
+    reconcileS5Executions(runtime, supervisor, options.s5Collection);
+  }
   return runtime;
 }
 

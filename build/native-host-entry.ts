@@ -22,7 +22,10 @@ import {
   serveNativeHostSession,
   type AllowedOrigins,
 } from '@xdownload/browser-auth-broker';
-import { createInstalledS2Lane } from '@xdownload/browser-collection-workflow';
+import {
+  createInstalledS2Lane,
+  createInstalledS5Lane,
+} from '@xdownload/browser-collection-workflow';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -30,13 +33,26 @@ import { pathToFileURL } from 'node:url';
 
 export interface BrokerConfig {
   readonly allowedOrigins: AllowedOrigins;
-  /** #95: the ONE Core authority seam target; absent → S2 lane fails closed. */
+  /**
+   * #95/#151: the ONE Core authority seam target. Absent → both lanes fail
+   * closed. The loopback TCP section serves the S2 delivered-bytes lane; the
+   * canonical Windows pipe namespace serves the OS-verified S5 collection
+   * lane (both same install/user; at least one transport required).
+   */
   readonly core:
     | {
         readonly host: string;
         readonly port: number;
         readonly installId: string;
         readonly userId: string;
+        readonly pipeName?: string;
+      }
+    | {
+        readonly host?: undefined;
+        readonly port?: undefined;
+        readonly installId: string;
+        readonly userId: string;
+        readonly pipeName: string;
       }
     | undefined;
 }
@@ -63,23 +79,44 @@ export function parseBrokerConfig(text: string): BrokerConfig {
     const port = coreRecord['port'];
     const installId = coreRecord['installId'];
     const userId = coreRecord['userId'];
+    const pipeName = coreRecord['pipeName'];
     if (
-      typeof host !== 'string' ||
-      host !== '127.0.0.1' ||
-      typeof port !== 'number' ||
-      !Number.isInteger(port) ||
-      port <= 0 ||
-      port > 65535 ||
       typeof installId !== 'string' ||
       installId.length === 0 ||
       typeof userId !== 'string' ||
       userId.length === 0
     ) {
+      throw new Error('broker config core section requires installId and userId');
+    }
+    const tcpPresent = host !== undefined || port !== undefined;
+    if (tcpPresent && (host !== '127.0.0.1' || typeof port !== 'number' || !Number.isInteger(port) || port <= 0 || port > 65535)) {
       throw new Error(
-        'broker config core section must be { host: "127.0.0.1", port, installId, userId } (loopback only)',
+        'broker config core TCP section must be { host: "127.0.0.1", port } (loopback only)',
       );
     }
-    core = { host, port, installId, userId };
+    if (pipeName !== undefined) {
+      // The same exact-namespace rule the Core host enforces: one canonical
+      // pipe per install, never an arbitrary namespace.
+      if (
+        typeof pipeName !== 'string' ||
+        pipeName !== String.raw`\\.\pipe\xdownload-core-${installId}`
+      ) {
+        throw new Error(
+          'broker config core pipeName must be the canonical \\\\.\\pipe\\xdownload-core-<installId> namespace of this install',
+        );
+      }
+    }
+    if (!tcpPresent && pipeName === undefined) {
+      throw new Error(
+        'broker config core section requires the loopback TCP target (S2) and/or the canonical Windows pipe namespace (S5)',
+      );
+    }
+    core = {
+      ...(tcpPresent ? { host: host as string, port: port as number } : {}),
+      installId,
+      userId,
+      ...(pipeName === undefined ? {} : { pipeName: pipeName as string }),
+    } as BrokerConfig['core'];
   } else {
     throw new Error('broker config core section must be an object when present');
   }
@@ -129,19 +166,36 @@ export async function runBrokerHost(argv: readonly string[]): Promise<number> {
   }
   // Session establishment enforces the exact allow-listed caller origin
   // from the browser-passed argv (T010 semantics, unmodified). The S2 lane
-  // is composed only when the ONE Core authority target is configured; a
-  // broker-only deployment keeps S2_ACQUIRE failing closed.
+  // is composed only when the loopback TCP Core target is configured; the
+  // S5 collection lane only when the canonical OS-verified pipe namespace
+  // is configured. Either lane absent → its commands fail closed.
   const broker = createAuthBroker();
+  const tcpCore =
+    core !== undefined && core.host !== undefined && core.port !== undefined
+      ? { host: core.host, port: core.port, installId: core.installId, userId: core.userId }
+      : undefined;
+  const pipeCore =
+    core !== undefined && core.pipeName !== undefined
+      ? { pipeName: core.pipeName, installId: core.installId, userId: core.userId }
+      : undefined;
   const session = establishNativeHostSession({
     argv,
     allowedOrigins,
     broker,
-    ...(core === undefined
+    ...(tcpCore === undefined
       ? {}
       : {
           s2Lane: createInstalledS2Lane({
             broker,
-            core,
+            core: tcpCore,
+          }),
+        }),
+    ...(pipeCore === undefined
+      ? {}
+      : {
+          s5Lane: createInstalledS5Lane({
+            broker,
+            core: pipeCore,
           }),
         }),
   });

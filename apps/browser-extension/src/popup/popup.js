@@ -203,10 +203,50 @@
     list.appendChild(li);
   }
 
-  // This is only a browser-observed gesture; Core #151 will independently
-  // validate the durable current-page snapshot before any group effect.
-  // The installed worker currently refuses this typed message, rather than
-  // quietly running N independent S2 downloads or fabricating coverage.
+  // ------------------------------------------------------------------ S5 batch
+  // The prepare gesture is browser-observed only; Core independently freezes
+  // the member tuple (PREPARE), mints the confirmation authority (CONFIRM
+  // with a single-use Core challenge), and performs every member download
+  // itself (EXECUTE). This UI renders verbatim Core facts — it never derives
+  // a status, member identity or terminal of its own.
+  const s5BatchBox = document.getElementById('s5-batch');
+  const s5FrozenList = document.getElementById('s5-frozen');
+  const s5ConfirmButton = document.getElementById('s5-confirm');
+  const s5ExecuteButton = document.getElementById('s5-execute');
+  const s5BatchResult = document.getElementById('s5-batch-result');
+  let s5Prepared = null;
+  let s5Confirmed = null;
+
+  function setS5State(kind, text) {
+    s5BatchResult.className = `state ${kind}`;
+    s5BatchResult.textContent = text;
+  }
+
+  function renderFrozenMembers(facts) {
+    const members = Array.isArray(facts.members) ? facts.members : [];
+    s5FrozenList.textContent = '';
+    for (const member of members) {
+      const li = document.createElement('li');
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = true;
+      checkbox.dataset.memberId = String(member.memberId);
+      label.appendChild(checkbox);
+      label.appendChild(
+        document.createTextNode(` ${member.text || '(untitled)'} — ${member.href}`),
+      );
+      li.appendChild(label);
+      s5FrozenList.appendChild(li);
+    }
+  }
+
+  function selectedFrozenMemberIds() {
+    return Array.from(s5FrozenList.querySelectorAll('input[type=checkbox]:checked')).map(
+      (checkbox) => checkbox.dataset.memberId,
+    );
+  }
+
   s5PrepareButton.addEventListener('click', async () => {
     s5PrepareButton.disabled = true;
     try {
@@ -245,13 +285,7 @@
           'S5 refused: the page membership changed since observation; reopen the popup.';
         return;
       }
-      const selected = s5ObservedRows.filter((row) => row.checkbox.checked);
-      if (selected.length !== s5ObservedRows.length || selected.length === 0) {
-        s5PreviewResult.textContent =
-          'S5 current-page scope requires confirmation of every observed member; a subset needs a separately approved scope.';
-        return;
-      }
-      if (new Set(selected.map((item) => item.href)).size !== selected.length) {
+      if (new Set(observed.links.map((item) => item.href)).size !== observed.links.length) {
         s5PreviewResult.textContent =
           'S5 refused: duplicate resource locators require trusted distinct member identities.';
         return;
@@ -260,20 +294,148 @@
         kind: 'S5_PREPARE_CURRENT_PAGE_GROUP',
         tabId: currentTab.id,
         pageUrl: currentTab.url,
-        observedMemberCount: selected.length,
-        members: selected.map((item) => ({ href: item.href, text: item.text })),
+        observedMemberCount: observed.links.length,
+        members: observed.links.map((item) => ({ href: item.href, text: item.text })),
       });
-      // A typed Core transport and durable snapshot are not yet installed.
-      // Even an unexpected future positive response must not be interpreted
-      // as an accepted member or a completed download in this UI.
-      s5PreviewResult.textContent =
-        response && response.ok === false
-          ? `S5 admission refused without downloading: ${String(response.error || 'UNKNOWN')}`
-          : 'S5 admission response is not an installed Core terminal; no group download can be claimed.';
+      if (!response || response.ok !== true) {
+        s5PreviewResult.textContent = `S5 admission refused without downloading: ${
+          (response && response.error) || 'UNKNOWN'
+        }`;
+        return;
+      }
+      s5Prepared = {
+        contractId: response.contractId,
+        prepareId: (response.facts && response.facts.prepareId) || '',
+        snapshotId: (response.facts && response.facts.snapshotId) || '',
+        digest: (response.facts && response.facts.observedTupleDigest) || '',
+      };
+      renderFrozenMembers(response.facts || {});
+      s5BatchBox.hidden = false;
+      s5ExecuteButton.disabled = true;
+      s5PreviewResult.textContent = `Core froze ${String(
+        (response.facts && Array.isArray(response.facts.members) && response.facts.members.length) || 0,
+      )} members (digest ${String(s5Prepared.digest).slice(0, 16)}…). Pick the batch subset and confirm.`;
+      setS5State('RUNNING', 'Awaiting your batch confirmation — nothing is downloaded yet.');
     } catch (error) {
       s5PreviewResult.textContent = `S5 admission failed without downloading: ${String(error)}`;
     } finally {
       s5PrepareButton.disabled = false;
+    }
+  });
+
+  s5ConfirmButton.addEventListener('click', async () => {
+    if (!s5Prepared) {
+      setS5State('FAILED', 'No frozen Core group; request S5 group admission first.');
+      return;
+    }
+    const selected = selectedFrozenMemberIds();
+    if (selected.length === 0) {
+      setS5State('FAILED', 'Select at least one frozen member for the batch.');
+      return;
+    }
+    s5ConfirmButton.disabled = true;
+    try {
+      const response = await chrome.runtime.sendMessage({
+        kind: 'S5_CONFIRM_GROUP',
+        contractId: s5Prepared.contractId,
+        prepareId: s5Prepared.prepareId,
+        snapshotId: s5Prepared.snapshotId,
+        selectedMemberIds: selected,
+      });
+      if (!response || response.ok !== true) {
+        setS5State('FAILED', `Core refused the confirmation: ${(response && response.error) || 'UNKNOWN'}`);
+        return;
+      }
+      const facts = response.facts || {};
+      s5Confirmed = {
+        contractId: s5Prepared.contractId,
+        confirmedGroupId: facts.confirmedGroupId || '',
+        snapshotId: s5Prepared.snapshotId,
+      };
+      s5ExecuteButton.disabled = false;
+      setS5State(
+        'RUNNING',
+        `Core durably confirmed ${String(Array.isArray(facts.selectedMemberIds) ? facts.selectedMemberIds.length : '?')} members (group ${String(facts.confirmedGroupId || '')}). Start the batch download when ready.`,
+      );
+    } catch (error) {
+      setS5State('FAILED', `Confirmation failed: ${String(error)}`);
+    } finally {
+      s5ConfirmButton.disabled = false;
+    }
+  });
+
+  function renderTerminal(facts) {
+    const members = Array.isArray(facts.members) ? facts.members : [];
+    const lines = members.map(
+      (member) =>
+        `[${member.outcome === 'ACQUIRED' && member.accepted ? 'OK' : member.outcome}] ${member.href} — ${member.detail}`,
+    );
+    setS5State(
+      'COMPLETE',
+      `${lines.join('\n')}\n\nCore aggregate terminal (verbatim):\n${JSON.stringify(facts.terminal, null, 2)}`,
+    );
+  }
+
+  function pollS5Terminal() {
+    const started = Date.now();
+    const timer = setInterval(async () => {
+      let payload = null;
+      try {
+        payload = await chrome.runtime.sendMessage({
+          kind: 'S5_GROUP_JOURNEY_STATUS',
+          contractId: s5Confirmed.contractId,
+        });
+      } catch (error) {
+        clearInterval(timer);
+        setS5State('UNKNOWN', `journey status unreadable: ${String(error)}`);
+        return;
+      }
+      const facts = payload && payload.facts;
+      if (payload && payload.ok === true && payload.status === 'TERMINAL') {
+        clearInterval(timer);
+        renderTerminal(facts || {});
+        return;
+      }
+      if (payload && payload.ok !== true) {
+        clearInterval(timer);
+        setS5State('FAILED', `batch failed: ${payload.error || 'unknown failure'}`);
+        return;
+      }
+      setS5State(
+        'RUNNING',
+        `Core is downloading the batch (${Math.round((Date.now() - started) / 1000)}s)… per-member status so far:\n${JSON.stringify(
+          (facts && facts.members) || [],
+          null,
+          2,
+        )}`,
+      );
+    }, 700);
+  }
+
+  s5ExecuteButton.addEventListener('click', async () => {
+    if (!s5Confirmed) {
+      setS5State('FAILED', 'Confirm the batch with Core before downloading.');
+      return;
+    }
+    s5ExecuteButton.disabled = true;
+    try {
+      const response = await chrome.runtime.sendMessage({
+        kind: 'S5_EXECUTE_GROUP',
+        contractId: s5Confirmed.contractId,
+        confirmedGroupId: s5Confirmed.confirmedGroupId,
+        snapshotId: s5Confirmed.snapshotId,
+      });
+      if (!response || response.ok !== true) {
+        setS5State('FAILED', `Core refused the execution: ${(response && response.error) || 'UNKNOWN'}`);
+        return;
+      }
+      if (response.status === 'TERMINAL') {
+        renderTerminal(response.facts || {});
+        return;
+      }
+      pollS5Terminal();
+    } catch (error) {
+      setS5State('FAILED', `Execution failed: ${String(error)}`);
     }
   });
 

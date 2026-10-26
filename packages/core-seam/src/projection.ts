@@ -64,6 +64,39 @@ export interface SeamProjectionView {
   readonly lineage: LineageProjectionView;
   /** Present only once the lineage has a projected terminal result. */
   readonly terminal?: TerminalResult;
+  /** #151 Core-frozen observed S5 page-group facts (presence = prepared). */
+  readonly s5PreparedGroup?: {
+    readonly prepareId: string;
+    readonly snapshotId: string;
+    readonly pageOrigin: string;
+    readonly members: readonly {
+      readonly memberId: string;
+      readonly href: string;
+      readonly text: string;
+    }[];
+    readonly observedTupleDigest: string;
+    readonly status: 'AVAILABLE';
+  };
+  /** #151 Core-confirmed S5 selection facts (presence = confirmed). */
+  readonly s5ConfirmedGroup?: {
+    readonly confirmedGroupId: string;
+    readonly prepareId: string;
+    readonly snapshotId: string;
+    readonly selectedMemberIds: readonly string[];
+    readonly displayedTupleDigest: string;
+    readonly confirmedAt: string;
+    readonly expiresAt: string;
+    /** The Core-constructed contract status (always CONFIRMED here). */
+    readonly contractStatus: string;
+  };
+  /** #151 Core-derived per-member S5 outcomes (presence = driver recorded). */
+  readonly s5Members?: readonly {
+    readonly memberId: string;
+    readonly href: string;
+    readonly outcome: 'ACQUIRED' | 'AUTH_DENIED' | 'NOT_RUN';
+    readonly accepted: boolean;
+    readonly detail: string;
+  }[];
   /**
    * Additive PRD §27 exposure (wire-compatible, v1 schema unchanged): the
    * cardinality of the confirmed selection identity list. Present only while
@@ -155,6 +188,42 @@ export function projectAggregate(
       retriedMemberIds: [...lineage.retriedMembers],
     },
     terminal: lineage.terminal,
+    // #151 additive exposure with the same explicit presence semantics: the
+    // frozen/confirmed S5 page-group facts and the Core-derived per-member
+    // outcomes render only when that lineage state exists.
+    ...(lineage.s5PreparedGroup === undefined
+      ? {}
+      : {
+          s5PreparedGroup: {
+            prepareId: lineage.s5PreparedGroup.prepareId,
+            snapshotId: lineage.s5PreparedGroup.snapshotId,
+            pageOrigin: lineage.s5PreparedGroup.pageOrigin,
+            members: lineage.s5PreparedGroup.members.map((member) => ({
+              memberId: member.memberId,
+              href: member.href,
+              text: member.text,
+            })),
+            observedTupleDigest: lineage.s5PreparedGroup.observedTupleDigest,
+            status: lineage.s5PreparedGroup.status,
+          },
+        }),
+    ...(lineage.s5ConfirmedGroup === undefined
+      ? {}
+      : {
+          s5ConfirmedGroup: {
+            confirmedGroupId: lineage.s5ConfirmedGroup.confirmedGroupId,
+            prepareId: lineage.s5ConfirmedGroup.prepareId,
+            snapshotId: lineage.s5ConfirmedGroup.snapshotId,
+            selectedMemberIds: [...lineage.s5ConfirmedGroup.selectedMemberIds],
+            displayedTupleDigest: lineage.s5ConfirmedGroup.displayedTupleDigest,
+            confirmedAt: lineage.s5ConfirmedGroup.confirmedAt,
+            expiresAt: lineage.s5ConfirmedGroup.expiresAt,
+            contractStatus: lineage.s5ConfirmedGroup.contract.status,
+          },
+        }),
+    ...(lineage.s5MemberOutcomes === undefined
+      ? {}
+      : { s5Members: lineage.s5MemberOutcomes.map((member) => ({ ...member })) }),
     // Additive §27 exposure with explicit presence semantics: a fact that is
     // unknown at this lineage state gets NO key at all, so the wire form and
     // the in-process form both render it absent (JSON.stringify drops the

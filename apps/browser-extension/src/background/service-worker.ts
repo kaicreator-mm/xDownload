@@ -47,6 +47,7 @@ import {
   type S2Selection,
 } from './s2-glue.ts';
 import { decodeS5PageGroupGesture, isS5PageGroupGesture } from './s5-group-intent.ts';
+import { decodeS5BatchMessage, isS5BatchMessageKind } from './s5-batch.ts';
 
 /**
  * Module-scoped ambient surface for the browser fetch used by the byte lane
@@ -423,6 +424,214 @@ async function runS2Journey(selection: S2Selection, observationId: string): Prom
   }
 }
 
+// ------------------------------------------------------------- S5 journeys
+
+/**
+ * SW-lifetime S5 batch journey registry (durable truth stays in Core; the
+ * popup polls this for phase/terminal rendering, and a fresh worker answers
+ * UNKNOWN truthfully — the Core projection remains reachable through a new
+ * S5_GROUP_STATUS round trip).
+ */
+interface S5JourneyState {
+  readonly contractId: string;
+  status: 'PREPARE' | 'CONFIRM' | 'EXECUTE' | 'TERMINAL' | 'FAILED';
+  phase?: string;
+  facts?: unknown;
+  failure?: { readonly stage: string; readonly detail: string };
+}
+
+const s5Journeys = new Map<string, S5JourneyState>();
+
+/**
+ * One Native Messaging round trip for one S5 lane command. The CONFIRM
+ * BEGIN+COMMIT pair rides a single lane command (one host process, one
+ * seam connection), so the connection-bound Core challenge discipline is
+ * preserved even though each popup gesture opens a fresh port.
+ */
+function s5NmRoundTrip(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
+    const finish = (value: Record<string, unknown>): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      try {
+        port.disconnect();
+      } catch {
+        // The host may already be gone with the port.
+      }
+      resolve(value);
+    };
+    port.onDisconnect.addListener(() => {
+      finish({
+        kind: 'S5_REJECTED',
+        stage: 'NATIVE_HOST',
+        reasons: [{ message: 'the native host disconnected without a result' }],
+      });
+    });
+    port.onMessage.addListener((message: unknown) => {
+      if (typeof message !== 'object' || message === null) {
+        return;
+      }
+      finish(message as Record<string, unknown>);
+    });
+    port.postMessage(payload);
+  });
+}
+
+function s5NmResponse(
+  response: Record<string, unknown>,
+): { ok: true; phase: string; facts: Record<string, unknown> } | { ok: false; error: string } {
+  if (response['kind'] === 'S5_RESULT') {
+    return {
+      ok: true,
+      phase: typeof response['phase'] === 'string' ? response['phase'] : 'UNKNOWN',
+      facts: (response['facts'] as Record<string, unknown> | undefined) ?? {},
+    };
+  }
+  const stage = typeof response['stage'] === 'string' ? response['stage'] : 'UNKNOWN';
+  const reasons = Array.isArray(response['reasons'])
+    ? (response['reasons'] as readonly { readonly message?: string }[])
+        .map((reason) => reason.message ?? '')
+        .join('; ')
+        .slice(0, 300)
+    : '';
+  if (response['kind'] === 'REJECTED' && stage === 'NATIVE_HOST') {
+    return { ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' };
+  }
+  return { ok: false, error: reasons || `S5 lane rejection at ${stage}` };
+}
+
+/** The #152 shipped batch flow: prepare → (user subset choice) → confirm → execute. */
+async function runS5Prepare(gesture: {
+  readonly tabId: number;
+  readonly pageUrl: string;
+  readonly members: readonly { readonly href: string; readonly text: string }[];
+}): Promise<{ ok: true; contractId: string; facts: Record<string, unknown> } | { ok: false; error: string }> {
+  const response = s5NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S5_GROUP_PREPARE',
+      requestId: `s5prep-${Date.now().toString(36)}`,
+      s5: {
+        tabId: gesture.tabId,
+        pageUrl: gesture.pageUrl,
+        members: gesture.members.map((member) => ({ href: member.href, text: member.text })),
+      },
+    }),
+  );
+  if (!response.ok) {
+    return response;
+  }
+  const contractId = typeof response.facts['contractId'] === 'string' ? (response.facts['contractId'] as string) : '';
+  if (contractId === '') {
+    return { ok: false, error: 'S5 lane returned no contract identity' };
+  }
+  s5Journeys.set(contractId, {
+    contractId,
+    status: 'PREPARE',
+    phase: response.phase,
+    facts: response.facts,
+  });
+  return { ok: true, contractId, facts: response.facts };
+}
+
+async function runS5Confirm(message: {
+  readonly contractId: string;
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly selectedMemberIds: readonly string[];
+}): Promise<void> {
+  const journey: S5JourneyState =
+    s5Journeys.get(message.contractId) ?? { contractId: message.contractId, status: 'CONFIRM' };
+  s5Journeys.set(message.contractId, journey);
+  journey.status = 'CONFIRM';
+  const response = s5NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S5_GROUP_CONFIRM',
+      requestId: `s5conf-${Date.now().toString(36)}`,
+      s5: {
+        contractId: message.contractId,
+        prepareId: message.prepareId,
+        snapshotId: message.snapshotId,
+        selectedMemberIds: [...message.selectedMemberIds],
+        decisionToken: `user-confirm:${message.contractId}`,
+      },
+    }),
+  );
+  if (response.ok) {
+    journey.phase = response.phase;
+    journey.facts = response.facts;
+    notify('xDownload S5 — group confirmed', `${String(response.facts['selectedMemberIds'] ?? []).length} members frozen by Core`);
+  } else {
+    journey.status = 'FAILED';
+    journey.failure = { stage: 'CONFIRM', detail: response.error };
+    notify('xDownload S5 — confirmation refused', response.error);
+  }
+}
+
+async function runS5Execute(message: {
+  readonly contractId: string;
+  readonly confirmedGroupId: string;
+  readonly snapshotId: string;
+}): Promise<void> {
+  const journey: S5JourneyState =
+    s5Journeys.get(message.contractId) ?? { contractId: message.contractId, status: 'EXECUTE' };
+  s5Journeys.set(message.contractId, journey);
+  journey.status = 'EXECUTE';
+  const response = s5NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S5_GROUP_EXECUTE',
+      requestId: `s5exec-${Date.now().toString(36)}`,
+      s5: {
+        contractId: message.contractId,
+        confirmedGroupId: message.confirmedGroupId,
+        snapshotId: message.snapshotId,
+      },
+    }),
+  );
+  if (response.ok && (response.phase === 'TERMINAL' || response.phase === 'RUNNING')) {
+    journey.phase = response.phase;
+    journey.facts = response.facts;
+    if (response.phase === 'TERMINAL') {
+      const terminal = response.facts['terminal'] as Record<string, unknown> | null;
+      const fulfillment = terminal?.['requestFulfillment'] ?? 'UNKNOWN';
+      journey.status = fulfillment === 'COMPLETE' ? 'TERMINAL' : 'TERMINAL';
+      notify(
+        fulfillment === 'COMPLETE' ? 'xDownload S5 — batch complete' : 'xDownload S5 — batch terminal (truthful)',
+        `Core terminal requestFulfillment: ${String(fulfillment)}`,
+      );
+    }
+  } else if (response.ok) {
+    journey.phase = response.phase;
+    journey.facts = response.facts;
+  } else {
+    journey.status = 'FAILED';
+    journey.failure = { stage: 'EXECUTE', detail: response.error };
+    notify('xDownload S5 — execution refused', response.error);
+  }
+}
+
+async function s5RefreshStatus(contractId: string): Promise<void> {
+  const response = s5NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S5_GROUP_STATUS',
+      requestId: `s5stat-${Date.now().toString(36)}`,
+      s5: { contractId },
+    }),
+  );
+  const journey: S5JourneyState = s5Journeys.get(contractId) ?? { contractId, status: 'EXECUTE' };
+  s5Journeys.set(contractId, journey);
+  if (response.ok) {
+    journey.phase = response.phase;
+    journey.facts = response.facts;
+    if (response.facts['terminal'] !== null && response.facts['terminal'] !== undefined) {
+      journey.status = 'TERMINAL';
+    }
+  }
+}
+
 // ------------------------------------------------------------- entrypoints
 
 chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
@@ -430,17 +639,59 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
   // popup) may submit an explicit S2 selection decision or poll journey
   // status. Content scripts and any other sender can never reach the journey.
   if (sender.id === chrome.runtime.id && sender.tab === undefined) {
-    // #152 S5 gesture can be prepared by the shipped popup, but must never
-    // silently fall through to the S2 downloader. The actual Core-owned
-    // S5 membership and durable batch carrier (#151) are not yet installed.
-    // Return a typed refusal BEFORE Native Messaging or any HTTP effect.
+    // #152 shipped S5 batch flow: the popup gesture is browser-observed
+    // only. The worker routes it to the installed Core S5 carrier through
+    // Native Messaging — the frozen members, confirmation and per-member
+    // terminal all come back as verbatim Core projection facts, never
+    // derived here. Every phase fails closed when the carrier is absent.
     if (isS5PageGroupGesture(raw)) {
       const prepared = decodeS5PageGroupGesture(raw);
-      sendResponse({
-        ok: false,
-        error: prepared.ok ? 'S5_CORE_CARRIER_NOT_INSTALLED' : prepared.detail,
-      });
-      return false;
+      if (!prepared.ok) {
+        sendResponse({ ok: false, error: prepared.detail });
+        return false;
+      }
+      void (async () => {
+        const outcome = await runS5Prepare(prepared.value);
+        if (!outcome.ok) {
+          sendResponse({ ok: false, error: outcome.error });
+          return;
+        }
+        sendResponse({ ok: true, contractId: outcome.contractId, facts: outcome.facts });
+      })();
+      return true;
+    }
+    if (isS5BatchMessageKind(raw)) {
+      const decoded = decodeS5BatchMessage(raw);
+      if (!decoded.ok) {
+        sendResponse({ ok: false, error: decoded.detail });
+        return false;
+      }
+      const message = decoded.value;
+      void (async () => {
+        if (message.kind === 'S5_CONFIRM_GROUP') {
+          await runS5Confirm(message);
+        } else if (message.kind === 'S5_EXECUTE_GROUP') {
+          await runS5Execute(message);
+        } else {
+          await s5RefreshStatus(message.contractId);
+        }
+        const journey = s5Journeys.get(message.contractId);
+        if (journey === undefined) {
+          sendResponse({ ok: false, error: 'S5_JOURNEY_UNKNOWN_TO_WORKER' });
+          return;
+        }
+        if (journey.status === 'FAILED') {
+          sendResponse({ ok: false, error: journey.failure?.detail ?? 'unknown failure' });
+          return;
+        }
+        sendResponse({
+          ok: true,
+          status: journey.status,
+          phase: journey.phase,
+          facts: journey.facts,
+        });
+      })();
+      return true;
     }
     const decoded = decodeInternalS2Message(raw);
     if (!decoded.ok) {

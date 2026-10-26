@@ -77,13 +77,22 @@
     <ul id="attachments"></ul>
     <section id="s5-group" hidden>
       <p class="label">
-        S5 current-page group: preview the observed members, then request Core group admission.
-        Until a trusted Core batch carrier is installed, this request fails safely without
-        downloading.
+        S5 current-page batch: request the Core-frozen member snapshot, pick the batch subset,
+        confirm it, and Core itself downloads every member with truthful per-member and aggregate
+        terminal states (S2 byte delivery is never used for the batch).
       </p>
       <button id="s5-preview" type="button">Preview selected page members</button>
       <button id="s5-prepare" type="button">Request S5 group admission</button>
       <div id="s5-preview-result" class="state UNKNOWN" aria-live="polite"></div>
+      <div id="s5-batch" hidden>
+        <p class="label">
+          Core-frozen members (verbatim Core identities; uncheck any member you do not want).
+        </p>
+        <ul id="s5-frozen"></ul>
+        <button id="s5-confirm" type="button">Confirm selected batch members</button>
+        <button id="s5-execute" type="button" disabled>Download confirmed batch</button>
+        <div id="s5-batch-result" class="state UNKNOWN" aria-live="polite"></div>
+      </div>
     </section>
     <div id="state" class="state UNKNOWN">Scanning the current page…</div>
     <script src="popup.js"></script>
