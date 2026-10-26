@@ -510,12 +510,6 @@ describe('#150 S3 selected-media Core flow (restart reconcile)', () => {
         correlation: { contractId, snapshotId: 's3snap-flow-001' },
       }),
     );
-    const cancelled = seamCommand(live, {
-      commandType: 'CANCEL_LINEAGE',
-      aggregateId: contractId,
-      expectedRevision: 4,
-      payload: {},
-    });
     // The live runtime is closed; run the cancel through a reopened runtime.
     closeRuntime(live);
     const reopened = reopenCoreRuntime({ rootDir: root, expectedPeer: EXPECTED_PEER });
@@ -535,7 +529,6 @@ describe('#150 S3 selected-media Core flow (restart reconcile)', () => {
     );
     expect(cancelResponse.outcome).toBe('ACCEPTED');
     closeRuntime(reopened);
-    void cancelled;
     // Reopen again: replay rebuilds the cancelled lineage and the intent;
     // reconcile drives the truthful cancel closure with NO external effect.
     const runtime = reopenCoreRuntime({ rootDir: root, expectedPeer: EXPECTED_PEER });

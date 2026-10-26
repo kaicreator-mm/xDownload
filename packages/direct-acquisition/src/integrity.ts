@@ -223,7 +223,7 @@ export function validateTarget(input: TargetValidationInput): ValidationLayerOut
         `the serving URI '${input.servedUri}' is outside the http(s) declared delivery graph`,
       );
     }
-    const originProtocol = /^https:\/\//u.test(input.originUri) ? 'https:' : 'http:';
+    const originProtocol = /^https:/iu.test(input.originUri) ? 'https:' : 'http:';
     if (originProtocol === 'https:' && served.protocol !== 'https:') {
       return failed(
         'target',

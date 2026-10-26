@@ -681,7 +681,7 @@ function followRedirect(
   // HTTPS downgrade is never admissible (#150 P1, transport delta §2): a
   // confirmed https locator may not be redirected onto plaintext http — the
   // bytes would no longer be the confirmed transport's bytes.
-  if (current.locator.uri.startsWith('https://') && nextUrl.protocol !== 'https:') {
+  if (/^https:/iu.test(current.locator.uri) && nextUrl.protocol !== 'https:') {
     return {
       ok: false,
       scopeExpansion: true,
