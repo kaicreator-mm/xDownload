@@ -734,19 +734,20 @@
       // scoped host permission for EXACTLY this origin (an explicit user
       // decision inside this gesture) is what lets the popup re-scan each
       // walked page after navigation; activeTab alone dies with the first
-      // navigation. A denial is honest: only the already-open current page
-      // can then be scanned, and the walk stops there truthfully.
-      let scopedGranted = false;
+      // navigation. The request is best-effort inside this gesture: a denial
+      // OR an environment without a gesture (programmatic open) is honest —
+      // the walk then only proceeds on pages the extension can already scan
+      // (pre-granted site access), and stops truthfully everywhere else.
+      let scopedNote = '';
       try {
         const origin = new URL(currentTab.url).origin;
-        scopedGranted = await chrome.permissions.request({ origins: [`${origin}/*`] });
+        const scopedGranted = await chrome.permissions.request({ origins: [`${origin}/*`] });
+        if (!scopedGranted) {
+          scopedNote =
+            'S6: the scoped collection-origin permission was not granted; only already-scannable pages can be walked.';
+        }
       } catch (error) {
-        s6PrepareResult.textContent = `S6 scoped permission request failed: ${String(error)}`;
-        return;
-      }
-      if (!scopedGranted) {
-        s6PrepareResult.textContent =
-          'S6: the scoped collection-origin permission was not granted; only the current page can be scanned and the declared walk will stop there truthfully.';
+        scopedNote = `S6: the scoped permission request could not run (${String(error)}); walking proceeds only on already-scannable pages.`;
       }
       const response = await chrome.runtime.sendMessage({
         kind: 'S6_PREPARE_COLLECTION',
@@ -772,7 +773,7 @@
       };
       s6WalkBox.hidden = false;
       s6ExecuteButton.disabled = true;
-      s6PrepareResult.textContent = `Core froze the collection admission for ${identity} pages ${String(
+      s6PrepareResult.textContent = `${scopedNote ? `${scopedNote} ` : ''}Core froze the collection admission for ${identity} pages ${String(
         fromPage,
       )}..${String(toPage)} (digest ${String(
         (response.facts && response.facts.observedTupleDigest) || '',
