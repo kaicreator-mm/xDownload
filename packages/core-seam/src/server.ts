@@ -1553,13 +1553,18 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
             state.lineages.get(envelope.aggregateId)?.s4ConfirmedSelection ?? envelope.payload,
         };
       } else if (envelope.commandType === 'CONFIRM_S5_PAGE_GROUP') {
-        // #151: the journaled S5 COMMIT carries the secret-free confirmed
-        // group record — the raw private challenge never reaches durable
-        // state; replay re-applies the record shape without live verification.
-        journalEnvelope = {
-          ...envelope,
-          payload: state.lineages.get(envelope.aggregateId)?.s5ConfirmedGroup ?? envelope.payload,
-        };
+        // #151: the journaled S5 COMMIT carries ONLY the secret-free
+        // confirmed group record — the raw private challenge never reaches
+        // durable state. A missing record here means authority state is out
+        // of sync with the applied command: fail closed (poison), never
+        // journal the raw challenge-bearing payload.
+        const s5Confirmed = state.lineages.get(envelope.aggregateId)?.s5ConfirmedGroup;
+        if (s5Confirmed === undefined) {
+          poisonForRecovery(
+            `accepted S5 confirm has no durable confirmed record; refusing to journal the raw payload`,
+          );
+        }
+        journalEnvelope = { ...envelope, payload: s5Confirmed };
       }
       let durability;
       try {

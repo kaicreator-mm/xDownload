@@ -532,11 +532,13 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
     expectedRevision: expectedRevision.value,
     correlation: correlation.value,
     issuedAt: issuedAt.value,
-    payload: s4Payload?.ok
-      ? s4Payload.value.payload
-      : s3Payload?.ok
-        ? s3Payload.value.payload
-        : record['payload'],
+    payload: s5Payload?.ok
+      ? s5Payload.value.payload
+      : s4Payload?.ok
+        ? s4Payload.value.payload
+        : s3Payload?.ok
+          ? s3Payload.value.payload
+          : record['payload'],
   });
 }
 

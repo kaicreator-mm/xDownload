@@ -29,13 +29,5 @@
   },
   "icons": {
     "128": "icon128.png"
-  },
-  "commands": {
-    "_execute_action": {
-      "description": "Open the xDownload action popup (keyboard invocation grants activeTab for the current tab).",
-      "suggested_key": {
-        "default": "Ctrl+Shift+U"
-      }
-    }
   }
 }

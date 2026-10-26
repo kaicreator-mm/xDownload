@@ -264,6 +264,33 @@ function decodePreparePayload(
   return { ok: true, value: { tabId: tabId as number, pageUrl: pageUrl as string, members: decoded } };
 }
 
+/** Closed top-level key set per command kind (unknown fields reject). */
+const S5_PAYLOAD_KEYS: Readonly<Record<string, readonly string[]>> = {
+  S5_GROUP_PREPARE: ['tabId', 'pageUrl', 'members'],
+  S5_GROUP_CONFIRM: ['contractId', 'prepareId', 'snapshotId', 'selectedMemberIds', 'decisionToken'],
+  S5_GROUP_EXECUTE: ['contractId', 'confirmedGroupId', 'snapshotId'],
+  S5_GROUP_STATUS: ['contractId'],
+};
+
+function rejectUnknownFields(
+  kind: string,
+  payload: Record<string, unknown>,
+): readonly BrokerDiagnostic[] | undefined {
+  const allowed = S5_PAYLOAD_KEYS[kind];
+  if (allowed === undefined) {
+    return [
+      brokerDiagnostic('UNKNOWN_FIELD', 's5', `unknown S5 command kind ${kind}; fail closed`, 'L2-inv11'),
+    ];
+  }
+  const unknown = Object.keys(payload).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) {
+    return [
+      brokerDiagnostic('UNKNOWN_FIELD', `s5.${unknown[0]}`, 'unknown field on the S5 payload; fail closed', 'L2-inv11'),
+    ];
+  }
+  return undefined;
+}
+
 function requireBoundedId(
   payload: Record<string, unknown>,
   field: string,
@@ -416,6 +443,9 @@ function mustAccept(
 export function createInstalledS5Lane(config: InstalledS5LaneConfig): S5LaneHandler {
   let surface: Promise<BoundSurface> | undefined;
   const openSurface = (): Promise<BoundSurface> => {
+    // A failed connect never caches: the next command retries the pipe
+    // (fail closed, but a transient pipe outage does not poison the host
+    // process for its whole lifetime).
     surface ??= Promise.resolve(
       bindSurfaceToCore({
         surface: 'BROWSER_EXTENSION',
@@ -425,7 +455,10 @@ export function createInstalledS5Lane(config: InstalledS5LaneConfig): S5LaneHand
         target: { host: '127.0.0.1', port: 0, pipeName: config.core.pipeName },
         makeRequestId: () => `s5-${String(nextLaneSequence())}-${Date.now().toString(36)}`,
       }),
-    );
+    ).catch((error: unknown) => {
+      surface = undefined;
+      throw error;
+    });
     return surface;
   };
   const submit = async (command: {
@@ -601,6 +634,10 @@ async function handleConfirm(
   ports: LanePorts,
 ): Promise<BrokerResponse> {
   const payload = command.payload;
+  const unknownConfirm = rejectUnknownFields('S5_GROUP_CONFIRM', payload);
+  if (unknownConfirm !== undefined) {
+    return laneFail(command.requestId, 'LANE_DECODE', unknownConfirm);
+  }
   const contractId = requireBoundedId(payload, 'contractId');
   if (!contractId.ok) return laneFail(command.requestId, 'LANE_DECODE', contractId.diagnostics);
   const prepareId = requireBoundedId(payload, 'prepareId');
@@ -610,12 +647,12 @@ async function handleConfirm(
   const selected = requireMemberIds(payload);
   if (!selected.ok) return laneFail(command.requestId, 'LANE_DECODE', selected.diagnostics);
   const decisionToken = payload['decisionToken'];
-  if (typeof decisionToken !== 'string' || !decisionToken.startsWith('user-confirm:')) {
+  if (typeof decisionToken !== 'string' || decisionToken !== `user-confirm:${contractId.value}`) {
     return laneFail(command.requestId, 'LANE_DECODE', [
       brokerDiagnostic(
         'ISSUE_DECISION_REQUIRED',
         's5.decisionToken',
-        'an explicit user confirmation decision token (user-confirm:…) is mandatory; there is no automatic confirm path',
+        'an explicit user confirmation decision token bound to THIS contract (user-confirm:<contractId>) is mandatory; there is no automatic confirm path',
       ),
     ]);
   }
@@ -717,6 +754,10 @@ async function handleExecute(
   options: { readonly waitMs: number },
 ): Promise<BrokerResponse> {
   const payload = command.payload;
+  const unknownExecute = rejectUnknownFields('S5_GROUP_EXECUTE', payload);
+  if (unknownExecute !== undefined) {
+    return laneFail(command.requestId, 'LANE_DECODE', unknownExecute);
+  }
   const contractId = requireBoundedId(payload, 'contractId');
   if (!contractId.ok) return laneFail(command.requestId, 'LANE_DECODE', contractId.diagnostics);
   const confirmedGroupId = requireBoundedId(payload, 'confirmedGroupId');
@@ -818,6 +859,10 @@ async function handleStatus(
   command: S5LaneCommandShape & { readonly kind: 'S5_GROUP_STATUS' },
   ports: LanePorts,
 ): Promise<BrokerResponse> {
+  const unknownStatus = rejectUnknownFields('S5_GROUP_STATUS', command.payload);
+  if (unknownStatus !== undefined) {
+    return laneFail(command.requestId, 'LANE_DECODE', unknownStatus);
+  }
   const contractId = requireBoundedId(command.payload, 'contractId');
   if (!contractId.ok) return laneFail(command.requestId, 'LANE_DECODE', contractId.diagnostics);
   const current = projectionViewOf(await ports.readProjection(contractId.value));

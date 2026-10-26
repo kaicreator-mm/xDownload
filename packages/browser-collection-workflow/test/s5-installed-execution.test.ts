@@ -211,6 +211,33 @@ describe('#151 S5 collection execution driver (real CoreRuntime + real HTTP)', (
     }
   });
 
+  it('converges without recording a terminal when the lineage was durably cancelled (ADR-013 cutoff)', async () => {
+    const world = await driverWorld();
+    try {
+      const cancelled = seamCommand(world.runtime, {
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: 'contract-s5-driver-001',
+        expectedRevision: 2,
+        asPeer: { installId: 'install-001', userId: 'user-001', surface: 'BROWSER_EXTENSION' },
+      });
+      expect(cancelled.outcome).toBe('ACCEPTED');
+      const result = await driveS5CollectionExecution(world.runtime, {
+        aggregateId: 'contract-s5-driver-001',
+        requestId: 'req-exec-cancelled',
+        confirmed: world.confirmed,
+        prepared: world.prepared,
+      });
+      expect(result.ok).toBe(true);
+      const view = world.runtime.seam.inspectProjection('contract-s5-driver-001') as unknown as Record<string, unknown>;
+      const lineage = view['lineage'] as Record<string, unknown>;
+      expect(lineage['status']).toBe('CANCELLED');
+      // No executed terminal across the durable user-cancel cutoff.
+      expect(view['terminal']).toBeUndefined();
+    } finally {
+      closeRuntime(world.runtime);
+    }
+  });
+
   it('factory drives through the injected runtime (composition shape)', async () => {
     const world = await driverWorld();
     try {

@@ -481,6 +481,18 @@ function s5NmRoundTrip(payload: Record<string, unknown>): Promise<Record<string,
   });
 }
 
+/** Bound SW-lifetime registry: the newest journeys stay answerable. */
+function rememberS5Journey(journey: S5JourneyState): void {
+  s5Journeys.set(journey.contractId, journey);
+  while (s5Journeys.size > 64) {
+    const oldest = s5Journeys.keys().next();
+    if (oldest.done === true) {
+      break;
+    }
+    s5Journeys.delete(oldest.value);
+  }
+}
+
 function s5NmResponse(
   response: Record<string, unknown>,
 ): { ok: true; phase: string; facts: Record<string, unknown> } | { ok: false; error: string } {
@@ -533,7 +545,7 @@ async function runS5Prepare(gesture: {
   if (contractId === '') {
     return { ok: false, error: 'S5 lane returned no contract identity' };
   }
-  s5Journeys.set(contractId, {
+  rememberS5Journey({
     contractId,
     status: 'PREPARE',
     phase: response.phase,
@@ -550,8 +562,8 @@ async function runS5Confirm(message: {
 }): Promise<void> {
   const journey: S5JourneyState =
     s5Journeys.get(message.contractId) ?? { contractId: message.contractId, status: 'CONFIRM' };
-  s5Journeys.set(message.contractId, journey);
   journey.status = 'CONFIRM';
+  rememberS5Journey(journey);
   const response = s5NmResponse(
     await s5NmRoundTrip({
       kind: 'S5_GROUP_CONFIRM',
@@ -583,8 +595,8 @@ async function runS5Execute(message: {
 }): Promise<void> {
   const journey: S5JourneyState =
     s5Journeys.get(message.contractId) ?? { contractId: message.contractId, status: 'EXECUTE' };
-  s5Journeys.set(message.contractId, journey);
   journey.status = 'EXECUTE';
+  rememberS5Journey(journey);
   const response = s5NmResponse(
     await s5NmRoundTrip({
       kind: 'S5_GROUP_EXECUTE',
@@ -602,7 +614,7 @@ async function runS5Execute(message: {
     if (response.phase === 'TERMINAL') {
       const terminal = response.facts['terminal'] as Record<string, unknown> | null;
       const fulfillment = terminal?.['requestFulfillment'] ?? 'UNKNOWN';
-      journey.status = fulfillment === 'COMPLETE' ? 'TERMINAL' : 'TERMINAL';
+      journey.status = 'TERMINAL';
       notify(
         fulfillment === 'COMPLETE' ? 'xDownload S5 — batch complete' : 'xDownload S5 — batch terminal (truthful)',
         `Core terminal requestFulfillment: ${String(fulfillment)}`,
@@ -627,7 +639,7 @@ async function s5RefreshStatus(contractId: string): Promise<void> {
     }),
   );
   const journey: S5JourneyState = s5Journeys.get(contractId) ?? { contractId, status: 'EXECUTE' };
-  s5Journeys.set(contractId, journey);
+  rememberS5Journey(journey);
   if (response.ok) {
     journey.phase = response.phase;
     journey.facts = response.facts;

@@ -147,6 +147,21 @@ describe('decodeS5Seam12Payload: CONFIRM phases', () => {
     ).toBe(true);
   });
 
+  it('rejects a phase-absent record-shape payload (the replay-only form never enters live decode)', () => {
+    const recordShape = {
+      snapshotId: 'snapshot-s5-abc',
+      prepareId: 's5prepare:contract-s5-001:snapshot-s5-abc',
+      selectedMemberIds: ['s5m-0000000000000001'],
+      displayedTupleDigest: 'a'.repeat(64),
+    };
+    const decoded = decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, recordShape);
+    expect(decoded.ok).toBe(false);
+    if (!decoded.ok) {
+      expect(decoded.diagnostics[0]?.code).toBe('ENVELOPE_MALFORMED');
+      expect(decoded.diagnostics[0]?.path).toBe('payload.phase');
+    }
+  });
+
   it('bounds selectedMemberIds (nonempty, unique, id charset)', () => {
     expect(decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, { ...begin, selectedMemberIds: [] }).ok).toBe(false);
     expect(

@@ -370,8 +370,13 @@
       (member) =>
         `[${member.outcome === 'ACQUIRED' && member.accepted ? 'OK' : member.outcome}] ${member.href} — ${member.detail}`,
     );
+    // The state class mirrors the verbatim Core aggregate only: COMPLETE
+    // renders green, anything else (PARTIAL/…) renders the honest mixed
+    // style — the popup never upgrades a partial batch to green.
+    const aggregate = facts.terminal || {};
+    const kind = aggregate.requestFulfillment === 'COMPLETE' ? 'COMPLETE' : 'PARTIAL';
     setS5State(
-      'COMPLETE',
+      kind,
       `${lines.join('\n')}\n\nCore aggregate terminal (verbatim):\n${JSON.stringify(facts.terminal, null, 2)}`,
     );
   }
