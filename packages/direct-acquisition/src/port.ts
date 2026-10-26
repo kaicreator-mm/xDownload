@@ -85,6 +85,15 @@ export interface DirectTransferRequest {
   /** Required S3 media signatures; absent/empty fails Media Validation (never vacuous PASS). */
   readonly mediaPolicy?: MediaPolicy;
   /**
+   * S3-only untrusted byte-integrity constraint (#150, L2 S3 §3): the
+   * user-supplied digest of a CONFIRM_S3_CANDIDATE. A mismatch fails the
+   * Target layer, but a match NEVER yields `PUBLISHED_SHA256/DECISIVE` — the
+   * S3 Target basis stays `REQUESTED_LOCATOR_PROVENANCE/PROBATIVE` (C34: the
+   * constraint is not an independent publisher oracle). Never combined with
+   * `expectedSha256` (the S1 publisher anchor) on one request.
+   */
+  readonly byteConstraintSha256?: string;
+  /**
    * Declared delivery policy: the only hosts a redirect/CDN hop may bind to.
    * Any other host fails closed (ADR-011, counterexample C29); redirects can
    * never enlarge the requested single-target scope.

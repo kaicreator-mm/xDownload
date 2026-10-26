@@ -36,8 +36,33 @@ import {
 
 /** Seam wire schema identity — independent of the domain-contracts version space. */
 export const CORE_SEAM_SCHEMA_ID = 'xdownload.core-seam' as const;
-export const CORE_SEAM_SCHEMA_VERSION = '1.1.0' as const;
+/**
+ * 1.2.0 (#150): the installed S3 selected-media carrier — Core-issued
+ * selection challenges plus CONFIRM_S3_CANDIDATE / EXECUTE_S3_SELECTED_MEDIA
+ * behind OS-verified same-user/same-logon-session transport admission.
+ * 1.0/1.1 commands and peers remain accepted unchanged under their existing
+ * gates; S3 commands demand a 1.2+ frame.
+ */
+export const CORE_SEAM_SCHEMA_VERSION = '1.2.0' as const;
 export const SUPPORTED_SEAM_MAJOR_VERSIONS: readonly number[] = [1];
+
+/**
+ * The Core-minted one-time selection challenge (#150, L2 S3 §2.1 R2 F01):
+ * cryptographically random, short-lived, single-use, bound to the OS-verified
+ * transport session, the current aggregate revision and the canonical
+ * displayed selection tuple digest. Carried on the response of
+ * REQUEST_S3_SELECTION_CHALLENGE only; the CLI echoes the challenge value as
+ * the attestation's interactionId and Core consumes it atomically with the
+ * candidate journal commit.
+ */
+export interface S3SelectionChallenge {
+  readonly challenge: string;
+  readonly tupleDigest: string;
+  readonly coreRevision: number;
+  readonly expiresAt: string;
+  /** Registry digest of the Core's closed supported-media profiles. */
+  readonly mediaProfilesDigest: string;
+}
 
 /** Seam-owned wire schema identity; independent of the domain version space. */
 export interface SeamSchemaIdentity {
@@ -144,6 +169,8 @@ export interface SeamResponse {
   readonly currentRevision?: number;
   /** Read-only projection value for accepted READ_PROJECTION queries. */
   readonly projection?: unknown;
+  /** Core-minted selection challenge (REQUEST_S3_SELECTION_CHALLENGE only). */
+  readonly challenge?: S3SelectionChallenge;
   readonly diagnostics?: readonly SeamDiagnostic[];
 }
 
@@ -543,10 +570,56 @@ export function decodeSeamResponse(value: unknown): SeamResult<SeamResponse> {
     currentRevision:
       typeof value['currentRevision'] === 'number' ? value['currentRevision'] : undefined,
     projection: value['projection'],
+    challenge: decodeS3SelectionChallenge(value['challenge']),
     diagnostics: Array.isArray(value['diagnostics'])
       ? (value['diagnostics'] as readonly SeamDiagnostic[])
       : undefined,
   });
+}
+
+const CHALLENGE_KEYS: readonly string[] = [
+  'challenge',
+  'tupleDigest',
+  'coreRevision',
+  'expiresAt',
+  'mediaProfilesDigest',
+];
+
+/** Strict decode of the Core-minted challenge on the client side (#150). */
+function decodeS3SelectionChallenge(value: unknown): S3SelectionChallenge | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const unknown = Object.keys(value).filter((key) => !CHALLENGE_KEYS.includes(key));
+  if (unknown.length > 0) {
+    return undefined;
+  }
+  const challenge = value['challenge'];
+  const tupleDigest = value['tupleDigest'];
+  const coreRevision = value['coreRevision'];
+  const expiresAt = value['expiresAt'];
+  const mediaProfilesDigest = value['mediaProfilesDigest'];
+  if (
+    typeof challenge !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(challenge) ||
+    typeof tupleDigest !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(tupleDigest) ||
+    !Number.isSafeInteger(coreRevision) ||
+    (coreRevision as number) < 0 ||
+    typeof expiresAt !== 'string' ||
+    !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/u.test(expiresAt) ||
+    typeof mediaProfilesDigest !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(mediaProfilesDigest)
+  ) {
+    return undefined;
+  }
+  return {
+    challenge,
+    tupleDigest,
+    coreRevision: coreRevision as number,
+    expiresAt,
+    mediaProfilesDigest,
+  };
 }
 
 function decodeAcceptance(value: unknown): SeamAcceptance | undefined {

@@ -63,8 +63,16 @@ import {
   type SeamResponse,
 } from './envelope.ts';
 import type { CommandRequestId } from './ids.ts';
+import { randomBytes } from 'node:crypto';
 import { S4_SEAM12_COMMAND_TYPES } from './s4-seam12-payload.ts';
-import { S3_SEAM12_COMMAND_TYPES } from './s3-seam12-payload.ts';
+import {
+  S3_SEAM12_COMMAND_TYPES,
+  s3SelectionTupleDigest,
+  type S3ConfirmCandidatePayload,
+  type S3ExecuteMediaPayload,
+  type S3SelectionChallengeRequestPayload,
+  type S3Seam12CommandType,
+} from './s3-seam12-payload.ts';
 import {
   assertPeerTransportAuthorization,
   type VerifiedPeerSessionPort,
@@ -77,6 +85,8 @@ import {
   type AcceptedCommand,
   type AcceptedCommandJournalEntry,
   type LineageState,
+  type S3CandidateRecord,
+  type S3ExecutionIntent,
   type SeamAuthorityState,
   type SeamJournal,
   type TargetEvidenceReceipt,
@@ -132,6 +142,100 @@ export interface CoreSeamServerOptions {
    * cancel remains a seam-authority fact only.
    */
   readonly s1LineageCancel?: S1LineageCancelBridge;
+  /**
+   * #150: the Core-owned closed supported-media profile registry behind S3
+   * candidate admission (L2 S3 §2.4). Presence INSTALLS the private S3 1.2
+   * command handlers behind the OS-verified session gate; absence keeps every
+   * S3 command failing closed exactly as before (legacy compositions).
+   */
+  readonly s3MediaProfiles?: S3MediaProfilePort;
+  /**
+   * #150: clock/TTL knobs of the Core-issued one-time selection challenges.
+   * Test compositions inject a deterministic clock; default is wall time with
+   * a 120s single-use lifetime.
+   */
+  readonly s3Challenge?: { readonly ttlMs?: number; readonly now?: () => number };
+  /**
+   * #150: post-commit driver for one registered S3 selected-media execution.
+   * The command's synchronous authority apply only registers one durable
+   * execution intent (journaled with the command); the runtime begins the
+   * real HTTP transfer strictly AFTER the accepted-command journal commit
+   * through this port and completes the lineage terminal through
+   * `recordExecutedTerminal`. Absent → EXECUTE_S3_SELECTED_MEDIA fails
+   * closed while the confirmed candidate stays durable.
+   */
+  readonly s3SelectedMedia?: S3SelectedMediaBeginner;
+}
+
+/**
+ * #150 read-only view of the Core-owned supported-media profile registry.
+ * Implemented by the Core runtime over @xdownload/direct-acquisition; the
+ * seam keeps no media semantics of its own — it only admits Core-registered
+ * profile identities and pins the registry content digest.
+ */
+export interface S3MediaProfilePort {
+  /** True iff profileId names a supported profile in the current registry. */
+  supportedProfile(profileId: string): boolean;
+  /** The profile's container extension ('mp4'|'m4a'|'mp3'|'webm') or undefined. */
+  profileContainerOf(profileId: string): string | undefined;
+  /** SHA-256 over the canonical registry content (challenge/confirm pinning). */
+  registryDigest(): string;
+}
+
+/** Post-commit driver for one registered S3 selected-media execution (#150). */
+export interface S3SelectedMediaBeginner {
+  begin(input: {
+    readonly aggregateId: string;
+    readonly contract: AcquisitionContract;
+    /** The durably confirmed candidate this execution is bound to. */
+    readonly candidate: S3CandidateRecord;
+    /** The journaled EXECUTE command's idempotent identity. */
+    readonly requestId: string;
+  }): void;
+}
+
+/**
+ * Live-only (never journal-replay) S3 admission context: the OS-verified
+ * session facts of the connection the frame arrived on plus the Core-issued
+ * challenge registry. Authority appliers receive it only on the live path;
+ * journal replay trusts the already-gated durable truth.
+ */
+export interface S3LiveAdmissionContext {
+  readonly commandType: S3Seam12CommandType;
+  readonly connectionId: string;
+  readonly verifiedPeer: NonNullable<ReturnType<VerifiedPeerSessionPort['verifiedSessionFor']>>;
+  readonly challenges: S3ChallengeMint;
+  /** The same injectable clock the challenge registry bounds lifetimes by. */
+  readonly now: () => number;
+}
+
+/**
+ * #150 Core-minted one-time selection challenge registry (L2 S3 §2.1 R2 F01).
+ * In-memory by design: challenges are short-lived single-use values bound to
+ * a live OS-verified connection; a restart invalidates every outstanding
+ * challenge (fail closed — the CLI requests a fresh one), while confirmed
+ * candidates and execution intents survive in the journal.
+ */
+export interface S3ChallengeMint {
+  /** Bind one freshly minted challenge; returns the stored record. */
+  mint(input: {
+    readonly connectionId: string;
+    readonly aggregateId: string;
+    readonly tupleDigest: string;
+    readonly revision: number;
+    readonly ttlMs: number;
+    readonly expiresAtIso: string;
+  }): { readonly challenge: string };
+  /** Verify an unconsumed, unexpired challenge bound to these exact facts. */
+  verify(input: {
+    readonly challenge: string;
+    readonly connectionId: string;
+    readonly aggregateId: string;
+    readonly tupleDigest: string;
+    readonly revision: number;
+  }): boolean;
+  /** Consume (single use) — called atomically with the candidate journal commit. */
+  consume(challenge: string): void;
 }
 
 /**
@@ -158,6 +262,11 @@ export interface S1ExecutionIntent {
 
 /** Intent joined with the seam-authority contract for runtime reconcile/drive. */
 export interface PendingS1Execution extends S1ExecutionIntent {
+  readonly contract: AcquisitionContract;
+}
+
+/** #150: an S3 selected-media execution intent joined with its contract. */
+export interface PendingS3Execution extends S3ExecutionIntent {
   readonly contract: AcquisitionContract;
 }
 
@@ -247,6 +356,13 @@ export interface CoreSeamServer {
    */
   pendingS1Executions(): readonly PendingS1Execution[];
   /**
+   * Core-internal (never a wire command): registered S3 selected-media
+   * execution intents awaiting drive/completion, joined with the seam
+   * authority contract. The runtime reconciles these against durable ledger
+   * truth after composition and on restart (identical discipline to S1).
+   */
+  pendingS3Executions(): readonly PendingS3Execution[];
+  /**
    * Core-internal (never a wire command): record the Core-derived terminal
    * result for one executed S1 lineage. The value MUST be the verbatim
    * projector output (the same gate `PROJECT_TERMINAL_RESULT` passes); the
@@ -320,6 +436,66 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   // EXECUTE_S1_DIRECT_ACQUISITION command on replay; the runtime reconciles
   // non-terminal intents against durable ledger truth after composition.
   const s1Intents = new Map<string, S1ExecutionIntent>();
+  // #150: Core-minted one-time selection challenges. Bounded, in-memory,
+  // single-use: a restart drops them (fail closed — fresh challenge), while
+  // confirmed candidates/intents live in the journal.
+  const S3_CHALLENGE_TTL_MS = options.s3Challenge?.ttlMs ?? 120_000;
+  const s3Now = options.s3Challenge?.now ?? (() => Date.now());
+  const s3Challenges = new Map<
+    string,
+    {
+      readonly challenge: string;
+      readonly connectionId: string;
+      readonly aggregateId: string;
+      readonly tupleDigest: string;
+      readonly revision: number;
+      readonly expiresAtMs: number;
+      consumed: boolean;
+    }
+  >();
+  const s3ChallengeResponses = new Map<CommandRequestId, SeamResponse>();
+  const s3ChallengeMint: S3ChallengeMint = {
+    mint(input) {
+      if (s3Challenges.size > 256) {
+        const nowMs = s3Now();
+        for (const [key, record] of s3Challenges) {
+          if (record.expiresAtMs < nowMs || record.consumed) {
+            s3Challenges.delete(key);
+          }
+        }
+      }
+      const challenge = randomBytes(32).toString('hex');
+      s3Challenges.set(challenge, {
+        challenge,
+        connectionId: input.connectionId,
+        aggregateId: input.aggregateId,
+        tupleDigest: input.tupleDigest,
+        revision: input.revision,
+        expiresAtMs: s3Now() + input.ttlMs,
+        consumed: false,
+      });
+      return { challenge };
+    },
+    verify(input) {
+      const record = s3Challenges.get(input.challenge);
+      return (
+        record !== undefined &&
+        !record.consumed &&
+        record.connectionId === input.connectionId &&
+        record.aggregateId === input.aggregateId &&
+        record.tupleDigest === input.tupleDigest &&
+        record.revision === input.revision &&
+        record.expiresAtMs >= s3Now()
+      );
+    },
+    consume(challenge) {
+      const record = s3Challenges.get(challenge);
+      if (record !== undefined) {
+        record.consumed = true;
+        s3Challenges.delete(challenge);
+      }
+    },
+  };
   let recoveryFenceReason: string | undefined;
 
   function recoveryFenceMessage(): string {
@@ -361,6 +537,8 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
                   options.s2DeliveredAcquisition,
                   options.s1DirectAcquisition,
                   s1Intents,
+                  options.s3MediaProfiles,
+                  options.s3SelectedMedia,
                 );
       if (!restored.ok) {
         const subject =
@@ -470,10 +648,29 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         verifiedPeer,
       });
       if (!verified.ok) return rejected(envelope.requestId, verified.diagnostics);
-      // Even a genuinely live Win32 same-logon peer does not yet authorize an
-      // effect or challenge. S3/S4 handlers, journal replay binding and private
-      // response framing are separate reviewed #148/#150 implementation work.
-      // Reject before idempotency lookup, revision, persistence or network.
+      // #150: behind the OS-verified same-user/same-logon-session gate, the
+      // installed S3 selected-media handlers run when this composition
+      // provides the Core-owned supported-media profile registry; without it
+      // every S3 command keeps failing closed exactly as before (legacy
+      // compositions), before idempotency, revision, persistence or network.
+      if (options.s3MediaProfiles !== undefined && verifiedPeer !== undefined) {
+        const command = envelope.commandType as S3Seam12CommandType;
+        if (command === 'REQUEST_S3_SELECTION_CHALLENGE') {
+          return handleS3ChallengeRequest(
+            envelope,
+            verifiedPeer,
+            connectionId as string,
+            options.s3MediaProfiles,
+          );
+        }
+        return handleCommand(envelope, {
+          commandType: command,
+          connectionId: connectionId as string,
+          verifiedPeer,
+          challenges: s3ChallengeMint,
+          now: s3Now,
+        });
+      }
       return rejected(envelope.requestId, [
         seamDiagnostic(
           'TRANSPORT_UNAUTHORIZED',
@@ -483,6 +680,105 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       ]);
     }
     return handleCommand(envelope);
+  }
+
+  /**
+   * #150 REQUEST_S3_SELECTION_CHALLENGE: mint one Core-issued single-use
+   * challenge bound to the live OS-verified connection, the current aggregate
+   * revision and the canonical displayed selection tuple. No authority
+   * transition, no journal write, no revision change — the durable candidate
+   * exists only with the later CONFIRM_S3_CANDIDATE commit that consumes
+   * this challenge atomically.
+   */
+  function handleS3ChallengeRequest(
+    envelope: CommandEnvelope,
+    verifiedPeer: NonNullable<ReturnType<VerifiedPeerSessionPort['verifiedSessionFor']>>,
+    connectionId: string,
+    profiles: S3MediaProfilePort,
+  ): SeamResponse {
+    const priorResponse = s3ChallengeResponses.get(envelope.requestId);
+    if (priorResponse !== undefined) {
+      return priorResponse;
+    }
+    if (envelope.peer.surface !== 'CLI') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S3 selection challenges serve the installed CLI surface only',
+          'L2-S3-§2.3',
+        ),
+      ]);
+    }
+    const aggregate = state.aggregates.get(envelope.aggregateId);
+    const lineage = state.lineages.get(envelope.aggregateId);
+    if (aggregate === undefined || lineage === undefined) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+      ]);
+    }
+    if (lineage.status !== 'ACTIVE') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'LATE_COMMAND',
+          'lineage.status',
+          `lineage is ${lineage.status}; late S3 selection challenge is rejected`,
+          'L2-§11',
+        ),
+      ]);
+    }
+    const payload = envelope.payload as S3SelectionChallengeRequestPayload;
+    const tupleCheck = s3CandidateTupleChecks(state, envelope, payload, profiles);
+    if (!tupleCheck.ok) {
+      return rejected(envelope.requestId, tupleCheck.diagnostics);
+    }
+    const revision = aggregate.revision;
+    if (envelope.expectedRevision !== revision) {
+      return rejected(
+        envelope.requestId,
+        [
+          seamDiagnostic(
+            'REVISION_MISMATCH',
+            'expectedRevision',
+            `S3 selection challenge requires the current aggregate revision ${String(revision)}`,
+            'L2-§10',
+          ),
+        ],
+        revision,
+      );
+    }
+    const tupleDigest = s3SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: payload.snapshotId,
+      memberId: payload.memberId,
+      variantKey: payload.variantKey,
+      selectedLocator: payload.locatorUri,
+      mediaProfileId: payload.mediaProfileId,
+    });
+    const expiresAtMs = s3Now() + S3_CHALLENGE_TTL_MS;
+    const minted = s3ChallengeMint.mint({
+      connectionId,
+      aggregateId: envelope.aggregateId,
+      tupleDigest,
+      revision,
+      ttlMs: S3_CHALLENGE_TTL_MS,
+      expiresAtIso: new Date(expiresAtMs).toISOString(),
+    });
+    const response: SeamResponse = {
+      schemaIdentity: currentSeamSchemaIdentity(),
+      kind: 'response',
+      inReplyTo: envelope.requestId,
+      outcome: 'ACCEPTED',
+      challenge: {
+        challenge: minted.challenge,
+        tupleDigest,
+        coreRevision: revision,
+        expiresAt: new Date(expiresAtMs).toISOString(),
+        mediaProfilesDigest: profiles.registryDigest(),
+      },
+    };
+    s3ChallengeResponses.set(envelope.requestId, response);
+    return response;
   }
 
   function handleQuery(envelope: QueryEnvelope): SeamResponse {
@@ -506,7 +802,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     };
   }
 
-  function handleCommand(envelope: CommandEnvelope): SeamResponse {
+  function handleCommand(envelope: CommandEnvelope, s3Live?: S3LiveAdmissionContext): SeamResponse {
     // Declared payload byte bound before any parse into authority state.
     const payloadBytes = payloadByteLength(envelope.payload);
     if (payloadBytes > SEAM_MESSAGE_LIMITS.maxPayloadBytes) {
@@ -565,6 +861,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       options.s2DeliveredAcquisition,
       options.s1DirectAcquisition,
       s1Intents,
+      options.s3MediaProfiles,
+      options.s3SelectedMedia,
+      s3Live,
     );
     if (!outcome.ok) {
       return rejected(envelope.requestId, outcome.diagnostics, currentRevision);
@@ -598,6 +897,26 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       }
     }
     state.accepted.set(envelope.requestId, record);
+    // #150: the selection challenge is consumed single-use ATOMICALLY with
+    // the candidate journal commit — never before the durability outcome.
+    if (envelope.commandType === 'CONFIRM_S3_CANDIDATE' && s3Live !== undefined) {
+      const attestation = (envelope.payload as S3ConfirmCandidatePayload).selectionAttestation;
+      s3Live.challenges.consume(attestation.interactionId);
+    }
+    // #150: an accepted S3 selected-media execution only registered its
+    // intent (apply); the external HTTP effect starts strictly AFTER the
+    // accepted-command journal commit.
+    if (envelope.commandType === 'EXECUTE_S3_SELECTED_MEDIA' && options.s3SelectedMedia) {
+      const intent = state.s3ExecutionIntents.get(envelope.aggregateId);
+      if (intent !== undefined) {
+        options.s3SelectedMedia.begin({
+          aggregateId: envelope.aggregateId,
+          contract: state.aggregates.get(envelope.aggregateId)!.contract,
+          candidate: intent.candidate,
+          requestId: envelope.requestId,
+        });
+      }
+    }
     // #101: an accepted S1 execution command only registered its intent
     // (apply); the external HTTP effect starts strictly AFTER the
     // accepted-command journal commit — never between apply and durability.
@@ -773,6 +1092,19 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       }
       const pending: PendingS1Execution[] = [];
       for (const intent of s1Intents.values()) {
+        const aggregate = state.aggregates.get(intent.aggregateId);
+        if (aggregate !== undefined) {
+          pending.push({ ...intent, contract: aggregate.contract });
+        }
+      }
+      return pending;
+    },
+    pendingS3Executions() {
+      if (recoveryFenceReason !== undefined) {
+        throw new Error(recoveryFenceMessage());
+      }
+      const pending: PendingS3Execution[] = [];
+      for (const intent of state.s3ExecutionIntents.values()) {
         const aggregate = state.aggregates.get(intent.aggregateId);
         if (aggregate !== undefined) {
           pending.push({ ...intent, contract: aggregate.contract });
@@ -1495,6 +1827,8 @@ interface AppliedCommand {
  * Deterministic authority application shared by the live path and restart
  * replay: domain decode → semantic gates → Core-owned state mutation.
  * Gates (authorization/bounds/idempotency/revision) run in the caller.
+ * `s3Live` is present only on the live OS-verified path; journal replay
+ * re-applies the already-gated durable truth without it.
  */
 function applyCommand(
   state: SeamAuthorityState,
@@ -1503,6 +1837,9 @@ function applyCommand(
   s2Executor: S2DeliveredAcquisitionExecutor | undefined,
   s1Beginner: S1DirectAcquisitionBeginner | undefined,
   s1Intents: Map<string, S1ExecutionIntent>,
+  s3Profiles: S3MediaProfilePort | undefined,
+  s3Beginner: S3SelectedMediaBeginner | undefined,
+  s3Live?: S3LiveAdmissionContext,
 ): SeamResult<AppliedCommand> {
   switch (envelope.commandType) {
     case 'SUBMIT_CONTRACT':
@@ -1519,6 +1856,10 @@ function applyCommand(
       return applyExecuteS2Acquisition(state, gateway, envelope, s2Executor);
     case 'EXECUTE_S1_DIRECT_ACQUISITION':
       return applyExecuteS1DirectAcquisition(state, envelope, s1Beginner, s1Intents);
+    case 'CONFIRM_S3_CANDIDATE':
+      return applyConfirmS3Candidate(state, envelope, s3Profiles, s3Live);
+    case 'EXECUTE_S3_SELECTED_MEDIA':
+      return applyExecuteS3SelectedMedia(state, envelope, s3Profiles, s3Beginner, s3Live);
     default:
       // This internal authority application also runs during journal reopen.
       // No S4 command may be silently promoted through old journal replay,
@@ -2367,64 +2708,98 @@ function applyTargetWitnessReceipt(
       ),
     ]);
   }
-  // A target witness belongs to the ONE accepted S1 execution intent, not
-  // merely to any plausible effect string for this aggregate. This also
-  // rejects well-shaped but substituted member/artifact/locator facts during
-  // journal replay, before a terminal can be reconstructed (#113).
+  // A target witness belongs to the ONE accepted direct-execution intent (S1
+  // wire command, or the #150 S3 selected-media intent over the durably
+  // confirmed candidate), not merely to any plausible effect string for this
+  // aggregate. This also rejects well-shaped but substituted
+  // member/artifact/locator facts during journal replay, before a terminal
+  // can be reconstructed (#113).
   const s1Commands = [...state.accepted.values()].filter(
     ({ envelope }) =>
       envelope.aggregateId === aggregateId &&
       envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION',
   );
-  if (s1Commands.length !== 1) {
+  const s3Intent = s1Commands.length === 0 ? state.s3ExecutionIntents.get(aggregateId) : undefined;
+  if (s1Commands.length !== 1 && s3Intent === undefined) {
     return seamFail([
       seamDiagnostic(
         'ADMISSION_REJECTED',
         'targetWitness',
-        'a target witness requires exactly one durably accepted S1 execution command',
+        'a target witness requires exactly one durably accepted direct execution command',
         '#103-§2.2/#113',
       ),
     ]);
   }
-  // The accepted S1 payload was validated through the closed vocabulary
-  // before commit. Compare all identity and delivery-authority fields,
-  // including the exact selected URL and host list, on both write and replay.
-  const intent = s1Commands[0]!.envelope.payload as {
+  // The accepted payload was validated through the closed vocabulary before
+  // commit. Compare all identity and delivery-authority fields, including
+  // the exact selected URL and host list, on both write and replay. The S3
+  // lane compares against the durably CONFIRMED candidate and its canonical
+  // derived artifact identity — and can never declare a publisher digest.
+  let witnessIntent: {
     readonly snapshotId: string;
     readonly memberId: string;
     readonly artifactId: string;
-    readonly delivery: {
-      readonly locatorUri: string;
-      readonly declaredRedirectHosts: readonly string[];
-      readonly expectedSha256?: string;
-    };
+    readonly locatorUri: string;
+    readonly declaredRedirectHosts: readonly string[];
+    readonly declaredPublishedDigest: boolean;
   };
+  if (s1Commands.length === 1) {
+    const intent = s1Commands[0]!.envelope.payload as {
+      readonly snapshotId: string;
+      readonly memberId: string;
+      readonly artifactId: string;
+      readonly delivery: {
+        readonly locatorUri: string;
+        readonly declaredRedirectHosts: readonly string[];
+        readonly expectedSha256?: string;
+      };
+    };
+    witnessIntent = {
+      snapshotId: intent.snapshotId,
+      memberId: intent.memberId,
+      artifactId: intent.artifactId,
+      locatorUri: intent.delivery.locatorUri,
+      declaredRedirectHosts: intent.delivery.declaredRedirectHosts,
+      declaredPublishedDigest: intent.delivery.expectedSha256 !== undefined,
+    };
+  } else {
+    const candidate = s3Intent!.candidate;
+    witnessIntent = {
+      snapshotId: candidate.snapshotId,
+      memberId: candidate.memberId,
+      artifactId: `s3artifact:${aggregateId}:${candidate.snapshotId}:${candidate.memberId}`,
+      locatorUri: candidate.locatorUri,
+      declaredRedirectHosts: candidate.declaredRedirectHosts,
+      declaredPublishedDigest: false,
+    };
+  }
   if (
-    receipt.snapshotId !== intent.snapshotId ||
-    receipt.memberId !== intent.memberId ||
-    receipt.artifactId !== intent.artifactId ||
-    receipt.locatorUri !== intent.delivery.locatorUri ||
+    receipt.snapshotId !== witnessIntent.snapshotId ||
+    receipt.memberId !== witnessIntent.memberId ||
+    receipt.artifactId !== witnessIntent.artifactId ||
+    receipt.locatorUri !== witnessIntent.locatorUri ||
     stableStringify(receipt.declaredRedirectHosts) !==
-      stableStringify(intent.delivery.declaredRedirectHosts)
+      stableStringify(witnessIntent.declaredRedirectHosts)
   ) {
     return seamFail([
       seamDiagnostic(
         'ADMISSION_REJECTED',
         'targetWitness',
-        'witness member/artifact/snapshot/locator/hosts disagree with the accepted S1 execution intent',
+        'witness member/artifact/snapshot/locator/hosts disagree with the accepted direct execution intent',
         '#103-§2.2/#113',
       ),
     ]);
   }
   // A DECISIVE publisher SHA claim is impossible unless the exact accepted
-  // command declared an independent publisher digest. PROBATIVE remains legal
-  // even when a digest was declared but mismatched (failed/unaccepted bytes).
-  if (receipt.basis === 'PUBLISHED_SHA256' && intent.delivery.expectedSha256 === undefined) {
+  // command declared an independent publisher digest (never on the S3 lane).
+  // PROBATIVE remains legal even when a digest was declared but mismatched
+  // (failed/unaccepted bytes).
+  if (receipt.basis === 'PUBLISHED_SHA256' && !witnessIntent.declaredPublishedDigest) {
     return seamFail([
       seamDiagnostic(
         'ADMISSION_REJECTED',
         'targetWitness.basis',
-        'publisher-digest witness not declared in accepted S1 intent',
+        'publisher-digest witness not declared in the accepted direct execution intent',
         'C34/#103-§2.2',
       ),
     ]);
@@ -2705,6 +3080,321 @@ function applyExecuteS1DirectAcquisition(
     aggregateId: envelope.aggregateId,
     requestId: envelope.requestId,
     payload: envelope.payload,
+  });
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+// ------------------------------------------------- #150 S3 selected media
+
+/**
+ * Shared live+replay semantic checks binding one S3 candidate tuple to the
+ * frozen contract/snapshot authority (L2 S3 §2.2/§2.4): SINGLE_RESOURCE
+ * contract, confirmed snapshot identity, the attested member is the frozen
+ * selected member, and a Core-registered supported media profile whose
+ * container matches the selected locator's extension.
+ */
+function s3CandidateTupleChecks(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  payload: {
+    readonly snapshotId: string;
+    readonly memberId: string;
+    readonly mediaProfileId: string;
+    readonly locatorUri: string;
+  },
+  profiles: S3MediaProfilePort,
+): SeamResult<void> {
+  const aggregate = state.aggregates.get(envelope.aggregateId);
+  const lineage = state.lineages.get(envelope.aggregateId);
+  if (aggregate === undefined || lineage === undefined) {
+    return seamFail([
+      seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+    ]);
+  }
+  if (
+    aggregate.contract.intentType !== 'SINGLE_RESOURCE' ||
+    aggregate.contract.requestedScope.kind !== 'single_resource'
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'contract.intentType',
+        'the S3 selected-media lane serves SINGLE_RESOURCE contracts only',
+        'PRD-§28 S3',
+      ),
+    ]);
+  }
+  const snapshot = lineage.snapshot;
+  if (snapshot === undefined || snapshot.snapshotId !== payload.snapshotId) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.snapshotId',
+        'S3 candidate must bind the one confirmed selection snapshot of this lineage',
+        'L2-S3-§2.2',
+      ),
+    ]);
+  }
+  if (!snapshot.selectedMemberIds.includes(payload.memberId as MemberId)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.memberId',
+        'S3 candidate member is not the frozen selected member of the confirmed snapshot',
+        'L2-S3-§2.2',
+      ),
+    ]);
+  }
+  if (!profiles.supportedProfile(payload.mediaProfileId)) {
+    return seamFail([
+      seamDiagnostic(
+        'MEDIA_POLICY_REQUIRED',
+        'payload.mediaProfileId',
+        'mediaProfileId does not name a Core-registered supported media profile',
+        'L2-S3-§2.4',
+      ),
+    ]);
+  }
+  const container = profiles.profileContainerOf(payload.mediaProfileId);
+  const extension = /\.([a-z0-9]+)$/u.exec(new URL(payload.locatorUri).pathname)?.[1];
+  if (container === undefined || extension !== container) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.mediaProfileId',
+        `supported profile container '${String(container)}' does not match the selected locator extension '${String(extension)}'`,
+        'L2-S3-§2.4',
+      ),
+    ]);
+  }
+  return seamOk(undefined);
+}
+
+/** The frozen secret-free candidate record of one confirmed tuple (L2 §2.4). */
+function s3CandidateRecordOf(payload: S3ConfirmCandidatePayload): S3CandidateRecord {
+  return Object.freeze({
+    snapshotId: payload.snapshotId,
+    memberId: payload.memberId,
+    variantKey: payload.variantKey,
+    locatorUri: payload.locatorUri,
+    declaredRedirectHosts: payload.declaredRedirectHosts,
+    mediaProfileId: payload.mediaProfileId,
+    ...(payload.byteConstraintSha256 === undefined
+      ? {}
+      : { byteConstraintSha256: payload.byteConstraintSha256 }),
+    ...(payload.expectedTotalBytes === undefined
+      ? {}
+      : { expectedTotalBytes: payload.expectedTotalBytes }),
+    ...(payload.expectedContentTypePrefix === undefined
+      ? {}
+      : { expectedContentTypePrefix: payload.expectedContentTypePrefix }),
+  });
+}
+
+/**
+ * #150 CONFIRM_S3_CANDIDATE (#150): durably bind the displayed selected
+ * URI+variant tuple to the already confirmed single selected snapshot
+ * member. The live path additionally consumes a Core-issued single-use
+ * challenge bound to the OS-verified session, current revision and the
+ * canonical tuple digest (L2 S3 §2.1 R2 F01); journal replay re-applies the
+ * already-gated durable truth without the live challenge registry. The
+ * candidate record is the journaled command payload itself; an identical
+ * re-confirmation converges, a different tuple under the same lineage key
+ * is an immutable-truth conflict.
+ */
+function applyConfirmS3Candidate(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  profiles: S3MediaProfilePort | undefined,
+  s3Live: S3LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (profiles === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'TRANSPORT_UNAUTHORIZED',
+        'commandType',
+        'this Core composition provides no S3 selected-media registry; CONFIRM_S3_CANDIDATE fails closed',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const payload = envelope.payload as S3ConfirmCandidatePayload;
+  const tupleCheck = s3CandidateTupleChecks(state, envelope, payload, profiles);
+  if (!tupleCheck.ok) {
+    return tupleCheck;
+  }
+  const aggregate = state.aggregates.get(envelope.aggregateId)!;
+  const lineage = state.lineages.get(envelope.aggregateId)!;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S3 candidate confirmation');
+  }
+  // Canonical composite effect identity must fit the 128-char bound before
+  // any candidate exists (an unexecutable candidate cannot wedge a lineage).
+  const effectIdentity = `effect:${envelope.aggregateId}:${payload.snapshotId}:${aggregate.contract.requestedTarget}`;
+  if (effectIdentity.length > 128) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.snapshotId',
+        'the canonical composite effect identity exceeds the 128-char id bound',
+      ),
+    ]);
+  }
+  // Immutable-truth convergence: an identical re-confirmation converges (the
+  // first attested tuple stays recorded); a different tuple under the same
+  // lineage key is a conflict, never a silent rewrite (L2 S3 §2.5).
+  const candidate = s3CandidateRecordOf(payload);
+  if (lineage.s3Candidate !== undefined) {
+    if (stableStringify(lineage.s3Candidate) === stableStringify(candidate)) {
+      // Identical tuple under a new request id: converges on the recorded
+      // candidate without a second authority transition.
+      return seamOk({ revision: aggregate.revision });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'payload',
+        'a different S3 candidate is already durably confirmed for this lineage; changed selection requires a successor contract/snapshot',
+        'L2-S3-§2.5',
+      ),
+    ]);
+  }
+  // Live-only admission (never journal replay): the Core-issued challenge is
+  // single-use, unexpired, bound to THIS OS-verified connection, the current
+  // revision and the canonical displayed tuple digest; the attestation's
+  // digest and confirmedAt freshness are verified against the same facts.
+  if (s3Live !== undefined) {
+    if (envelope.peer.surface !== 'CLI') {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S3 candidate confirmation serves the installed CLI surface only',
+          'L2-S3-§2.3',
+        ),
+      ]);
+    }
+    const attestation = payload.selectionAttestation;
+    const tupleDigest = s3SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: payload.snapshotId,
+      memberId: payload.memberId,
+      variantKey: payload.variantKey,
+      selectedLocator: payload.locatorUri,
+      mediaProfileId: payload.mediaProfileId,
+    });
+    const confirmedAtMs = Date.parse(attestation.confirmedAt);
+    const fresh =
+      Number.isFinite(confirmedAtMs) && Math.abs(s3Live.now() - confirmedAtMs) <= 10 * 60_000;
+    if (
+      !fresh ||
+      attestation.displayTupleDigest !== tupleDigest ||
+      attestation.expectedRevision !== aggregate.revision ||
+      !s3Live.challenges.verify({
+        challenge: attestation.interactionId,
+        connectionId: s3Live.connectionId,
+        aggregateId: envelope.aggregateId,
+        tupleDigest,
+        revision: aggregate.revision,
+      })
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.selectionAttestation',
+          'the Core-issued selection challenge did not verify against this session, revision and displayed tuple; confirmation fails closed',
+          'L2-S3-§2.1',
+        ),
+      ]);
+    }
+  }
+  lineage.s3Candidate = candidate;
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #150 EXECUTE_S3_SELECTED_MEDIA: register one durable S3 execution intent
+ * over the already confirmed candidate (journal-before-effect); the runtime
+ * begins the real transfer strictly after the journal commit. A second
+ * distinct request can never create another effect, budget or HTTP request —
+ * recovery operates on the prior durable intent only (L2 S3 §2.5).
+ */
+function applyExecuteS3SelectedMedia(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  profiles: S3MediaProfilePort | undefined,
+  s3Beginner: S3SelectedMediaBeginner | undefined,
+  s3Live: S3LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (profiles === undefined || s3Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S3 selected-media driver; EXECUTE_S3_SELECTED_MEDIA fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s3Live !== undefined && envelope.peer.surface !== 'CLI') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S3 selected-media execution serves the installed CLI surface only',
+        'L2-S3-§2.3',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S3 selected-media execution');
+  }
+  const payload = envelope.payload as S3ExecuteMediaPayload;
+  const candidate = lineage.s3Candidate;
+  if (
+    candidate === undefined ||
+    candidate.snapshotId !== payload.snapshotId ||
+    candidate.memberId !== payload.memberId
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload',
+        'no durably confirmed S3 candidate matches this snapshot/member; execution requires the confirmed candidate',
+        'L2-S3-§2.4',
+      ),
+    ]);
+  }
+  if (state.s3ExecutionIntents.has(envelope.aggregateId)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'aggregateId',
+        'an S3 selected-media execution is already registered for this lineage; the registered intent reconciles from durable truth',
+        'L2-S3-§2.5',
+      ),
+    ]);
+  }
+  state.s3ExecutionIntents.set(envelope.aggregateId, {
+    aggregateId: envelope.aggregateId,
+    requestId: envelope.requestId,
+    candidate,
   });
   const revision = aggregate.revision + 1;
   aggregate.revision = revision;
@@ -3041,8 +3731,19 @@ function restoreAcceptedCommand(
   s2Executor: S2DeliveredAcquisitionExecutor | undefined,
   s1Beginner: S1DirectAcquisitionBeginner | undefined,
   s1Intents: Map<string, S1ExecutionIntent>,
+  s3Profiles: S3MediaProfilePort | undefined,
+  s3Beginner: S3SelectedMediaBeginner | undefined,
 ): SeamResult<void> {
-  const applied = applyCommand(state, gateway, entry.envelope, s2Executor, s1Beginner, s1Intents);
+  const applied = applyCommand(
+    state,
+    gateway,
+    entry.envelope,
+    s2Executor,
+    s1Beginner,
+    s1Intents,
+    s3Profiles,
+    s3Beginner,
+  );
   if (!applied.ok) {
     return applied;
   }

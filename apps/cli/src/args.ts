@@ -80,6 +80,19 @@ export type ParsedInput =
       readonly wait: WaitOptions;
       readonly requestId: string | undefined;
     }
+  | {
+      readonly kind: 'media';
+      readonly target: TargetOptions;
+      readonly url: string;
+      readonly variantKey: string;
+      readonly mediaProfileId: string;
+      readonly byteConstraintSha256: string | undefined;
+      readonly expectedContentTypePrefix: string | undefined;
+      readonly expectedTotalBytes: number | undefined;
+      readonly redirectHosts: readonly string[];
+      readonly wait: WaitOptions;
+      readonly requestId: string | undefined;
+    }
   | { readonly kind: 'status'; readonly target: TargetOptions; readonly contractId: string }
   | {
       readonly kind: 'wait';
@@ -125,6 +138,10 @@ Commands:
   submit   Submit one acquisition contract (JSON payload; acceptance only unless --wait)
   download S1 direct file download: Core-executed HTTP transfer with
            declared-target validation (bounded --wait for terminal truth)
+  media    S3 selected media: interactive selection confirmation over the
+           OS-verified Windows Core pipe, then a Core-executed public media
+           download with Media validation (requires --pipe-name and an
+           attached interactive terminal; there is no non-interactive mode)
   status   Read the machine-readable status projection for one contract
   wait     Poll READ_PROJECTION until a terminal result is projected (bounded)
   cancel   Cancel a lineage (CANCEL_LINEAGE through the seam)
@@ -157,6 +174,17 @@ Command options:
             (C34 — it is never promoted to a post-hoc identity oracle).
             [--content-type-prefix <p>] [--total-bytes <n>]
             [--redirect-host <host> ...] [--timeout-ms <n>] [--poll-ms <n>]
+  media:    --url <https://host/media/<id>.<mp4|m4a|mp3|webm>> --variant <key>
+            [--profile <id>] [--sha256 <hex>] [--content-type-prefix <p>]
+            [--total-bytes <n>] [--redirect-host <host> ...]
+            [--timeout-ms <n>] [--poll-ms <n>]
+            --pipe-name is REQUIRED (the S3 lane runs only over the
+            OS-verified Windows Core named pipe). The exact selected tuple
+            (contract, member, variant, locator, media profile) is displayed
+            and an explicit interactive confirmation is required; a
+            non-interactive terminal stops before any Core effect. --sha256
+            here is a user-known byte constraint (mismatch fails the
+            download) and never a publisher-identity oracle (C34).
   status:   --contract <id>
   wait:     --contract <id> --timeout-ms <n> --poll-ms <n>
   cancel:   --contract <id> --expected-revision <n> (required)
@@ -190,6 +218,8 @@ const OPTIONS = {
   'content-type-prefix': { type: 'string' },
   'total-bytes': { type: 'string' },
   'redirect-host': { type: 'string', multiple: true },
+  variant: { type: 'string' },
+  profile: { type: 'string' },
 } as const;
 
 function str(values: ArgValues, name: string): string | undefined {
@@ -299,6 +329,107 @@ function parseWaitWithDefault(values: ArgValues): WaitOptions {
 }
 
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/u;
+
+/**
+ * #150 S3 public media locator shape (client-side fast-fail mirror of the
+ * closed Core wire grammar): credential-free HTTPS with no query/fragment/
+ * userinfo and the /media/<id>.<container> path. The Core re-validates the
+ * full grammar authoritatively; this only stops an obvious misuse before
+ * any Core round trip.
+ */
+const S3_MEDIA_URL_PATTERN =
+  /^https:\/\/[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?::[0-9]{1,5})?\/media\/[A-Za-z0-9_-]{1,64}\.(?:mp4|m4a|mp3|webm)$/u;
+
+const S3_DEFAULT_MEDIA_PROFILE: Readonly<Record<string, string>> = {
+  mp4: 's3-media-mp4-v1',
+  m4a: 's3-media-m4a-v1',
+  mp3: 's3-media-mp3-v1',
+  webm: 's3-media-webm-v1',
+};
+
+function parseS3MediaUrl(values: ArgValues): { url: string; extension: string } {
+  const raw = requireString(str(values, 'url'), 'url');
+  if (!S3_MEDIA_URL_PATTERN.test(raw)) {
+    throw new CliInputError(
+      'USAGE',
+      '--url must be a credential-free https /media/<id>.<mp4|m4a|mp3|webm> locator',
+      [
+        {
+          code: 'ENVELOPE_MALFORMED',
+          path: 'payload.locatorUri',
+          message: 'S3 media accepts only the closed public media locator grammar',
+        },
+      ],
+    );
+  }
+  try {
+    const parsed = new URL(raw);
+    if (
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
+      throw new Error('credentials/query/fragment');
+    }
+    return { url: raw, extension: /\.([a-z0-9]+)$/u.exec(parsed.pathname)?.[1] ?? '' };
+  } catch {
+    throw new CliInputError(
+      'USAGE',
+      '--url must be a credential-free https media locator (no query/fragment/userinfo)',
+      [
+        {
+          code: 'ENVELOPE_MALFORMED',
+          path: 'payload.locatorUri',
+          message: 'S3 media locator carries credentials, a query or a fragment',
+        },
+      ],
+    );
+  }
+}
+
+/**
+ * Declared redirect hosts for the S3 lane are bare public hostnames (the
+ * closed 1.2 payload grammar admits no port/userinfo); the selected
+ * locator's own hostname is always admissible.
+ */
+function parseS3RedirectHosts(values: ArgValues, urlHostname: string): readonly string[] {
+  const raw = values['redirect-host'];
+  const hosts = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  const declared: string[] = [];
+  for (const host of hosts) {
+    if (
+      typeof host !== 'string' ||
+      host.length === 0 ||
+      host.length > 255 ||
+      /[/\\:]/.test(host) ||
+      !/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/iu.test(host)
+    ) {
+      throw new CliInputError(
+        'USAGE',
+        '--redirect-host entries must be bare public DNS hostnames',
+        [
+          {
+            code: 'ENVELOPE_MALFORMED',
+            path: 'payload.declaredRedirectHosts',
+            message: `'${String(host)}' is not a bare public DNS hostname`,
+          },
+        ],
+      );
+    }
+    const lowered = host.toLowerCase();
+    if (!declared.includes(lowered)) {
+      declared.push(lowered);
+    }
+  }
+  if (!declared.includes(urlHostname)) {
+    declared.unshift(urlHostname);
+  }
+  if (declared.length > 8) {
+    fail('at most 8 redirect hosts are admissible (including the locator host)');
+  }
+  return declared;
+}
 
 /**
  * The independently published digest is OPTIONAL (#101 R1/F01): an ordinary
@@ -462,6 +593,39 @@ export function parseArgv(argv: readonly string[]): ParsedInput {
         expectedTotalBytes:
           totalBytesRaw === undefined ? undefined : parseInteger(totalBytesRaw, 'total-bytes', 0),
         redirectHosts: parseRedirectHosts(values, new URL(url).host),
+        wait: parseWaitWithDefault(values),
+        requestId: parseRequestId(values),
+      };
+    }
+    case 'media': {
+      // The S3 lane's sole authorized peer is the installed CLI over the
+      // OS-verified Windows Core pipe: fail closed at parse time instead of
+      // bouncing off the transport gate later.
+      if (target.pipeName === undefined) {
+        fail(
+          'media requires --pipe-name (the S3 lane runs only over the OS-verified Windows Core named pipe)',
+        );
+      }
+      const { url, extension } = parseS3MediaUrl(values);
+      const variantKey = parseIdentifier(str(values, 'variant'), 'variant', 'payload.variantKey');
+      const profile = str(values, 'profile');
+      const mediaProfileId =
+        profile === undefined
+          ? (S3_DEFAULT_MEDIA_PROFILE[extension] ??
+            fail(`--profile is required for extension '.${extension}'`))
+          : parseIdentifier(profile, 'profile', 'payload.mediaProfileId');
+      const totalBytesRaw = str(values, 'total-bytes');
+      return {
+        kind: 'media',
+        target,
+        url,
+        variantKey,
+        mediaProfileId,
+        byteConstraintSha256: parseSha256(values),
+        expectedContentTypePrefix: str(values, 'content-type-prefix'),
+        expectedTotalBytes:
+          totalBytesRaw === undefined ? undefined : parseInteger(totalBytesRaw, 'total-bytes', 0),
+        redirectHosts: parseS3RedirectHosts(values, new URL(url).hostname),
         wait: parseWaitWithDefault(values),
         requestId: parseRequestId(values),
       };

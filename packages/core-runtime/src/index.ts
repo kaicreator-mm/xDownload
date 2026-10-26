@@ -78,3 +78,9 @@ export {
   type S1DirectExecutionPayload,
   type S1DriveRuntime,
 } from './s1-direct.ts';
+export {
+  driveS3SelectedMediaExecution,
+  s3EffectIdentity,
+  type S3DriveRuntime,
+} from './s3-selected-media.ts';
+export { executeS3SelectedMediaAcquisition } from './flow.ts';

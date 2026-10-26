@@ -301,11 +301,13 @@ export function acceptanceValidationOf(
  * artifact → scheduler acceptance at the cutoff decision point.
  */
 /**
- * S1 can use the generic direct-file Core pipeline. S3 CANNOT: S3 must pass
- * through an installation-pinned public source profile. Formerly, this
- * generic path silently called DirectHttpAdapter.acquire(S3) without that
- * profile, which would let a caller skip S3's public-only origin/redirect
- * restriction while still receiving durable Core acceptance.
+ * S1 uses the generic direct-file Core pipeline directly. S3 reaches the SAME
+ * pipeline only through `executeS3SelectedMediaAcquisition` over a durably
+ * confirmed candidate (journal-before-effect) with the Core-owned supported
+ * profile MediaPolicy — the adopted HTTP transport implementation delta (PR
+ * #169) allows the mature-client lane for the locally user-confirmed public
+ * media download while the stricter pinned-profile mode remains available
+ * separately on the adapter. A bare S3 slice never enters the generic path.
  */
 /**
  * Capture a top-level input/transfer data snapshot without invoking caller
@@ -362,16 +364,61 @@ export async function executeDirectAcquisition(
     ...fields,
     transfer: stableTransfer,
   }) as unknown as DirectFlowInput;
-  return executeDirectAcquisitionS1(runtime, stableInput);
+  return executeDirectAcquisitionPipeline(runtime, stableInput);
 }
 
 /**
- * Only S1 currently has an installed, reviewed positive direct-HTTP Core
- * transport. S3 remains fail closed until a trusted Core-owned selection and
- * installation policy AND TLS-connected public IP-pinned network port exist.
- * No caller-supplied policy is permitted to authorize a S3 external effect.
+ * #150 S3 selected-media execution entry: the ONLY positive S3 path into the
+ * generic direct-file pipeline. Admission is Core-owned by construction —
+ * the caller is the Core runtime driver over a DURABLY CONFIRMED candidate
+ * (journal-before-effect at the seam), the mandatory MediaPolicy is derived
+ * from the Core's closed supported-media profile registry (never
+ * caller-supplied), no publisher SHA exists on this lane and no signed
+ * locator refresher is permitted (L2 S3 §3). The generic
+ * `executeDirectAcquisition` keeps rejecting a bare S3 slice.
  */
-async function executeDirectAcquisitionS1(
+export async function executeS3SelectedMediaAcquisition(
+  runtime: FlowRuntime,
+  input: DirectFlowInput,
+): Promise<DirectFlowOutcome> {
+  const fields = s1DataSnapshot(input);
+  const transfer = s1DataSnapshot(fields['transfer']);
+  if (
+    transfer['slice'] !== 'S3' ||
+    transfer['expectedSha256'] !== undefined ||
+    transfer['locatorRefresher'] !== undefined
+  ) {
+    throw new CoreRuntimeFlowError('S3_SELECTED_MEDIA_ADMISSION_REJECTED');
+  }
+  const mediaPolicy = transfer['mediaPolicy'];
+  if (
+    typeof mediaPolicy !== 'object' ||
+    mediaPolicy === null ||
+    !Array.isArray((mediaPolicy as { signatures?: unknown }).signatures) ||
+    ((mediaPolicy as { signatures: unknown[] }).signatures.length ?? 0) === 0
+  ) {
+    // Non-waivable Media dimension: the Core-owned supported profile is the
+    // only source of mandatory checks (L2 S3 §2.4).
+    throw new CoreRuntimeFlowError('S3_MEDIA_POLICY_REQUIRED');
+  }
+  const stableTransfer = Object.freeze({
+    ...transfer,
+    slice: 'S3',
+  }) as unknown as DirectFlowInput['transfer'];
+  const stableInput = Object.freeze({
+    ...fields,
+    transfer: stableTransfer,
+  }) as unknown as DirectFlowInput;
+  return executeDirectAcquisitionPipeline(runtime, stableInput);
+}
+
+/**
+ * Only S1 (generic direct file) and the #150 S3 selected-media entry above
+ * reach this pipeline. A bare S3 slice without the Core-owned confirmed
+ * candidate + profile policy is rejected by the two entry guards above; no
+ * caller-supplied policy can authorize an S3 external effect.
+ */
+async function executeDirectAcquisitionPipeline(
   runtime: FlowRuntime,
   input: DirectFlowInput,
 ): Promise<DirectFlowOutcome> {

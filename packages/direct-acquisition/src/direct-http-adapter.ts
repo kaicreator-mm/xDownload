@@ -20,6 +20,7 @@ import {
   type LogicalTargetId,
   type ValidationDiagnostic,
 } from '@xdownload/domain-contracts';
+import { createHash } from 'node:crypto';
 import { classifyRangeResponse, isSha256Hex, observeIdentity, planResume } from './identity.ts';
 import { validateFormat, validateMedia, validateTarget, validateTransfer } from './integrity.ts';
 import { projectOutcome, rejectRequest } from './projection.ts';
@@ -414,6 +415,22 @@ export class DirectHttpAdapter {
     const validations: ValidationLayerOutcome[] = [transferCheck, formatCheck, targetCheck];
     if (request.slice === 'S3') {
       validations.push(validateMedia({ bytes, policy: request.mediaPolicy ?? { signatures: [] } }));
+      // #150: the untrusted confirmed-candidate byte constraint rejects a
+      // mismatched stream but NEVER promotes the Target basis to the
+      // publisher-digest anchor (targetBasisOf below only honors
+      // expectedSha256, which S3 forbids).
+      const constraint = request.byteConstraintSha256;
+      if (constraint !== undefined) {
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        if (digest !== constraint) {
+          validations.push({
+            layer: 'target',
+            passed: false,
+            code: 'BYTE_CONSTRAINT_MISMATCH',
+            failure: `acquired bytes digest ${digest} does not match the user-confirmed byte constraint ${constraint}`,
+          });
+        }
+      }
     }
 
     const failedValidation = validations.find(
@@ -692,6 +709,22 @@ function validateRequestShape(request: DirectTransferRequest): DomainValidationR
       'expectedSha256',
       'the published target identity anchor must be a lowercase hex sha-256 digest',
     );
+  }
+  if (request.byteConstraintSha256 !== undefined) {
+    if (!isSha256Hex(request.byteConstraintSha256)) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        'byteConstraintSha256',
+        'the S3 confirmed-candidate byte constraint must be a lowercase hex sha-256 digest',
+      );
+    }
+    if (request.slice !== 'S3' || request.expectedSha256 !== undefined) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        'byteConstraintSha256',
+        'the untrusted S3 byte constraint never combines with the S1 publisher anchor or non-S3 slices',
+      );
+    }
   }
   if (!makeContractId(request.contractId).ok) {
     return rejectRequest(

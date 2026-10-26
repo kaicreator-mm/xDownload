@@ -3,12 +3,19 @@
  * Adopted L2 S3 (PR #119) §2.1 requires a Core-issued same-OS-session
  * one-time challenge and interactive TTY; a sender-created selectionAttestation
  * never proves either. Installed legacy seam MUST reject all S3 commands.
+ *
+ * `REQUEST_S3_SELECTION_CHALLENGE` (#150 implementation leaf) is the
+ * Core-issued-challenge half of that authority: the syntax carries only the
+ * candidate tuple the Core binds the minted challenge to; the response
+ * challenge value itself is Core-minted randomness, never sender material.
  */
 import { isIP } from 'node:net';
+import { createHash } from 'node:crypto';
 import { parseSemVer } from '@xdownload/domain-contracts';
 import { seamDiagnostic, seamFail, seamOk, type SeamResult } from './diagnostics.ts';
 
 export const S3_SEAM12_COMMAND_TYPES = [
+  'REQUEST_S3_SELECTION_CHALLENGE',
   'CONFIRM_S3_CANDIDATE',
   'EXECUTE_S3_SELECTED_MEDIA',
 ] as const;
@@ -20,6 +27,14 @@ export interface S3SelectionAttestation {
   readonly displayTupleDigest: string;
   readonly confirmedAt: string;
   readonly expectedRevision: number;
+}
+export interface S3SelectionChallengeRequestPayload {
+  readonly snapshotId: string;
+  readonly memberId: string;
+  readonly variantKey: string;
+  readonly locatorUri: string;
+  readonly declaredRedirectHosts: readonly string[];
+  readonly mediaProfileId: string;
 }
 export interface S3ConfirmCandidatePayload {
   readonly snapshotId: string;
@@ -38,6 +53,10 @@ export interface S3ExecuteMediaPayload {
   readonly memberId: string;
 }
 export type S3Seam12Decoded =
+  | {
+      readonly commandType: 'REQUEST_S3_SELECTION_CHALLENGE';
+      readonly payload: S3SelectionChallengeRequestPayload;
+    }
   | { readonly commandType: 'CONFIRM_S3_CANDIDATE'; readonly payload: S3ConfirmCandidatePayload }
   | { readonly commandType: 'EXECUTE_S3_SELECTED_MEDIA'; readonly payload: S3ExecuteMediaPayload };
 
@@ -46,6 +65,14 @@ const SHA = /^[0-9a-f]{64}$/u;
 const HOST =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/u;
 const MEDIA_PATH = /^\/media\/[A-Za-z0-9_-]{1,64}\.(?:mp4|m4a|mp3|webm)$/u;
+const CHALLENGE_REQUEST_KEYS = [
+  'snapshotId',
+  'memberId',
+  'variantKey',
+  'locatorUri',
+  'declaredRedirectHosts',
+  'mediaProfileId',
+] as const;
 const CONFIRM_REQUIRED = [
   'snapshotId',
   'memberId',
@@ -71,6 +98,32 @@ const ATTEST_KEYS = [
 
 function malformed(path: string, reason: string): SeamResult<never> {
   return seamFail([seamDiagnostic('ENVELOPE_MALFORMED', path, reason)]);
+}
+
+/**
+ * Canonical digest of the exact displayed selection tuple (L2 S3 §2.1 R2
+ * F01): the Core computes it when minting a challenge and re-computes it when
+ * consuming the attestation; the installed CLI computes it independently over
+ * the SAME displayed values and aborts on a mismatch. Canonicalization is
+ * fixed-order JSON over the six tuple fields — never a locale/sorted-keys
+ * accident. Shared here so the CLI and the Core cannot drift apart.
+ */
+export function s3SelectionTupleDigest(input: {
+  readonly contractId: string;
+  readonly snapshotId: string;
+  readonly memberId: string;
+  readonly variantKey: string;
+  readonly selectedLocator: string;
+  readonly mediaProfileId: string;
+}): string {
+  const canonical = `{"contractId":${JSON.stringify(input.contractId)},"snapshotId":${JSON.stringify(
+    input.snapshotId,
+  )},"memberId":${JSON.stringify(input.memberId)},"variantKey":${JSON.stringify(
+    input.variantKey,
+  )},"selectedLocator":${JSON.stringify(input.selectedLocator)},"mediaProfileId":${JSON.stringify(
+    input.mediaProfileId,
+  )}}`;
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 function safeDataObject(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
@@ -233,6 +286,41 @@ export function decodeS3Seam12Payload(
   const input = safeDataObject(raw);
   if (input === undefined)
     return malformed('payload', 'S3 payload must be a stable plain data object');
+  if (commandType === 'REQUEST_S3_SELECTION_CHALLENGE') {
+    if (
+      !ownFields(input, CHALLENGE_REQUEST_KEYS) ||
+      !id(input['snapshotId']) ||
+      !id(input['memberId']) ||
+      !id(input['variantKey']) ||
+      !id(input['mediaProfileId']) ||
+      !publicMediaSyntax(input['locatorUri'])
+    ) {
+      return malformed(
+        'payload',
+        'S3 selection challenge request carries exactly the closed candidate tuple',
+      );
+    }
+    const hosts = safeHostArray(input['declaredRedirectHosts']);
+    if (hosts === undefined) {
+      return malformed(
+        'payload.declaredRedirectHosts',
+        'expected an immutable snapshot of 1..8 unique public DNS hosts',
+      );
+    }
+    return seamOk(
+      Object.freeze({
+        commandType: 'REQUEST_S3_SELECTION_CHALLENGE' as const,
+        payload: Object.freeze({
+          snapshotId: input['snapshotId'] as string,
+          memberId: input['memberId'] as string,
+          variantKey: input['variantKey'] as string,
+          locatorUri: input['locatorUri'] as string,
+          declaredRedirectHosts: hosts,
+          mediaProfileId: input['mediaProfileId'] as string,
+        }),
+      }),
+    );
+  }
   if (commandType === 'EXECUTE_S3_SELECTED_MEDIA') {
     if (!ownFields(input, EXECUTE_KEYS) || !id(input['snapshotId']) || !id(input['memberId'])) {
       return malformed(

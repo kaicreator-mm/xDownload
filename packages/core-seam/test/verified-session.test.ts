@@ -103,11 +103,12 @@ describe('OS-verified peer transport authorization gate', () => {
     }
   });
 
-  it('keeps S3 DISABLED on 1.1 and refuses malformed S3 syntax on 1.2', () => {
-    // S3 syntax recognition is now 1.2-only, but the installed Core still
-    // advertises 1.1 and refuses all S3 even with a forged claimed CLI peer.
+  it('keeps S3 1.2-gated and refuses malformed S3 syntax', () => {
+    // S3 syntax recognition is 1.2-only: a 1.1 frame fails the version gate
+    // before any command semantics, and the installed Core now advertises
+    // 1.2.0 with the #150 selected-media handlers installed.
     const envelope = {
-      schemaIdentity: currentSeamSchemaIdentity(),
+      schemaIdentity: { schema: 'xdownload.core-seam', version: '1.1.0' },
       kind: 'command',
       commandType: 'EXECUTE_S3_SELECTED_MEDIA',
       peer: { installId: 'install-001', userId: 'user-001', surface: 'CLI' },
@@ -134,7 +135,8 @@ describe('OS-verified peer transport authorization gate', () => {
     if (!decodedV12.ok) {
       expect(decodedV12.diagnostics.some((d) => d.code === 'ENVELOPE_MALFORMED')).toBe(true);
     }
-    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.1.0');
+    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.2.0');
+    expect(currentSeamSchemaIdentity().version).toBe('1.2.0');
   });
 });
 
