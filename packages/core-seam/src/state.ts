@@ -133,6 +133,15 @@ export interface LineageState {
    * journal on restart replay; never writable by any other command.
    */
   s3Candidate?: S3CandidateRecord;
+  /**
+   * #153 the Core-owned immutable S4 preview record (one per lineage; the
+   * preview intent and its observed result are both journaled). Identical
+   * re-preview converges; a conflicting manifest URI under the same lineage
+   * rejects (a changed source requires a successor contract).
+   */
+  s4Preview?: S4PreviewRecord;
+  /** #153 durably confirmed S4 rendition selection (exactly one per lineage). */
+  s4ConfirmedSelection?: S4ConfirmedSelectionRecord;
   /** Original failed-member identity domain (the only legal retry domain, C12). */
   failedMembers: MemberId[];
   /** Members whose explicit retry has been authorized through the seam. */
@@ -165,6 +174,64 @@ export interface S3CandidateRecord {
   readonly expectedContentTypePrefix?: string;
 }
 
+/**
+ * #153 one Core-observed renderable rendition fact of a previewed master
+ * (L2 SEAM12 §3): secret-free, projection-safe. `key` is the stable
+ * selection handle the user confirms; `uri` is the exact master-declared
+ * variant URI the later execution binds to.
+ */
+export interface S4RenditionFact {
+  readonly key: string;
+  readonly uri: string;
+  readonly bandwidth: number;
+  readonly codecs?: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+/**
+ * #153 the Core-owned immutable preview record (L2 SEAM12 §3 + the adopted
+ * transport-delta §5 preview bootstrap): the preview intent is journaled
+ * (PENDING) BEFORE the first HTTP read; the Core-observed master facts
+ * (AVAILABLE) or the typed refusal (FAILED) are recorded through the trusted
+ * Core-internal receipt port and journaled for restart replay. Short
+ * Core-enforced TTL; a restart drops nothing durable but re-observation only
+ * happens while the TTL window is still open (an expired PENDING preview
+ * closes truthfully FAILED without a fetch).
+ */
+export interface S4PreviewRecord {
+  readonly previewId: string;
+  readonly snapshotId: string;
+  readonly memberId: string;
+  readonly manifestUri: string;
+  readonly mediaProfileId: string;
+  readonly status: 'PENDING' | 'AVAILABLE' | 'FAILED';
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly variants?: readonly S4RenditionFact[];
+  readonly failureReason?: string;
+}
+
+/**
+ * #153 the durably confirmed S4 rendition selection (L2 SEAM12 §4): created
+ * atomically with the single-use private-challenge consumption at the COMMIT
+ * journal commit. Secret-free — the raw challenge never reaches durable
+ * state; the journaled CONFIRM command carries exactly this record shape.
+ */
+export interface S4ConfirmedSelectionRecord {
+  readonly confirmedSelectionId: string;
+  readonly previewId: string;
+  readonly snapshotId: string;
+  readonly memberId: string;
+  readonly manifestUri: string;
+  readonly mediaProfileId: string;
+  readonly renditionKey: string;
+  readonly renditionUri: string;
+  readonly displayedTupleDigest: string;
+  readonly confirmedAt: string;
+  readonly expiresAt: string;
+}
+
 export function createLineageState(): LineageState {
   return { status: 'ACTIVE', failedMembers: [], retriedMembers: [] };
 }
@@ -190,6 +257,12 @@ export interface SeamAuthorityState {
    * journal replay, awaiting/under runtime drive through the S3 flow.
    */
   readonly s3ExecutionIntents: Map<string, S3ExecutionIntent>;
+  /**
+   * #153 registered S4 selected-HLS execution intents (one per lineage):
+   * the durably journaled EXECUTE_S4_SELECTED_HLS_VOD commands, rebuilt from
+   * journal replay, awaiting/under runtime drive through the S4 flow.
+   */
+  readonly s4ExecutionIntents: Map<string, S4ExecutionIntent>;
   /** Monotonic counter implementing the single Core control order for cancels. */
   cancelOrderCounter: number;
 }
@@ -201,12 +274,20 @@ export interface S3ExecutionIntent {
   readonly candidate: S3CandidateRecord;
 }
 
+/** #153 one registered S4 selected-HLS execution intent (rebuilt from journal). */
+export interface S4ExecutionIntent {
+  readonly aggregateId: string;
+  readonly requestId: string;
+  readonly selection: S4ConfirmedSelectionRecord;
+}
+
 export function createSeamAuthorityState(): SeamAuthorityState {
   return {
     aggregates: new Map(),
     lineages: new Map(),
     accepted: new Map(),
     s3ExecutionIntents: new Map(),
+    s4ExecutionIntents: new Map(),
     cancelOrderCounter: 0,
   };
 }
@@ -248,11 +329,11 @@ export interface TargetEvidenceJournalEntry {
 
 /**
  * Core-internal durable S1 target-resolution witness (#113). Written only
- * through the trusted server API by the Core-runtime S1 driver, never through
- * a surface command; journaled BEFORE terminal authority so the resolution
- * fact survives restarts even when the process dies first (kill before/after
- * record), and replay re-establishes the identical witness (identical
- * replays converge, conflicting ones fail closed).
+ * through the trusted server API by the Core-runtime S1 driver, never
+ * through a surface command; journaled BEFORE terminal authority so the
+ * resolution fact survives restarts even when the process dies first (kill
+ * before/after record), and replay re-establishes the identical witness
+ * (identical replays converge, conflicting ones fail closed).
  */
 export interface TargetWitnessJournalEntry {
   readonly kind: 'TARGET_WITNESS';
@@ -260,11 +341,26 @@ export interface TargetWitnessJournalEntry {
   readonly receipt: TargetWitnessReceipt;
 }
 
+/**
+ * #153 Core-internal durable S4 preview-result receipt: the truth the Core
+ * actually observed when it read the previewed master (variants) or the typed
+ * refusal. Written only through the trusted `recordS4PreviewResult` port by
+ * the Core-runtime preview driver — never through a surface command — so the
+ * renderable preview facts a surface later reads from the aggregate
+ * projection are always Core-observed, never a CLI upload (L2 SEAM12 §2).
+ */
+export interface S4PreviewJournalEntry {
+  readonly kind: 'S4_PREVIEW';
+  readonly aggregateId: string;
+  readonly record: S4PreviewRecord;
+}
+
 export type SeamJournalEntry =
   | AcceptedCommandJournalEntry
   | CoverageAccountingJournalEntry
   | TargetEvidenceJournalEntry
-  | TargetWitnessJournalEntry;
+  | TargetWitnessJournalEntry
+  | S4PreviewJournalEntry;
 
 /**
  * Persistence port for accepted commands. T004 ships only the port and an

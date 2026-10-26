@@ -83,4 +83,11 @@ export {
   s3EffectIdentity,
   type S3DriveRuntime,
 } from './s3-selected-media.ts';
+export {
+  driveS4Preview,
+  driveS4SelectedHlsExecution,
+  s4EffectIdentity,
+  type S4DriveRuntime,
+  type S4HlsHttpOptions,
+} from './s4-selected-hls.ts';
 export { executeS3SelectedMediaAcquisition } from './flow.ts';

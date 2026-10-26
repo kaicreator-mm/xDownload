@@ -32,3 +32,4 @@ export * from './manifest-admission.ts';
 export * from './pinned-https-manifest.ts';
 export * from './pinned-https-segment.ts';
 export * from './pinned-host-composition.ts';
+export * from './ffmpeg-ts.ts';

@@ -24,10 +24,13 @@ import {
   makeSeamRevision,
   payloadByteLength,
   s3SelectionTupleDigest,
+  s4SelectionTupleDigest,
   SEAM_MESSAGE_LIMITS,
+  S4_PUBLIC_MEDIA_PROFILE_ID,
   type CommandEnvelope,
   type PeerIdentity,
   type QueryEnvelope,
+  type S4RenditionFact,
   type SeamClient,
   type SeamClientTransport,
   type SeamListenTarget,
@@ -56,12 +59,14 @@ import {
   renderNeedsUserActionDocument,
   renderRejectionDocument,
   renderS3SelectionDocument,
+  renderS4SelectionDocument,
   renderStatusDocument,
   renderWaitTimeoutDocument,
   terminalExitCode,
   toJson,
   type BatchItem,
   type S3SelectionTupleDocument,
+  type S4SelectionTupleDocument,
 } from './render.ts';
 
 /** Payload source shape passed to the port (mirrors args PayloadSource, unbranded). */
@@ -79,6 +84,18 @@ export interface SourceRequest {
  */
 export type SelectionGesture = 'confirmed' | 'declined' | 'unavailable';
 
+/**
+ * #153 the outcome of one explicit interactive rendition (quality) choice
+ * (L2 SEAM12 §3): 'confirmed' carries the exact chosen Core-observed
+ * rendition key; 'declined' for any other answer; 'unavailable' when no
+ * interactive terminal exists — the S4 lane never auto-selects and never
+ * reads a redirected/piped choice.
+ */
+export type RenditionSelection =
+  | { readonly choice: 'confirmed'; readonly renditionKey: string }
+  | { readonly choice: 'declined' }
+  | { readonly choice: 'unavailable' };
+
 /** Injectable process ports; the process entry binds real ones. */
 export interface AdapterPorts {
   readonly clientTransport: SeamClientTransport;
@@ -94,6 +111,13 @@ export interface AdapterPorts {
    * effect (NEEDS_USER_ACTION).
    */
   readonly confirmSelection?: (prompt: string) => Promise<SelectionGesture>;
+  /**
+   * #153 Interactive rendition selection port: displays the Core-projected
+   * variant list and captures one explicit choice. Absent on non-interactive
+   * compositions → the hls command stops before any selection/confirmation
+   * (NEEDS_USER_ACTION).
+   */
+  readonly selectRendition?: (prompt: string) => Promise<RenditionSelection>;
 }
 
 export interface AdapterResult {
@@ -1011,6 +1035,519 @@ async function runMedia(
 }
 
 /**
+ * #153 — the S4 selected-HLS user journey over the OS-verified Core pipe:
+ *
+ *   fresh-task capability probe (Core ≥1.2)
+ *   → SUBMIT_CONTRACT (single resource, explicit user selection, 4 layers)
+ *   → CONFIRM_SNAPSHOT (freezes the one selected member)
+ *   → PREVIEW_S4_HLS_VOD (Core journals the preview intent, then performs the
+ *     bounded master read; the CLI renders ONLY the Core-projected variants)
+ *   → explicit interactive rendition (quality) choice (no --rendition auto-
+ *     select without a human; --rendition still requires the YES/NO gesture)
+ *   → CONFIRM_S4_SELECTION BEGIN (Core mints one single-use connection-bound
+ *     private challenge) → explicit YES/NO confirmation of the EXACT tuple
+ *   → CONFIRM_S4_SELECTION COMMIT (durable selection; challenge consumed
+ *     atomically with the journal commit)
+ *   → EXECUTE_S4_SELECTED_HLS_VOD (durable intent; the Core performs the real
+ *     bounded segment download + FFmpeg Media validation)
+ *   → bounded wait for the Core-derived terminal (never a synthetic
+ *     COMPLETE from any acceptance along the way).
+ */
+async function runHls(
+  session: Session,
+  ports: AdapterPorts,
+  input: Extract<ParsedInput, { kind: 'hls' }>,
+): Promise<AdapterResult> {
+  const confirmSelection = ports.confirmSelection;
+  const selectRendition = ports.selectRendition;
+  // Interactive capability check BEFORE any Core round trip: the S4 lane has
+  // no non-interactive mode (L2 SEAM12 §3 negatives: headless CLI must stop).
+  if (confirmSelection === undefined || selectRendition === undefined) {
+    const doc = renderErrorDocument({
+      error: 'USAGE',
+      message: 'hls requires an interactive terminal; no selection port is available',
+    });
+    return {
+      exitCode: EXIT.NEEDS_USER_ACTION,
+      document: toJson(doc),
+      stderr: 'interactive selection unavailable (exit NEEDS_USER_ACTION)\n',
+    };
+  }
+  const base = ports.makeRequestId().replace(/^req-/, '').slice(0, 16);
+  const contractId = `contract-s4-${base}`;
+  const targetId = `target-s4-${base}`;
+  const snapshotId = `s4snap-${base}`;
+  const memberId = `s4member-${base}`;
+  await requireS4CoreCompatibility(session, ports, contractId);
+
+  // 1. Single-resource contract under explicit user selection with the
+  //    four required validation layers (Target/Transfer/Format/Media).
+  const contract = decodeContractText(
+    JSON.stringify({
+      schemaIdentity: currentSchemaIdentity(),
+      contractId,
+      status: 'CONFIRMED',
+      intentType: 'SINGLE_RESOURCE',
+      requestedTarget: targetId,
+      requestedScope: { kind: 'single_resource', targetId },
+      continuationScope: { kind: 'NONE' },
+      selectionPolicy: { basis: 'EXPLICIT_USER_SELECTION', allowsBatchSelection: false },
+      automationMode: 'MANUAL_SELECTION',
+      explorationPermission: 'NONE',
+      budgetProfile: S1_BUDGET_PROFILE,
+      authorizationContextRef: 'authctx/s4-selected-public-hls',
+      validationPolicy: { requiredLayers: ['target', 'transfer', 'format', 'media'] },
+      stopPolicy: { globalSafetyPrecedence: 'HIGHEST' },
+      resultPolicy: { requireMultidimensionalResult: true },
+      confirmedAt: ports.now(),
+    }),
+  );
+  const submit = await submitContract(session, ports, {
+    contract,
+    req: input.requestId,
+    expectedRevision: 0,
+    command: 'hls',
+  });
+  if ('rejected' in submit) {
+    return rejectionResult('hls', submit.rejected, contractId);
+  }
+  let currentRevision = submit.accepted.currentRevision;
+
+  // 2. Freeze the one selected member in a confirmed snapshot.
+  const snapshotPayload = {
+    schemaIdentity: currentSchemaIdentity(),
+    snapshotId,
+    contractId,
+    requestedScope: { kind: 'single_resource', targetId },
+    continuationScope: { kind: 'NONE' },
+    coverageTarget: {
+      scopeKind: 'single_resource',
+      scopeIdentityKey: `single_resource:${targetId}`,
+      snapshotVersion: 1,
+    },
+    requestedMemberBasis: { kind: 'EXPLICIT_IDENTITIES', memberIds: [memberId] },
+    authAccessibleBasis: { kind: 'EXPLICIT_IDENTITIES', memberIds: [memberId] },
+    selectedMemberIds: [memberId],
+    authorizationContextRef: 'authctx/s4-selected-public-hls',
+    profileContextRef: 'profile/s4-selected-media-001',
+    selectionClaims: [
+      { kind: 'SINGLE', confirmationType: 'CONFIRM_RESOURCE_IDENTITY', memberRefs: [memberId] },
+    ],
+    sourceMarker: { system: 'xdownload-cli', version: 'v0.1.0' },
+    createdAt: ports.now(),
+  };
+  const confirmSnapshotEnvelope = buildCommandEnvelope({
+    commandType: 'CONFIRM_SNAPSHOT',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: snapshotPayload,
+    session,
+    ports,
+  });
+  const confirmSnapshot = await session.client.submitCommand(confirmSnapshotEnvelope);
+  if (confirmSnapshot.outcome !== 'ACCEPTED' || confirmSnapshot.acceptance === undefined) {
+    return rejectionResult('hls', confirmSnapshot, contractId);
+  }
+  currentRevision = confirmSnapshot.currentRevision ?? confirmSnapshot.acceptance.revision;
+
+  // 3. Core-journalled bounded preview of the exact public master playlist.
+  const previewEnvelope = buildCommandEnvelope({
+    commandType: 'PREVIEW_S4_HLS_VOD',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: {
+      snapshotId,
+      memberId,
+      manifestUri: input.manifestUri,
+      mediaProfileId: S4_PUBLIC_MEDIA_PROFILE_ID,
+    },
+    session,
+    ports,
+  });
+  const previewResponse = await session.client.submitCommand(previewEnvelope);
+  if (previewResponse.outcome !== 'ACCEPTED' || previewResponse.acceptance === undefined) {
+    return rejectionResult('hls', previewResponse, contractId);
+  }
+  currentRevision = previewResponse.currentRevision ?? previewResponse.acceptance.revision;
+
+  // 4. Bounded wait for the Core-observed preview facts (projection only).
+  const previewed = await waitForS4PreviewResult(session, ports, {
+    contractId,
+    wait: input.wait,
+  });
+  if (!previewed.terminal) {
+    if ('rejected' in previewed) {
+      return rejectionResult('hls', previewed.rejected, contractId);
+    }
+    const doc = renderWaitTimeoutDocument({
+      contractId,
+      timeoutMs: input.wait.timeoutMs,
+      pollMs: input.wait.pollMs,
+    });
+    return {
+      exitCode: EXIT.WAIT_TIMEOUT,
+      document: toJson(doc),
+      stderr: `bounded preview wait elapsed (exit ${String(EXIT.WAIT_TIMEOUT)})\n`,
+    };
+  }
+  const preview = previewed.preview;
+  if (preview.status === 'FAILED') {
+    const doc = renderRejectionDocument({
+      command: 'hls',
+      requestId: previewResponse.inReplyTo,
+      contractId,
+      currentRevision,
+      diagnostics: [
+        {
+          code: 'ADMISSION_REJECTED',
+          path: 's4Preview.failureReason',
+          message: `the Core-observed preview failed truthfully: ${preview.failureReason ?? 'UNKNOWN'}`,
+        },
+      ],
+    });
+    return {
+      exitCode: EXIT.REJECTED,
+      document: toJson(doc),
+      stderr: `preview failed: ${preview.failureReason ?? 'UNKNOWN'} (exit ${String(EXIT.REJECTED)})\n`,
+    };
+  }
+  const variants = preview.variants ?? [];
+  if (variants.length === 0) {
+    const doc = renderErrorDocument({
+      error: 'USAGE',
+      message: 'the Core-observed preview carries no renderable variants',
+    });
+    return {
+      exitCode: EXIT.REJECTED,
+      document: toJson(doc),
+      stderr: 'preview carried no variants; nothing was selected or executed\n',
+    };
+  }
+
+  // 5. Explicit rendition (quality) choice from the Core-projected facts.
+  let chosen: S4RenditionFact | undefined;
+  if (input.renditionKey !== undefined) {
+    chosen = variants.find((variant) => variant.key === input.renditionKey);
+    if (chosen === undefined) {
+      const doc = renderErrorDocument({
+        error: 'USAGE',
+        message: `--rendition ${input.renditionKey} is not among the Core-observed renditions`,
+      });
+      return {
+        exitCode: EXIT.USAGE,
+        document: toJson(doc),
+        stderr: 'rendition preselection does not match the preview (exit USAGE)\n',
+      };
+    }
+  } else {
+    const list = variants
+      .map(
+        (variant, index) =>
+          `  [${String(index)}] ${variant.key}  ${
+            variant.width !== undefined && variant.height !== undefined
+              ? `${String(variant.width)}x${String(variant.height)}  `
+              : ''
+          }${String(variant.bandwidth)} bps${variant.codecs === undefined ? '' : `  ${variant.codecs}`}\n        ${variant.uri}`,
+      )
+      .join('\n');
+    const prompt = [
+      '',
+      '=== xdownload S4 preview — Core-observed renditions ===',
+      `manifest : ${preview.manifestUri}`,
+      `preview  : ${preview.previewId} (expires ${preview.expiresAt})`,
+      list,
+      '',
+      'Enter the index or key of the rendition to download: ',
+    ].join('\n');
+    const selection = await selectRendition(prompt);
+    if (selection.choice !== 'confirmed') {
+      const doc = renderS4SelectionDocument({
+        tuple: tupleOf(preview, variants[0]!, contractId),
+        tupleDigest: '',
+        challengeExpiresAt: null,
+        state: selection.choice === 'declined' ? 'DECLINED' : 'TERMINAL_UNAVAILABLE',
+        confirmed: false,
+        reason:
+          selection.choice === 'declined' ? 'USER_DECLINED' : 'INTERACTIVE_TERMINAL_UNAVAILABLE',
+      });
+      return {
+        exitCode: EXIT.NEEDS_USER_ACTION,
+        document: toJson(doc),
+        stderr: `rendition not selected; nothing was executed (exit ${String(EXIT.NEEDS_USER_ACTION)})\n`,
+      };
+    }
+    chosen =
+      variants.find((variant) => variant.key === selection.renditionKey) ??
+      (/^[0-9]+$/.test(selection.renditionKey)
+        ? variants[Number(selection.renditionKey)]
+        : undefined);
+    if (chosen === undefined) {
+      const doc = renderErrorDocument({
+        error: 'USAGE',
+        message: 'the interactive rendition choice did not name a Core-observed variant',
+      });
+      return {
+        exitCode: EXIT.NEEDS_USER_ACTION,
+        document: toJson(doc),
+        stderr: 'invalid rendition choice; nothing was executed\n',
+      };
+    }
+  }
+  const variant = chosen;
+
+  // 6. Independently derive the canonical tuple digest and ask the Core to
+  //    mint one single-use private challenge for THIS displayed tuple.
+  const tuple: S4SelectionTupleDocument = tupleOf(preview, variant, contractId);
+  const localDigest = s4SelectionTupleDigest({
+    contractId,
+    snapshotId,
+    memberId,
+    previewId: preview.previewId,
+    renditionKey: variant.key,
+    renditionUri: variant.uri,
+    manifestUri: preview.manifestUri,
+    mediaProfileId: preview.mediaProfileId,
+    bandwidth: variant.bandwidth,
+    ...(variant.width === undefined ? {} : { width: variant.width }),
+    ...(variant.height === undefined ? {} : { height: variant.height }),
+  });
+  const beginEnvelope = buildCommandEnvelope({
+    commandType: 'CONFIRM_S4_SELECTION',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: {
+      phase: 'BEGIN',
+      snapshotId,
+      memberId,
+      previewId: preview.previewId,
+      renditionKey: variant.key,
+      displayedTupleDigest: localDigest,
+    },
+    session,
+    ports,
+  });
+  const beginResponse = await session.client.submitCommand(beginEnvelope);
+  if (beginResponse.outcome !== 'ACCEPTED' || beginResponse.s4PrivateChallenge === undefined) {
+    return rejectionResult('hls', beginResponse, contractId);
+  }
+  const challenge = beginResponse.s4PrivateChallenge;
+  if (challenge.previewId !== preview.previewId || challenge.renditionKey !== variant.key) {
+    return rejectionResult(
+      'hls',
+      {
+        schemaIdentity: currentSeamSchemaIdentity(),
+        kind: 'response',
+        inReplyTo: beginEnvelope.requestId,
+        outcome: 'REJECTED',
+        diagnostics: [
+          {
+            code: 'CORRELATION_BINDING_REJECTED',
+            path: 's4PrivateChallenge',
+            message:
+              'the Core-issued challenge binds a different preview/rendition than the CLI displayed',
+          },
+        ],
+      },
+      contractId,
+    );
+  }
+
+  // 7. Display the exact canonical tuple and capture one explicit gesture.
+  const prompt = [
+    '',
+    '=== xdownload S4 selected HLS ===',
+    `contract       : ${tuple.contract_id}`,
+    `snapshot       : ${tuple.snapshot_id}`,
+    `member         : ${tuple.member_id}`,
+    `preview        : ${tuple.preview_id}`,
+    `manifest       : ${tuple.manifest_uri}`,
+    `rendition      : ${tuple.rendition_key}`,
+    `rendition uri  : ${tuple.rendition_uri}`,
+    `resolution     : ${tuple.width === null ? '-' : String(tuple.width)}x${tuple.height === null ? '-' : String(tuple.height)}`,
+    `bandwidth      : ${String(tuple.bandwidth)}`,
+    `media profile  : ${tuple.media_profile_id}`,
+    `tuple digest   : ${localDigest}`,
+    `challenge ends : ${challenge.expiresAt}`,
+    '',
+    'Confirm downloading exactly this HLS rendition? [y/N] ',
+  ].join('\n');
+  const gesture = await confirmSelection(prompt);
+  if (gesture !== 'confirmed') {
+    const doc = renderS4SelectionDocument({
+      tuple,
+      tupleDigest: localDigest,
+      challengeExpiresAt: challenge.expiresAt,
+      state: gesture === 'declined' ? 'DECLINED' : 'TERMINAL_UNAVAILABLE',
+      confirmed: false,
+      reason: gesture === 'declined' ? 'USER_DECLINED' : 'INTERACTIVE_TERMINAL_UNAVAILABLE',
+    });
+    return {
+      exitCode: EXIT.NEEDS_USER_ACTION,
+      document: toJson(doc),
+      stderr: `hls selection not confirmed; nothing was executed (exit ${String(EXIT.NEEDS_USER_ACTION)})\n`,
+    };
+  }
+
+  // 8. Durable confirmed selection: COMMIT carries the Core-issued private
+  //    challenge value; the Core consumes it atomically with the commit.
+  const commitEnvelope = buildCommandEnvelope({
+    commandType: 'CONFIRM_S4_SELECTION',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: {
+      phase: 'COMMIT',
+      snapshotId,
+      memberId,
+      previewId: preview.previewId,
+      renditionKey: variant.key,
+      displayedTupleDigest: localDigest,
+      confirmationChallenge: challenge.value,
+    },
+    session,
+    ports,
+  });
+  const committed = await session.client.submitCommand(commitEnvelope);
+  if (committed.outcome !== 'ACCEPTED' || committed.acceptance === undefined) {
+    return rejectionResult('hls', committed, contractId);
+  }
+  currentRevision = committed.currentRevision ?? committed.acceptance.revision;
+  const selectionView = await readProjection(session, ports, contractId);
+  const confirmedSelection = (selectionView.projection as SeamProjectionView | undefined)
+    ?.s4ConfirmedSelection;
+  if (
+    selectionView.outcome !== 'PROJECTION' ||
+    confirmedSelection?.renditionKey !== variant.key ||
+    confirmedSelection.snapshotId !== snapshotId
+  ) {
+    const doc = renderErrorDocument({
+      error: 'TRANSPORT',
+      message: 'the committed S4 selection was not observable in the Core projection',
+    });
+    return {
+      exitCode: EXIT.TRANSPORT,
+      document: toJson(doc),
+      stderr: 'selection projection missing after COMMIT (exit TRANSPORT)\n',
+    };
+  }
+
+  // 9. Execute: the Core derives the single canonical effect and performs
+  //    the bounded download + FFmpeg validation; ACCEPTED is still not
+  //    acquisition success.
+  const executeEnvelope = buildCommandEnvelope({
+    commandType: 'EXECUTE_S4_SELECTED_HLS_VOD',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: {
+      snapshotId,
+      memberId,
+      confirmedSelectionId: confirmedSelection.confirmedSelectionId,
+    },
+    session,
+    ports,
+  });
+  const executed = await session.client.submitCommand(executeEnvelope);
+  if (executed.outcome !== 'ACCEPTED' || executed.acceptance === undefined) {
+    return rejectionResult('hls', executed, contractId);
+  }
+
+  // 10. Bounded wait for the Core-derived terminal truth.
+  const waited = await waitForTerminalProjection(session, ports, {
+    contractId,
+    wait: input.wait,
+  });
+  if (waited.terminal) {
+    const view = waited.view;
+    const exit = view.terminal === undefined ? EXIT.SUCCESS : terminalExitCode(view.terminal);
+    return {
+      exitCode: exit,
+      document: toJson(renderStatusDocument(view)),
+      stderr: `hls: terminal result rendered (exit ${String(exit)})\n`,
+    };
+  }
+  if ('rejected' in waited) {
+    return rejectionResult('hls', waited.rejected, contractId);
+  }
+  const doc = renderWaitTimeoutDocument({
+    contractId,
+    timeoutMs: input.wait.timeoutMs,
+    pollMs: input.wait.pollMs,
+  });
+  return {
+    exitCode: EXIT.WAIT_TIMEOUT,
+    document: toJson(doc),
+    stderr: `bounded wait elapsed (exit ${String(EXIT.WAIT_TIMEOUT)})\n`,
+  };
+}
+
+function tupleOf(
+  preview: NonNullable<SeamProjectionView['s4Preview']>,
+  variant: S4RenditionFact,
+  contractId: string,
+): S4SelectionTupleDocument {
+  return {
+    contract_id: contractId,
+    snapshot_id: preview.snapshotId,
+    member_id: preview.memberId,
+    preview_id: preview.previewId,
+    rendition_key: variant.key,
+    rendition_uri: variant.uri,
+    manifest_uri: preview.manifestUri,
+    media_profile_id: preview.mediaProfileId,
+    bandwidth: variant.bandwidth,
+    width: variant.width ?? null,
+    height: variant.height ?? null,
+  };
+}
+
+/**
+ * Bounded wait for the Core-observed preview result (PENDING → AVAILABLE or
+ * FAILED). Non-interactive polls never block past the declared bound and
+ * never invent a preview.
+ */
+async function waitForS4PreviewResult(
+  session: Session,
+  ports: AdapterPorts,
+  input: { contractId: string; wait: WaitOptions },
+): Promise<
+  | {
+      readonly terminal: true;
+      readonly preview: NonNullable<SeamProjectionView['s4Preview']>;
+    }
+  | { readonly terminal: false; readonly timedOut: true }
+  | { readonly terminal: false; readonly rejected: SeamResponse }
+> {
+  const deadline = ports.epochMs() + input.wait.timeoutMs;
+  for (;;) {
+    const response = await readProjection(session, ports, input.contractId);
+    if (response.outcome === 'REJECTED') {
+      return { terminal: false, rejected: response };
+    }
+    if (response.outcome === 'PROJECTION') {
+      const view = response.projection as SeamProjectionView;
+      const preview = view.s4Preview;
+      if (preview !== undefined && preview.status !== 'PENDING') {
+        return { terminal: true, preview };
+      }
+    }
+    const remaining = deadline - ports.epochMs();
+    if (remaining <= 0) {
+      return { terminal: false, timedOut: true };
+    }
+    await ports.sleep(Math.min(input.wait.pollMs, remaining));
+  }
+}
+
+/**
  * #150 S3 fresh-task capability probe (L2 S3 §5): the legacy 1.0 query must
  * be understood by the older Core, and only the exact AGGREGATE_NOT_FOUND
  * rejection from a Core advertising seam 1.2+ proves an S3-capable installed
@@ -1020,6 +1557,29 @@ async function requireS3CoreCompatibility(
   session: Session,
   ports: AdapterPorts,
   aggregateId: string,
+): Promise<void> {
+  await requireCoreSeam12(session, ports, aggregateId, 'S3 selected media');
+}
+
+/**
+ * #153 S4 fresh-task capability probe (same wire shape as the S3 probe): a
+ * Core that answers the legacy 1.0 query with the exact fresh-task
+ * AGGREGATE_NOT_FOUND rejection while advertising seam 1.2+ is an S4-capable
+ * installed Core on this fresh task.
+ */
+async function requireS4CoreCompatibility(
+  session: Session,
+  ports: AdapterPorts,
+  aggregateId: string,
+): Promise<void> {
+  await requireCoreSeam12(session, ports, aggregateId, 'S4 selected HLS');
+}
+
+async function requireCoreSeam12(
+  session: Session,
+  ports: AdapterPorts,
+  aggregateId: string,
+  label: string,
 ): Promise<void> {
   const query: QueryEnvelope = {
     ...buildQueryEnvelope({ aggregateId, req: ports.makeRequestId(), session, ports }),
@@ -1042,11 +1602,11 @@ async function requireS3CoreCompatibility(
     response.acceptance === undefined &&
     response.projection === undefined;
   if (!compatible) {
-    throw new CliInputError('USAGE', 'S3 selected media requires Core seam 1.2', [
+    throw new CliInputError('USAGE', `${label} requires Core seam 1.2`, [
       {
         code: 'UNSUPPORTED_ENVELOPE_VERSION',
         path: 'schemaIdentity.version',
-        message: 'S3 preflight did not verify a compatible Core on the intended fresh task',
+        message: `${label} preflight did not verify a compatible Core on the intended fresh task`,
       },
     ]);
   }
@@ -1302,6 +1862,8 @@ export async function runAdapter(input: ParsedInput, ports: AdapterPorts): Promi
         return await runDownload(session, ports, input);
       case 'media':
         return await runMedia(session, ports, input);
+      case 'hls':
+        return await runHls(session, ports, input);
       case 'status':
         return await runStatus(session, ports, input.contractId);
       case 'wait':

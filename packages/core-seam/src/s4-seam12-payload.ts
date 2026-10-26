@@ -9,6 +9,7 @@
  * independently security-reviewed Core handler and transport change.
  */
 import { isIP } from 'node:net';
+import { createHash } from 'node:crypto';
 import { parseSemVer } from '@xdownload/domain-contracts';
 import { seamDiagnostic, seamFail, seamOk, type SeamResult } from './diagnostics.ts';
 
@@ -52,6 +53,42 @@ export interface S4ExecutePayload {
   readonly snapshotId: string;
   readonly memberId: string;
   readonly confirmedSelectionId: string;
+}
+
+/**
+ * #153 canonical digest of the exact displayed S4 rendition-selection tuple.
+ * The Core computes it when minting the private BEGIN challenge and when
+ * consuming the COMMIT; the installed CLI computes it independently over the
+ * SAME Core-projected preview facts and aborts on a mismatch. Canonicalization
+ * is fixed-order JSON over the displayed fields (the S3 discipline), so the
+ * CLI and the Core cannot drift apart. Optional numeric facts render as
+ * explicit `null` so an absent value never aliases a present one.
+ */
+export function s4SelectionTupleDigest(input: {
+  readonly contractId: string;
+  readonly snapshotId: string;
+  readonly memberId: string;
+  readonly previewId: string;
+  readonly renditionKey: string;
+  readonly renditionUri: string;
+  readonly manifestUri: string;
+  readonly mediaProfileId: string;
+  readonly bandwidth: number;
+  readonly width?: number;
+  readonly height?: number;
+}): string {
+  const canonical = `{"contractId":${JSON.stringify(input.contractId)},"snapshotId":${JSON.stringify(
+    input.snapshotId,
+  )},"memberId":${JSON.stringify(input.memberId)},"previewId":${JSON.stringify(
+    input.previewId,
+  )},"renditionKey":${JSON.stringify(input.renditionKey)},"renditionUri":${JSON.stringify(
+    input.renditionUri,
+  )},"manifestUri":${JSON.stringify(input.manifestUri)},"mediaProfileId":${JSON.stringify(
+    input.mediaProfileId,
+  )},"bandwidth":${String(input.bandwidth)},"width":${
+    input.width === undefined ? 'null' : String(input.width)
+  },"height":${input.height === undefined ? 'null' : String(input.height)}}`;
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
 export type S4Seam12Decoded =

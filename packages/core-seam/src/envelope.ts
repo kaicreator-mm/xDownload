@@ -70,6 +70,22 @@ export interface SeamSchemaIdentity {
   readonly version: string;
 }
 
+/**
+ * #153 Core-minted one-use S4 selection challenge (L2 SEAM12 §4): carried on
+ * the direct command response of `CONFIRM_S4_SELECTION` phase BEGIN only, and
+ * ONLY on the live OS-verified pipe connection that requested it. Never part
+ * of the ordinary READ_PROJECTION aggregate, never journaled, never replayed
+ * from durable state — a duplicate BEGIN converges to the secret-free prior
+ * acceptance without re-emitting the raw value.
+ */
+export interface S4PrivateChallenge {
+  readonly previewId: string;
+  readonly renditionKey: string;
+  /** 64-hex CSPRNG value; single-use, consumed atomically with the COMMIT journal commit. */
+  readonly value: string;
+  readonly expiresAt: string;
+}
+
 export type SeamMessageKind = 'command' | 'query' | 'response';
 
 /**
@@ -171,6 +187,11 @@ export interface SeamResponse {
   readonly projection?: unknown;
   /** Core-minted selection challenge (REQUEST_S3_SELECTION_CHALLENGE only). */
   readonly challenge?: S3SelectionChallenge;
+  /**
+   * #153 connection-private S4 selection challenge (CONFIRM_S4_SELECTION
+   * phase BEGIN only); never serialized to legacy sessions or projections.
+   */
+  readonly s4PrivateChallenge?: S4PrivateChallenge;
   readonly diagnostics?: readonly SeamDiagnostic[];
 }
 
@@ -571,10 +592,46 @@ export function decodeSeamResponse(value: unknown): SeamResult<SeamResponse> {
       typeof value['currentRevision'] === 'number' ? value['currentRevision'] : undefined,
     projection: value['projection'],
     challenge: decodeS3SelectionChallenge(value['challenge']),
+    s4PrivateChallenge: decodeS4PrivateChallenge(value['s4PrivateChallenge']),
     diagnostics: Array.isArray(value['diagnostics'])
       ? (value['diagnostics'] as readonly SeamDiagnostic[])
       : undefined,
   });
+}
+
+const S4_PRIVATE_CHALLENGE_KEYS: readonly string[] = [
+  'previewId',
+  'renditionKey',
+  'value',
+  'expiresAt',
+];
+
+/** Strict decode of the Core-minted S4 private challenge on the client side (#153). */
+function decodeS4PrivateChallenge(value: unknown): S4PrivateChallenge | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const unknown = Object.keys(value).filter((key) => !S4_PRIVATE_CHALLENGE_KEYS.includes(key));
+  if (unknown.length > 0) {
+    return undefined;
+  }
+  const previewId = value['previewId'];
+  const renditionKey = value['renditionKey'];
+  const challenge = value['value'];
+  const expiresAt = value['expiresAt'];
+  if (
+    typeof previewId !== 'string' ||
+    !/^[A-Za-z0-9_.:-]{1,128}$/u.test(previewId) ||
+    typeof renditionKey !== 'string' ||
+    !/^[A-Za-z0-9_.:-]{1,128}$/u.test(renditionKey) ||
+    typeof challenge !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(challenge) ||
+    typeof expiresAt !== 'string' ||
+    !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/u.test(expiresAt)
+  ) {
+    return undefined;
+  }
+  return { previewId, renditionKey, value: challenge, expiresAt };
 }
 
 const CHALLENGE_KEYS: readonly string[] = [

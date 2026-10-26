@@ -93,6 +93,15 @@ export type ParsedInput =
       readonly wait: WaitOptions;
       readonly requestId: string | undefined;
     }
+  | {
+      readonly kind: 'hls';
+      readonly target: TargetOptions;
+      readonly manifestUri: string;
+      /** Operator-pinned rendition key; interactive selection when omitted. */
+      readonly renditionKey: string | undefined;
+      readonly wait: WaitOptions;
+      readonly requestId: string | undefined;
+    }
   | { readonly kind: 'status'; readonly target: TargetOptions; readonly contractId: string }
   | {
       readonly kind: 'wait';
@@ -142,6 +151,11 @@ Commands:
            OS-verified Windows Core pipe, then a Core-executed public media
            download with Media validation (requires --pipe-name and an
            attached interactive terminal; there is no non-interactive mode)
+  hls      S4 selected HLS VOD: Core-journalled preview of the public master
+           playlist, interactive rendition (quality) selection, explicit
+           confirmation, then a Core-executed bounded segment download with
+           real FFmpeg Media validation (requires --pipe-name and an
+           attached interactive terminal)
   status   Read the machine-readable status projection for one contract
   wait     Poll READ_PROJECTION until a terminal result is projected (bounded)
   cancel   Cancel a lineage (CANCEL_LINEAGE through the seam)
@@ -190,6 +204,17 @@ Command options:
   cancel:   --contract <id> --expected-revision <n> (required)
   retry:    --contract <id> --expected-revision <n> (required) --members <m1,m2,...>
   confirm:  --contract <id> --expected-revision <n> (required) + payload source
+  hls:      --manifest <https://host/….m3u8> [--rendition <key>]
+            [--timeout-ms <n>] [--poll-ms <n>]
+            --pipe-name is REQUIRED (the S4 lane runs only over the
+            OS-verified Windows Core named pipe). The Core first journals a
+            bounded preview of the exact public master playlist; the CLI then
+            renders ONLY the Core-projected renditions, captures one explicit
+            interactive rendition choice plus a YES/NO confirmation of the
+            exact displayed tuple, and executes exactly that selection. A
+            non-interactive terminal stops before any Core effect. --manifest
+            accepts a credential-free canonical public HTTPS .m3u8 URI (no
+            query, fragment, userinfo or explicit port).
 
 Output: exactly one machine-readable JSON document on stdout (PRD §27 field
 set for status; stable exit codes; diagnostics projected verbatim). Human
@@ -220,6 +245,8 @@ const OPTIONS = {
   'redirect-host': { type: 'string', multiple: true },
   variant: { type: 'string' },
   profile: { type: 'string' },
+  manifest: { type: 'string' },
+  rendition: { type: 'string' },
 } as const;
 
 function str(values: ArgValues, name: string): string | undefined {
@@ -548,6 +575,54 @@ function parseMemberIds(values: ArgValues): readonly string[] {
 }
 
 /**
+ * #153 S4 public HLS manifest URI shape (client-side fast-fail mirror of the
+ * closed Core wire codec `publicManifestSyntax`): canonical credential-free
+ * HTTPS .m3u8 with no query/fragment/userinfo/percent-encoding, default
+ * port, public DNS host. The Core re-validates the full grammar
+ * authoritatively; this only stops an obvious misuse before any round trip.
+ */
+function parseS4ManifestUri(values: ArgValues): string {
+  const raw = requireString(str(values, 'manifest'), 'manifest');
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw manifestUriError('not a valid absolute URI');
+  }
+  if (
+    parsed.href !== raw ||
+    parsed.protocol !== 'https:' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== '' ||
+    parsed.port !== '' ||
+    !parsed.pathname.endsWith('.m3u8') ||
+    parsed.pathname.includes('%') ||
+    parsed.pathname.includes('//') ||
+    !/^[a-z0-9.-]+$/u.test(parsed.hostname) ||
+    !parsed.hostname.includes('.') ||
+    parsed.hostname.endsWith('.') ||
+    ['.localhost', '.local', '.internal', '.onion', '.test', '.invalid'].some((suffix) =>
+      parsed.hostname.endsWith(suffix),
+    )
+  ) {
+    throw manifestUriError('not a canonical credential-free public HTTPS .m3u8 URI');
+  }
+  return raw;
+}
+
+function manifestUriError(reason: string): CliInputError {
+  return new CliInputError('USAGE', `--manifest ${reason}`, [
+    {
+      code: 'ENVELOPE_MALFORMED',
+      path: 'payload.manifestUri',
+      message: 'S4 accepts only the closed public HLS manifest URI grammar',
+    },
+  ]);
+}
+
+/**
  * Parse process argv (without the node/script prefix) into a typed input
  * value. Unknown commands/flags and malformed values raise typed
  * `CliInputError`s before any envelope is built.
@@ -626,6 +701,28 @@ export function parseArgv(argv: readonly string[]): ParsedInput {
         expectedTotalBytes:
           totalBytesRaw === undefined ? undefined : parseInteger(totalBytesRaw, 'total-bytes', 0),
         redirectHosts: parseS3RedirectHosts(values, new URL(url).hostname),
+        wait: parseWaitWithDefault(values),
+        requestId: parseRequestId(values),
+      };
+    }
+    case 'hls': {
+      // The S4 lane's sole authorized peer is the installed CLI over the
+      // OS-verified Windows Core pipe: fail closed at parse time instead of
+      // bouncing off the transport gate later.
+      if (target.pipeName === undefined) {
+        fail(
+          'hls requires --pipe-name (the S4 lane runs only over the OS-verified Windows Core named pipe)',
+        );
+      }
+      const rendition = str(values, 'rendition');
+      if (rendition !== undefined && !/^rend-[0-9]+$/u.test(rendition)) {
+        fail('--rendition must be a Core-observed rendition key (rend-<n>)');
+      }
+      return {
+        kind: 'hls',
+        target,
+        manifestUri: parseS4ManifestUri(values),
+        renditionKey: rendition,
         wait: parseWaitWithDefault(values),
         requestId: parseRequestId(values),
       };

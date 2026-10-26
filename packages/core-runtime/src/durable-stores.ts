@@ -308,6 +308,21 @@ export class FileBackedSeamJournal implements SeamJournal {
             'seam target witness is missing identity or the receipt object',
           );
         }
+      } else if (record['kind'] === 'S4_PREVIEW') {
+        // #153: the trusted Core-observed S4 preview receipt; semantic
+        // validation happens during seam replay, also fail-closed.
+        if (
+          typeof record['aggregateId'] !== 'string' ||
+          record['aggregateId'].length === 0 ||
+          typeof record['record'] !== 'object' ||
+          record['record'] === null ||
+          Array.isArray(record['record'])
+        ) {
+          throw new DurableStoreCorruptError(
+            path,
+            'seam S4 preview receipt is missing identity or the record object',
+          );
+        }
       } else if (
         (record['kind'] !== undefined && record['kind'] !== 'COMMAND') ||
         typeof record['envelope'] !== 'object' ||
