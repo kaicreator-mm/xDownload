@@ -90,6 +90,46 @@ describe('#149 selected-plan pinned S4 host composition', () => {
     expect(() => host.bindSelectedPlan(changed)).toThrow('trusted host admission');
   });
 
+  it('R1 P1 rejects shallow-frozen mutable Range before any segment request', () => {
+    const plan = planFixture({ withByterange: true });
+    const original = plan.entries[0]!;
+    const mutableRange = {
+      offset: original.byterange!.offset,
+      length: original.byterange!.length,
+    };
+    const shallowFrozen = Object.freeze({ ...original, byterange: mutableRange });
+    const malicious = alteredPlan(plan, {
+      entries: Object.freeze([shallowFrozen, ...plan.entries.slice(1)]),
+    });
+    const host = createPinnedHlsHostPorts(options());
+    expect(Object.isFrozen(shallowFrozen)).toBe(true);
+    expect(Object.isFrozen(mutableRange)).toBe(false);
+    expect(() => host.bindSelectedPlan(malicious)).toThrow('trusted host admission');
+    mutableRange.offset += 1000;
+    // The forged range never received an HTTP-capable selected-plan fetcher.
+    expect(mutableRange.offset).not.toBe(original.byterange!.offset);
+    expect(Object.isFrozen(original.byterange)).toBe(true);
+    expect(host.bindSelectedPlan(plan).maxResponseBytes).toBe(4096);
+  });
+
+  it('rejects mutable provenance under an otherwise frozen segment entry', () => {
+    const plan = planFixture();
+    const first = plan.entries[0]!;
+    const loose = Object.freeze({
+      ...first,
+      locator: Object.freeze({
+        ...first.locator,
+        provenance: { ...first.locator.provenance },
+      }),
+    });
+    const injected = alteredPlan(plan, {
+      entries: Object.freeze([loose, ...plan.entries.slice(1)]),
+    });
+    expect(() => createPinnedHlsHostPorts(options()).bindSelectedPlan(injected)).toThrow(
+      'trusted host admission',
+    );
+  });
+
   it('pins allowed origins and limits even when the original host config mutates', () => {
     const config = options();
     const host = createPinnedHlsHostPorts(config);
