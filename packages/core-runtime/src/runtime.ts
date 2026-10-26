@@ -185,6 +185,7 @@ function bindSeam(
     s3MediaProfiles: {
       supportedProfile: (profileId) => lookupSupportedMediaProfile(profileId) !== undefined,
       profileContainerOf: (profileId) => lookupSupportedMediaProfile(profileId)?.container,
+      profileProbeRevisionOf: (profileId) => lookupSupportedMediaProfile(profileId)?.probeRevision,
       registryDigest: () => digestSupportedMediaProfiles(),
     },
     s3SelectedMedia: {

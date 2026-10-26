@@ -35,6 +35,7 @@ const MEDIA_PROFILES: Readonly<Record<string, string>> = {
 const PROFILES_PORT = {
   supportedProfile: (id: string) => id in MEDIA_PROFILES,
   profileContainerOf: (id: string) => MEDIA_PROFILES[id],
+  profileProbeRevisionOf: () => 1,
   registryDigest: () => 'a'.repeat(64),
 } as const;
 

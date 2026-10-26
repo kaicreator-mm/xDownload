@@ -111,3 +111,40 @@ describe('#150 S3 untrusted byte constraint (adapter request shape)', () => {
     expect(digest).not.toBe(other);
   });
 });
+
+describe('#150 HTTPS downgrade and slice-scoped host admission (P1/P2 review fixes)', () => {
+  it('never admits a plaintext http serving URI under a confirmed https origin', async () => {
+    const { validateTarget } = await import('../src/index.ts');
+    const base = {
+      bytes: new Uint8Array(4),
+      declaredRedirectHosts: ['cdn.example.org'],
+      originUri: 'https://media.example.org/media/clip_01.mp4',
+    };
+    const okServed = validateTarget({
+      ...base,
+      servedUri: 'https://cdn.example.org/media/clip_01.mp4',
+    });
+    expect(okServed.passed).toBe(true);
+    for (const slice of [undefined, 'S1', 'S3'] as const) {
+      const downgraded = validateTarget({
+        ...base,
+        ...(slice === undefined ? {} : { slice }),
+        servedUri: 'http://cdn.example.org/media/clip_01.mp4',
+      });
+      expect(downgraded.passed).toBe(false);
+      if (!downgraded.passed) {
+        expect(downgraded.code).toBe('TARGET_PROVENANCE_INVALID');
+      }
+    }
+  });
+
+  it('admits bare-hostname declarations only on the S3 lane (S1 stays exact)', async () => {
+    const { declaredHostAdmits } = await import('../src/index.ts');
+    const target = { host: 'cdn.example.org:8443', hostname: 'cdn.example.org' };
+    expect(declaredHostAdmits(['cdn.example.org'], target, 'S3')).toBe(true);
+    expect(declaredHostAdmits(['cdn.example.org:8443'], target, 'S3')).toBe(true);
+    expect(declaredHostAdmits(['cdn.example.org'], target, 'S1')).toBe(false);
+    expect(declaredHostAdmits(['cdn.example.org:8443'], target, 'S1')).toBe(true);
+    expect(declaredHostAdmits(['other.example.org'], target, 'S3')).toBe(false);
+  });
+});

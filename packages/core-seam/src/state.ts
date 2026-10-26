@@ -151,6 +151,15 @@ export interface S3CandidateRecord {
   readonly locatorUri: string;
   readonly declaredRedirectHosts: readonly string[];
   readonly mediaProfileId: string;
+  /**
+   * Replay pin (L2 S3 §3): the supported-media registry content digest and
+   * the profile's structural probe revision, BOTH Core-computed at
+   * confirmation time. Execution/replay re-derives mandatory checks only
+   * from a byte-identical registry; any change fails closed and requires a
+   * fresh confirmation/successor snapshot.
+   */
+  readonly mediaProfilesDigest: string;
+  readonly mediaProfileProbeRevision: number;
   readonly byteConstraintSha256?: string;
   readonly expectedTotalBytes?: number;
   readonly expectedContentTypePrefix?: string;

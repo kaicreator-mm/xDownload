@@ -40,6 +40,7 @@ import {
   type TargetWitnessReceipt,
 } from '@xdownload/core-seam';
 import {
+  digestSupportedMediaProfiles,
   lookupSupportedMediaProfile,
   mediaPolicyOfProfile,
   type DirectTransferOutcome,
@@ -336,6 +337,22 @@ export async function driveS3SelectedMediaExecution(
       ),
     ]);
   }
+  // Replay pin (L2 S3 §3): the mandatory Media checks must come from the
+  // byte-identical registry the candidate was confirmed against — a changed
+  // registry/probe semantics never silently re-evaluates old truth.
+  if (
+    candidate.mediaProfilesDigest !== digestSupportedMediaProfiles() ||
+    candidate.mediaProfileProbeRevision !== profile.probeRevision
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'MEDIA_POLICY_REQUIRED',
+        'candidate.mediaProfilesDigest',
+        'the supported-media registry changed since this candidate was confirmed; execution fails closed and requires a fresh confirmation',
+        'L2-S3-§3',
+      ),
+    ]);
+  }
   const identity = s3EffectIdentity({
     contractId: input.contract.contractId,
     snapshotId: candidate.snapshotId,
@@ -443,7 +460,6 @@ export async function driveS3SelectedMediaExecution(
       bound.diagnostics.map((d) => seamDiagnostic(d.code, d.path, d.message, d.invariant)),
     );
   }
-  // The delivery graph the adapter may traverse: the selected locator's own
   const locatorHost = hostOf(candidate.locatorUri);
   // The delivery graph the adapter may traverse: the selected locator's own
   // host (with its explicit port, if any) plus the wire-declared bare public

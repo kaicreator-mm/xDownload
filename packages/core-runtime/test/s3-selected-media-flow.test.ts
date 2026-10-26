@@ -17,6 +17,7 @@ import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { decodeAcquisitionContract, type AcquisitionContract } from '@xdownload/domain-contracts';
+import { digestSupportedMediaProfiles } from '@xdownload/direct-acquisition';
 import type { S3CandidateRecord } from '@xdownload/core-seam';
 import type { TerminalResult } from '@xdownload/domain-contracts';
 import { driveS3SelectedMediaExecution } from '../src/s3-selected-media.ts';
@@ -152,6 +153,8 @@ function candidateOf(
     locatorUri: locator,
     declaredRedirectHosts: declaredHosts,
     mediaProfileId: 's3-media-mp4-v1',
+    mediaProfilesDigest: digestSupportedMediaProfiles(),
+    mediaProfileProbeRevision: 1,
     ...overrides,
   };
 }
@@ -381,11 +384,6 @@ describe('#150 S3 selected-media Core flow (restart reconcile)', () => {
     });
     try {
       const terminal = await awaitTerminal(runtime, 'contract-s3-cdn-001');
-      console.log('CDN-DEBUG terminal=', JSON.stringify(terminal));
-      console.log(
-        'CDN-DEBUG witness=',
-        JSON.stringify(runtime.seam.targetWitnessFor('contract-s3-cdn-001')),
-      );
       expect(terminal.requestFulfillment).toBe('COMPLETE');
       const witness = runtime.seam.targetWitnessFor('contract-s3-cdn-001');
       expect(witness?.status).toBe('RESOLVED');
@@ -419,6 +417,133 @@ describe('#150 S3 selected-media Core flow (restart reconcile)', () => {
       const terminal = runtime.seam.inspectProjection('contract-s3-replay-001')?.terminal as
         TerminalResult | undefined;
       expect(terminal?.requestFulfillment).toBe('COMPLETE');
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('fails closed when the registry changed since the candidate was confirmed (replay pin)', async () => {
+    const server = await fixture();
+    server.serveFile('/media/clip_01.mp4', {
+      body: mp4Bytes('s3-pin-bytes'),
+      contentType: 'video/mp4',
+    });
+    const runtime = await reopenWithS3Execution({
+      contractId: 'contract-s3-pin-001',
+      candidate: candidateOf(server.uri('/media/clip_01.mp4'), [new URL(server.baseUri).host], {
+        mediaProfilesDigest: 'f'.repeat(64),
+      }),
+    });
+    try {
+      // The supervisor re-drives with bounded retries; a changed registry can
+      // never reach a terminal or a single HTTP request.
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      const terminal = runtime.seam.inspectProjection('contract-s3-pin-001')?.terminal;
+      expect(terminal).toBeUndefined();
+      expect(server.requests).toHaveLength(0);
+    } finally {
+      closeRuntime(runtime);
+    }
+  });
+
+  it('closes truthfully when the user cancelled before dispatch (no transfer, no socket)', async () => {
+    const server = await fixture();
+    server.serveFile('/media/clip_01.mp4', {
+      body: mp4Bytes('s3-cancel-bytes'),
+      contentType: 'video/mp4',
+    });
+    const contractId = 'contract-s3-cancel-001';
+    const root = makeTempDir('s3-media-flow');
+    roots.push(root);
+    const live = openRuntime(root);
+    const contract = decodeAcquisitionContract(contractPayload(contractId));
+    if (!contract.ok) {
+      throw new Error('fixture contract rejected');
+    }
+    const submitted = seamCommand(live, {
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: contractId,
+      payload: contract.value,
+      expectedRevision: 0,
+    });
+    expect(submitted.outcome).toBe('ACCEPTED');
+    const confirmed = seamCommand(live, {
+      commandType: 'CONFIRM_SNAPSHOT',
+      aggregateId: contractId,
+      payload: snapshotPayloadOf(contractId, 's3snap-flow-001', 's3member-flow-001'),
+      expectedRevision: 1,
+    });
+    expect(confirmed.outcome).toBe('ACCEPTED');
+    closeRuntime(live);
+    // Production order: the live process journaled CONFIRM + EXECUTE + a
+    // durably committed user CANCEL, then died before any drive.
+    appendFileSync(
+      join(root, 'seam-journal.jsonl'),
+      acceptedEntry({
+        commandType: 'CONFIRM_S3_CANDIDATE',
+        aggregateId: contractId,
+        requestId: 'seed-s3-cancel-confirm',
+        expectedRevision: 2,
+        revision: 3,
+        payload: {
+          ...candidateOf(server.uri('/media/clip_01.mp4'), [new URL(server.baseUri).host]),
+          selectionAttestation: {
+            kind: 'EXPLICIT_CLI_GESTURE',
+            interactionId: 'seed-challenge',
+            displayTupleDigest: 'seed-digest',
+            confirmedAt: '2026-10-26T00:00:30Z',
+            expectedRevision: 2,
+          },
+        },
+        correlation: { contractId, snapshotId: 's3snap-flow-001' },
+      }),
+    );
+    appendFileSync(
+      join(root, 'seam-journal.jsonl'),
+      acceptedEntry({
+        commandType: 'EXECUTE_S3_SELECTED_MEDIA',
+        aggregateId: contractId,
+        requestId: 'seed-s3-cancel-execute',
+        expectedRevision: 3,
+        revision: 4,
+        payload: { snapshotId: 's3snap-flow-001', memberId: 's3member-flow-001' },
+        correlation: { contractId, snapshotId: 's3snap-flow-001' },
+      }),
+    );
+    const cancelled = seamCommand(live, {
+      commandType: 'CANCEL_LINEAGE',
+      aggregateId: contractId,
+      expectedRevision: 4,
+      payload: {},
+    });
+    // The live runtime is closed; run the cancel through a reopened runtime.
+    closeRuntime(live);
+    const reopened = reopenCoreRuntime({ rootDir: root, expectedPeer: EXPECTED_PEER });
+    const cancelResponse = reopened.seam.handleFrame(
+      JSON.stringify({
+        schemaIdentity: { schema: 'xdownload.core-seam', version: '1.2.0' },
+        kind: 'command',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: contractId,
+        peer: { installId: 'install-001', userId: 'user-001', surface: 'CLI' },
+        requestId: 'seed-s3-cancel',
+        expectedRevision: 4,
+        correlation: {},
+        issuedAt: '2026-10-26T00:00:00Z',
+        payload: {},
+      }),
+    );
+    expect(cancelResponse.outcome).toBe('ACCEPTED');
+    closeRuntime(reopened);
+    void cancelled;
+    // Reopen again: replay rebuilds the cancelled lineage and the intent;
+    // reconcile drives the truthful cancel closure with NO external effect.
+    const runtime = reopenCoreRuntime({ rootDir: root, expectedPeer: EXPECTED_PEER });
+    try {
+      const terminal = await awaitTerminal(runtime, contractId);
+      expect(terminal.requestFulfillment).not.toBe('COMPLETE');
+      expect(terminal.stopReason).toBe('USER_CANCELLED');
+      expect(server.requests).toHaveLength(0);
     } finally {
       closeRuntime(runtime);
     }

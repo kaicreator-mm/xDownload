@@ -411,6 +411,7 @@ export class DirectHttpAdapter {
       servedUri: locatorChain[locatorChain.length - 1]?.locator.uri,
       originUri: request.binding.locator.uri,
       declaredRedirectHosts: request.allowedRedirectHosts,
+      slice: request.slice,
     });
     const validations: ValidationLayerOutcome[] = [transferCheck, formatCheck, targetCheck];
     if (request.slice === 'S3') {
@@ -677,7 +678,25 @@ function followRedirect(
       ],
     };
   }
-  if (!declaredHostAdmits(request.allowedRedirectHosts, nextUrl)) {
+  // HTTPS downgrade is never admissible (#150 P1, transport delta §2): a
+  // confirmed https locator may not be redirected onto plaintext http — the
+  // bytes would no longer be the confirmed transport's bytes.
+  if (current.locator.uri.startsWith('https://') && nextUrl.protocol !== 'https:') {
+    return {
+      ok: false,
+      scopeExpansion: true,
+      diagnostics: [
+        {
+          code: 'LOCATOR_SUBSTITUTION_REJECTED',
+          path: 'redirect.location',
+          message:
+            'https locator cannot downgrade onto a plaintext http redirect target (HTTPS downgrade is never admissible)',
+          invariant: 'L2-IMPL-DELTA-§2',
+        },
+      ],
+    };
+  }
+  if (!declaredHostAdmits(request.allowedRedirectHosts, nextUrl, request.slice)) {
     return {
       ok: false,
       scopeExpansion: false,
@@ -704,14 +723,20 @@ function followRedirect(
 
 /**
  * A declared delivery-graph host admits a redirect target when it matches the
- * URL host exactly (host[:port]) or when the declaration is a bare hostname —
- * a host-level declaration (C29/ADR-011) admits that hostname's ports; a
- * port-qualified declaration stays exact.
+ * URL host exactly (host[:port]). On the S3 lane (#150, where the closed 1.2
+ * wire grammar admits only BARE public hostnames) a declaration is
+ * host-level and admits that hostname's ports (C29/ADR-011); the S1 lane
+ * keeps its exact host[:port] matching (its declarations may be
+ * port-qualified, and that precision is part of the reviewed S1 contract).
  */
 export function declaredHostAdmits(
   declared: readonly string[],
   target: { readonly host: string; readonly hostname: string },
+  slice: 'S1' | 'S3',
 ): boolean {
+  if (slice === 'S1') {
+    return declared.includes(target.host);
+  }
   return declared.some(
     (entry) => entry === target.host || (!entry.includes(':') && entry === target.hostname),
   );

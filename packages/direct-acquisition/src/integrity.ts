@@ -161,6 +161,8 @@ export interface TargetValidationInput {
   readonly originUri?: string;
   /** The declared delivery graph's admissible hosts (user-selected URI host included). */
   readonly declaredRedirectHosts?: readonly string[];
+  /** Delivery-graph slice: S3 declarations are host-level (bare hostnames). */
+  readonly slice?: 'S1' | 'S3';
 }
 
 /**
@@ -221,9 +223,21 @@ export function validateTarget(input: TargetValidationInput): ValidationLayerOut
         `the serving URI '${input.servedUri}' is outside the http(s) declared delivery graph`,
       );
     }
-    const admitted = input.declaredRedirectHosts.some(
-      (entry) => entry === served.host || (!entry.includes(':') && entry === served.hostname),
-    );
+    const originProtocol = /^https:\/\//u.test(input.originUri) ? 'https:' : 'http:';
+    if (originProtocol === 'https:' && served.protocol !== 'https:') {
+      return failed(
+        'target',
+        'TARGET_PROVENANCE_INVALID',
+        `the serving URI '${input.servedUri}' downgrades the confirmed https delivery graph onto plaintext http`,
+      );
+    }
+    const slice = input.slice ?? 'S1';
+    const admitted =
+      slice === 'S1'
+        ? input.declaredRedirectHosts.includes(served.host)
+        : input.declaredRedirectHosts.some(
+            (entry) => entry === served.host || (!entry.includes(':') && entry === served.hostname),
+          );
     if (!admitted) {
       return failed(
         'target',

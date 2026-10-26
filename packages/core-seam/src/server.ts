@@ -178,6 +178,8 @@ export interface S3MediaProfilePort {
   supportedProfile(profileId: string): boolean;
   /** The profile's container extension ('mp4'|'m4a'|'mp3'|'webm') or undefined. */
   profileContainerOf(profileId: string): string | undefined;
+  /** The profile's structural probe semantics revision (replay pin). */
+  profileProbeRevisionOf(profileId: string): number | undefined;
   /** SHA-256 over the canonical registry content (challenge/confirm pinning). */
   registryDigest(): string;
 }
@@ -453,7 +455,10 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       consumed: boolean;
     }
   >();
-  const s3ChallengeResponses = new Map<CommandRequestId, SeamResponse>();
+  const s3ChallengeResponses = new Map<
+    CommandRequestId,
+    { readonly response: SeamResponse; readonly payloadDigest: string }
+  >();
   const s3ChallengeMint: S3ChallengeMint = {
     mint(input) {
       if (s3Challenges.size > 256) {
@@ -696,9 +701,27 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     connectionId: string,
     profiles: S3MediaProfilePort,
   ): SeamResponse {
-    const priorResponse = s3ChallengeResponses.get(envelope.requestId);
-    if (priorResponse !== undefined) {
-      return priorResponse;
+    const prior = s3ChallengeResponses.get(envelope.requestId);
+    if (prior !== undefined) {
+      // Same idempotent identity with a different tuple is a conflict
+      // (ADR-010 discipline), never a silent re-mint for another candidate.
+      if (prior.payloadDigest !== stableStringify(envelope.payload)) {
+        return rejected(envelope.requestId, [
+          seamDiagnostic(
+            'IDEMPOTENCY_CONFLICT',
+            'requestId',
+            'same challenge request identity was already answered for a different candidate tuple; conflicting duplicate rejects',
+            'L2-§6.8',
+          ),
+        ]);
+      }
+      return prior.response;
+    }
+    if (s3ChallengeResponses.size > 512) {
+      const oldest = s3ChallengeResponses.keys().next();
+      if (oldest.done !== true) {
+        s3ChallengeResponses.delete(oldest.value);
+      }
     }
     if (envelope.peer.surface !== 'CLI') {
       return rejected(envelope.requestId, [
@@ -777,7 +800,10 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         mediaProfilesDigest: profiles.registryDigest(),
       },
     };
-    s3ChallengeResponses.set(envelope.requestId, response);
+    s3ChallengeResponses.set(envelope.requestId, {
+      response,
+      payloadDigest: stableStringify(envelope.payload),
+    });
     return response;
   }
 
@@ -871,9 +897,24 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     const response = acceptedResponse(envelope, outcome.value.revision);
     const record: AcceptedCommand = { envelope, response, payloadDigest: digest };
     if (journal !== undefined) {
+      // #150: the journaled CONFIRM_S3_CANDIDATE carries the Core-computed
+      // candidate record (including the media-registry replay pin) as its
+      // payload — the durable pin's only home; replay reuses it verbatim.
+      const journalEnvelope =
+        envelope.commandType === 'CONFIRM_S3_CANDIDATE'
+          ? {
+              ...envelope,
+              payload: state.lineages.get(envelope.aggregateId)?.s3Candidate ?? envelope.payload,
+            }
+          : envelope;
       let durability;
       try {
-        durability = journal.append({ kind: 'COMMAND', envelope, response, payloadDigest: digest });
+        durability = journal.append({
+          kind: 'COMMAND',
+          envelope: journalEnvelope,
+          response,
+          payloadDigest: digest,
+        });
       } catch (error) {
         poisonForRecovery(
           `accepted command journal threw after authority apply; durability is uncertain: ${String(
@@ -3173,7 +3214,18 @@ function s3CandidateTupleChecks(
 }
 
 /** The frozen secret-free candidate record of one confirmed tuple (L2 §2.4). */
-function s3CandidateRecordOf(payload: S3ConfirmCandidatePayload): S3CandidateRecord {
+function s3CandidateRecordOf(
+  payload: S3ConfirmCandidatePayload,
+  profiles: S3MediaProfilePort,
+): S3CandidateRecord {
+  // Replay pin source: the live wire can never supply these fields (the
+  // closed payload grammar rejects them), so a live confirm computes them
+  // from the current registry; a journal replay reuses the pin journaled at
+  // confirmation time — the durable record is the pin's only home.
+  const pinned = payload as unknown as {
+    readonly mediaProfilesDigest?: string;
+    readonly mediaProfileProbeRevision?: number;
+  };
   return Object.freeze({
     snapshotId: payload.snapshotId,
     memberId: payload.memberId,
@@ -3181,6 +3233,11 @@ function s3CandidateRecordOf(payload: S3ConfirmCandidatePayload): S3CandidateRec
     locatorUri: payload.locatorUri,
     declaredRedirectHosts: payload.declaredRedirectHosts,
     mediaProfileId: payload.mediaProfileId,
+    mediaProfilesDigest: pinned.mediaProfilesDigest ?? profiles.registryDigest(),
+    mediaProfileProbeRevision:
+      pinned.mediaProfileProbeRevision ??
+      profiles.profileProbeRevisionOf(payload.mediaProfileId) ??
+      0,
     ...(payload.byteConstraintSha256 === undefined
       ? {}
       : { byteConstraintSha256: payload.byteConstraintSha256 }),
@@ -3248,7 +3305,7 @@ function applyConfirmS3Candidate(
   // Immutable-truth convergence: an identical re-confirmation converges (the
   // first attested tuple stays recorded); a different tuple under the same
   // lineage key is a conflict, never a silent rewrite (L2 S3 §2.5).
-  const candidate = s3CandidateRecordOf(payload);
+  const candidate = s3CandidateRecordOf(payload, profiles);
   if (lineage.s3Candidate !== undefined) {
     if (stableStringify(lineage.s3Candidate) === stableStringify(candidate)) {
       // Identical tuple under a new request id: converges on the recorded

@@ -24,7 +24,7 @@ export type {
   ValidationLayerOutcome,
 } from './port.ts';
 export { targetBasisOf, targetCertaintyOf } from './port.ts';
-export { DirectHttpAdapter } from './direct-http-adapter.ts';
+export { DirectHttpAdapter, declaredHostAdmits } from './direct-http-adapter.ts';
 export {
   classifyRangeResponse,
   isSha256Hex,

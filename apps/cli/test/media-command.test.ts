@@ -99,6 +99,7 @@ function composeServer(
     s3MediaProfiles: {
       supportedProfile: (id) => id in MEDIA_PROFILES,
       profileContainerOf: (id) => MEDIA_PROFILES[id],
+      profileProbeRevisionOf: () => 1,
       registryDigest: () => 'b'.repeat(64),
     },
     s3SelectedMedia: {
@@ -263,9 +264,6 @@ describe('#150 CLI media user journey', () => {
     // The locator's profile disagrees with the declared profile: the Core
     // challenge admission rejects MEDIA-bound tuples before any gesture.
     const composition = composeServer();
-    const argv = [...MEDIA_ARGV];
-    const parsed = parseArgv(argv);
-    expect(parsed.kind).toBe('media');
     const result = await runAdapter(
       parseArgv([...MEDIA_ARGV.slice(0, MEDIA_ARGV.length), '--profile', 's3-media-webm-v1']),
       ports(composition, 'confirmed'),
