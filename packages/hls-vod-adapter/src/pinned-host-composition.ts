@@ -87,7 +87,7 @@ export function createPinnedHlsHostPorts(options: PinnedHlsHostOptions): PinnedH
     ) {
       return planRefused();
     }
-    const entries = new Set<SegmentPlanEntry>();
+    const entries = new Map<SegmentPlanEntry, Readonly<{ uri: string; range: Readonly<{ offset: number; length: number }> | undefined }>>();
     const seenPositions = new Set<number>();
     for (const entry of plan.entries) {
       const candidate = parsePublicHlsUriCandidate(entry.locator.locator.uri, 'mpegts-segment');
@@ -95,6 +95,7 @@ export function createPinnedHlsHostPorts(options: PinnedHlsHostOptions): PinnedH
         !Object.isFrozen(entry) ||
         !Object.isFrozen(entry.locator) ||
         !Object.isFrozen(entry.locator.locator) ||
+        !Object.isFrozen(entry.locator.provenance) ||
         candidate === undefined ||
         !permittedSegments.has(candidate.origin) ||
         entry.locator.identity !== plan.binding.logicalTargetId ||
@@ -113,7 +114,8 @@ export function createPinnedHlsHostPorts(options: PinnedHlsHostOptions): PinnedH
       }
       if (
         entry.byterange !== undefined &&
-        (!Number.isSafeInteger(entry.byterange.offset) ||
+        (!Object.isFrozen(entry.byterange) ||
+          !Number.isSafeInteger(entry.byterange.offset) ||
           entry.byterange.offset < 0 ||
           !Number.isSafeInteger(entry.byterange.length) ||
           entry.byterange.length < 1 ||
@@ -122,7 +124,12 @@ export function createPinnedHlsHostPorts(options: PinnedHlsHostOptions): PinnedH
         return planRefused();
       }
       seenPositions.add(entry.position);
-      entries.add(entry);
+      entries.set(entry, Object.freeze({
+        uri: entry.locator.locator.uri,
+        range: entry.byterange === undefined
+          ? undefined
+          : Object.freeze({ offset: entry.byterange.offset, length: entry.byterange.length }),
+      }));
     }
 
     return Object.freeze({
@@ -132,10 +139,30 @@ export function createPinnedHlsHostPorts(options: PinnedHlsHostOptions): PinnedH
         // Referential identity is intentional: no reconstructed request with
         // copied identity/URI may switch the authorized segment or byte range.
         // Freeze is rechecked to prevent runtime tampering via JS callers.
-        if (!entries.has(entry) || !Object.isFrozen(entry)) {
+        const bound = entries.get(entry);
+        if (
+          bound === undefined ||
+          !Object.isFrozen(entry) ||
+          !Object.isFrozen(entry.locator) ||
+          !Object.isFrozen(entry.locator.locator) ||
+          !Object.isFrozen(entry.locator.provenance) ||
+          entry.locator.locator.uri !== bound.uri ||
+          (bound.range === undefined) !== (entry.byterange === undefined) ||
+          (bound.range !== undefined &&
+            (entry.byterange === undefined ||
+              !Object.isFrozen(entry.byterange) ||
+              entry.byterange.offset !== bound.range.offset ||
+              entry.byterange.length !== bound.range.length))
+        ) {
           return { ok: false as const, failure: 'FAILED' as const };
         }
-        return transport.fetch(entry);
+        // Forward a private immutable snapshot, not a JS caller's mutable
+        // view, so the HTTP Range can never drift after Core plan admission.
+        const pinnedEntry = Object.freeze({
+          ...entry,
+          byterange: bound.range,
+        });
+        return transport.fetch(pinnedEntry);
       },
     });
   }
