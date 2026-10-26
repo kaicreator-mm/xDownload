@@ -29,6 +29,8 @@ export type BrokerBoundaryCode =
   | 'CYCLIC_STRUCTURE'
   | 'S2_LANE_UNAVAILABLE'
   | 'S2_LANE_REJECTED'
+  | 'S5_LANE_UNAVAILABLE'
+  | 'S5_LANE_REJECTED'
   | 'CORE_UNREACHABLE';
 
 /** Local codes plus the canonical diagnostic codes reused verbatim. */

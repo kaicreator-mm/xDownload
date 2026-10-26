@@ -37,6 +37,7 @@ import {
   reopenCoreRuntime,
   type S1DriveHealthEntry,
 } from '@xdownload/core-runtime';
+import { createS5CollectionDriver } from '@xdownload/browser-collection-workflow';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import path from 'node:path';
@@ -242,6 +243,11 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
         `${JSON.stringify({ document: 'xdownload.core-host.s1-drive-health', ...entry })}\n`,
       );
     },
+    // #151: the installed S5 current-page collection driver (real per-member
+    // acquisition through the trusted collection flow, supervised/reconciled
+    // by the runtime like S1/S3/S4; injected here because the driver lives
+    // in browser-collection-workflow, which depends on core-runtime).
+    s5Collection: createS5CollectionDriver(),
   };
   // The CLI's explicit --pipe-name can only connect when this SAME installed
   // Core hosts the matching OS-verified listener. Enforce platform before

@@ -114,6 +114,9 @@ export const OS_VERIFIED_PEER_COMMANDS: readonly string[] = [
   'PREVIEW_S4_HLS_VOD',
   'CONFIRM_S4_SELECTION',
   'EXECUTE_S4_SELECTED_HLS_VOD',
+  'PREPARE_S5_PAGE_GROUP',
+  'CONFIRM_S5_PAGE_GROUP',
+  'EXECUTE_S5_COLLECTION',
 ];
 
 /** True when a command type may only be dispatched for an OS-verified peer. */

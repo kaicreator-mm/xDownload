@@ -39,6 +39,13 @@ export interface NativeHostSessionOptions {
    * unchanged.
    */
   readonly s2Lane?: S2LaneHandler;
+  /**
+   * #151/#152: the installed S5 current-page group lane (browser batch
+   * prepare/confirm/execute/status over the OS-verified Core pipe). Absent →
+   * every S5 command fails closed with a typed rejection; the broker-only
+   * behavior of existing deployments is unchanged.
+   */
+  readonly s5Lane?: S5LaneHandler;
 }
 
 export type BrokerCommand =
@@ -73,7 +80,27 @@ export type BrokerCommand =
       readonly seq: number;
       readonly data: string;
     }
-  | { readonly kind: 'S2_ACQUIRE_END'; readonly requestId: string };
+  | { readonly kind: 'S2_ACQUIRE_END'; readonly requestId: string }
+  | {
+      readonly kind: 'S5_GROUP_PREPARE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_CONFIRM';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_EXECUTE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_STATUS';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    };
 
 /**
  * Structurally decoded `S2_ACQUIRE` command (closed top-level shape only —
@@ -89,6 +116,38 @@ export interface S2AcquireCommandShape {
 /** Async installed-S2 lane handler (#95). See `s2-installed-lane.ts`. */
 export interface S2LaneHandler {
   handle(command: S2AcquireCommandShape): Promise<BrokerResponse>;
+}
+
+/**
+ * Structurally decoded S5 command (closed top-level shape only — semantic
+ * decode, confirmation challenge handling and Core submission live in the
+ * injected installed-lane implementation, never in the broker session).
+ */
+export type S5LaneCommandShape =
+  | {
+      readonly kind: 'S5_GROUP_PREPARE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_CONFIRM';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_EXECUTE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_STATUS';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    };
+
+/** Async installed-S5 lane handler (#151). See `s5-installed-lane.ts`. */
+export interface S5LaneHandler {
+  handle(command: S5LaneCommandShape): Promise<BrokerResponse>;
 }
 
 /**
@@ -154,6 +213,21 @@ export type BrokerResponse =
       readonly kind: 'S2_CHUNK_ACK';
       readonly requestId: string;
       readonly seq: number;
+    }
+  | {
+      /** #151 installed S5 lane: truthful Core phase facts (verbatim projection). */
+      readonly kind: 'S5_RESULT';
+      readonly requestId: string;
+      readonly phase: 'PREPARED' | 'CONFIRMED' | 'TERMINAL' | 'RUNNING' | 'STATUS';
+      readonly contractId: string;
+      readonly facts: Record<string, unknown>;
+    }
+  | {
+      /** #151 installed S5 lane: typed stage-labelled rejection (fail closed). */
+      readonly kind: 'S5_REJECTED';
+      readonly requestId: string;
+      readonly stage: string;
+      readonly reasons: readonly S2LaneDiagnostic[];
     };
 
 /**
@@ -178,6 +252,10 @@ const COMMAND_KEYS_BY_KIND: Readonly<Record<string, readonly string[]>> = {
   S2_ACQUIRE: ['kind', 'requestId', 's2'],
   S2_ACQUIRE_CHUNK: ['kind', 'requestId', 'seq', 'data'],
   S2_ACQUIRE_END: ['kind', 'requestId'],
+  S5_GROUP_PREPARE: ['kind', 'requestId', 's5'],
+  S5_GROUP_CONFIRM: ['kind', 'requestId', 's5'],
+  S5_GROUP_EXECUTE: ['kind', 'requestId', 's5'],
+  S5_GROUP_STATUS: ['kind', 'requestId', 's5'],
 };
 
 // #95 R1/F04: bytes cross as bounded S2_ACQUIRE_CHUNK frames, never inline;
@@ -257,6 +335,30 @@ export function decodeBrokerCommand(payload: unknown): BrokerResult<BrokerComman
       ttlMs: record['ttlMs'],
       issueDecisionToken: record['issueDecisionToken'],
     });
+  }
+  if (
+    kind === 'S5_GROUP_PREPARE' ||
+    kind === 'S5_GROUP_CONFIRM' ||
+    kind === 'S5_GROUP_EXECUTE' ||
+    kind === 'S5_GROUP_STATUS'
+  ) {
+    // Semantic decode, challenge handling and Core submission live in the
+    // injected lane; the session only enforces the closed payload shape.
+    const s5Payload = record['s5'];
+    if (typeof s5Payload !== 'object' || s5Payload === null || Array.isArray(s5Payload)) {
+      return brokerFail([
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'command.s5',
+          'the S5 payload must be a closed object',
+        ),
+      ]);
+    }
+    return brokerOk({
+      kind,
+      requestId,
+      payload: s5Payload as Record<string, unknown>,
+    } as BrokerCommand);
   }
   if (kind === 'S2_ACQUIRE') {
     const s2Payload = record['s2'];
@@ -396,6 +498,33 @@ export function establishNativeHostSession(
       const command = decodeBrokerCommand(payload);
       if (!command.ok) {
         return brokerFail(command.diagnostics);
+      }
+      if (
+        command.value.kind === 'S5_GROUP_PREPARE' ||
+        command.value.kind === 'S5_GROUP_CONFIRM' ||
+        command.value.kind === 'S5_GROUP_EXECUTE' ||
+        command.value.kind === 'S5_GROUP_STATUS'
+      ) {
+        if (options.s5Lane === undefined) {
+          return brokerOk({
+            kind: 'REJECTED',
+            requestId: command.value.requestId,
+            reasons: [
+              brokerDiagnostic(
+                'S5_LANE_UNAVAILABLE',
+                'command.kind',
+                'this native host was not configured with the installed S5 lane; fail closed',
+              ),
+            ],
+          } as BrokerResponse);
+        }
+        return options.s5Lane
+          .handle({
+            kind: command.value.kind,
+            requestId: command.value.requestId,
+            payload: command.value.payload,
+          })
+          .then((response) => brokerOk(response));
       }
       if (command.value.kind === 'S2_ACQUIRE') {
         if (options.s2Lane === undefined) {
@@ -597,6 +726,10 @@ function dispatchCommand(
     | { readonly kind: 'S2_ACQUIRE' }
     | { readonly kind: 'S2_ACQUIRE_CHUNK' }
     | { readonly kind: 'S2_ACQUIRE_END' }
+    | { readonly kind: 'S5_GROUP_PREPARE' }
+    | { readonly kind: 'S5_GROUP_CONFIRM' }
+    | { readonly kind: 'S5_GROUP_EXECUTE' }
+    | { readonly kind: 'S5_GROUP_STATUS' }
   >,
   broker: AuthBroker,
 ): BrokerResult<BrokerResponse> {

@@ -27,7 +27,10 @@ import {
   assertContractTransition,
   createDomainGateway,
   canServeAsIndependentValidationOracle,
+  coverageTargetFor,
+  decodeAcquisitionContract,
   decodeEvidenceRecord,
+  decodeSelectionSnapshot,
   makeMemberId,
   makeSnapshotId,
   type AcquisitionContract,
@@ -63,7 +66,7 @@ import {
   type SeamResponse,
 } from './envelope.ts';
 import type { CommandRequestId } from './ids.ts';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   S4_PUBLIC_MEDIA_PROFILE_ID,
   S4_SEAM12_COMMAND_TYPES,
@@ -82,6 +85,16 @@ import {
   type S3Seam12CommandType,
 } from './s3-seam12-payload.ts';
 import {
+  S5_SEAM12_COMMAND_TYPES,
+  s5GroupTupleDigest,
+  s5SelectionTupleDigest,
+  type S5ConfirmBeginPayload,
+  type S5ConfirmCommitPayload,
+  type S5ExecutePayload,
+  type S5PreparePayload,
+  type S5Seam12CommandType,
+} from './s5-seam12-payload.ts';
+import {
   assertPeerTransportAuthorization,
   type VerifiedPeerSessionPort,
 } from './verified-session.ts';
@@ -99,6 +112,10 @@ import {
   type S4ExecutionIntent,
   type S4PreviewRecord,
   type S4RenditionFact,
+  type S5ConfirmedGroupRecord,
+  type S5ExecutionIntent,
+  type S5MemberOutcomeRecord,
+  type S5PreparedGroupRecord,
   type SeamAuthorityState,
   type SeamJournal,
   type TargetEvidenceReceipt,
@@ -205,6 +222,23 @@ export interface CoreSeamServerOptions {
    * before (legacy compositions).
    */
   readonly s4SelectedHls?: S4SelectedHlsBeginner;
+  /**
+   * #151: clock/TTL knobs of the S5 prepared groups and Core-issued one-time
+   * selection challenges. Test compositions inject a deterministic clock;
+   * default is wall time with a 120s single-use lifetime.
+   */
+  readonly s5Challenge?: { readonly ttlMs?: number; readonly now?: () => number };
+  /**
+   * #151: post-commit driver for one registered S5 current-page collection
+   * execution. EXECUTE_S5_COLLECTION only registers one durable execution
+   * intent (journaled with the command); the runtime begins the real
+   * bounded per-member acquisition strictly AFTER the accepted-command
+   * journal commit through this port and completes the lineage terminal
+   * through `recordExecutedTerminal`. Presence of this port INSTALLS the S5
+   * 1.2 command handlers behind the OS-verified session gate; absence keeps
+   * every S5 command failing closed exactly as before (legacy compositions).
+   */
+  readonly s5PageGroup?: S5PageGroupBeginner;
 }
 
 /**
@@ -275,6 +309,46 @@ export interface PendingS4Preview {
   readonly aggregateId: string;
   readonly contract: AcquisitionContract;
   readonly preview: S4PreviewRecord;
+}
+
+/**
+ * #151 post-commit driver for one registered S5 current-page collection
+ * execution (journal-before-effect): performs the real bounded per-member
+ * acquisition through the trusted collection flow and completes the lineage
+ * terminal through `recordExecutedTerminal` with truthful per-member
+ * outcomes. Fire-and-forget: a thrown/rejected drive leaves the intent
+ * registered so a later reconcile can re-drive it.
+ */
+export interface S5ExecutionIntentInput {
+  readonly aggregateId: string;
+  /** The journaled EXECUTE command's idempotent identity. */
+  readonly requestId: string;
+  /** The Core-constructed durably confirmed group record (contract+snapshot). */
+  readonly confirmed: S5ConfirmedGroupRecord;
+  /** The Core-frozen observed member tuple this execution delivers from. */
+  readonly prepared: S5PreparedGroupRecord;
+}
+
+export interface S5PageGroupBeginner {
+  begin(input: S5ExecutionIntentInput): void;
+}
+
+/** #151: an S5 collection execution intent joined with its frozen truth. */
+export type PendingS5Execution = S5ExecutionIntent;
+
+/**
+ * #151 live-only (never journal-replay) S5 admission context: the OS-verified
+ * session facts of the connection the frame arrived on plus the Core-issued
+ * challenge registry. Authority appliers receive it only on the live path;
+ * journal replay trusts the already-gated durable truth.
+ */
+export interface S5LiveAdmissionContext {
+  readonly commandType: S5Seam12CommandType;
+  readonly connectionId: string;
+  readonly verifiedPeer: NonNullable<ReturnType<VerifiedPeerSessionPort['verifiedSessionFor']>>;
+  readonly challenges: S3ChallengeMint;
+  readonly ttlMs: number;
+  readonly now: () => number;
 }
 
 /** #153: an S4 selected-HLS execution intent joined with its contract. */
@@ -481,6 +555,24 @@ export interface CoreSeamServer {
    */
   pendingS4Executions(): readonly PendingS4Execution[];
   /**
+   * #151 Core-internal (never a wire command): registered S5 collection
+   * execution intents awaiting drive/completion (identical discipline to
+   * S1/S3/S4). The runtime reconciles these against durable truth after
+   * composition and on restart.
+   */
+  pendingS5Executions(): readonly PendingS5Execution[];
+  /**
+   * #151 Core-internal (never a wire command): record the Core-derived
+   * per-member S5 batch outcomes for one executing lineage. Verbatim truth
+   * from the collection flow; presentation only — the aggregate terminal
+   * stays owned by `recordExecutedTerminal`. Not journaled: restart
+   * reconcile re-derives the identical outcomes from durable truth.
+   */
+  recordS5MemberOutcomes(
+    aggregateId: string,
+    members: readonly S5MemberOutcomeRecord[],
+  ): SeamResult<void>;
+  /**
    * #153 trusted Core-runtime fact path: publish the Core-observed preview
    * result (AVAILABLE variants or typed FAILED refusal) for one durably
    * admitted PENDING preview record. Journaled for restart replay; identical
@@ -658,6 +750,13 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   };
   const s3ChallengeMint = makeChallengeMint(s3Now);
   const s4ChallengeMint = makeChallengeMint(s4Now);
+  const S5_TTL_MS = options.s5Challenge?.ttlMs ?? 120_000;
+  const s5Now = options.s5Challenge?.now ?? (() => Date.now());
+  const s5ChallengeMint = makeChallengeMint(s5Now);
+  const s5BeginResponses = new Map<
+    string,
+    { readonly payloadDigest: string; readonly response: SeamResponse }
+  >();
   let recoveryFenceReason: string | undefined;
 
   function recoveryFenceMessage(): string {
@@ -705,6 +804,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
                     options.s3SelectedMedia,
                     options.s4Preview,
                     options.s4SelectedHls,
+                    options.s5PageGroup,
                   );
       if (!restored.ok) {
         const subject =
@@ -794,6 +894,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       ) ||
       S3_SEAM12_COMMAND_TYPES.includes(
         envelope.commandType as (typeof S3_SEAM12_COMMAND_TYPES)[number],
+      ) ||
+      S5_SEAM12_COMMAND_TYPES.includes(
+        envelope.commandType as (typeof S5_SEAM12_COMMAND_TYPES)[number],
       )
     ) {
       // This is a live, per-frame lookup in the native transport's private
@@ -844,12 +947,44 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         }
         return handleCommand(envelope, undefined, s4Live);
       }
+      // #151: behind the OS-verified same-user/same-logon-session gate, the
+      // installed S5 current-page collection handlers run when this
+      // composition provides the post-commit execution driver; CONFIRM
+      // BEGIN is the non-journaled Core-minted challenge half (the S3/S4
+      // discipline). Without the driver every S5 command keeps failing
+      // closed exactly as before (legacy compositions).
+      const s5Command = S5_SEAM12_COMMAND_TYPES.includes(
+        envelope.commandType as (typeof S5_SEAM12_COMMAND_TYPES)[number],
+      );
+      if (s5Command && options.s5PageGroup !== undefined && verifiedPeer !== undefined) {
+        const s5Live = {
+          commandType: envelope.commandType as S5LiveAdmissionContext['commandType'],
+          connectionId: connectionId as string,
+          verifiedPeer,
+          challenges: s5ChallengeMint,
+          ttlMs: S5_TTL_MS,
+          now: s5Now,
+        };
+        if (envelope.commandType === 'CONFIRM_S5_PAGE_GROUP') {
+          const phase = (envelope.payload as { readonly phase?: unknown }).phase;
+          if (phase === 'BEGIN') {
+            return handleS5ConfirmBegin(envelope, connectionId as string, S5_TTL_MS, s5Now);
+          }
+          return handleCommand(envelope, undefined, undefined, s5Live);
+        }
+        return handleCommand(envelope, undefined, undefined, s5Live);
+      }
       // #150: behind the OS-verified same-user/same-logon-session gate, the
       // installed S3 selected-media handlers run when this composition
       // provides the Core-owned supported-media profile registry; without it
       // every S3 command keeps failing closed exactly as before (legacy
       // compositions), before idempotency, revision, persistence or network.
-      if (!s4Command && options.s3MediaProfiles !== undefined && verifiedPeer !== undefined) {
+      if (
+        !s4Command &&
+        !s5Command &&
+        options.s3MediaProfiles !== undefined &&
+        verifiedPeer !== undefined
+      ) {
         const command = envelope.commandType as S3Seam12CommandType;
         if (command === 'REQUEST_S3_SELECTION_CHALLENGE') {
           return handleS3ChallengeRequest(
@@ -871,7 +1006,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         seamDiagnostic(
           'TRANSPORT_UNAUTHORIZED',
           'commandType',
-          'S3/S4 verified session admitted but no installed private Core command handler exists',
+          'S3/S4/S5 verified session admitted but no installed private Core command handler exists',
         ),
       ]);
     }
@@ -1140,6 +1275,165 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     return response;
   }
 
+  /**
+   * #151 CONFIRM_S5_PAGE_GROUP phase BEGIN: mint one Core-issued single-use
+   * challenge bound to the live OS-verified connection, the current aggregate
+   * revision, the AVAILABLE frozen page-group record and the canonical
+   * displayed selection tuple digest (the user-chosen subset joined to the
+   * frozen members). No authority transition, no journal write — the durable
+   * confirmed group exists only with the later COMMIT that consumes this
+   * challenge atomically. The raw value travels ONLY on this direct
+   * response; a duplicate BEGIN with the same idempotent identity replays
+   * the secret-free prior acceptance without re-emitting the token.
+   */
+  function handleS5ConfirmBegin(
+    envelope: CommandEnvelope,
+    connectionId: string,
+    ttlMs: number,
+    now: () => number,
+  ): SeamResponse {
+    const prior = s5BeginResponses.get(envelope.requestId);
+    if (prior !== undefined) {
+      if (prior.payloadDigest !== stableStringify(envelope.payload)) {
+        return rejected(envelope.requestId, [
+          seamDiagnostic(
+            'IDEMPOTENCY_CONFLICT',
+            'requestId',
+            'same S5 BEGIN identity was already answered for a different tuple; conflicting duplicate rejects',
+            'L2-§6.8',
+          ),
+        ]);
+      }
+      return { ...prior.response, s5PrivateChallenge: undefined };
+    }
+    if (s5BeginResponses.size > 512) {
+      const oldest = s5BeginResponses.keys().next();
+      if (oldest.done !== true) {
+        s5BeginResponses.delete(oldest.value);
+      }
+    }
+    if (envelope.peer.surface !== 'BROWSER_EXTENSION') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S5 selection challenges serve the installed browser-extension surface only',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    const aggregate = state.aggregates.get(envelope.aggregateId);
+    const lineage = state.lineages.get(envelope.aggregateId);
+    if (aggregate === undefined || lineage === undefined) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+      ]);
+    }
+    if (lineage.status !== 'ACTIVE') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'LATE_COMMAND',
+          'lineage.status',
+          `lineage is ${lineage.status}; late S5 selection challenge is rejected`,
+          'L2-§11',
+        ),
+      ]);
+    }
+    const payloadBytes = payloadByteLength(envelope.payload);
+    if (payloadBytes > SEAM_MESSAGE_LIMITS.maxPayloadBytes) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'PAYLOAD_TOO_LARGE',
+          'payload',
+          `serialized payload of ${String(payloadBytes)} bytes exceeds declared bound ${String(SEAM_MESSAGE_LIMITS.maxPayloadBytes)}`,
+        ),
+      ]);
+    }
+    const payload = envelope.payload as S5ConfirmBeginPayload;
+    const prepared = lineage.s5PreparedGroup;
+    if (
+      prepared === undefined ||
+      prepared.status !== 'AVAILABLE' ||
+      prepared.prepareId !== payload.prepareId ||
+      prepared.snapshotId !== payload.snapshotId
+    ) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.prepareId',
+          'no AVAILABLE frozen S5 page-group record matches this prepare/snapshot; confirmation fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    const selection = s5SelectionOf(prepared, payload.selectedMemberIds);
+    if (!selection.ok) {
+      return rejected(envelope.requestId, selection.diagnostics);
+    }
+    const revision = aggregate.revision;
+    if (envelope.expectedRevision !== revision) {
+      return rejected(
+        envelope.requestId,
+        [
+          seamDiagnostic(
+            'REVISION_MISMATCH',
+            'expectedRevision',
+            `S5 selection challenge requires the current aggregate revision ${String(revision)}`,
+            'L2-§10',
+          ),
+        ],
+        revision,
+      );
+    }
+    const digest = s5SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: payload.snapshotId,
+      prepareId: payload.prepareId,
+      selectedMemberIds: payload.selectedMemberIds,
+    });
+    if (payload.displayedTupleDigest !== digest) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.displayedTupleDigest',
+          'the browser-displayed tuple digest does not match the frozen Core facts for this selection; BEGIN fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    // A fresh BEGIN (fresh requestId) revokes the previous pending challenge
+    // of this connection+aggregate — only the newest confirmation intent
+    // stays answerable (the S4 F3 discipline).
+    s5ChallengeMint.revokePending(connectionId, envelope.aggregateId);
+    const expiresAtMs = now() + ttlMs;
+    const minted = s5ChallengeMint.mint({
+      connectionId,
+      aggregateId: envelope.aggregateId,
+      tupleDigest: digest,
+      revision,
+      ttlMs,
+      expiresAtIso: new Date(expiresAtMs).toISOString(),
+    });
+    const response: SeamResponse = {
+      schemaIdentity: currentSeamSchemaIdentity(),
+      kind: 'response',
+      inReplyTo: envelope.requestId,
+      outcome: 'ACCEPTED',
+      s5PrivateChallenge: {
+        prepareId: payload.prepareId,
+        confirmedGroupId: `s5group:${envelope.aggregateId}:${payload.snapshotId}`,
+        value: minted.challenge,
+        expiresAt: new Date(expiresAtMs).toISOString(),
+      },
+      currentRevision: revision,
+    };
+    s5BeginResponses.set(envelope.requestId, {
+      response,
+      payloadDigest: stableStringify(envelope.payload),
+    });
+    return response;
+  }
+
   function handleQuery(envelope: QueryEnvelope): SeamResponse {
     if (envelope.queryType !== 'READ_PROJECTION') {
       return rejected(envelope.requestId, [
@@ -1165,6 +1459,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     envelope: CommandEnvelope,
     s3Live?: S3LiveAdmissionContext,
     s4Live?: S4LiveAdmissionContext,
+    s5Live?: S5LiveAdmissionContext,
   ): SeamResponse {
     // Declared payload byte bound before any parse into authority state.
     const payloadBytes = payloadByteLength(envelope.payload);
@@ -1228,8 +1523,10 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       options.s3SelectedMedia,
       options.s4Preview,
       options.s4SelectedHls,
+      options.s5PageGroup,
       s3Live,
       s4Live,
+      s5Live,
     );
     if (!outcome.ok) {
       return rejected(envelope.requestId, outcome.diagnostics, currentRevision);
@@ -1255,6 +1552,19 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
           payload:
             state.lineages.get(envelope.aggregateId)?.s4ConfirmedSelection ?? envelope.payload,
         };
+      } else if (envelope.commandType === 'CONFIRM_S5_PAGE_GROUP') {
+        // #151: the journaled S5 COMMIT carries ONLY the secret-free
+        // confirmed group record — the raw private challenge never reaches
+        // durable state. A missing record here means authority state is out
+        // of sync with the applied command: fail closed (poison), never
+        // journal the raw challenge-bearing payload.
+        const s5Confirmed = state.lineages.get(envelope.aggregateId)?.s5ConfirmedGroup;
+        if (s5Confirmed === undefined) {
+          poisonForRecovery(
+            `accepted S5 confirm has no durable confirmed record; refusing to journal the raw payload`,
+          );
+        }
+        journalEnvelope = { ...envelope, payload: s5Confirmed };
       }
       let durability;
       try {
@@ -1301,6 +1611,28 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       const commit = envelope.payload as S4ConfirmCommitPayload;
       if (commit.confirmationChallenge !== undefined) {
         s4Live.challenges.consume(commit.confirmationChallenge);
+      }
+    }
+    // #151: the S5 private challenge is consumed single-use ATOMICALLY with
+    // the confirmed-group journal commit (the same S3/S4 discipline).
+    if (envelope.commandType === 'CONFIRM_S5_PAGE_GROUP' && s5Live !== undefined) {
+      const commit = envelope.payload as S5ConfirmCommitPayload;
+      if (commit.confirmationChallenge !== undefined) {
+        s5Live.challenges.consume(commit.confirmationChallenge);
+      }
+    }
+    // #151: an accepted S5 collection execution only registered its intent
+    // (apply); the real bounded per-member acquisition starts strictly AFTER
+    // the accepted-command journal commit.
+    if (envelope.commandType === 'EXECUTE_S5_COLLECTION' && options.s5PageGroup) {
+      const intent = state.s5ExecutionIntents.get(envelope.aggregateId);
+      if (intent !== undefined) {
+        options.s5PageGroup.begin({
+          aggregateId: envelope.aggregateId,
+          requestId: envelope.requestId,
+          confirmed: intent.confirmed,
+          prepared: intent.prepared,
+        });
       }
     }
     // #153: the durably admitted preview intent drives its bounded master
@@ -1555,6 +1887,19 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         }
       }
       return pending;
+    },
+    pendingS5Executions() {
+      return [...state.s5ExecutionIntents.values()] as PendingS5Execution[];
+    },
+    recordS5MemberOutcomes(aggregateId: string, members: readonly S5MemberOutcomeRecord[]) {
+      const lineage = state.lineages.get(aggregateId);
+      if (lineage === undefined) {
+        return seamFail([
+          seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+        ]);
+      }
+      lineage.s5MemberOutcomes = Object.freeze([...members]);
+      return seamOk(undefined);
     },
     pendingS4Executions() {
       if (recoveryFenceReason !== undefined) {
@@ -2352,8 +2697,10 @@ function applyCommand(
   s3Beginner: S3SelectedMediaBeginner | undefined,
   s4PreviewDriver: S4PreviewBeginner | undefined,
   s4Beginner: S4SelectedHlsBeginner | undefined,
+  s5Beginner: S5PageGroupBeginner | undefined,
   s3Live?: S3LiveAdmissionContext,
   s4Live?: S4LiveAdmissionContext,
+  s5Live?: S5LiveAdmissionContext,
 ): SeamResult<AppliedCommand> {
   switch (envelope.commandType) {
     case 'SUBMIT_CONTRACT':
@@ -2380,6 +2727,12 @@ function applyCommand(
       return applyConfirmS4Selection(state, envelope, s4Beginner, s4Live);
     case 'EXECUTE_S4_SELECTED_HLS_VOD':
       return applyExecuteS4SelectedHls(state, envelope, s4Beginner, s4Live);
+    case 'PREPARE_S5_PAGE_GROUP':
+      return applyPrepareS5PageGroup(state, envelope, s5Beginner, s5Live);
+    case 'CONFIRM_S5_PAGE_GROUP':
+      return applyConfirmS5PageGroup(state, envelope, s5Beginner, s5Live);
+    case 'EXECUTE_S5_COLLECTION':
+      return applyExecuteS5Collection(state, envelope, s5Beginner, s5Live);
     default:
       // This internal authority application also runs during journal reopen.
       // No unlisted command may be silently promoted through old journal
@@ -2389,7 +2742,7 @@ function applyCommand(
         seamDiagnostic(
           'TRANSPORT_UNAUTHORIZED',
           'commandType',
-          'S3/S4 1.2 execution has no installed verified Core handler; fail closed',
+          'S3/S4/S5 1.2 execution has no installed verified Core handler; fail closed',
         ),
       ]);
   }
@@ -4443,6 +4796,489 @@ function applyExecuteS4SelectedHls(
   return seamOk({ revision });
 }
 
+/**
+ * #151 validate a user-chosen member subset against the frozen Core record:
+ * nonempty, unique, and every id an element of the frozen member set — the
+ * browser can never introduce, duplicate or drop-then-replace membership.
+ */
+function s5SelectionOf(
+  prepared: S5PreparedGroupRecord,
+  selectedMemberIds: readonly string[],
+): SeamResult<{ readonly memberIds: readonly string[]; readonly hrefs: readonly string[] }> {
+  if (
+    selectedMemberIds.length === 0 ||
+    selectedMemberIds.length > prepared.members.length ||
+    new Set(selectedMemberIds).size !== selectedMemberIds.length
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.selectedMemberIds',
+        'the S5 selection must be a nonempty unique subset of the frozen members',
+        'L2-#151-§confirm',
+      ),
+    ]);
+  }
+  const frozen = new Map(prepared.members.map((member) => [member.memberId, member.href]));
+  const hrefs: string[] = [];
+  for (const memberId of selectedMemberIds) {
+    const href = frozen.get(memberId);
+    if (href === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.selectedMemberIds',
+          'the selection references a member outside the frozen Core page-group; forged or stale membership rejects',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    hrefs.push(href);
+  }
+  return seamOk({ memberIds: [...selectedMemberIds], hrefs: Object.freeze(hrefs) });
+}
+
+/** Deterministic Core-minted S5 member identity for one frozen href. */
+function s5MemberIdOf(aggregateId: string, href: string): string {
+  return `s5m-${createHash('sha256').update(`${aggregateId}\n${href}`).digest('hex').slice(0, 16)}`;
+}
+
+/**
+ * #151 PREPARE_S5_PAGE_GROUP: freeze the observed current-page member tuple
+ * as immutable Core truth (journal-before-effect; no network). Core mints
+ * the member identities; the browser can never construct this record. An
+ * identical re-prepare converges; a different tuple under the same lineage
+ * rejects (a changed observed page requires a successor contract).
+ */
+function applyPrepareS5PageGroup(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s5Beginner: S5PageGroupBeginner | undefined,
+  s5Live: S5LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s5Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S5 collection driver; PREPARE_S5_PAGE_GROUP fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s5Live !== undefined && envelope.peer.surface !== 'BROWSER_EXTENSION') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S5 page-group preparation serves the installed browser-extension surface only',
+        'L2-#151-§prepare',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S5 page-group preparation');
+  }
+  const payload = envelope.payload as S5PreparePayload;
+  const members = payload.members.map((member) => ({
+    memberId: s5MemberIdOf(envelope.aggregateId, member.href),
+    href: member.href,
+    text: member.text,
+  }));
+  const observedTupleDigest = s5GroupTupleDigest({
+    pageOrigin: payload.pageOrigin,
+    provenanceKey: payload.provenanceKey,
+    hrefs: members.map((member) => member.href),
+  });
+  const record: S5PreparedGroupRecord = {
+    prepareId: `s5prepare:${envelope.aggregateId}:${payload.snapshotId}`,
+    snapshotId: payload.snapshotId,
+    pageOrigin: payload.pageOrigin,
+    provenanceKey: payload.provenanceKey,
+    members: Object.freeze(members),
+    observedTupleDigest,
+    status: 'AVAILABLE',
+    preparedAt: new Date(s5Live?.now() ?? Date.now()).toISOString(),
+  };
+  const existing = lineage.s5PreparedGroup;
+  if (existing !== undefined) {
+    if (
+      existing.prepareId === record.prepareId &&
+      existing.observedTupleDigest === record.observedTupleDigest &&
+      stableStringify(existing.members) === stableStringify(record.members)
+    ) {
+      return seamOk({ revision: aggregate.revision });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'payload',
+        'a different S5 frozen page-group is already durably recorded for this lineage; a changed observed page requires a successor contract',
+        'L2-#151-§prepare',
+      ),
+    ]);
+  }
+  lineage.s5PreparedGroup = record;
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #151 CONFIRM_S5_PAGE_GROUP COMMIT: consume the Core-issued single-use
+ * challenge atomically with the journal commit and construct the durable
+ * CONFIRMED contract + BATCH selection snapshot over the user-chosen subset
+ * of the frozen members. Core alone mints these authority objects; the raw
+ * challenge never reaches durable state.
+ */
+function applyConfirmS5PageGroup(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s5Beginner: S5PageGroupBeginner | undefined,
+  s5Live: S5LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s5Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'TRANSPORT_UNAUTHORIZED',
+        'commandType',
+        'this Core composition provides no S5 collection driver; CONFIRM_S5_PAGE_GROUP fails closed',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S5 page-group confirmation');
+  }
+  const raw = envelope.payload as Record<string, unknown>;
+  const isRecordShape = raw['phase'] === undefined;
+  let record: S5ConfirmedGroupRecord;
+  if (isRecordShape) {
+    // Journal replay: the durable secret-free record is the already-gated
+    // truth; revalidate it against the frozen prepare, never the clock.
+    const replay = raw as unknown as S5ConfirmedGroupRecord;
+    const prepared = lineage.s5PreparedGroup;
+    if (
+      prepared === undefined ||
+      replay.prepareId !== prepared.prepareId ||
+      replay.snapshotId !== prepared.snapshotId ||
+      replay.confirmedGroupId !== `s5group:${envelope.aggregateId}:${replay.snapshotId}` ||
+      !replay.selectedMemberIds.every((id) =>
+        prepared.members.some((member) => member.memberId === id),
+      )
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload',
+          'the journaled S5 confirmed-group record does not match the frozen prepare facts; replay fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    const digest = s5SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: replay.snapshotId,
+      prepareId: replay.prepareId,
+      selectedMemberIds: replay.selectedMemberIds,
+    });
+    if (digest !== replay.displayedTupleDigest) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload',
+          'the journaled S5 confirmed-group tuple digest does not re-derive; replay fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    record = replay;
+  } else {
+    // Live COMMIT: verify the Core-issued challenge against this OS-verified
+    // connection, the current revision and the canonical displayed tuple.
+    if (s5Live === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'TRANSPORT_UNAUTHORIZED',
+          'commandType',
+          'S5 page-group confirmation requires the live OS-verified admission context',
+        ),
+      ]);
+    }
+    if (envelope.peer.surface !== 'BROWSER_EXTENSION') {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S5 page-group confirmation serves the installed browser-extension surface only',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    const payload = envelope.payload as S5ConfirmCommitPayload;
+    const prepared = lineage.s5PreparedGroup;
+    if (
+      prepared === undefined ||
+      prepared.status !== 'AVAILABLE' ||
+      prepared.prepareId !== payload.prepareId ||
+      prepared.snapshotId !== payload.snapshotId
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.prepareId',
+          'no AVAILABLE frozen S5 page-group record matches this prepare/snapshot; confirmation fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    const selection = s5SelectionOf(prepared, payload.selectedMemberIds);
+    if (!selection.ok) {
+      return selection;
+    }
+    const digest = s5SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: payload.snapshotId,
+      prepareId: payload.prepareId,
+      selectedMemberIds: payload.selectedMemberIds,
+    });
+    if (
+      payload.displayedTupleDigest !== digest ||
+      !s5Live.challenges.verify({
+        challenge: payload.confirmationChallenge,
+        connectionId: s5Live.connectionId,
+        aggregateId: envelope.aggregateId,
+        tupleDigest: digest,
+        revision: aggregate.revision,
+      })
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.confirmationChallenge',
+          'the Core-issued S5 selection challenge did not verify against this session, revision and displayed tuple; confirmation fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    // Core alone constructs the CONFIRMED contract and the BATCH selection
+    // snapshot over the chosen subset (a browser can never mint these).
+    const draft = aggregate.contract;
+    const nowMs = s5Live.now();
+    const confirmedAt = new Date(nowMs).toISOString();
+    const confirmedContract = decodeAcquisitionContract({
+      ...JSON.parse(stableStringify(draft)),
+      status: 'CONFIRMED',
+      selectionSnapshotRef: payload.snapshotId,
+      confirmedAt,
+    });
+    if (!confirmedContract.ok) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'contract',
+          'the Core-constructed confirmed S5 contract fails canonical decode; confirmation fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    const snapshot = decodeSelectionSnapshot({
+      schemaIdentity: draft.schemaIdentity,
+      snapshotId: payload.snapshotId,
+      contractId: draft.contractId,
+      collectionIdentity: draft.collectionIdentity,
+      requestedScope: draft.requestedScope,
+      continuationScope: draft.continuationScope,
+      coverageTarget: coverageTargetFor(draft.requestedScope, 1),
+      requestedMemberBasis: { kind: 'CONFIRMED_PAGE_SNAPSHOT' },
+      authAccessibleBasis: { kind: 'UNKNOWN' },
+      selectedMemberIds: [...payload.selectedMemberIds],
+      authorizationContextRef: draft.authorizationContextRef,
+      profileContextRef: 'profile/default-001',
+      selectionClaims: [
+        {
+          kind: 'BATCH',
+          confirmationType: 'CONFIRM_SELECTION',
+          memberRefs: [...payload.selectedMemberIds],
+        },
+      ],
+      sourceMarker: { system: 'xdownload-core-seam', version: 'v0.1.0' },
+      createdAt: confirmedAt,
+    });
+    if (!snapshot.ok) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'snapshot',
+          'the Core-constructed S5 selection snapshot fails canonical decode; confirmation fails closed',
+          'L2-#151-§confirm',
+        ),
+      ]);
+    }
+    record = {
+      confirmedGroupId: `s5group:${envelope.aggregateId}:${payload.snapshotId}`,
+      prepareId: payload.prepareId,
+      snapshotId: payload.snapshotId,
+      selectedMemberIds: Object.freeze([...payload.selectedMemberIds]),
+      displayedTupleDigest: digest,
+      contract: confirmedContract.value,
+      snapshot: snapshot.value,
+      confirmedAt,
+      expiresAt: new Date(nowMs + s5Live.ttlMs).toISOString(),
+    };
+  }
+  // Immutable-truth convergence: an identical re-confirmation converges on
+  // the recorded group; a different one is a conflict, never a rewrite.
+  const existing = lineage.s5ConfirmedGroup;
+  if (existing !== undefined) {
+    if (stableStringify(existing) === stableStringify(record)) {
+      return seamOk({ revision: aggregate.revision });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'payload',
+        'a different S5 confirmed group is already durably recorded for this lineage; changed selection requires a successor contract/snapshot',
+        'L2-#151-§confirm',
+      ),
+    ]);
+  }
+  lineage.s5ConfirmedGroup = record;
+  // Bind the Core-constructed confirmed snapshot on the lineage exactly as
+  // the generic CONFIRM_SNAPSHOT command does: the collection coverage
+  // accounting gate requires a confirmed snapshot binding for COLLECTION
+  // contracts (the projection's requested-identity basis).
+  lineage.snapshot = record.snapshot;
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #151 EXECUTE_S5_COLLECTION: register one durable S5 execution intent over
+ * the already confirmed page group (journal-before-effect); the runtime
+ * begins the real bounded per-member acquisition strictly after the journal
+ * commit. A second distinct request can never create another effect,
+ * budget or HTTP request — recovery operates on the prior durable intent.
+ */
+function applyExecuteS5Collection(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s5Beginner: S5PageGroupBeginner | undefined,
+  s5Live: S5LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s5Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S5 collection driver; EXECUTE_S5_COLLECTION fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s5Live !== undefined && envelope.peer.surface !== 'BROWSER_EXTENSION') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S5 collection execution serves the installed browser-extension surface only',
+        'L2-#151-§execute',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S5 collection execution');
+  }
+  const payload = envelope.payload as S5ExecutePayload;
+  const confirmed = lineage.s5ConfirmedGroup;
+  if (
+    confirmed === undefined ||
+    confirmed.confirmedGroupId !== payload.confirmedGroupId ||
+    confirmed.snapshotId !== payload.snapshotId
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.confirmedGroupId',
+        'no durably confirmed S5 page group matches this snapshot; execution requires the confirmed group',
+        'L2-#151-§execute',
+      ),
+    ]);
+  }
+  const prepared = lineage.s5PreparedGroup;
+  if (prepared === undefined || prepared.prepareId !== confirmed.prepareId) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.confirmedGroupId',
+        'the frozen prepare record backing this confirmed group is missing; execution fails closed',
+        'L2-#151-§execute',
+      ),
+    ]);
+  }
+  // Live-only freshness gate (never journal replay: the replayed intent is
+  // already durably gated truth; restart reconcile re-drives it).
+  if (s5Live !== undefined) {
+    const expiresAtMs = Date.parse(confirmed.expiresAt);
+    if (!Number.isFinite(expiresAtMs) || s5Live.now() >= expiresAtMs) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.confirmedGroupId',
+          'the confirmed S5 page group has expired; a fresh prepare and confirmation are required',
+          'L2-#151-§execute',
+        ),
+      ]);
+    }
+  }
+  if (state.s5ExecutionIntents.has(envelope.aggregateId)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'aggregateId',
+        'an S5 collection execution is already registered for this lineage; the registered intent reconciles from durable truth',
+        'L2-#151-§execute',
+      ),
+    ]);
+  }
+  state.s5ExecutionIntents.set(envelope.aggregateId, {
+    aggregateId: envelope.aggregateId,
+    requestId: envelope.requestId,
+    confirmed,
+    prepared,
+  });
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
 const S4_RENDITION_KEY_PATTERN = /^rend-[0-9]+$/u;
 
 /**
@@ -4917,6 +5753,7 @@ function restoreAcceptedCommand(
   s3Beginner: S3SelectedMediaBeginner | undefined,
   s4PreviewDriver: S4PreviewBeginner | undefined,
   s4Beginner: S4SelectedHlsBeginner | undefined,
+  s5Beginner: S5PageGroupBeginner | undefined,
 ): SeamResult<void> {
   const applied = applyCommand(
     state,
@@ -4929,6 +5766,7 @@ function restoreAcceptedCommand(
     s3Beginner,
     s4PreviewDriver,
     s4Beginner,
+    s5Beginner,
   );
   if (!applied.ok) {
     return applied;

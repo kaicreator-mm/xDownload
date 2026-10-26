@@ -108,7 +108,13 @@ export type MemberDelivery =
       readonly provenance: LocatorProvenance;
       /** The only hosts a provenance-bound member-delivery redirect may bind to. */
       readonly declaredRedirectHosts: readonly string[];
-      readonly expectedSha256: string;
+      /**
+       * An independently published digest, when one exists. Absent for a
+       * plain page-observed anchor (#151): the member's own bytes are the
+       * acceptance evidence under the conservative provenance basis (C34) —
+       * never a fabricated digest oracle.
+       */
+      readonly expectedSha256?: string;
       readonly expectedContentTypePrefix?: string;
     }
   | {

@@ -142,6 +142,21 @@ export interface LineageState {
   s4Preview?: S4PreviewRecord;
   /** #153 durably confirmed S4 rendition selection (exactly one per lineage). */
   s4ConfirmedSelection?: S4ConfirmedSelectionRecord;
+  /**
+   * #151 the Core-owned frozen S5 current-page group record (one per
+   * lineage; the PREPARE intent is journaled). Identical re-prepare
+   * converges; a conflicting tuple under the same lineage rejects (a
+   * changed observed page requires a successor contract).
+   */
+  s5PreparedGroup?: S5PreparedGroupRecord;
+  /** #151 durably confirmed S5 page-group selection (exactly one per lineage). */
+  s5ConfirmedGroup?: S5ConfirmedGroupRecord;
+  /**
+   * #151 Core-internal per-member S5 batch outcomes (Core-derived only; set
+   * by the S5 execution driver alongside the lineage terminal, rebuilt by
+   * restart reconcile — never writable by any surface command).
+   */
+  s5MemberOutcomes?: readonly S5MemberOutcomeRecord[];
   /** Original failed-member identity domain (the only legal retry domain, C12). */
   failedMembers: MemberId[];
   /** Members whose explicit retry has been authorized through the seam. */
@@ -263,6 +278,12 @@ export interface SeamAuthorityState {
    * journal replay, awaiting/under runtime drive through the S4 flow.
    */
   readonly s4ExecutionIntents: Map<string, S4ExecutionIntent>;
+  /**
+   * #151 registered S5 current-page collection execution intents (one per
+   * lineage): the durably journaled EXECUTE_S5_COLLECTION commands, rebuilt
+   * from journal replay, awaiting/under runtime drive through the S5 flow.
+   */
+  readonly s5ExecutionIntents: Map<string, S5ExecutionIntent>;
   /** Monotonic counter implementing the single Core control order for cancels. */
   cancelOrderCounter: number;
 }
@@ -281,6 +302,67 @@ export interface S4ExecutionIntent {
   readonly selection: S4ConfirmedSelectionRecord;
 }
 
+/**
+ * #151 the Core-owned frozen S5 current-page group (the journaled
+ * PREPARE_S5_PAGE_GROUP record). The frozen member set is immutable truth:
+ * CONFIRM_S5_PAGE_GROUP may only select a subset of it, and the execution
+ * driver derives every member delivery from it — a browser can never mint
+ * this record, only the OS-verified PREPARE handler can.
+ */
+export interface S5PreparedGroupRecord {
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly pageOrigin: string;
+  readonly provenanceKey: string;
+  /** Core-minted immutable member identities joined to observed anchor facts. */
+  readonly members: readonly {
+    readonly memberId: string;
+    readonly href: string;
+    readonly text: string;
+  }[];
+  readonly observedTupleDigest: string;
+  readonly status: 'AVAILABLE';
+  readonly preparedAt: string;
+}
+
+/**
+ * #151 the Core-constructed confirmed S5 page-group selection (the secret-
+ * free journaled CONFIRM_S5_PAGE_GROUP COMMIT record). Core alone mints the
+ * CONFIRMED contract and the BATCH selection snapshot over the frozen
+ * members; the raw confirmation challenge never reaches durable state.
+ */
+export interface S5ConfirmedGroupRecord {
+  readonly confirmedGroupId: string;
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly selectedMemberIds: readonly string[];
+  readonly displayedTupleDigest: string;
+  readonly contract: AcquisitionContract;
+  readonly snapshot: SelectionSnapshot;
+  readonly confirmedAt: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * #151 Core-internal per-member S5 outcome as recorded by the execution
+ * driver (verbatim truth from the collection flow; presentation only).
+ */
+export interface S5MemberOutcomeRecord {
+  readonly memberId: string;
+  readonly href: string;
+  readonly outcome: 'ACQUIRED' | 'AUTH_DENIED' | 'NOT_RUN';
+  readonly accepted: boolean;
+  readonly detail: string;
+}
+
+/** #151 one registered S5 collection execution intent (rebuilt from journal). */
+export interface S5ExecutionIntent {
+  readonly aggregateId: string;
+  readonly requestId: string;
+  readonly confirmed: S5ConfirmedGroupRecord;
+  readonly prepared: S5PreparedGroupRecord;
+}
+
 export function createSeamAuthorityState(): SeamAuthorityState {
   return {
     aggregates: new Map(),
@@ -288,6 +370,7 @@ export function createSeamAuthorityState(): SeamAuthorityState {
     accepted: new Map(),
     s3ExecutionIntents: new Map(),
     s4ExecutionIntents: new Map(),
+    s5ExecutionIntents: new Map(),
     cancelOrderCounter: 0,
   };
 }

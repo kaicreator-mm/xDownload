@@ -17,6 +17,7 @@ type StubNode = {
   addEventListener(type: string, handler: () => Promise<void> | void): void;
   children: StubNode[];
   handlers: Record<string, () => Promise<void> | void>;
+  querySelectorAll(selector: string): StubNode[];
   setAttribute(name: string, value: string): void;
 };
 
@@ -37,20 +38,51 @@ function makeNode(): StubNode {
     addEventListener(type, handler) {
       this.handlers[type] = handler;
     },
+    querySelectorAll() {
+      return [];
+    },
     setAttribute() {},
   };
 }
 
-function startPopup(options: { total?: number; changed?: boolean; staleMembers?: boolean } = {}) {
-  const ids = ['attachments', 'state', 's5-group', 's5-preview', 's5-prepare', 's5-preview-result'];
-  const nodes = Object.fromEntries(ids.map((id) => [id, makeNode()])) as Record<string, StubNode>;
-  const links = [
-    { href: 'https://publisher.example.org/a.mp4', text: 'A' },
-    { href: 'https://cdn.example.net/b.mp4', text: 'B' },
+const LINKS = [
+  { href: 'https://publisher.example.org/a.mp4', text: 'A' },
+  { href: 'https://cdn.example.net/b.mp4', text: 'B' },
+];
+
+const FROZEN_MEMBERS = [
+  { memberId: 's5m-0000000000000001', href: LINKS[0]!.href, text: 'A' },
+  { memberId: 's5m-0000000000000002', href: LINKS[1]!.href, text: 'B' },
+];
+
+function startPopup(
+  options: {
+    total?: number;
+    changed?: boolean;
+    staleMembers?: boolean;
+    respond?: (payload: { kind: string }) => unknown;
+  } = {},
+) {
+  const ids = [
+    'attachments',
+    'state',
+    's5-group',
+    's5-preview',
+    's5-prepare',
+    's5-preview-result',
+    's5-batch',
+    's5-frozen',
+    's5-confirm',
+    's5-execute',
+    's5-batch-result',
   ];
+  const nodes = Object.fromEntries(ids.map((id) => [id, makeNode()])) as Record<string, StubNode>;
+  const links = LINKS;
   const tab = { id: 42, url: 'https://publisher.example.org/list.html' };
-  const sent: unknown[] = [];
+  const sent: { kind: string; [key: string]: unknown }[] = [];
   let scans = 0;
+  const respond =
+    options.respond ?? (() => ({ ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' }));
   runInNewContext(popupSource, {
     URL,
     setInterval,
@@ -58,6 +90,7 @@ function startPopup(options: { total?: number; changed?: boolean; staleMembers?:
     document: {
       getElementById: (id: string) => nodes[id],
       createElement: () => makeNode(),
+      createTextNode: (text: string) => ({ textContent: text }),
     },
     chrome: {
       tabs: {
@@ -84,9 +117,9 @@ function startPopup(options: { total?: number; changed?: boolean; staleMembers?:
         },
       },
       runtime: {
-        sendMessage: async (payload: unknown) => {
-          sent.push(structuredClone(payload));
-          return { ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' };
+        sendMessage: async (payload: { kind: string }) => {
+          sent.push(structuredClone(payload) as { kind: string });
+          return respond(payload);
         },
       },
       permissions: { request: async () => false },
@@ -99,32 +132,148 @@ async function ready(nodes: Record<string, StubNode>) {
   await vi.waitFor(() => expect(nodes['attachments']!.children.length).toBe(2));
 }
 
-describe('#152 packaged S5 popup -> worker gesture (Core not installed)', () => {
-  it('sends one bounded full-page gesture and renders the real worker refusal', async () => {
+describe('#152 packaged S5 popup -> worker gesture (Core carrier absent)', () => {
+  it('sends one bounded full-page gesture and renders the truthful lane refusal', async () => {
     const { nodes, sent } = startPopup();
     await ready(nodes);
     const list = nodes['attachments']!;
     expect(list.children.length).toBe(2);
-    for (const li of list.children) li.children[1]!.checked = true;
     await nodes['s5-prepare']!.handlers['click']!();
     expect(sent).toHaveLength(1);
     expect(decodeS5PageGroupGesture(sent[0]).ok).toBe(true);
     expect(nodes['s5-preview-result']!.textContent).toContain('S5_CORE_CARRIER_NOT_INSTALLED');
     expect(nodes['s5-prepare']!.disabled).toBe(false);
+    // No frozen-member rows were fabricated without Core facts.
+    expect(nodes['s5-frozen']!.children).toHaveLength(0);
   });
 
-  it('does not submit partial group, truncated scan, tab change or changed membership', async () => {
-    for (const scenario of [{}, { total: 21 }, { changed: true }, { staleMembers: true }]) {
+  it('does not submit truncated scan, tab change or changed membership', async () => {
+    for (const scenario of [{ total: 21 }, { changed: true }, { staleMembers: true }]) {
       const { nodes, sent } = startPopup(scenario);
       await ready(nodes);
-      const list = nodes['attachments']!;
-      list.children[0]!.children[1]!.checked = true;
-      if (scenario.total || scenario.changed || scenario.staleMembers) {
-        list.children[1]!.children[1]!.checked = true;
-      }
       await nodes['s5-prepare']!.handlers['click']!();
       expect(sent).toHaveLength(0);
-      expect(nodes['s5-preview-result']!.textContent).toMatch(/refused|requires|changed/iu);
+      expect(nodes['s5-preview-result']!.textContent).toMatch(/refused|changed/iu);
     }
+  });
+});
+
+describe('#152 packaged S5 popup -> installed batch flow', () => {
+  function installedResponses(payload: { kind: string }): unknown {
+    if (payload.kind === 'S5_PREPARE_CURRENT_PAGE_GROUP') {
+      return {
+        ok: true,
+        contractId: 'contract-s5-installed-001',
+        facts: {
+          prepareId: 's5prepare:contract-s5-installed-001:snapshot-s5-001',
+          snapshotId: 'snapshot-s5-001',
+          members: FROZEN_MEMBERS,
+          observedTupleDigest: 'd'.repeat(64),
+        },
+      };
+    }
+    if (payload.kind === 'S5_CONFIRM_GROUP') {
+      return {
+        ok: true,
+        status: 'CONFIRM',
+        facts: {
+          confirmedGroupId: 's5group:contract-s5-installed-001:snapshot-s5-001',
+          selectedMemberIds: FROZEN_MEMBERS.map((member) => member.memberId),
+          contractStatus: 'CONFIRMED',
+        },
+      };
+    }
+    if (payload.kind === 'S5_EXECUTE_GROUP') {
+      return {
+        ok: true,
+        status: 'TERMINAL',
+        facts: {
+          terminal: { requestFulfillment: 'PARTIAL', coverage: 'UNKNOWN' },
+          members: [
+            {
+              memberId: 's5m-0000000000000001',
+              href: LINKS[0]!.href,
+              outcome: 'ACQUIRED',
+              accepted: true,
+              detail: 'durably accepted with verified bytes',
+            },
+            {
+              memberId: 's5m-0000000000000002',
+              href: LINKS[1]!.href,
+              outcome: 'ACQUIRED',
+              accepted: false,
+              detail: 'transfer failed',
+            },
+          ],
+        },
+      };
+    }
+    return { ok: false, error: 'unexpected message' };
+  }
+
+  it('renders the Core-frozen members after prepare and never claims them before', async () => {
+    const { nodes, sent } = startPopup({ respond: installedResponses });
+    await ready(nodes);
+    await nodes['s5-prepare']!.handlers['click']!();
+    expect(sent).toHaveLength(1);
+    const frozen = nodes['s5-frozen']!;
+    expect(frozen.children).toHaveLength(2);
+    expect(nodes['s5-batch']!.hidden).toBe(false);
+    // Execute stays disabled until Core durably confirms the chosen subset.
+    expect(nodes['s5-execute']!.disabled).toBe(true);
+  });
+
+  it('carries the exact Core member identities through confirm and renders the verbatim terminal', async () => {
+    const { nodes, sent } = startPopup({ respond: installedResponses });
+    await ready(nodes);
+    await nodes['s5-prepare']!.handlers['click']!();
+    // The frozen checkboxes select the subset; the stub leaves both checked.
+    nodes['s5-frozen']!.querySelectorAll = () => {
+      const a = makeNode();
+      a.checked = true;
+      a.dataset.memberId = FROZEN_MEMBERS[0]!.memberId;
+      const b = makeNode();
+      b.checked = true;
+      b.dataset.memberId = FROZEN_MEMBERS[1]!.memberId;
+      return [a, b];
+    };
+    await nodes['s5-confirm']!.handlers['click']!();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toMatchObject({
+      kind: 'S5_CONFIRM_GROUP',
+      contractId: 'contract-s5-installed-001',
+      selectedMemberIds: FROZEN_MEMBERS.map((member) => member.memberId),
+    });
+    expect(nodes['s5-execute']!.disabled).toBe(false);
+    await nodes['s5-execute']!.handlers['click']!();
+    expect(sent).toHaveLength(3);
+    expect(sent[2]).toMatchObject({
+      kind: 'S5_EXECUTE_GROUP',
+      confirmedGroupId: 's5group:contract-s5-installed-001:snapshot-s5-001',
+    });
+    const text = nodes['s5-batch-result']!.textContent;
+    expect(text).toContain('[OK] https://publisher.example.org/a.mp4');
+    expect(text).toContain('transfer failed');
+    expect(text).toContain('"requestFulfillment": "PARTIAL"');
+  });
+
+  it('renders a typed refusal when Core refuses the confirmation', async () => {
+    const { nodes } = startPopup({
+      respond: (payload) =>
+        payload.kind === 'S5_PREPARE_CURRENT_PAGE_GROUP'
+          ? installedResponses(payload)
+          : { ok: false, error: 'S5 lane rejection at CORE_SUBMIT' },
+    });
+    await ready(nodes);
+    await nodes['s5-prepare']!.handlers['click']!();
+    nodes['s5-frozen']!.querySelectorAll = () => {
+      const a = makeNode();
+      a.checked = true;
+      a.dataset.memberId = FROZEN_MEMBERS[0]!.memberId;
+      return [a];
+    };
+    await nodes['s5-confirm']!.handlers['click']!();
+    expect(nodes['s5-batch-result']!.textContent).toContain('Core refused the confirmation');
+    expect(nodes['s5-execute']!.disabled).toBe(true);
   });
 });

@@ -75,3 +75,12 @@ export {
   type S2LaneResponse,
 } from './s2-installed-lane.ts';
 export { runConfirmedCurrentPageGroup, validateConfirmedPageGroup } from './s5-confirmed-group.ts';
+export { createS5CollectionDriver, driveS5CollectionExecution } from './s5-installed-execution.ts';
+export {
+  createInstalledS5Lane,
+  isS5LaneResponse,
+  s5IdentityFor,
+  type InstalledS5LaneConfig,
+  type S5LaneRejectionStage,
+  type S5LaneResponse,
+} from './s5-installed-lane.ts';
