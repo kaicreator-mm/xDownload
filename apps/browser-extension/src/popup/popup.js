@@ -313,7 +313,10 @@
       s5BatchBox.hidden = false;
       s5ExecuteButton.disabled = true;
       s5PreviewResult.textContent = `Core froze ${String(
-        (response.facts && Array.isArray(response.facts.members) && response.facts.members.length) || 0,
+        (response.facts &&
+          Array.isArray(response.facts.members) &&
+          response.facts.members.length) ||
+          0,
       )} members (digest ${String(s5Prepared.digest).slice(0, 16)}…). Pick the batch subset and confirm.`;
       setS5State('RUNNING', 'Awaiting your batch confirmation — nothing is downloaded yet.');
     } catch (error) {
@@ -343,7 +346,10 @@
         selectedMemberIds: selected,
       });
       if (!response || response.ok !== true) {
-        setS5State('FAILED', `Core refused the confirmation: ${(response && response.error) || 'UNKNOWN'}`);
+        setS5State(
+          'FAILED',
+          `Core refused the confirmation: ${(response && response.error) || 'UNKNOWN'}`,
+        );
         return;
       }
       const facts = response.facts || {};
@@ -431,7 +437,10 @@
         snapshotId: s5Confirmed.snapshotId,
       });
       if (!response || response.ok !== true) {
-        setS5State('FAILED', `Core refused the execution: ${(response && response.error) || 'UNKNOWN'}`);
+        setS5State(
+          'FAILED',
+          `Core refused the execution: ${(response && response.error) || 'UNKNOWN'}`,
+        );
         return;
       }
       if (response.status === 'TERMINAL') {

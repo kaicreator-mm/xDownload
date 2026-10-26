@@ -609,9 +609,7 @@ function reconcileS4Lanes(
 function reconcileS5Executions(
   runtime: CoreRuntime,
   supervisor: S1DriveSupervisor,
-  s5Factory: (
-    runtime: CoreRuntime,
-  ) => (input: S5ExecutionIntentInput) => Promise<SeamResult<void>>,
+  s5Factory: (runtime: CoreRuntime) => (input: S5ExecutionIntentInput) => Promise<SeamResult<void>>,
 ): void {
   for (const pending of runtime.seam.pendingS5Executions()) {
     const view = runtime.seam.inspectProjection(pending.aggregateId);

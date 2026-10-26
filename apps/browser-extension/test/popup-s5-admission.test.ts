@@ -82,8 +82,7 @@ function startPopup(
   const sent: { kind: string; [key: string]: unknown }[] = [];
   let scans = 0;
   const respond =
-    options.respond ??
-    (() => ({ ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' }));
+    options.respond ?? (() => ({ ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' }));
   runInNewContext(popupSource, {
     URL,
     setInterval,
@@ -191,8 +190,20 @@ describe('#152 packaged S5 popup -> installed batch flow', () => {
         facts: {
           terminal: { requestFulfillment: 'PARTIAL', coverage: 'UNKNOWN' },
           members: [
-            { memberId: 's5m-0000000000000001', href: LINKS[0]!.href, outcome: 'ACQUIRED', accepted: true, detail: 'durably accepted with verified bytes' },
-            { memberId: 's5m-0000000000000002', href: LINKS[1]!.href, outcome: 'ACQUIRED', accepted: false, detail: 'transfer failed' },
+            {
+              memberId: 's5m-0000000000000001',
+              href: LINKS[0]!.href,
+              outcome: 'ACQUIRED',
+              accepted: true,
+              detail: 'durably accepted with verified bytes',
+            },
+            {
+              memberId: 's5m-0000000000000002',
+              href: LINKS[1]!.href,
+              outcome: 'ACQUIRED',
+              accepted: false,
+              detail: 'transfer failed',
+            },
           ],
         },
       };

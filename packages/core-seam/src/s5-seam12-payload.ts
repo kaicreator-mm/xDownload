@@ -393,8 +393,7 @@ export function decodeS5Seam12Payload(
     Object.freeze({
       commandType: 'CONFIRM_S5_PAGE_GROUP',
       payload: Object.freeze({ ...payload } as unknown as
-        | S5ConfirmBeginPayload
-        | S5ConfirmCommitPayload),
+        S5ConfirmBeginPayload | S5ConfirmCommitPayload),
     }),
   );
 }

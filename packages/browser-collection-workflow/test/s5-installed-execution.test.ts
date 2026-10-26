@@ -40,9 +40,9 @@ interface DriverWorld {
   readonly root: string;
 }
 
-async function driverWorld(options: { readonly failingMember?: boolean } = {}): Promise<
-  DriverWorld & { runtime: ReturnType<typeof openRuntime> }
-> {
+async function driverWorld(
+  options: { readonly failingMember?: boolean } = {},
+): Promise<DriverWorld & { runtime: ReturnType<typeof openRuntime> }> {
   const fixture = new ControlledHttpFixture();
   fixtures.push(fixture);
   const origin = await fixture.start();
@@ -145,7 +145,9 @@ describe('#151 S5 collection execution driver (real CoreRuntime + real HTTP)', (
         prepared: world.prepared,
       });
       if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
-      const view = world.runtime.seam.inspectProjection('contract-s5-driver-001') as unknown as Record<string, unknown>;
+      const view = world.runtime.seam.inspectProjection(
+        'contract-s5-driver-001',
+      ) as unknown as Record<string, unknown>;
       const members = view['s5Members'] as readonly Record<string, unknown>[];
       expect(members).toHaveLength(3);
       expect(members.every((member) => member['accepted'] === true)).toBe(true);
@@ -191,7 +193,9 @@ describe('#151 S5 collection execution driver (real CoreRuntime + real HTTP)', (
         prepared: world.prepared,
       });
       if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
-      const view = world.runtime.seam.inspectProjection('contract-s5-driver-001') as unknown as Record<string, unknown>;
+      const view = world.runtime.seam.inspectProjection(
+        'contract-s5-driver-001',
+      ) as unknown as Record<string, unknown>;
       const members = view['s5Members'] as readonly Record<string, unknown>[];
       expect(members).toHaveLength(3);
       const failed = members.filter((member) => member['accepted'] !== true);
@@ -228,7 +232,9 @@ describe('#151 S5 collection execution driver (real CoreRuntime + real HTTP)', (
         prepared: world.prepared,
       });
       expect(result.ok).toBe(true);
-      const view = world.runtime.seam.inspectProjection('contract-s5-driver-001') as unknown as Record<string, unknown>;
+      const view = world.runtime.seam.inspectProjection(
+        'contract-s5-driver-001',
+      ) as unknown as Record<string, unknown>;
       const lineage = view['lineage'] as Record<string, unknown>;
       expect(lineage['status']).toBe('CANCELLED');
       // No executed terminal across the durable user-cancel cutoff.

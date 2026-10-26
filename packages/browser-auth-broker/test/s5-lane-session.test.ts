@@ -25,9 +25,13 @@ function s5ResultFrame(requestId: string) {
 
 const ORIGIN = 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/';
 
-function sessionWith(input: {
-  readonly s5Lane?: { handle(command: S5LaneCommandShape): Promise<ReturnType<typeof s5ResultFrame>> };
-} = {}) {
+function sessionWith(
+  input: {
+    readonly s5Lane?: {
+      handle(command: S5LaneCommandShape): Promise<ReturnType<typeof s5ResultFrame>>;
+    };
+  } = {},
+) {
   const established = establishNativeHostSession({
     argv: ['host', ORIGIN],
     allowedOrigins: [ORIGIN],
@@ -42,7 +46,12 @@ function sessionWith(input: {
 
 describe('decodeBrokerCommand: S5 vocabulary', () => {
   it('decodes the four closed S5 kinds and rejects unknown kinds or extra fields', () => {
-    for (const kind of ['S5_GROUP_PREPARE', 'S5_GROUP_CONFIRM', 'S5_GROUP_EXECUTE', 'S5_GROUP_STATUS']) {
+    for (const kind of [
+      'S5_GROUP_PREPARE',
+      'S5_GROUP_CONFIRM',
+      'S5_GROUP_EXECUTE',
+      'S5_GROUP_STATUS',
+    ]) {
       const decoded = decodeBrokerCommand({ kind, requestId: 'r1', s5: { a: 1 } });
       expect(decoded.ok).toBe(true);
       if (decoded.ok) {
@@ -50,16 +59,24 @@ describe('decodeBrokerCommand: S5 vocabulary', () => {
       }
     }
     expect(decodeBrokerCommand({ kind: 'S5_GROUP_HACK', requestId: 'r1', s5: {} }).ok).toBe(false);
-    expect(decodeBrokerCommand({ kind: 'S5_GROUP_PREPARE', requestId: 'r1', s5: {}, extra: 1 }).ok).toBe(false);
+    expect(
+      decodeBrokerCommand({ kind: 'S5_GROUP_PREPARE', requestId: 'r1', s5: {}, extra: 1 }).ok,
+    ).toBe(false);
     expect(decodeBrokerCommand({ kind: 'S5_GROUP_PREPARE', requestId: 'r1' }).ok).toBe(false);
-    expect(decodeBrokerCommand({ kind: 'S5_GROUP_PREPARE', requestId: 'r1', s5: [] }).ok).toBe(false);
+    expect(decodeBrokerCommand({ kind: 'S5_GROUP_PREPARE', requestId: 'r1', s5: [] }).ok).toBe(
+      false,
+    );
   });
 });
 
 describe('native host session: S5 dispatch', () => {
   it('fails closed with a typed rejection when no S5 lane is configured', async () => {
     const session = sessionWith();
-    const result = await session.handleMessage({ kind: 'S5_GROUP_PREPARE', requestId: 'r1', s5: {} });
+    const result = await session.handleMessage({
+      kind: 'S5_GROUP_PREPARE',
+      requestId: 'r1',
+      s5: {},
+    });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('unreachable');
     const response = result.value as Record<string, unknown>;
@@ -78,11 +95,21 @@ describe('native host session: S5 dispatch', () => {
         },
       },
     });
-    const frameBytes = encodeFrame({ kind: 'S5_GROUP_STATUS', requestId: 'r1', s5: { contractId: 'c' } });
-    const encoded = frameBytes.ok ? frameBytes.value : new TextEncoder().encode(JSON.stringify({ kind: 'S5_GROUP_STATUS', requestId: 'r1', s5: { contractId: 'c' } }));
+    const frameBytes = encodeFrame({
+      kind: 'S5_GROUP_STATUS',
+      requestId: 'r1',
+      s5: { contractId: 'c' },
+    });
+    const encoded = frameBytes.ok
+      ? frameBytes.value
+      : new TextEncoder().encode(
+          JSON.stringify({ kind: 'S5_GROUP_STATUS', requestId: 'r1', s5: { contractId: 'c' } }),
+        );
     const result = await session.handleFrame(encoded);
     expect(result.ok).toBe(true);
-    expect(seen).toEqual([{ kind: 'S5_GROUP_STATUS', requestId: 'r1', payload: { contractId: 'c' } }]);
+    expect(seen).toEqual([
+      { kind: 'S5_GROUP_STATUS', requestId: 'r1', payload: { contractId: 'c' } },
+    ]);
     // serveNativeHostSession remains the only stdio writer; nothing here
     // touches stdout.
     void serveNativeHostSession;

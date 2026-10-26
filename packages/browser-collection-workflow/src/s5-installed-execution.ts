@@ -190,7 +190,8 @@ export async function driveS5CollectionExecution(
     accepted: outcome.accepted,
     detail:
       outcome.kind === 'AUTH_DENIED'
-        ? (outcome.auth?.reasons.map((reason) => reason.message).join('; ') ?? 'authorization denied')
+        ? (outcome.auth?.reasons.map((reason) => reason.message).join('; ') ??
+          'authorization denied')
         : outcome.accepted
           ? 'durably accepted with verified bytes'
           : 'acquisition did not reach durable acceptance',

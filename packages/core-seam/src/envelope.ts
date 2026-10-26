@@ -135,10 +135,7 @@ export const COMMAND_TYPES = [
 
 /** The 1.2 S4/S5 authority vocabulary is distinct from legacy 1.0/1.1. */
 export type CommandType =
-  | (typeof COMMAND_TYPES)[number]
-  | S4Seam12CommandType
-  | S3Seam12CommandType
-  | S5Seam12CommandType;
+  (typeof COMMAND_TYPES)[number] | S4Seam12CommandType | S3Seam12CommandType | S5Seam12CommandType;
 
 /** Closed v1 read vocabulary: the only surface query is the projection read. */
 export const QUERY_TYPES = ['READ_PROJECTION'] as const;

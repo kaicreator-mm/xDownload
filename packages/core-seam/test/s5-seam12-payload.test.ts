@@ -39,16 +39,24 @@ describe('decodeS5Seam12Payload: version and vocabulary gates', () => {
   });
 
   it('rejects a pre-1.2 version, an unknown command and a non-final version', () => {
-    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', '1.1.0', preparePayload()).ok).toBe(false);
-    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', '2.0.0', preparePayload()).ok).toBe(false);
-    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', '1.2.0-rc1', preparePayload()).ok).toBe(false);
+    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', '1.1.0', preparePayload()).ok).toBe(
+      false,
+    );
+    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', '2.0.0', preparePayload()).ok).toBe(
+      false,
+    );
+    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', '1.2.0-rc1', preparePayload()).ok).toBe(
+      false,
+    );
     expect(decodeS5Seam12Payload('STEAL_S5_GROUP', V, preparePayload()).ok).toBe(false);
   });
 });
 
 describe('decodeS5Seam12Payload: PREPARE closed shape', () => {
   it('rejects unknown fields, missing fields and non-object payloads', () => {
-    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, { ...preparePayload(), extra: 1 }).ok).toBe(false);
+    expect(
+      decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, { ...preparePayload(), extra: 1 }).ok,
+    ).toBe(false);
     const missing = preparePayload();
     delete missing['snapshotId'];
     expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, missing).ok).toBe(false);
@@ -58,13 +66,19 @@ describe('decodeS5Seam12Payload: PREPARE closed shape', () => {
 
   it('rejects non-canonical page origins and provenance keys', () => {
     for (const bad of ['http://user:pw@127.0.0.1:8000', 'not a url', 'http://127.0.0.1:8000/']) {
-      expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, preparePayload({ pageOrigin: bad })).ok).toBe(false);
+      expect(
+        decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, preparePayload({ pageOrigin: bad })).ok,
+      ).toBe(false);
     }
     expect(
       decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, preparePayload({ provenanceKey: '' })).ok,
     ).toBe(false);
     expect(
-      decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, preparePayload({ provenanceKey: 'x'.repeat(513) })).ok,
+      decodeS5Seam12Payload(
+        'PREPARE_S5_PAGE_GROUP',
+        V,
+        preparePayload({ provenanceKey: 'x'.repeat(513) }),
+      ).ok,
     ).toBe(false);
   });
 
@@ -93,7 +107,9 @@ describe('decodeS5Seam12Payload: PREPARE closed shape', () => {
       decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, preparePayload({ members: [] })).ok,
     ).toBe(false);
     const tooMany = Array.from({ length: 21 }, (_, i) => ({ href: HREF(i), text: 't' }));
-    expect(decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, preparePayload({ members: tooMany })).ok).toBe(false);
+    expect(
+      decodeS5Seam12Payload('PREPARE_S5_PAGE_GROUP', V, preparePayload({ members: tooMany })).ok,
+    ).toBe(false);
     expect(
       decodeS5Seam12Payload(
         'PREPARE_S5_PAGE_GROUP',
@@ -105,7 +121,12 @@ describe('decodeS5Seam12Payload: PREPARE closed shape', () => {
       decodeS5Seam12Payload(
         'PREPARE_S5_PAGE_GROUP',
         V,
-        preparePayload({ members: [{ href: HREF(1), text: 'a' }, { href: HREF(1), text: 'b' }] }),
+        preparePayload({
+          members: [
+            { href: HREF(1), text: 'a' },
+            { href: HREF(1), text: 'b' },
+          ],
+        }),
       ).ok,
     ).toBe(false);
     expect(
@@ -129,8 +150,13 @@ describe('decodeS5Seam12Payload: CONFIRM phases', () => {
 
   it('accepts BEGIN and rejects an unknown phase or bad digest/challenge syntax', () => {
     expect(decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, begin).ok).toBe(true);
-    expect(decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, { ...begin, phase: 'MAYBE' }).ok).toBe(false);
-    expect(decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, { ...begin, displayedTupleDigest: 'XYZ' }).ok).toBe(false);
+    expect(decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, { ...begin, phase: 'MAYBE' }).ok).toBe(
+      false,
+    );
+    expect(
+      decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, { ...begin, displayedTupleDigest: 'XYZ' })
+        .ok,
+    ).toBe(false);
     expect(
       decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, {
         ...begin,
@@ -163,7 +189,9 @@ describe('decodeS5Seam12Payload: CONFIRM phases', () => {
   });
 
   it('bounds selectedMemberIds (nonempty, unique, id charset)', () => {
-    expect(decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, { ...begin, selectedMemberIds: [] }).ok).toBe(false);
+    expect(
+      decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, { ...begin, selectedMemberIds: [] }).ok,
+    ).toBe(false);
     expect(
       decodeS5Seam12Payload('CONFIRM_S5_PAGE_GROUP', V, {
         ...begin,
@@ -183,16 +211,30 @@ describe('decodeS5Seam12Payload: EXECUTE closed shape', () => {
   it('accepts the exact pair and rejects unknown/missing fields', () => {
     const payload = { snapshotId: 'snapshot-s5-abc', confirmedGroupId: 's5group:c:s' };
     expect(decodeS5Seam12Payload('EXECUTE_S5_COLLECTION', V, payload).ok).toBe(true);
-    expect(decodeS5Seam12Payload('EXECUTE_S5_COLLECTION', V, { ...payload, phase: 'BEGIN' }).ok).toBe(false);
+    expect(
+      decodeS5Seam12Payload('EXECUTE_S5_COLLECTION', V, { ...payload, phase: 'BEGIN' }).ok,
+    ).toBe(false);
     expect(decodeS5Seam12Payload('EXECUTE_S5_COLLECTION', V, { snapshotId: 's' }).ok).toBe(false);
   });
 });
 
 describe('canonical digests', () => {
   it('derives deterministically and order-sensitively', () => {
-    const a = s5GroupTupleDigest({ pageOrigin: PAGE, provenanceKey: 'p', hrefs: [HREF(1), HREF(2)] });
-    const b = s5GroupTupleDigest({ pageOrigin: PAGE, provenanceKey: 'p', hrefs: [HREF(1), HREF(2)] });
-    const c = s5GroupTupleDigest({ pageOrigin: PAGE, provenanceKey: 'p', hrefs: [HREF(2), HREF(1)] });
+    const a = s5GroupTupleDigest({
+      pageOrigin: PAGE,
+      provenanceKey: 'p',
+      hrefs: [HREF(1), HREF(2)],
+    });
+    const b = s5GroupTupleDigest({
+      pageOrigin: PAGE,
+      provenanceKey: 'p',
+      hrefs: [HREF(1), HREF(2)],
+    });
+    const c = s5GroupTupleDigest({
+      pageOrigin: PAGE,
+      provenanceKey: 'p',
+      hrefs: [HREF(2), HREF(1)],
+    });
     expect(a).toBe(b);
     expect(a).not.toBe(c);
     expect(a).toMatch(/^[0-9a-f]{64}$/u);

@@ -89,7 +89,14 @@ export function parseBrokerConfig(text: string): BrokerConfig {
       throw new Error('broker config core section requires installId and userId');
     }
     const tcpPresent = host !== undefined || port !== undefined;
-    if (tcpPresent && (host !== '127.0.0.1' || typeof port !== 'number' || !Number.isInteger(port) || port <= 0 || port > 65535)) {
+    if (
+      tcpPresent &&
+      (host !== '127.0.0.1' ||
+        typeof port !== 'number' ||
+        !Number.isInteger(port) ||
+        port <= 0 ||
+        port > 65535)
+    ) {
       throw new Error(
         'broker config core TCP section must be { host: "127.0.0.1", port } (loopback only)',
       );

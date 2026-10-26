@@ -81,7 +81,11 @@ export function decodeS5BatchMessage(input: unknown): S5BatchDecodeResult {
     return { ok: false, detail: 'S5_INVALID_BATCH_MESSAGE' };
   }
   if (raw['kind'] === 'S5_GROUP_JOURNEY_STATUS') {
-    if (!exactKeys(raw, ['kind', 'contractId']) || typeof raw['contractId'] !== 'string' || !ID_PATTERN.test(raw['contractId'])) {
+    if (
+      !exactKeys(raw, ['kind', 'contractId']) ||
+      typeof raw['contractId'] !== 'string' ||
+      !ID_PATTERN.test(raw['contractId'])
+    ) {
       return { ok: false, detail: 'S5_INVALID_BATCH_MESSAGE' };
     }
     return { ok: true, value: { kind: 'S5_GROUP_JOURNEY_STATUS', contractId: raw['contractId'] } };

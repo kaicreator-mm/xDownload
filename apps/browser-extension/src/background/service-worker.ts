@@ -504,7 +504,9 @@ function s5NmResponse(
       phase: typeof response['phase'] === 'string' ? response['phase'] : 'UNKNOWN',
       facts: {
         ...((response['facts'] as Record<string, unknown> | undefined) ?? {}),
-        ...(typeof response['contractId'] === 'string' ? { contractId: response['contractId'] } : {}),
+        ...(typeof response['contractId'] === 'string'
+          ? { contractId: response['contractId'] }
+          : {}),
       },
     };
   }
@@ -526,7 +528,9 @@ async function runS5Prepare(gesture: {
   readonly tabId: number;
   readonly pageUrl: string;
   readonly members: readonly { readonly href: string; readonly text: string }[];
-}): Promise<{ ok: true; contractId: string; facts: Record<string, unknown> } | { ok: false; error: string }> {
+}): Promise<
+  { ok: true; contractId: string; facts: Record<string, unknown> } | { ok: false; error: string }
+> {
   const response = s5NmResponse(
     await s5NmRoundTrip({
       kind: 'S5_GROUP_PREPARE',
@@ -541,7 +545,10 @@ async function runS5Prepare(gesture: {
   if (!response.ok) {
     return response;
   }
-  const contractId = typeof response.facts['contractId'] === 'string' ? (response.facts['contractId'] as string) : '';
+  const contractId =
+    typeof response.facts['contractId'] === 'string'
+      ? (response.facts['contractId'] as string)
+      : '';
   if (contractId === '') {
     return { ok: false, error: 'S5 lane returned no contract identity' };
   }
@@ -560,8 +567,10 @@ async function runS5Confirm(message: {
   readonly snapshotId: string;
   readonly selectedMemberIds: readonly string[];
 }): Promise<void> {
-  const journey: S5JourneyState =
-    s5Journeys.get(message.contractId) ?? { contractId: message.contractId, status: 'CONFIRM' };
+  const journey: S5JourneyState = s5Journeys.get(message.contractId) ?? {
+    contractId: message.contractId,
+    status: 'CONFIRM',
+  };
   journey.status = 'CONFIRM';
   rememberS5Journey(journey);
   const response = s5NmResponse(
@@ -580,7 +589,10 @@ async function runS5Confirm(message: {
   if (response.ok) {
     journey.phase = response.phase;
     journey.facts = response.facts;
-    notify('xDownload S5 — group confirmed', `${String(response.facts['selectedMemberIds'] ?? []).length} members frozen by Core`);
+    notify(
+      'xDownload S5 — group confirmed',
+      `${String(response.facts['selectedMemberIds'] ?? []).length} members frozen by Core`,
+    );
   } else {
     journey.status = 'FAILED';
     journey.failure = { stage: 'CONFIRM', detail: response.error };
@@ -593,8 +605,10 @@ async function runS5Execute(message: {
   readonly confirmedGroupId: string;
   readonly snapshotId: string;
 }): Promise<void> {
-  const journey: S5JourneyState =
-    s5Journeys.get(message.contractId) ?? { contractId: message.contractId, status: 'EXECUTE' };
+  const journey: S5JourneyState = s5Journeys.get(message.contractId) ?? {
+    contractId: message.contractId,
+    status: 'EXECUTE',
+  };
   journey.status = 'EXECUTE';
   rememberS5Journey(journey);
   const response = s5NmResponse(
@@ -616,7 +630,9 @@ async function runS5Execute(message: {
       const fulfillment = terminal?.['requestFulfillment'] ?? 'UNKNOWN';
       journey.status = 'TERMINAL';
       notify(
-        fulfillment === 'COMPLETE' ? 'xDownload S5 — batch complete' : 'xDownload S5 — batch terminal (truthful)',
+        fulfillment === 'COMPLETE'
+          ? 'xDownload S5 — batch complete'
+          : 'xDownload S5 — batch terminal (truthful)',
         `Core terminal requestFulfillment: ${String(fulfillment)}`,
       );
     }

@@ -35,10 +35,7 @@ import {
   type S5LaneCommandShape,
   type S5LaneHandler,
 } from '@xdownload/browser-auth-broker';
-import {
-  bindSurfaceToCore,
-  type BoundSurface,
-} from '@xdownload/converged-runtime';
+import { bindSurfaceToCore, type BoundSurface } from '@xdownload/converged-runtime';
 import {
   createWindowsPipeClientTransport,
   s5SelectionTupleDigest,
@@ -63,10 +60,7 @@ export interface InstalledS5LaneConfig {
 }
 
 export type S5LaneRejectionStage =
-  | 'LANE_DECODE'
-  | 'CORE_TRANSPORT'
-  | 'CORE_SUBMIT'
-  | 'CORE_PROJECTION';
+  'LANE_DECODE' | 'CORE_TRANSPORT' | 'CORE_SUBMIT' | 'CORE_PROJECTION';
 
 /** Response frames of the installed S5 lane (added to the NM vocabulary). */
 export type S5LaneResponse =
@@ -165,12 +159,19 @@ interface DecodedPrepare {
 function decodePreparePayload(
   payload: Record<string, unknown>,
 ): { ok: true; value: DecodedPrepare } | { ok: false; diagnostics: readonly BrokerDiagnostic[] } {
-  const keys = Object.keys(payload).filter((key) => key !== 'tabId' && key !== 'pageUrl' && key !== 'members' && key !== 'decisionToken');
+  const keys = Object.keys(payload).filter(
+    (key) => key !== 'tabId' && key !== 'pageUrl' && key !== 'members' && key !== 'decisionToken',
+  );
   if (keys.length > 0) {
     return {
       ok: false,
       diagnostics: [
-        brokerDiagnostic('UNKNOWN_FIELD', `s5.${keys[0]}`, 'unknown field on the S5 prepare payload; fail closed', 'L2-inv11'),
+        brokerDiagnostic(
+          'UNKNOWN_FIELD',
+          `s5.${keys[0]}`,
+          'unknown field on the S5 prepare payload; fail closed',
+          'L2-inv11',
+        ),
       ],
     };
   }
@@ -179,7 +180,11 @@ function decodePreparePayload(
     return {
       ok: false,
       diagnostics: [
-        brokerDiagnostic('MALFORMED_REQUIRED_FIELD', 's5.tabId', 'tabId must be a nonnegative integer'),
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          's5.tabId',
+          'tabId must be a nonnegative integer',
+        ),
       ],
     };
   }
@@ -201,22 +206,26 @@ function decodePreparePayload(
     return {
       ok: false,
       diagnostics: [
-        brokerDiagnostic('MALFORMED_REQUIRED_FIELD', 's5.members', 'members must carry 1..20 observed anchors'),
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          's5.members',
+          'members must carry 1..20 observed anchors',
+        ),
       ],
     };
   }
   const decoded: S5ObservedMember[] = [];
   const seen = new Set<string>();
   for (const member of members) {
-    if (
-      typeof member !== 'object' ||
-      member === null ||
-      Array.isArray(member)
-    ) {
+    if (typeof member !== 'object' || member === null || Array.isArray(member)) {
       return {
         ok: false,
         diagnostics: [
-          brokerDiagnostic('MALFORMED_REQUIRED_FIELD', 's5.members', 'each member must be an object'),
+          brokerDiagnostic(
+            'MALFORMED_REQUIRED_FIELD',
+            's5.members',
+            'each member must be an object',
+          ),
         ],
       };
     }
@@ -226,7 +235,11 @@ function decodePreparePayload(
       return {
         ok: false,
         diagnostics: [
-          brokerDiagnostic('MALFORMED_REQUIRED_FIELD', 's5.members', 'each member must have exactly href and text'),
+          brokerDiagnostic(
+            'MALFORMED_REQUIRED_FIELD',
+            's5.members',
+            'each member must have exactly href and text',
+          ),
         ],
       };
     }
@@ -246,7 +259,11 @@ function decodePreparePayload(
       return {
         ok: false,
         diagnostics: [
-          brokerDiagnostic('MALFORMED_REQUIRED_FIELD', 's5.members.text', 'anchor text must be at most 256 chars'),
+          brokerDiagnostic(
+            'MALFORMED_REQUIRED_FIELD',
+            's5.members.text',
+            'anchor text must be at most 256 chars',
+          ),
         ],
       };
     }
@@ -261,7 +278,10 @@ function decodePreparePayload(
     seen.add(record['href']);
     decoded.push({ href: record['href'], text: record['text'] });
   }
-  return { ok: true, value: { tabId: tabId as number, pageUrl: pageUrl as string, members: decoded } };
+  return {
+    ok: true,
+    value: { tabId: tabId as number, pageUrl: pageUrl as string, members: decoded },
+  };
 }
 
 /** Closed top-level key set per command kind (unknown fields reject). */
@@ -279,13 +299,23 @@ function rejectUnknownFields(
   const allowed = S5_PAYLOAD_KEYS[kind];
   if (allowed === undefined) {
     return [
-      brokerDiagnostic('UNKNOWN_FIELD', 's5', `unknown S5 command kind ${kind}; fail closed`, 'L2-inv11'),
+      brokerDiagnostic(
+        'UNKNOWN_FIELD',
+        's5',
+        `unknown S5 command kind ${kind}; fail closed`,
+        'L2-inv11',
+      ),
     ];
   }
   const unknown = Object.keys(payload).filter((key) => !allowed.includes(key));
   if (unknown.length > 0) {
     return [
-      brokerDiagnostic('UNKNOWN_FIELD', `s5.${unknown[0]}`, 'unknown field on the S5 payload; fail closed', 'L2-inv11'),
+      brokerDiagnostic(
+        'UNKNOWN_FIELD',
+        `s5.${unknown[0]}`,
+        'unknown field on the S5 payload; fail closed',
+        'L2-inv11',
+      ),
     ];
   }
   return undefined;
@@ -305,7 +335,11 @@ function requireBoundedId(
     return {
       ok: false,
       diagnostics: [
-        brokerDiagnostic('MALFORMED_REQUIRED_FIELD', `s5.${field}`, `${field} must be a bounded identifier`),
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          `s5.${field}`,
+          `${field} must be a bounded identifier`,
+        ),
       ],
     };
   }
@@ -314,7 +348,8 @@ function requireBoundedId(
 
 function requireMemberIds(
   payload: Record<string, unknown>,
-): { ok: true; value: readonly string[] } | { ok: false; diagnostics: readonly BrokerDiagnostic[] } {
+):
+  { ok: true; value: readonly string[] } | { ok: false; diagnostics: readonly BrokerDiagnostic[] } {
   const selected = payload['selectedMemberIds'];
   if (
     !Array.isArray(selected) ||
@@ -542,7 +577,11 @@ async function handlePrepare(
     pageOrigin = new URL(prepare.pageUrl).origin;
   } catch {
     return laneFail(command.requestId, 'LANE_DECODE', [
-      brokerDiagnostic('MALFORMED_REQUIRED_FIELD', 's5.pageUrl', 'the page URL has no parseable origin'),
+      brokerDiagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        's5.pageUrl',
+        'the page URL has no parseable origin',
+      ),
     ]);
   }
   const identity = s5IdentityFor({
@@ -584,7 +623,9 @@ async function handlePrepare(
     }
     revision = revisionOf(view);
   } else {
-    revision = submitted.currentRevision ?? revisionOf(projectionViewOf(await ports.readProjection(identity.contractId)));
+    revision =
+      submitted.currentRevision ??
+      revisionOf(projectionViewOf(await ports.readProjection(identity.contractId)));
   }
   const frozen = await ports.submit({
     commandType: 'PREPARE_S5_PAGE_GROUP',
@@ -695,7 +736,11 @@ async function handleConfirm(
       return rejectedResponse;
     }
     return laneFail(command.requestId, 'CORE_SUBMIT', [
-      brokerDiagnostic('S5_LANE_REJECTED', 'confirm.begin', 'the S5 confirm BEGIN was not accepted'),
+      brokerDiagnostic(
+        'S5_LANE_REJECTED',
+        'confirm.begin',
+        'the S5 confirm BEGIN was not accepted',
+      ),
     ]);
   }
   const challenge = begin.s5PrivateChallenge;
@@ -834,7 +879,8 @@ async function handleExecute(
           terminal: null,
           members: current['s5Members'] ?? [],
           lineageStatus: lineage?.['status'],
-          detail: 'the lineage closed without a projected terminal (cancelled or driver-refused); no terminal is invented',
+          detail:
+            'the lineage closed without a projected terminal (cancelled or driver-refused); no terminal is invented',
         },
       } as BrokerResponse;
     }
@@ -847,7 +893,8 @@ async function handleExecute(
         facts: {
           members: current?.['s5Members'] ?? [],
           lineageStatus: lineage?.['status'],
-          detail: 'the bounded projection wait elapsed before a terminal; the durable execution continues in Core — poll status',
+          detail:
+            'the bounded projection wait elapsed before a terminal; the durable execution continues in Core — poll status',
         },
       } as BrokerResponse;
     }

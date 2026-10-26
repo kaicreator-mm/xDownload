@@ -94,12 +94,29 @@ function draftCollectionContract(): Record<string, unknown> {
     automationMode: 'ASSISTED',
     explorationPermission: 'NONE',
     budgetProfile: {
-      discovery: { domain: 'discovery', maxGeneratedRequests: 1, maxNavigationActions: 1, maxModelCalls: 1 },
-      transfer: { domain: 'transfer', maxBytes: 1_000_000, maxSegments: 20, maxActiveTransferMs: 600_000, maxRetryTransferRequests: 2 },
-      globalSafety: { domain: 'global_safety', maxTotalGeneratedRequests: 20, maxActiveElapsedMs: 600_000 },
+      discovery: {
+        domain: 'discovery',
+        maxGeneratedRequests: 1,
+        maxNavigationActions: 1,
+        maxModelCalls: 1,
+      },
+      transfer: {
+        domain: 'transfer',
+        maxBytes: 1_000_000,
+        maxSegments: 20,
+        maxActiveTransferMs: 600_000,
+        maxRetryTransferRequests: 2,
+      },
+      globalSafety: {
+        domain: 'global_safety',
+        maxTotalGeneratedRequests: 20,
+        maxActiveElapsedMs: 600_000,
+      },
     },
     authorizationContextRef: 'authctx/installed-s5-lane',
-    validationPolicy: { requiredLayers: ['membership', 'target', 'transfer', 'format', 'coverage'] },
+    validationPolicy: {
+      requiredLayers: ['membership', 'target', 'transfer', 'format', 'coverage'],
+    },
     stopPolicy: { globalSafetyPrecedence: 'HIGHEST' },
     resultPolicy: { requireMultidimensionalResult: true },
   };
@@ -164,7 +181,11 @@ function world(options: { readonly beginner?: S5PageGroupBeginner | null } = {})
 }
 
 async function prepareAggregate(w: S5World): Promise<void> {
-  const submitted = frame(w.server, w.registry, s5Command({ commandType: 'SUBMIT_CONTRACT', payload: draftCollectionContract() }));
+  const submitted = frame(
+    w.server,
+    w.registry,
+    s5Command({ commandType: 'SUBMIT_CONTRACT', payload: draftCollectionContract() }),
+  );
   if (submitted.outcome !== 'ACCEPTED') {
     throw new Error(`draft submit failed: ${JSON.stringify(submitted.diagnostics)}`);
   }
@@ -174,7 +195,12 @@ async function drivePrepare(w: S5World, payload = preparePayload()): Promise<Sea
   return frame(
     w.server,
     w.registry,
-    s5Command({ commandType: 'PREPARE_S5_PAGE_GROUP', payload, expectedRevision: 1, correlation: { snapshotId: SNAPSHOT } }),
+    s5Command({
+      commandType: 'PREPARE_S5_PAGE_GROUP',
+      payload,
+      expectedRevision: 1,
+      correlation: { snapshotId: SNAPSHOT },
+    }),
   );
 }
 
@@ -195,7 +221,12 @@ async function confirmBegin(
 ): Promise<SeamResponse> {
   const digest =
     options.digest ??
-    s5SelectionTupleDigest({ contractId: AGGREGATE, snapshotId: SNAPSHOT, prepareId: PREPARE_ID, selectedMemberIds: selected });
+    s5SelectionTupleDigest({
+      contractId: AGGREGATE,
+      snapshotId: SNAPSHOT,
+      prepareId: PREPARE_ID,
+      selectedMemberIds: selected,
+    });
   return frame(
     w.server,
     w.registry,
@@ -223,7 +254,12 @@ async function confirmCommit(
 ): Promise<SeamResponse> {
   const digest =
     options.digest ??
-    s5SelectionTupleDigest({ contractId: AGGREGATE, snapshotId: SNAPSHOT, prepareId: PREPARE_ID, selectedMemberIds: selected });
+    s5SelectionTupleDigest({
+      contractId: AGGREGATE,
+      snapshotId: SNAPSHOT,
+      prepareId: PREPARE_ID,
+      selectedMemberIds: selected,
+    });
   return frame(
     w.server,
     w.registry,
@@ -258,7 +294,16 @@ describe('#151 S5 fail-closed admission gates', () => {
   it('rejects S5 commands without an OS-verified session', async () => {
     const w = world();
     await prepareAggregate(w);
-    const response = frame(w.server, w.registry, s5Command({ commandType: 'PREPARE_S5_PAGE_GROUP', payload: preparePayload(), expectedRevision: 1 }), 'conn-unverified');
+    const response = frame(
+      w.server,
+      w.registry,
+      s5Command({
+        commandType: 'PREPARE_S5_PAGE_GROUP',
+        payload: preparePayload(),
+        expectedRevision: 1,
+      }),
+      'conn-unverified',
+    );
     expect(response.outcome).toBe('REJECTED');
     expect(response.diagnostics?.[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
   });
@@ -270,7 +315,12 @@ describe('#151 S5 fail-closed admission gates', () => {
       const response = frame(
         w.server,
         w.registry,
-        s5Command({ commandType: 'PREPARE_S5_PAGE_GROUP', payload: preparePayload(), expectedRevision: 1, surface }),
+        s5Command({
+          commandType: 'PREPARE_S5_PAGE_GROUP',
+          payload: preparePayload(),
+          expectedRevision: 1,
+          surface,
+        }),
       );
       expect(response.outcome).toBe('REJECTED');
       expect(response.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
@@ -288,7 +338,9 @@ describe('#151 PREPARE freezes the observed group as Core truth', () => {
     expect(members).toHaveLength(3);
     expect(new Set(members.map((member) => member.memberId)).size).toBe(3);
     const view = w.server.inspectProjection(AGGREGATE) as unknown as Record<string, unknown>;
-    expect((view['s5PreparedGroup'] as Record<string, unknown>)['observedTupleDigest']).toMatch(/^[0-9a-f]{64}$/u);
+    expect((view['s5PreparedGroup'] as Record<string, unknown>)['observedTupleDigest']).toMatch(
+      /^[0-9a-f]{64}$/u,
+    );
   });
 
   it('converges on an identical re-prepare and rejects a different tuple', async () => {
@@ -298,7 +350,12 @@ describe('#151 PREPARE freezes the observed group as Core truth', () => {
     const again = await frame(
       w.server,
       w.registry,
-      s5Command({ commandType: 'PREPARE_S5_PAGE_GROUP', payload: preparePayload(), expectedRevision: 2, correlation: { snapshotId: SNAPSHOT } }),
+      s5Command({
+        commandType: 'PREPARE_S5_PAGE_GROUP',
+        payload: preparePayload(),
+        expectedRevision: 2,
+        correlation: { snapshotId: SNAPSHOT },
+      }),
     );
     expect(again.outcome).toBe('ACCEPTED');
     const full = preparePayload();
@@ -306,7 +363,12 @@ describe('#151 PREPARE freezes the observed group as Core truth', () => {
     const changed = await frame(
       w.server,
       w.registry,
-      s5Command({ commandType: 'PREPARE_S5_PAGE_GROUP', payload: preparePayload({ members: [...subset.slice(0, 2)] }), expectedRevision: 2, correlation: { snapshotId: SNAPSHOT } }),
+      s5Command({
+        commandType: 'PREPARE_S5_PAGE_GROUP',
+        payload: preparePayload({ members: [...subset.slice(0, 2)] }),
+        expectedRevision: 2,
+        correlation: { snapshotId: SNAPSHOT },
+      }),
     );
     expect(changed.outcome).toBe('REJECTED');
     expect(changed.diagnostics?.[0]?.code).toBe('IDEMPOTENCY_CONFLICT');
@@ -314,7 +376,9 @@ describe('#151 PREPARE freezes the observed group as Core truth', () => {
 });
 
 describe('#151 CONFIRM BEGIN/COMMIT challenge discipline', () => {
-  async function admitted(w: S5World): Promise<{ readonly selected: readonly string[]; readonly challenge: string }> {
+  async function admitted(
+    w: S5World,
+  ): Promise<{ readonly selected: readonly string[]; readonly challenge: string }> {
     await prepareAggregate(w);
     await drivePrepare(w);
     const members = memberIdsFrom(w.server);
@@ -344,7 +408,9 @@ describe('#151 CONFIRM BEGIN/COMMIT challenge discipline', () => {
     const { selected, challenge } = await admitted(w);
     const wrongDigest = await confirmCommit(w, selected, challenge, { digest: 'b'.repeat(64) });
     expect(wrongDigest.outcome).toBe('REJECTED');
-    const crossConnection = await confirmCommit(w, selected, challenge, { connectionId: OTHER_CONNECTION });
+    const crossConnection = await confirmCommit(w, selected, challenge, {
+      connectionId: OTHER_CONNECTION,
+    });
     expect(crossConnection.outcome).toBe('REJECTED');
     expect(crossConnection.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
     const forged = await confirmBegin(w, ['s5m-forged0000000000']);
@@ -370,7 +436,9 @@ describe('#151 CONFIRM BEGIN/COMMIT challenge discipline', () => {
     // immutable conflict surfaces at COMMIT — never a rewrite.
     const begin2 = await confirmBegin(w, other, { revision: 3 });
     expect(begin2.outcome).toBe('ACCEPTED');
-    const commit2 = await confirmCommit(w, other, begin2.s5PrivateChallenge?.value ?? '', { revision: 3 });
+    const commit2 = await confirmCommit(w, other, begin2.s5PrivateChallenge?.value ?? '', {
+      revision: 3,
+    });
     expect(commit2.outcome).toBe('REJECTED');
     expect(commit2.diagnostics?.[0]?.code).toBe('IDEMPOTENCY_CONFLICT');
   });
@@ -381,11 +449,18 @@ describe('#151 CONFIRM BEGIN/COMMIT challenge discipline', () => {
     await confirmCommit(w, selected, challenge);
     w.clock.now += 121_000;
     const view = w.server.inspectProjection(AGGREGATE) as unknown as Record<string, unknown>;
-    const confirmedGroupId = (view['s5ConfirmedGroup'] as Record<string, unknown>)['confirmedGroupId'];
+    const confirmedGroupId = (view['s5ConfirmedGroup'] as Record<string, unknown>)[
+      'confirmedGroupId'
+    ];
     const execute = frame(
       w.server,
       w.registry,
-      s5Command({ commandType: 'EXECUTE_S5_COLLECTION', payload: { snapshotId: SNAPSHOT, confirmedGroupId }, expectedRevision: 3, correlation: { snapshotId: SNAPSHOT } }),
+      s5Command({
+        commandType: 'EXECUTE_S5_COLLECTION',
+        payload: { snapshotId: SNAPSHOT, confirmedGroupId },
+        expectedRevision: 3,
+        correlation: { snapshotId: SNAPSHOT },
+      }),
     );
     expect(execute.outcome).toBe('REJECTED');
     expect(execute.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
@@ -393,7 +468,11 @@ describe('#151 CONFIRM BEGIN/COMMIT challenge discipline', () => {
 });
 
 describe('#151 EXECUTE single durable intent + restart replay', () => {
-  async function admittedWorld(): Promise<{ w: S5World; selected: readonly string[]; confirmedGroupId: string }> {
+  async function admittedWorld(): Promise<{
+    w: S5World;
+    selected: readonly string[];
+    confirmedGroupId: string;
+  }> {
     const w = world();
     await prepareAggregate(w);
     await drivePrepare(w);
@@ -408,7 +487,9 @@ describe('#151 EXECUTE single durable intent + restart replay', () => {
     return {
       w,
       selected,
-      confirmedGroupId: (view['s5ConfirmedGroup'] as Record<string, unknown>)['confirmedGroupId'] as string,
+      confirmedGroupId: (view['s5ConfirmedGroup'] as Record<string, unknown>)[
+        'confirmedGroupId'
+      ] as string,
     };
   }
 
@@ -426,14 +507,25 @@ describe('#151 EXECUTE single durable intent + restart replay', () => {
     const first = frame(
       w.server,
       w.registry,
-      s5Command({ commandType: 'EXECUTE_S5_COLLECTION', payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` }, expectedRevision: 3, correlation: { snapshotId: SNAPSHOT } }),
+      s5Command({
+        commandType: 'EXECUTE_S5_COLLECTION',
+        payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` },
+        expectedRevision: 3,
+        correlation: { snapshotId: SNAPSHOT },
+      }),
     );
     expect(first.outcome).toBe('ACCEPTED');
     expect(drive.calls).toHaveLength(1);
     const second = frame(
       w.server,
       w.registry,
-      s5Command({ commandType: 'EXECUTE_S5_COLLECTION', payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` }, expectedRevision: 4, requestId: requestId(), correlation: { snapshotId: SNAPSHOT } }),
+      s5Command({
+        commandType: 'EXECUTE_S5_COLLECTION',
+        payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` },
+        expectedRevision: 4,
+        requestId: requestId(),
+        correlation: { snapshotId: SNAPSHOT },
+      }),
     );
     expect(second.outcome).toBe('REJECTED');
     expect(second.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
@@ -444,7 +536,12 @@ describe('#151 EXECUTE single durable intent + restart replay', () => {
     const execute = frame(
       w.server,
       w.registry,
-      s5Command({ commandType: 'EXECUTE_S5_COLLECTION', payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` }, expectedRevision: 3, correlation: { snapshotId: SNAPSHOT } }),
+      s5Command({
+        commandType: 'EXECUTE_S5_COLLECTION',
+        payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` },
+        expectedRevision: 3,
+        correlation: { snapshotId: SNAPSHOT },
+      }),
     );
     expect(execute.outcome).toBe('ACCEPTED');
     // Restart: a fresh server over the same journal restores durable truth.
@@ -474,7 +571,12 @@ describe('#151 EXECUTE single durable intent + restart replay', () => {
     const execute = frame(
       w.server,
       w.registry,
-      s5Command({ commandType: 'EXECUTE_S5_COLLECTION', payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` }, expectedRevision: 2, correlation: { snapshotId: SNAPSHOT } }),
+      s5Command({
+        commandType: 'EXECUTE_S5_COLLECTION',
+        payload: { snapshotId: SNAPSHOT, confirmedGroupId: `s5group:${AGGREGATE}:${SNAPSHOT}` },
+        expectedRevision: 2,
+        correlation: { snapshotId: SNAPSHOT },
+      }),
     );
     expect(execute.outcome).toBe('REJECTED');
     expect(execute.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');

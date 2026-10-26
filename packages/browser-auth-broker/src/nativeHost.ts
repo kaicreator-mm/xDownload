@@ -124,10 +124,26 @@ export interface S2LaneHandler {
  * injected installed-lane implementation, never in the broker session).
  */
 export type S5LaneCommandShape =
-  | { readonly kind: 'S5_GROUP_PREPARE'; readonly requestId: string; readonly payload: Record<string, unknown> }
-  | { readonly kind: 'S5_GROUP_CONFIRM'; readonly requestId: string; readonly payload: Record<string, unknown> }
-  | { readonly kind: 'S5_GROUP_EXECUTE'; readonly requestId: string; readonly payload: Record<string, unknown> }
-  | { readonly kind: 'S5_GROUP_STATUS'; readonly requestId: string; readonly payload: Record<string, unknown> };
+  | {
+      readonly kind: 'S5_GROUP_PREPARE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_CONFIRM';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_EXECUTE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S5_GROUP_STATUS';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    };
 
 /** Async installed-S5 lane handler (#151). See `s5-installed-lane.ts`. */
 export interface S5LaneHandler {

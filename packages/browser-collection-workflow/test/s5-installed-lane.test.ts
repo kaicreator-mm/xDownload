@@ -12,8 +12,14 @@ const PIPE = String.raw`\\.\pipe\xdownload-core-canary-s5`;
 
 describe('s5IdentityFor', () => {
   it('derives one identity per observed page tuple, order-insensitively over members', () => {
-    const a = s5IdentityFor({ pageUrl: 'http://127.0.0.1:9/p', hrefs: ['http://127.0.0.1:9/a', 'http://127.0.0.1:9/b'] });
-    const b = s5IdentityFor({ pageUrl: 'http://127.0.0.1:9/p', hrefs: ['http://127.0.0.1:9/b', 'http://127.0.0.1:9/a'] });
+    const a = s5IdentityFor({
+      pageUrl: 'http://127.0.0.1:9/p',
+      hrefs: ['http://127.0.0.1:9/a', 'http://127.0.0.1:9/b'],
+    });
+    const b = s5IdentityFor({
+      pageUrl: 'http://127.0.0.1:9/p',
+      hrefs: ['http://127.0.0.1:9/b', 'http://127.0.0.1:9/a'],
+    });
     const c = s5IdentityFor({ pageUrl: 'http://127.0.0.1:9/p', hrefs: ['http://127.0.0.1:9/a'] });
     expect(a).toEqual(b);
     expect(a.contractId).not.toBe(c.contractId);
@@ -39,12 +45,32 @@ describe('createInstalledS5Lane lane decode (fail closed)', () => {
 
   it('rejects unknown fields, bad tab ids, non-canonical page URIs and malformed members', async () => {
     for (const payload of [
-      { tabId: 7, pageUrl: 'http://127.0.0.1:9/p', members: [{ href: 'http://127.0.0.1:9/a', text: 'a' }], extra: 1 },
-      { tabId: -1, pageUrl: 'http://127.0.0.1:9/p', members: [{ href: 'http://127.0.0.1:9/a', text: 'a' }] },
+      {
+        tabId: 7,
+        pageUrl: 'http://127.0.0.1:9/p',
+        members: [{ href: 'http://127.0.0.1:9/a', text: 'a' }],
+        extra: 1,
+      },
+      {
+        tabId: -1,
+        pageUrl: 'http://127.0.0.1:9/p',
+        members: [{ href: 'http://127.0.0.1:9/a', text: 'a' }],
+      },
       { tabId: 7, pageUrl: 'not-a-url', members: [{ href: 'http://127.0.0.1:9/a', text: 'a' }] },
-      { tabId: 7, pageUrl: 'http://127.0.0.1:9/p', members: [{ href: 'http://127.0.0.1:9/a?q=1', text: 'a' }] },
+      {
+        tabId: 7,
+        pageUrl: 'http://127.0.0.1:9/p',
+        members: [{ href: 'http://127.0.0.1:9/a?q=1', text: 'a' }],
+      },
       { tabId: 7, pageUrl: 'http://127.0.0.1:9/p', members: [] },
-      { tabId: 7, pageUrl: 'http://127.0.0.1:9/p', members: [{ href: 'http://127.0.0.1:9/a', text: 'a' }, { href: 'http://127.0.0.1:9/a', text: 'b' }] },
+      {
+        tabId: 7,
+        pageUrl: 'http://127.0.0.1:9/p',
+        members: [
+          { href: 'http://127.0.0.1:9/a', text: 'a' },
+          { href: 'http://127.0.0.1:9/a', text: 'b' },
+        ],
+      },
     ]) {
       const response = await rejectionOf(payload);
       expect(response['kind']).toBe('S5_REJECTED');
