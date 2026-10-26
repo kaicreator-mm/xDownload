@@ -485,10 +485,15 @@ function s5NmResponse(
   response: Record<string, unknown>,
 ): { ok: true; phase: string; facts: Record<string, unknown> } | { ok: false; error: string } {
   if (response['kind'] === 'S5_RESULT') {
+    // The lane frames carry the journey identity at the top level; merge it
+    // into the facts so every consumer sees one verbatim Core-fact bundle.
     return {
       ok: true,
       phase: typeof response['phase'] === 'string' ? response['phase'] : 'UNKNOWN',
-      facts: (response['facts'] as Record<string, unknown> | undefined) ?? {},
+      facts: {
+        ...((response['facts'] as Record<string, unknown> | undefined) ?? {}),
+        ...(typeof response['contractId'] === 'string' ? { contractId: response['contractId'] } : {}),
+      },
     };
   }
   const stage = typeof response['stage'] === 'string' ? response['stage'] : 'UNKNOWN';
