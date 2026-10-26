@@ -1,5 +1,5 @@
 /** #149 Core-private composition: one selected plan, no ambient HTTP or tool authority. */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { SegmentPlan, SegmentPlanEntry } from '../src/plan.ts';
 import { createPinnedHlsHostPorts } from '../src/pinned-host-composition.ts';
 import { planFixture } from './fixtures.ts';
@@ -14,10 +14,7 @@ function options() {
     mediaTools: { ffprobeBinary: 'ffprobe', ffmpegBinary: 'ffmpeg' },
   };
 }
-function alteredPlan(
-  plan: SegmentPlan,
-  replacements: Partial<SegmentPlan> = {},
-): SegmentPlan {
+function alteredPlan(plan: SegmentPlan, replacements: Partial<SegmentPlan> = {}): SegmentPlan {
   return Object.freeze({ ...plan, ...replacements });
 }
 
@@ -111,11 +108,10 @@ describe('#149 selected-plan pinned S4 host composition', () => {
         locator: Object.freeze({ kind: 'direct', uri: other + '/part-001.ts' }),
       }),
     }) as SegmentPlanEntry;
-    expect(() =>
-      host.bindSelectedPlan(alteredPlan(plan, {
-        entries: Object.freeze([first, ...plan.entries.slice(1)]),
-      })),
-    ).toThrow('trusted host admission');
+    const mutated = alteredPlan(plan, {
+      entries: Object.freeze([first, ...plan.entries.slice(1)]),
+    });
+    expect(() => host.bindSelectedPlan(mutated)).toThrow('trusted host admission');
   });
 
   it('refuses unsafe fixture/unauthorized host profiles before granting a port', () => {
@@ -140,15 +136,15 @@ describe('#149 selected-plan pinned S4 host composition', () => {
     ).toThrow();
   });
 
-  it('does not perform a request or spawn any process during composition/plan binding', () => {
-    const spy = vi.spyOn(process, 'emitWarning');
-    try {
-      const host = createPinnedHlsHostPorts(options());
-      host.bindSelectedPlan(planFixture());
-      // Media evidence only exists after the Core explicitly invokes its port.
-      expect(host.mediaAssemblyPort.assembleAndProbe).toBeTypeOf('function');
-    } finally {
-      spy.mockRestore();
-    }
+  it('does not mint a Core effect, task or terminal result from port construction', () => {
+    const host = createPinnedHlsHostPorts(options());
+    const fetcher = host.bindSelectedPlan(planFixture());
+    expect(host.mediaAssemblyPort.assembleAndProbe).toBeTypeOf('function');
+    expect(fetcher.fetch).toBeTypeOf('function');
+    expect(Object.keys(host).sort()).toEqual([
+      'bindSelectedPlan',
+      'manifestPort',
+      'mediaAssemblyPort',
+    ]);
   });
 });
