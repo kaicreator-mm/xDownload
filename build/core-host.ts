@@ -37,7 +37,10 @@ import {
   reopenCoreRuntime,
   type S1DriveHealthEntry,
 } from '@xdownload/core-runtime';
-import { createS5CollectionDriver } from '@xdownload/browser-collection-workflow';
+import {
+  createS5CollectionDriver,
+  createS6CollectionDriver,
+} from '@xdownload/browser-collection-workflow';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import path from 'node:path';
@@ -248,6 +251,12 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
     // by the runtime like S1/S3/S4; injected here because the driver lives
     // in browser-collection-workflow, which depends on core-runtime).
     s5Collection: createS5CollectionDriver(),
+    // #154: the installed S6 explicit-collection driver (real bounded
+    // per-member acquisition over the frozen declared-range pages through
+    // the trusted collection flow, supervised/reconciled by the runtime
+    // like S1/S3/S4/S5; injected here because the driver lives in
+    // browser-collection-workflow, which depends on core-runtime).
+    s6Collection: createS6CollectionDriver(),
   };
   // The CLI's explicit --pipe-name can only connect when this SAME installed
   // Core hosts the matching OS-verified listener. Enforce platform before

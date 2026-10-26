@@ -17,6 +17,7 @@ export * from './envelope.ts';
 export * from './s4-seam12-payload.ts';
 export * from './s3-seam12-payload.ts';
 export * from './s5-seam12-payload.ts';
+export * from './s6-seam12-payload.ts';
 export * from './peer.ts';
 export * from './state.ts';
 export * from './projection.ts';

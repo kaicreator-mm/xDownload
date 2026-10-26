@@ -75,6 +75,19 @@ function startPopup(
     's5-confirm',
     's5-execute',
     's5-batch-result',
+    's6-collection',
+    's6-identity',
+    's6-kind',
+    's6-from',
+    's6-to',
+    's6-prepare',
+    's6-prepare-result',
+    's6-walk',
+    's6-members',
+    's6-next-page',
+    's6-confirm',
+    's6-execute',
+    's6-batch-result',
   ];
   const nodes = Object.fromEntries(ids.map((id) => [id, makeNode()])) as Record<string, StubNode>;
   const links = LINKS;

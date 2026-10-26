@@ -84,3 +84,16 @@ export {
   type S5LaneRejectionStage,
   type S5LaneResponse,
 } from './s5-installed-lane.ts';
+export {
+  runConfirmedS6Collection,
+  validateConfirmedS6Collection,
+} from './s6-confirmed-collection.ts';
+export { createS6CollectionDriver, driveS6CollectionExecution } from './s6-installed-execution.ts';
+export {
+  createInstalledS6Lane,
+  isS6LaneResponse,
+  s6IdentityFor,
+  type InstalledS6LaneConfig,
+  type S6LaneRejectionStage,
+  type S6LaneResponse,
+} from './s6-installed-lane.ts';

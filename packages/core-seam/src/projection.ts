@@ -97,6 +97,47 @@ export interface SeamProjectionView {
     readonly accepted: boolean;
     readonly detail: string;
   }[];
+  /** #154 Core-frozen S6 collection admission facts (presence = prepared). */
+  readonly s6PreparedCollection?: {
+    readonly prepareId: string;
+    readonly snapshotId: string;
+    readonly collectionOrigin: string;
+    readonly collectionIdentity: string;
+    readonly fromPage: number;
+    readonly toPage: number;
+    readonly observedTupleDigest: string;
+    readonly status: 'AVAILABLE';
+  };
+  /** #154 Core-frozen observed collection pages (presence = at least one page recorded). */
+  readonly s6Pages?: readonly {
+    readonly pageNumber: number;
+    readonly members: readonly {
+      readonly memberId: string;
+      readonly href: string;
+      readonly text: string;
+    }[];
+    readonly observedTupleDigest: string;
+  }[];
+  /** #154 Core-confirmed S6 selection facts (presence = confirmed). */
+  readonly s6ConfirmedCollection?: {
+    readonly confirmedGroupId: string;
+    readonly prepareId: string;
+    readonly snapshotId: string;
+    readonly selectedMemberIds: readonly string[];
+    readonly displayedTupleDigest: string;
+    readonly confirmedAt: string;
+    readonly expiresAt: string;
+    /** The Core-constructed contract status (always CONFIRMED here). */
+    readonly contractStatus: string;
+  };
+  /** #154 Core-derived per-member S6 outcomes (presence = driver recorded). */
+  readonly s6Members?: readonly {
+    readonly memberId: string;
+    readonly href: string;
+    readonly outcome: 'ACQUIRED' | 'AUTH_DENIED' | 'NOT_RUN';
+    readonly accepted: boolean;
+    readonly detail: string;
+  }[];
   /**
    * Additive PRD §27 exposure (wire-compatible, v1 schema unchanged): the
    * cardinality of the confirmed selection identity list. Present only while
@@ -224,6 +265,50 @@ export function projectAggregate(
     ...(lineage.s5MemberOutcomes === undefined
       ? {}
       : { s5Members: lineage.s5MemberOutcomes.map((member) => ({ ...member })) }),
+    // #154 additive exposure with the same explicit presence semantics: the
+    // frozen collection admission, the frozen observed pages, the confirmed
+    // selection and the Core-derived per-member outcomes render only when
+    // that lineage state exists.
+    ...(lineage.s6PreparedCollection === undefined
+      ? {}
+      : {
+          s6PreparedCollection: {
+            prepareId: lineage.s6PreparedCollection.prepareId,
+            snapshotId: lineage.s6PreparedCollection.snapshotId,
+            collectionOrigin: lineage.s6PreparedCollection.collectionOrigin,
+            collectionIdentity: lineage.s6PreparedCollection.collectionIdentity,
+            fromPage: lineage.s6PreparedCollection.fromPage,
+            toPage: lineage.s6PreparedCollection.toPage,
+            observedTupleDigest: lineage.s6PreparedCollection.observedTupleDigest,
+            status: lineage.s6PreparedCollection.status,
+          },
+        }),
+    ...(lineage.s6Pages === undefined
+      ? {}
+      : {
+          s6Pages: lineage.s6Pages.map((page) => ({
+            pageNumber: page.pageNumber,
+            members: page.members.map((member) => ({ ...member })),
+            observedTupleDigest: page.observedTupleDigest,
+          })),
+        }),
+    ...(lineage.s6ConfirmedCollection === undefined
+      ? {}
+      : {
+          s6ConfirmedCollection: {
+            confirmedGroupId: lineage.s6ConfirmedCollection.confirmedGroupId,
+            prepareId: lineage.s6ConfirmedCollection.prepareId,
+            snapshotId: lineage.s6ConfirmedCollection.snapshotId,
+            selectedMemberIds: [...lineage.s6ConfirmedCollection.selectedMemberIds],
+            displayedTupleDigest: lineage.s6ConfirmedCollection.displayedTupleDigest,
+            confirmedAt: lineage.s6ConfirmedCollection.confirmedAt,
+            expiresAt: lineage.s6ConfirmedCollection.expiresAt,
+            contractStatus: lineage.s6ConfirmedCollection.contract.status,
+          },
+        }),
+    ...(lineage.s6MemberOutcomes === undefined
+      ? {}
+      : { s6Members: lineage.s6MemberOutcomes.map((member) => ({ ...member })) }),
     // Additive §27 exposure with explicit presence semantics: a fact that is
     // unknown at this lineage state gets NO key at all, so the wire form and
     // the in-process form both render it absent (JSON.stringify drops the

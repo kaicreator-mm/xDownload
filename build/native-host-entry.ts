@@ -25,6 +25,7 @@ import {
 import {
   createInstalledS2Lane,
   createInstalledS5Lane,
+  createInstalledS6Lane,
 } from '@xdownload/browser-collection-workflow';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -201,6 +202,10 @@ export async function runBrokerHost(argv: readonly string[]): Promise<number> {
       ? {}
       : {
           s5Lane: createInstalledS5Lane({
+            broker,
+            core: pipeCore,
+          }),
+          s6Lane: createInstalledS6Lane({
             broker,
             core: pipeCore,
           }),

@@ -117,6 +117,11 @@ export const OS_VERIFIED_PEER_COMMANDS: readonly string[] = [
   'PREPARE_S5_PAGE_GROUP',
   'CONFIRM_S5_PAGE_GROUP',
   'EXECUTE_S5_COLLECTION',
+  'PREPARE_S6_COLLECTION',
+  'ADMIT_S6_COLLECTION_PAGE',
+  'RECORD_S6_COLLECTION_PAGE',
+  'CONFIRM_S6_COLLECTION',
+  'EXECUTE_S6_COLLECTION',
 ];
 
 /** True when a command type may only be dispatched for an OS-verified peer. */
