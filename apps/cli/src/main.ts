@@ -9,13 +9,19 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import process from 'node:process';
+import * as readline from 'node:readline/promises';
 import {
   createLoopbackClientTransport,
   createWindowsPipeClientTransport,
   type SeamClientTransport,
 } from '@xdownload/core-seam';
 import { parseArgv } from './args.ts';
-import { runAdapter, type AdapterPorts, type SourceRequest } from './adapter.ts';
+import {
+  runAdapter,
+  type AdapterPorts,
+  type SelectionGesture,
+  type SourceRequest,
+} from './adapter.ts';
 import { CLI_USAGE } from './args.ts';
 import { renderErrorDocument, toJson } from './render.ts';
 
@@ -91,6 +97,23 @@ async function main(): Promise<void> {
     makeRequestId: () => `req-${randomUUID()}`,
     sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
     epochMs: () => Date.now(),
+    // #150: the S3 selection gesture requires an ATTACHED interactive
+    // terminal — piped/redirected stdin or a non-TTY stderr never confirms
+    // (no --yes flag exists; a page/Recipe cannot answer for the user).
+    confirmSelection: async (prompt: string): Promise<SelectionGesture> => {
+      if (!process.stdin.isTTY || !process.stderr.isTTY) {
+        return 'unavailable';
+      }
+      process.stderr.write(prompt);
+      const rl = readline.createInterface({ input: process.stdin });
+      try {
+        const answer = await rl.question('');
+        const normalized = answer.trim().toLowerCase();
+        return normalized === 'y' || normalized === 'yes' ? 'confirmed' : 'declined';
+      } finally {
+        rl.close();
+      }
+    },
   };
   const result = await runAdapter(input, ports);
   process.stdout.write(`${result.document}\n`);

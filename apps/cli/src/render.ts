@@ -318,6 +318,52 @@ export function renderNeedsUserActionDocument(input: {
   };
 }
 
+/** The exact displayed S3 selection tuple (L2 S3 §2.3) — render, never derive. */
+export interface S3SelectionTupleDocument {
+  readonly contract_id: string;
+  readonly snapshot_id: string;
+  readonly member_id: string;
+  readonly variant_key: string;
+  readonly selected_locator: string;
+  readonly media_profile_id: string;
+}
+
+export interface S3SelectionDocument {
+  readonly document: 'xdownload.cli.s3-selection';
+  readonly schema: typeof CLI_OUTPUT_SCHEMA;
+  readonly state: 'DISPLAYED_UNCONFIRMED' | 'CONFIRMED' | 'DECLINED' | 'TERMINAL_UNAVAILABLE';
+  readonly tuple: S3SelectionTupleDocument;
+  readonly tuple_digest: string;
+  readonly challenge_expires_at: string | null;
+  readonly confirmed: boolean | null;
+  readonly reason: string | null;
+  readonly note: string;
+}
+
+export const S3_SELECTION_NOTE =
+  'the displayed tuple is the user-selection evidence; explicit interactive confirmation is required and it is never independent bytes/publisher/Media truth';
+
+export function renderS3SelectionDocument(input: {
+  readonly tuple: S3SelectionTupleDocument;
+  readonly tupleDigest: string;
+  readonly challengeExpiresAt: string | null;
+  readonly state: S3SelectionDocument['state'];
+  readonly confirmed: boolean | null;
+  readonly reason: string | null;
+}): S3SelectionDocument {
+  return {
+    document: 'xdownload.cli.s3-selection',
+    schema: CLI_OUTPUT_SCHEMA,
+    state: input.state,
+    tuple: input.tuple,
+    tuple_digest: input.tupleDigest,
+    challenge_expires_at: input.challengeExpiresAt,
+    confirmed: input.confirmed,
+    reason: input.reason,
+    note: S3_SELECTION_NOTE,
+  };
+}
+
 export function renderWaitTimeoutDocument(input: {
   contractId: string;
   timeoutMs: number;

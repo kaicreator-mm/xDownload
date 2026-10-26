@@ -147,7 +147,7 @@ describe('S4 seam 1.2 closed payload candidates; Core effect authority NOT enabl
   });
 
   it('admits only closed 1.2 syntax but never activates S4 effects on installed v1.1 Core', () => {
-    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.1.0');
+    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.2.0');
     expect(S4_SEAM12_COMMAND_TYPES).toHaveLength(3);
     for (const commandType of S4_SEAM12_COMMAND_TYPES) {
       const envelope = rawCommand({

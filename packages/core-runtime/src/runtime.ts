@@ -54,6 +54,15 @@ import {
 } from './durable-stores.ts';
 import { driveS1DirectExecution, decodeS1DirectPayload, s1EffectIdentity } from './s1-direct.ts';
 import {
+  driveS3SelectedMediaExecution,
+  s3EffectIdentity,
+  type S3DriveRuntime,
+} from './s3-selected-media.ts';
+import {
+  digestSupportedMediaProfiles,
+  lookupSupportedMediaProfile,
+} from '@xdownload/direct-acquisition';
+import {
   createS1DriveSupervisor,
   type S1DriveHealthEntry,
   type S1DriveSupervisor,
@@ -169,6 +178,34 @@ function bindSeam(
   const result = createCoreSeamServer({
     expectedPeer,
     journal,
+    // #150: install the private S3 selected-media authority behind the
+    // OS-verified session gate — the Core-owned supported-media profile
+    // registry (closed, digest-pinned) plus the post-commit execution driver
+    // over this same authoritative composition.
+    s3MediaProfiles: {
+      supportedProfile: (profileId) => lookupSupportedMediaProfile(profileId) !== undefined,
+      profileContainerOf: (profileId) => lookupSupportedMediaProfile(profileId)?.container,
+      profileProbeRevisionOf: (profileId) => lookupSupportedMediaProfile(profileId)?.probeRevision,
+      registryDigest: () => digestSupportedMediaProfiles(),
+    },
+    s3SelectedMedia: {
+      begin: (input) => {
+        const seam = seamHolder.current;
+        if (seam !== undefined) {
+          void supervisor.drive(input.aggregateId, async () => {
+            const result = await driveS3SelectedMediaExecution(
+              { ...flowRuntime, seam, s1TransferAbort: transferAbort } satisfies S3DriveRuntime,
+              input,
+            );
+            if (!result.ok) {
+              throw new Error(
+                `s3 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+              );
+            }
+          });
+        }
+      },
+    },
     // #95: the one narrowly typed execution command is served by the Core
     // runtime's own delivered-bytes flow over this same authoritative
     // composition (writer/scheduler/store) — a second authority never
@@ -213,33 +250,71 @@ function bindSeam(
         const pending = seam
           .pendingS1Executions()
           .find((entry) => entry.aggregateId === aggregateId);
-        if (pending === undefined) {
-          return;
-        }
-        // Commit the cancel into BOTH canonical stores when the durable
-        // execution already exists; when it does not (the drive has not
-        // registered yet), the supervised re-drive below registers the
-        // lineage with its cancellation and closes truthfully instead.
-        const decoded = decodeS1DirectPayload(pending.payload);
-        if (decoded.ok) {
-          const identity = s1EffectIdentity({
-            contractId: pending.contract.contractId,
-            snapshotId: decoded.value.snapshotId,
-            targetId: pending.contract.requestedTarget,
-          });
-          if (identity.ok) {
-            const existing = flowRuntime.writer.reader
-              .workItems()
-              .find((workItem) => workItem.effectId === identity.value.effectId);
-            if (existing !== undefined) {
-              cancelLineage(flowRuntime, identity.value.lineageKey, source, existing.workItemId);
+        if (pending !== undefined) {
+          // Commit the cancel into BOTH canonical stores when the durable
+          // execution already exists; when it does not (the drive has not
+          // registered yet), the supervised re-drive below registers the
+          // lineage with its cancellation and closes truthfully instead.
+          const decoded = decodeS1DirectPayload(pending.payload);
+          if (decoded.ok) {
+            const identity = s1EffectIdentity({
+              contractId: pending.contract.contractId,
+              snapshotId: decoded.value.snapshotId,
+              targetId: pending.contract.requestedTarget,
+            });
+            if (identity.ok) {
+              const existing = flowRuntime.writer.reader
+                .workItems()
+                .find((workItem) => workItem.effectId === identity.value.effectId);
+              if (existing !== undefined) {
+                cancelLineage(flowRuntime, identity.value.lineageKey, source, existing.workItemId);
+              }
             }
           }
+          // Ensure the cancelled lineage reaches its truthful closure even
+          // when no drive is live; an in-flight episode coalesces and its own
+          // post-transfer checkpoint performs the closure.
+          drive(seam, pending);
+          return;
         }
-        // Ensure the cancelled lineage reaches its truthful closure even
-        // when no drive is live; an in-flight episode coalesces and its own
-        // post-transfer checkpoint performs the closure.
-        drive(seam, pending);
+        // #150: the same durably committed cancel closes an S3 selected-media
+        // lineage: commit the cancel into BOTH canonical stores when the
+        // durable execution exists, then re-drive the truthful closure.
+        const pendingS3 = seam
+          .pendingS3Executions()
+          .find((entry) => entry.aggregateId === aggregateId);
+        if (pendingS3 === undefined) {
+          return;
+        }
+        const s3Identity = s3EffectIdentity({
+          contractId: pendingS3.contract.contractId,
+          snapshotId: pendingS3.candidate.snapshotId,
+          targetId: pendingS3.contract.requestedTarget,
+          memberId: pendingS3.candidate.memberId,
+        });
+        if (s3Identity.ok) {
+          const existingS3 = flowRuntime.writer.reader
+            .workItems()
+            .find((workItem) => workItem.effectId === s3Identity.value.effectId);
+          if (existingS3 !== undefined) {
+            cancelLineage(flowRuntime, s3Identity.value.lineageKey, source, existingS3.workItemId);
+          }
+        }
+        void supervisor.drive(pendingS3.aggregateId, async () => {
+          const result = await driveS3SelectedMediaExecution(
+            { ...flowRuntime, seam, s1TransferAbort: transferAbort } satisfies S3DriveRuntime,
+            {
+              aggregateId: pendingS3.aggregateId,
+              contract: pendingS3.contract,
+              candidate: pendingS3.candidate,
+            },
+          );
+          if (!result.ok) {
+            throw new Error(
+              `s3 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+            );
+          }
+        });
       },
     },
   });
@@ -293,6 +368,40 @@ function reconcileS1Executions(
 }
 
 /**
+ * #150: reconcile registered S3 selected-media execution intents against
+ * durable truth (identical discipline to S1): replay re-registered every
+ * journaled intent; non-terminal intents re-drive from the durable work item
+ * without re-downloading an accepted artifact.
+ */
+function reconcileS3Executions(
+  runtime: CoreRuntime,
+  supervisor: S1DriveSupervisor,
+  transferAbort: S1TransferAbortHub,
+): void {
+  for (const pending of runtime.seam.pendingS3Executions()) {
+    const view = runtime.seam.inspectProjection(pending.aggregateId);
+    if (view === undefined || view.lineage.status === 'TERMINAL') {
+      continue;
+    }
+    void supervisor.drive(pending.aggregateId, async () => {
+      const result = await driveS3SelectedMediaExecution(
+        { ...runtime, s1TransferAbort: transferAbort } satisfies S3DriveRuntime,
+        {
+          aggregateId: pending.aggregateId,
+          contract: pending.contract,
+          candidate: pending.candidate,
+        },
+      );
+      if (!result.ok) {
+        throw new Error(
+          `s3 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
+    });
+  }
+}
+
+/**
  * Compose a FRESH authoritative Core Runtime over an empty durable root.
  * Refuses to clobber existing durable truth (use `reopenCoreRuntime`).
  */
@@ -331,6 +440,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     s1DriveHealth: supervisor.health,
   });
   reconcileS1Executions(runtime, supervisor, transferAbort);
+  reconcileS3Executions(runtime, supervisor, transferAbort);
   return runtime;
 }
 
@@ -395,6 +505,7 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   // Restart reconcile: replay re-registered every S1 intent but never the
   // unjournaled terminal — re-drive non-terminal intents from durable truth.
   reconcileS1Executions(runtime, supervisor, transferAbort);
+  reconcileS3Executions(runtime, supervisor, transferAbort);
   return runtime;
 }
 

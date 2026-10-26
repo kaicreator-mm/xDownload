@@ -125,10 +125,44 @@ export interface LineageState {
    * state only: surfaces cannot write it through the command vocabulary.
    */
   coverageAccounting?: CoverageAccounting;
+  /**
+   * #150 durably confirmed S3 selected-media candidate for this lineage:
+   * the immutable journaled CONFIRM_S3_CANDIDATE payload (one per lineage
+   * key `(contractId,snapshotId,memberId)`; identical re-confirmation
+   * converges, a different tuple rejects). Rebuilt from the accepted-command
+   * journal on restart replay; never writable by any other command.
+   */
+  s3Candidate?: S3CandidateRecord;
   /** Original failed-member identity domain (the only legal retry domain, C12). */
   failedMembers: MemberId[];
   /** Members whose explicit retry has been authorized through the seam. */
   retriedMembers: MemberId[];
+}
+
+/**
+ * The frozen, secret-free confirmed S3 candidate (#150, L2 S3 §2.4). Stored
+ * verbatim from the decoded CONFIRM_S3_CANDIDATE payload — the journal
+ * entry IS the durable record; this typed view rides the lineage only.
+ */
+export interface S3CandidateRecord {
+  readonly snapshotId: string;
+  readonly memberId: string;
+  readonly variantKey: string;
+  readonly locatorUri: string;
+  readonly declaredRedirectHosts: readonly string[];
+  readonly mediaProfileId: string;
+  /**
+   * Replay pin (L2 S3 §3): the supported-media registry content digest and
+   * the profile's structural probe revision, BOTH Core-computed at
+   * confirmation time. Execution/replay re-derives mandatory checks only
+   * from a byte-identical registry; any change fails closed and requires a
+   * fresh confirmation/successor snapshot.
+   */
+  readonly mediaProfilesDigest: string;
+  readonly mediaProfileProbeRevision: number;
+  readonly byteConstraintSha256?: string;
+  readonly expectedTotalBytes?: number;
+  readonly expectedContentTypePrefix?: string;
 }
 
 export function createLineageState(): LineageState {
@@ -150,8 +184,21 @@ export interface SeamAuthorityState {
   readonly aggregates: Map<string, ContractAggregate>;
   readonly lineages: Map<string, LineageState>;
   readonly accepted: Map<CommandRequestId, AcceptedCommand>;
+  /**
+   * #150 registered S3 selected-media execution intents (one per lineage):
+   * the durably journaled EXECUTE_S3_SELECTED_MEDIA commands, rebuilt from
+   * journal replay, awaiting/under runtime drive through the S3 flow.
+   */
+  readonly s3ExecutionIntents: Map<string, S3ExecutionIntent>;
   /** Monotonic counter implementing the single Core control order for cancels. */
   cancelOrderCounter: number;
+}
+
+/** One registered S3 selected-media execution intent (rebuilt from journal). */
+export interface S3ExecutionIntent {
+  readonly aggregateId: string;
+  readonly requestId: string;
+  readonly candidate: S3CandidateRecord;
 }
 
 export function createSeamAuthorityState(): SeamAuthorityState {
@@ -159,6 +206,7 @@ export function createSeamAuthorityState(): SeamAuthorityState {
     aggregates: new Map(),
     lineages: new Map(),
     accepted: new Map(),
+    s3ExecutionIntents: new Map(),
     cancelOrderCounter: 0,
   };
 }

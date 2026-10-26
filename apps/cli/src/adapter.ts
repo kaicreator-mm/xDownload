@@ -23,6 +23,7 @@ import {
   makePeerUserId,
   makeSeamRevision,
   payloadByteLength,
+  s3SelectionTupleDigest,
   SEAM_MESSAGE_LIMITS,
   type CommandEnvelope,
   type PeerIdentity,
@@ -54,11 +55,13 @@ import {
   renderErrorDocument,
   renderNeedsUserActionDocument,
   renderRejectionDocument,
+  renderS3SelectionDocument,
   renderStatusDocument,
   renderWaitTimeoutDocument,
   terminalExitCode,
   toJson,
   type BatchItem,
+  type S3SelectionTupleDocument,
 } from './render.ts';
 
 /** Payload source shape passed to the port (mirrors args PayloadSource, unbranded). */
@@ -66,6 +69,15 @@ export interface SourceRequest {
   readonly stdin: boolean;
   readonly file: string | undefined;
 }
+
+/**
+ * The outcome of one explicit interactive selection gesture (#150, L2 S3
+ * §2.1): 'confirmed' only for an affirmative reply on an attached TTY;
+ * 'declined' for any other reply; 'unavailable' when no interactive
+ * terminal exists — the S3 lane never auto-confirms and never reads a
+ * redirected/piped gesture.
+ */
+export type SelectionGesture = 'confirmed' | 'declined' | 'unavailable';
 
 /** Injectable process ports; the process entry binds real ones. */
 export interface AdapterPorts {
@@ -75,6 +87,13 @@ export interface AdapterPorts {
   readonly makeRequestId: () => string;
   readonly sleep: (ms: number) => Promise<void>;
   readonly epochMs: () => number;
+  /**
+   * Interactive selection confirmation port (#150): displays the prompt on
+   * the real terminal and captures one explicit user gesture. Absent on
+   * non-interactive compositions → the media command stops before any Core
+   * effect (NEEDS_USER_ACTION).
+   */
+  readonly confirmSelection?: (prompt: string) => Promise<SelectionGesture>;
 }
 
 export interface AdapterResult {
@@ -696,6 +715,343 @@ async function runDownload(
   };
 }
 
+/**
+ * #150 — the S3 selected-media user journey over the OS-verified Core pipe:
+ *
+ *   fresh-task capability probe (Core ≥1.2)
+ *   → SUBMIT_CONTRACT (single resource, explicit user selection, 4 layers)
+ *   → CONFIRM_SNAPSHOT (freezes the one selected member)
+ *   → REQUEST_S3_SELECTION_CHALLENGE (Core mints a single-use challenge
+ *     bound to this session/revision/displayed tuple)
+ *   → display the EXACT canonical tuple + digest, capture one explicit
+ *     interactive gesture (no --yes, no piped stdin, no auto-confirm)
+ *   → CONFIRM_S3_CANDIDATE (durable candidate; Core consumes the challenge
+ *     atomically with the journal commit)
+ *   → EXECUTE_S3_SELECTED_MEDIA (durable intent; the Core performs the real
+ *     public HTTPS transfer with Target/Transfer/Format/Media validation)
+ *   → bounded wait for the Core-derived terminal (never a synthetic
+ *     COMPLETE from any acceptance along the way).
+ */
+async function runMedia(
+  session: Session,
+  ports: AdapterPorts,
+  input: Extract<ParsedInput, { kind: 'media' }>,
+): Promise<AdapterResult> {
+  const confirmSelection = ports.confirmSelection;
+  // Interactive capability check BEFORE any Core round trip: the S3 lane has
+  // no non-interactive mode (L2 S3 §2.1 negatives: headless CLI must stop).
+  if (confirmSelection === undefined) {
+    const doc = renderErrorDocument({
+      error: 'USAGE',
+      message: 'media requires an interactive terminal; no confirmation port is available',
+    });
+    return {
+      exitCode: EXIT.NEEDS_USER_ACTION,
+      document: toJson(doc),
+      stderr: 'interactive confirmation unavailable (exit NEEDS_USER_ACTION)\n',
+    };
+  }
+  const base = ports.makeRequestId().replace(/^req-/, '').slice(0, 16);
+  const contractId = `contract-s3-${base}`;
+  const targetId = `target-s3-${base}`;
+  const snapshotId = `s3snap-${base}`;
+  const memberId = `s3member-${base}`;
+  const tuple: S3SelectionTupleDocument = {
+    contract_id: contractId,
+    snapshot_id: snapshotId,
+    member_id: memberId,
+    variant_key: input.variantKey,
+    selected_locator: input.url,
+    media_profile_id: input.mediaProfileId,
+  };
+  await requireS3CoreCompatibility(session, ports, contractId);
+
+  // 1. Single-resource contract under explicit user selection with the
+  //    four required validation layers (Target/Transfer/Format/Media).
+  const contract = decodeContractText(
+    JSON.stringify({
+      schemaIdentity: currentSchemaIdentity(),
+      contractId,
+      status: 'CONFIRMED',
+      intentType: 'SINGLE_RESOURCE',
+      requestedTarget: targetId,
+      requestedScope: { kind: 'single_resource', targetId },
+      continuationScope: { kind: 'NONE' },
+      selectionPolicy: { basis: 'EXPLICIT_USER_SELECTION', allowsBatchSelection: false },
+      automationMode: 'MANUAL_SELECTION',
+      explorationPermission: 'NONE',
+      budgetProfile: S1_BUDGET_PROFILE,
+      authorizationContextRef: 'authctx/s3-selected-public-media',
+      validationPolicy: { requiredLayers: ['target', 'transfer', 'format', 'media'] },
+      stopPolicy: { globalSafetyPrecedence: 'HIGHEST' },
+      resultPolicy: { requireMultidimensionalResult: true },
+      confirmedAt: ports.now(),
+    }),
+  );
+  const submit = await submitContract(session, ports, {
+    contract,
+    req: input.requestId,
+    expectedRevision: 0,
+    command: 'media',
+  });
+  if ('rejected' in submit) {
+    return rejectionResult('media', submit.rejected, contractId);
+  }
+  let currentRevision = submit.accepted.currentRevision;
+
+  // 2. Freeze the one selected member in a confirmed snapshot.
+  const snapshotPayload = {
+    schemaIdentity: currentSchemaIdentity(),
+    snapshotId,
+    contractId,
+    requestedScope: { kind: 'single_resource', targetId },
+    continuationScope: { kind: 'NONE' },
+    coverageTarget: {
+      scopeKind: 'single_resource',
+      scopeIdentityKey: `single_resource:${targetId}`,
+      snapshotVersion: 1,
+    },
+    requestedMemberBasis: { kind: 'EXPLICIT_IDENTITIES', memberIds: [memberId] },
+    authAccessibleBasis: { kind: 'EXPLICIT_IDENTITIES', memberIds: [memberId] },
+    selectedMemberIds: [memberId],
+    authorizationContextRef: 'authctx/s3-selected-public-media',
+    profileContextRef: 'profile/s3-selected-media-001',
+    selectionClaims: [
+      { kind: 'SINGLE', confirmationType: 'CONFIRM_RESOURCE_IDENTITY', memberRefs: [memberId] },
+    ],
+    sourceMarker: { system: 'xdownload-cli', version: 'v0.1.0' },
+    createdAt: ports.now(),
+  };
+  const confirmSnapshotEnvelope = buildCommandEnvelope({
+    commandType: 'CONFIRM_SNAPSHOT',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: snapshotPayload,
+    session,
+    ports,
+  });
+  const confirmSnapshot = await session.client.submitCommand(confirmSnapshotEnvelope);
+  if (confirmSnapshot.outcome !== 'ACCEPTED' || confirmSnapshot.acceptance === undefined) {
+    return rejectionResult('media', confirmSnapshot, contractId);
+  }
+  currentRevision = confirmSnapshot.currentRevision ?? confirmSnapshot.acceptance.revision;
+
+  // 3. Ask the Core to mint one single-use challenge for THIS displayed tuple.
+  const challengeEnvelope = buildCommandEnvelope({
+    commandType: 'REQUEST_S3_SELECTION_CHALLENGE',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: {
+      snapshotId,
+      memberId,
+      variantKey: input.variantKey,
+      locatorUri: input.url,
+      declaredRedirectHosts: [...input.redirectHosts],
+      mediaProfileId: input.mediaProfileId,
+    },
+    session,
+    ports,
+  });
+  const challengeResponse = await session.client.submitCommand(challengeEnvelope);
+  if (challengeResponse.outcome !== 'ACCEPTED' || challengeResponse.challenge === undefined) {
+    return rejectionResult('media', challengeResponse, contractId);
+  }
+  const challenge = challengeResponse.challenge;
+
+  // 4. Independently derive the canonical tuple digest and require the
+  //    Core's challenge to bind the SAME displayed tuple.
+  const localDigest = s3SelectionTupleDigest({
+    contractId,
+    snapshotId,
+    memberId,
+    variantKey: input.variantKey,
+    selectedLocator: input.url,
+    mediaProfileId: input.mediaProfileId,
+  });
+  if (localDigest !== challenge.tupleDigest) {
+    throw new CliInputError(
+      'USAGE',
+      'the Core-issued challenge binds a different selection tuple than the CLI displayed; stopping before any confirmation',
+      [
+        {
+          code: 'CORRELATION_BINDING_REJECTED',
+          path: 'selectionAttestation.displayTupleDigest',
+          message: `cli digest ${localDigest} != core digest ${challenge.tupleDigest}`,
+        },
+      ],
+    );
+  }
+
+  // 5. Display the exact canonical tuple and capture one explicit gesture.
+  const prompt = [
+    '',
+    '=== xdownload S3 selected media ===',
+    `contract       : ${tuple.contract_id}`,
+    `snapshot       : ${tuple.snapshot_id}`,
+    `member         : ${tuple.member_id}`,
+    `variant        : ${tuple.variant_key}`,
+    `locator        : ${tuple.selected_locator}`,
+    `media profile  : ${tuple.media_profile_id}`,
+    `tuple digest   : ${localDigest}`,
+    `redirect hosts : ${input.redirectHosts.join(', ')}`,
+    ...(input.byteConstraintSha256 === undefined
+      ? []
+      : [`byte sha256    : ${input.byteConstraintSha256}`]),
+    '',
+    'Confirm downloading exactly this media variant? [y/N] ',
+  ].join('\n');
+  const gesture = await confirmSelection(prompt);
+  if (gesture !== 'confirmed') {
+    const doc = renderS3SelectionDocument({
+      tuple,
+      tupleDigest: localDigest,
+      challengeExpiresAt: challenge.expiresAt,
+      state: gesture === 'declined' ? 'DECLINED' : 'TERMINAL_UNAVAILABLE',
+      confirmed: false,
+      reason: gesture === 'declined' ? 'USER_DECLINED' : 'INTERACTIVE_TERMINAL_UNAVAILABLE',
+    });
+    return {
+      exitCode: EXIT.NEEDS_USER_ACTION,
+      document: toJson(doc),
+      stderr: `media selection not confirmed; nothing was executed (exit ${String(EXIT.NEEDS_USER_ACTION)})\n`,
+    };
+  }
+
+  // 6. Durable candidate confirmation: the attestation carries the
+  //    CORE-ISSUED challenge (interactionId), the canonical displayed tuple
+  //    digest, the confirmation time and the Core revision the challenge
+  //    was bound to.
+  const confirmEnvelope = buildCommandEnvelope({
+    commandType: 'CONFIRM_S3_CANDIDATE',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: {
+      snapshotId,
+      memberId,
+      variantKey: input.variantKey,
+      locatorUri: input.url,
+      declaredRedirectHosts: [...input.redirectHosts],
+      mediaProfileId: input.mediaProfileId,
+      selectionAttestation: {
+        kind: 'EXPLICIT_CLI_GESTURE',
+        interactionId: challenge.challenge,
+        displayTupleDigest: localDigest,
+        confirmedAt: ports.now(),
+        expectedRevision: challenge.coreRevision,
+      },
+      ...(input.byteConstraintSha256 === undefined
+        ? {}
+        : { byteConstraintSha256: input.byteConstraintSha256 }),
+      ...(input.expectedContentTypePrefix === undefined
+        ? {}
+        : { expectedContentTypePrefix: input.expectedContentTypePrefix }),
+      ...(input.expectedTotalBytes === undefined
+        ? {}
+        : { expectedTotalBytes: input.expectedTotalBytes }),
+    },
+    session,
+    ports,
+  });
+  const confirmed = await session.client.submitCommand(confirmEnvelope);
+  if (confirmed.outcome !== 'ACCEPTED' || confirmed.acceptance === undefined) {
+    return rejectionResult('media', confirmed, contractId);
+  }
+  currentRevision = confirmed.currentRevision ?? confirmed.acceptance.revision;
+
+  // 7. Execute: the Core derives the single canonical effect and performs
+  //    the transfer; ACCEPTED here is still not acquisition success.
+  const executeEnvelope = buildCommandEnvelope({
+    commandType: 'EXECUTE_S3_SELECTED_MEDIA',
+    aggregateId: contractId,
+    req: undefined,
+    expectedRevision: currentRevision,
+    correlation: { contractId, snapshotId },
+    payload: { snapshotId, memberId },
+    session,
+    ports,
+  });
+  const executed = await session.client.submitCommand(executeEnvelope);
+  if (executed.outcome !== 'ACCEPTED' || executed.acceptance === undefined) {
+    return rejectionResult('media', executed, contractId);
+  }
+
+  // 8. Bounded wait for the Core-derived terminal truth.
+  const waited = await waitForTerminalProjection(session, ports, {
+    contractId,
+    wait: input.wait,
+  });
+  if (waited.terminal) {
+    const view = waited.view;
+    const exit = view.terminal === undefined ? EXIT.SUCCESS : terminalExitCode(view.terminal);
+    return {
+      exitCode: exit,
+      document: toJson(renderStatusDocument(view)),
+      stderr: `media: terminal result rendered (exit ${String(exit)})\n`,
+    };
+  }
+  if ('rejected' in waited) {
+    return rejectionResult('media', waited.rejected, contractId);
+  }
+  const doc = renderWaitTimeoutDocument({
+    contractId,
+    timeoutMs: input.wait.timeoutMs,
+    pollMs: input.wait.pollMs,
+  });
+  return {
+    exitCode: EXIT.WAIT_TIMEOUT,
+    document: toJson(doc),
+    stderr: `bounded wait elapsed (exit ${String(EXIT.WAIT_TIMEOUT)})\n`,
+  };
+}
+
+/**
+ * #150 S3 fresh-task capability probe (L2 S3 §5): the legacy 1.0 query must
+ * be understood by the older Core, and only the exact AGGREGATE_NOT_FOUND
+ * rejection from a Core advertising seam 1.2+ proves an S3-capable installed
+ * Core on this fresh task.
+ */
+async function requireS3CoreCompatibility(
+  session: Session,
+  ports: AdapterPorts,
+  aggregateId: string,
+): Promise<void> {
+  const query: QueryEnvelope = {
+    ...buildQueryEnvelope({ aggregateId, req: ports.makeRequestId(), session, ports }),
+    schemaIdentity: { schema: 'xdownload.core-seam', version: '1.0.0' },
+  };
+  const response = await session.client.submitQuery(query);
+  const version = parseSemVer(response.schemaIdentity.version);
+  const diagnostic = response.diagnostics?.[0];
+  const compatible =
+    response.schemaIdentity.schema === 'xdownload.core-seam' &&
+    version !== undefined &&
+    version.major === 1 &&
+    version.minor >= 2 &&
+    response.kind === 'response' &&
+    response.inReplyTo === query.requestId &&
+    response.outcome === 'REJECTED' &&
+    response.diagnostics?.length === 1 &&
+    diagnostic?.code === 'AGGREGATE_NOT_FOUND' &&
+    diagnostic.path === 'aggregateId' &&
+    response.acceptance === undefined &&
+    response.projection === undefined;
+  if (!compatible) {
+    throw new CliInputError('USAGE', 'S3 selected media requires Core seam 1.2', [
+      {
+        code: 'UNSUPPORTED_ENVELOPE_VERSION',
+        path: 'schemaIdentity.version',
+        message: 'S3 preflight did not verify a compatible Core on the intended fresh task',
+      },
+    ]);
+  }
+}
+
 async function runStatus(
   session: Session,
   ports: AdapterPorts,
@@ -944,6 +1300,8 @@ export async function runAdapter(input: ParsedInput, ports: AdapterPorts): Promi
         return await runSubmit(session, ports, input);
       case 'download':
         return await runDownload(session, ports, input);
+      case 'media':
+        return await runMedia(session, ports, input);
       case 'status':
         return await runStatus(session, ports, input.contractId);
       case 'wait':

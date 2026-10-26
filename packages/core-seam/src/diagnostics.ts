@@ -33,7 +33,8 @@ export type SeamOnlyDiagnosticCode =
   | 'LATE_COMMAND'
   | 'CORRELATION_BINDING_REJECTED'
   | 'RETRY_AUTHORITY_DOMAIN_REJECTED'
-  | 'QUERY_REJECTED';
+  | 'QUERY_REJECTED'
+  | 'MEDIA_POLICY_REQUIRED';
 
 /** Every diagnostic code observable at the seam: domain codes plus seam-only codes. */
 export type SeamDiagnosticCode = DiagnosticCode | SeamOnlyDiagnosticCode;

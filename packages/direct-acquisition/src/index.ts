@@ -24,7 +24,7 @@ export type {
   ValidationLayerOutcome,
 } from './port.ts';
 export { targetBasisOf, targetCertaintyOf } from './port.ts';
-export { DirectHttpAdapter } from './direct-http-adapter.ts';
+export { DirectHttpAdapter, declaredHostAdmits } from './direct-http-adapter.ts';
 export {
   classifyRangeResponse,
   isSha256Hex,
@@ -43,3 +43,11 @@ export {
   type PublicMediaSourceDecision,
   type PublicMediaSourceProfile,
 } from './public-media-source.ts';
+export {
+  digestSupportedMediaProfiles,
+  lookupSupportedMediaProfile,
+  mediaPolicyOfProfile,
+  S3_SUPPORTED_MEDIA_PROFILES,
+  type S3SupportedMediaContainer,
+  type S3SupportedMediaProfile,
+} from './supported-media-profiles.ts';

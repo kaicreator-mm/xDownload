@@ -20,6 +20,7 @@ import {
   type LogicalTargetId,
   type ValidationDiagnostic,
 } from '@xdownload/domain-contracts';
+import { createHash } from 'node:crypto';
 import { classifyRangeResponse, isSha256Hex, observeIdentity, planResume } from './identity.ts';
 import { validateFormat, validateMedia, validateTarget, validateTransfer } from './integrity.ts';
 import { projectOutcome, rejectRequest } from './projection.ts';
@@ -410,10 +411,27 @@ export class DirectHttpAdapter {
       servedUri: locatorChain[locatorChain.length - 1]?.locator.uri,
       originUri: request.binding.locator.uri,
       declaredRedirectHosts: request.allowedRedirectHosts,
+      slice: request.slice,
     });
     const validations: ValidationLayerOutcome[] = [transferCheck, formatCheck, targetCheck];
     if (request.slice === 'S3') {
       validations.push(validateMedia({ bytes, policy: request.mediaPolicy ?? { signatures: [] } }));
+      // #150: the untrusted confirmed-candidate byte constraint rejects a
+      // mismatched stream but NEVER promotes the Target basis to the
+      // publisher-digest anchor (targetBasisOf below only honors
+      // expectedSha256, which S3 forbids).
+      const constraint = request.byteConstraintSha256;
+      if (constraint !== undefined) {
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        if (digest !== constraint) {
+          validations.push({
+            layer: 'target',
+            passed: false,
+            code: 'BYTE_CONSTRAINT_MISMATCH',
+            failure: `acquired bytes digest ${digest} does not match the user-confirmed byte constraint ${constraint}`,
+          });
+        }
+      }
     }
 
     const failedValidation = validations.find(
@@ -660,7 +678,25 @@ function followRedirect(
       ],
     };
   }
-  if (!request.allowedRedirectHosts.includes(nextUrl.host)) {
+  // HTTPS downgrade is never admissible (#150 P1, transport delta §2): a
+  // confirmed https locator may not be redirected onto plaintext http — the
+  // bytes would no longer be the confirmed transport's bytes.
+  if (/^https:/iu.test(current.locator.uri) && nextUrl.protocol !== 'https:') {
+    return {
+      ok: false,
+      scopeExpansion: true,
+      diagnostics: [
+        {
+          code: 'LOCATOR_SUBSTITUTION_REJECTED',
+          path: 'redirect.location',
+          message:
+            'https locator cannot downgrade onto a plaintext http redirect target (HTTPS downgrade is never admissible)',
+          invariant: 'L2-IMPL-DELTA-§2',
+        },
+      ],
+    };
+  }
+  if (!declaredHostAdmits(request.allowedRedirectHosts, nextUrl, request.slice)) {
     return {
       ok: false,
       scopeExpansion: false,
@@ -685,6 +721,27 @@ function followRedirect(
   return { ok: true, binding: transition.value };
 }
 
+/**
+ * A declared delivery-graph host admits a redirect target when it matches the
+ * URL host exactly (host[:port]). On the S3 lane (#150, where the closed 1.2
+ * wire grammar admits only BARE public hostnames) a declaration is
+ * host-level and admits that hostname's ports (C29/ADR-011); the S1 lane
+ * keeps its exact host[:port] matching (its declarations may be
+ * port-qualified, and that precision is part of the reviewed S1 contract).
+ */
+export function declaredHostAdmits(
+  declared: readonly string[],
+  target: { readonly host: string; readonly hostname: string },
+  slice: 'S1' | 'S3',
+): boolean {
+  if (slice === 'S1') {
+    return declared.includes(target.host);
+  }
+  return declared.some(
+    (entry) => entry === target.host || (!entry.includes(':') && entry === target.hostname),
+  );
+}
+
 function validateRequestShape(request: DirectTransferRequest): DomainValidationResult<void> {
   if (request.expectedSha256 !== undefined && !isSha256Hex(request.expectedSha256)) {
     return rejectRequest(
@@ -692,6 +749,22 @@ function validateRequestShape(request: DirectTransferRequest): DomainValidationR
       'expectedSha256',
       'the published target identity anchor must be a lowercase hex sha-256 digest',
     );
+  }
+  if (request.byteConstraintSha256 !== undefined) {
+    if (!isSha256Hex(request.byteConstraintSha256)) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        'byteConstraintSha256',
+        'the S3 confirmed-candidate byte constraint must be a lowercase hex sha-256 digest',
+      );
+    }
+    if (request.slice !== 'S3' || request.expectedSha256 !== undefined) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        'byteConstraintSha256',
+        'the untrusted S3 byte constraint never combines with the S1 publisher anchor or non-S3 slices',
+      );
+    }
   }
   if (!makeContractId(request.contractId).ok) {
     return rejectRequest(
