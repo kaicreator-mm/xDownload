@@ -20,6 +20,11 @@ import type { SegmentPlan, SegmentPlanEntry } from './plan.ts';
 
 const MAX_FFMPEG_TS_SEGMENTS = 32;
 
+type BoundSegmentSelection = Readonly<{
+  uri: string;
+  range: Readonly<{ offset: number; length: number }> | undefined;
+}>;
+
 export interface PinnedHlsHostOptions {
   /** Trusted installation profile, not client or playlist-controlled input. */
   readonly manifests: HlsManifestAuthority;
@@ -87,7 +92,7 @@ export function createPinnedHlsHostPorts(options: PinnedHlsHostOptions): PinnedH
     ) {
       return planRefused();
     }
-    const entries = new Map<SegmentPlanEntry, Readonly<{ uri: string; range: Readonly<{ offset: number; length: number }> | undefined }>>();
+    const entries = new Map<SegmentPlanEntry, BoundSegmentSelection>();
     const seenPositions = new Set<number>();
     for (const entry of plan.entries) {
       const candidate = parsePublicHlsUriCandidate(entry.locator.locator.uri, 'mpegts-segment');
@@ -124,12 +129,14 @@ export function createPinnedHlsHostPorts(options: PinnedHlsHostOptions): PinnedH
         return planRefused();
       }
       seenPositions.add(entry.position);
-      entries.set(entry, Object.freeze({
-        uri: entry.locator.locator.uri,
-        range: entry.byterange === undefined
-          ? undefined
-          : Object.freeze({ offset: entry.byterange.offset, length: entry.byterange.length }),
-      }));
+      let range: BoundSegmentSelection['range'];
+      if (entry.byterange !== undefined) {
+        range = Object.freeze({
+          offset: entry.byterange.offset,
+          length: entry.byterange.length,
+        });
+      }
+      entries.set(entry, Object.freeze({ uri: entry.locator.locator.uri, range }));
     }
 
     return Object.freeze({
