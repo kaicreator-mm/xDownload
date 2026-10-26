@@ -364,6 +364,57 @@ export function renderS3SelectionDocument(input: {
   };
 }
 
+/** The exact displayed S4 rendition-selection tuple (L2 SEAM12 §4). */
+export interface S4SelectionTupleDocument {
+  readonly contract_id: string;
+  readonly snapshot_id: string;
+  readonly member_id: string;
+  readonly preview_id: string;
+  readonly rendition_key: string;
+  readonly rendition_uri: string;
+  readonly manifest_uri: string;
+  readonly media_profile_id: string;
+  readonly bandwidth: number;
+  readonly width: number | null;
+  readonly height: number | null;
+}
+
+export interface S4SelectionDocument {
+  readonly document: 'xdownload.cli.s4-selection';
+  readonly schema: typeof CLI_OUTPUT_SCHEMA;
+  readonly state: 'DISPLAYED_UNCONFIRMED' | 'CONFIRMED' | 'DECLINED' | 'TERMINAL_UNAVAILABLE';
+  readonly tuple: S4SelectionTupleDocument;
+  readonly tuple_digest: string;
+  readonly challenge_expires_at: string | null;
+  readonly confirmed: boolean | null;
+  readonly reason: string | null;
+  readonly note: string;
+}
+
+export const S4_SELECTION_NOTE =
+  'the displayed tuple is the Core-observed selection evidence; an explicit interactive rendition choice and confirmation are required and a green ACCEPTED is never acquisition truth';
+
+export function renderS4SelectionDocument(input: {
+  readonly tuple: S4SelectionTupleDocument;
+  readonly tupleDigest: string;
+  readonly challengeExpiresAt: string | null;
+  readonly state: S4SelectionDocument['state'];
+  readonly confirmed: boolean | null;
+  readonly reason: string | null;
+}): S4SelectionDocument {
+  return {
+    document: 'xdownload.cli.s4-selection',
+    schema: CLI_OUTPUT_SCHEMA,
+    state: input.state,
+    tuple: input.tuple,
+    tuple_digest: input.tupleDigest,
+    challenge_expires_at: input.challengeExpiresAt,
+    confirmed: input.confirmed,
+    reason: input.reason,
+    note: S4_SELECTION_NOTE,
+  };
+}
+
 export function renderWaitTimeoutDocument(input: {
   contractId: string;
   timeoutMs: number;

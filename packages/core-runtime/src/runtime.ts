@@ -59,6 +59,13 @@ import {
   type S3DriveRuntime,
 } from './s3-selected-media.ts';
 import {
+  driveS4Preview,
+  driveS4SelectedHlsExecution,
+  s4EffectIdentity,
+  type S4DriveRuntime,
+  type S4HlsHttpOptions,
+} from './s4-selected-hls.ts';
+import {
   digestSupportedMediaProfiles,
   lookupSupportedMediaProfile,
 } from '@xdownload/direct-acquisition';
@@ -88,6 +95,13 @@ export interface CoreRuntimeOptions {
    * terminal truth.
    */
   readonly onS1DriveHealth?: (entry: S1DriveHealthEntry) => void;
+  /**
+   * #153 trusted-host knobs of the S4 mature-client HTTP/FFmpeg lane.
+   * Production uses every default (public HTTPS only, FFmpeg/ffprobe from
+   * PATH); the loopback fixture exception exists only for the in-repo
+   * deterministic tests. Absent → the S4 1.2 commands stay failing closed.
+   */
+  readonly s4Hls?: S4HlsHttpOptions;
 }
 
 /** The composed authoritative Core Runtime (one instance per install). */
@@ -147,6 +161,7 @@ function bindSeam(
   flowRuntime: FlowRuntime,
   supervisor: S1DriveSupervisor,
   transferAbort: S1TransferAbortHub,
+  s4Options: S4HlsHttpOptions = {},
 ): CoreSeamServer {
   // #95 R1/F04: chunked delivered streams stage inside the composition so
   // journal replay during seam construction rebuilds staged truth through
@@ -200,6 +215,48 @@ function bindSeam(
             if (!result.ok) {
               throw new Error(
                 `s3 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+              );
+            }
+          });
+        }
+      },
+    },
+    // #153: install the private S4 selected-HLS authority behind the
+    // OS-verified session gate — the bounded preview reader and the
+    // post-commit execution driver over this same authoritative composition
+    // (the mature-client HTTP/FFmpeg lane of the adopted transport delta).
+    s4Preview: {
+      begin: (input) => {
+        const seam = seamHolder.current;
+        if (seam !== undefined) {
+          void supervisor.drive(input.aggregateId, async () => {
+            const result = await driveS4Preview(
+              { ...flowRuntime, seam } satisfies S4DriveRuntime,
+              input,
+              s4Options,
+            );
+            if (!result.ok) {
+              throw new Error(
+                `s4 preview drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+              );
+            }
+          });
+        }
+      },
+    },
+    s4SelectedHls: {
+      begin: (input) => {
+        const seam = seamHolder.current;
+        if (seam !== undefined) {
+          void supervisor.drive(input.aggregateId, async () => {
+            const result = await driveS4SelectedHlsExecution(
+              { ...flowRuntime, seam } satisfies S4DriveRuntime,
+              input,
+              s4Options,
+            );
+            if (!result.ok) {
+              throw new Error(
+                `s4 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
               );
             }
           });
@@ -283,35 +340,78 @@ function bindSeam(
         const pendingS3 = seam
           .pendingS3Executions()
           .find((entry) => entry.aggregateId === aggregateId);
-        if (pendingS3 === undefined) {
+        if (pendingS3 !== undefined) {
+          const s3Identity = s3EffectIdentity({
+            contractId: pendingS3.contract.contractId,
+            snapshotId: pendingS3.candidate.snapshotId,
+            targetId: pendingS3.contract.requestedTarget,
+            memberId: pendingS3.candidate.memberId,
+          });
+          if (s3Identity.ok) {
+            const existingS3 = flowRuntime.writer.reader
+              .workItems()
+              .find((workItem) => workItem.effectId === s3Identity.value.effectId);
+            if (existingS3 !== undefined) {
+              cancelLineage(
+                flowRuntime,
+                s3Identity.value.lineageKey,
+                source,
+                existingS3.workItemId,
+              );
+            }
+          }
+          void supervisor.drive(pendingS3.aggregateId, async () => {
+            const result = await driveS3SelectedMediaExecution(
+              { ...flowRuntime, seam, s1TransferAbort: transferAbort } satisfies S3DriveRuntime,
+              {
+                aggregateId: pendingS3.aggregateId,
+                contract: pendingS3.contract,
+                candidate: pendingS3.candidate,
+              },
+            );
+            if (!result.ok) {
+              throw new Error(
+                `s3 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+              );
+            }
+          });
           return;
         }
-        const s3Identity = s3EffectIdentity({
-          contractId: pendingS3.contract.contractId,
-          snapshotId: pendingS3.candidate.snapshotId,
-          targetId: pendingS3.contract.requestedTarget,
-          memberId: pendingS3.candidate.memberId,
+        // #153: the same durably committed cancel closes an S4 selected-HLS
+        // lineage: commit the cancel into BOTH canonical stores when the
+        // durable execution exists, then re-drive the truthful closure.
+        const pendingS4 = seam
+          .pendingS4Executions()
+          .find((entry) => entry.aggregateId === aggregateId);
+        if (pendingS4 === undefined) {
+          return;
+        }
+        const s4Identity = s4EffectIdentity({
+          contractId: pendingS4.contract.contractId,
+          snapshotId: pendingS4.selection.snapshotId,
+          targetId: pendingS4.contract.requestedTarget,
+          memberId: pendingS4.selection.memberId,
         });
-        if (s3Identity.ok) {
-          const existingS3 = flowRuntime.writer.reader
+        if (s4Identity.ok) {
+          const existingS4 = flowRuntime.writer.reader
             .workItems()
-            .find((workItem) => workItem.effectId === s3Identity.value.effectId);
-          if (existingS3 !== undefined) {
-            cancelLineage(flowRuntime, s3Identity.value.lineageKey, source, existingS3.workItemId);
+            .find((workItem) => workItem.effectId === s4Identity.value.effectId);
+          if (existingS4 !== undefined) {
+            cancelLineage(flowRuntime, s4Identity.value.lineageKey, source, existingS4.workItemId);
           }
         }
-        void supervisor.drive(pendingS3.aggregateId, async () => {
-          const result = await driveS3SelectedMediaExecution(
-            { ...flowRuntime, seam, s1TransferAbort: transferAbort } satisfies S3DriveRuntime,
+        void supervisor.drive(pendingS4.aggregateId, async () => {
+          const result = await driveS4SelectedHlsExecution(
+            { ...flowRuntime, seam } satisfies S4DriveRuntime,
             {
-              aggregateId: pendingS3.aggregateId,
-              contract: pendingS3.contract,
-              candidate: pendingS3.candidate,
+              aggregateId: pendingS4.aggregateId,
+              contract: pendingS4.contract,
+              selection: pendingS4.selection,
             },
           );
           if (!result.ok) {
             throw new Error(
-              `s3 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+              `s4 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
             );
           }
         });
@@ -402,6 +502,56 @@ function reconcileS3Executions(
 }
 
 /**
+ * #153: reconcile PENDING S4 previews and registered S4 execution intents
+ * against durable truth. A still-fresh PENDING preview is re-observed with
+ * one bounded read; an expired one closes truthfully FAILED without a
+ * fetch. Non-terminal execution intents re-drive from the durable work item
+ * (identical S1/S3 discipline).
+ */
+function reconcileS4Lanes(
+  runtime: CoreRuntime,
+  supervisor: S1DriveSupervisor,
+  s4Options: S4HlsHttpOptions,
+): void {
+  for (const pending of runtime.seam.pendingS4Previews()) {
+    void supervisor.drive(pending.aggregateId, async () => {
+      const result = await driveS4Preview(
+        { ...runtime } satisfies S4DriveRuntime,
+        pending,
+        s4Options,
+      );
+      if (!result.ok) {
+        throw new Error(
+          `s4 preview drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
+    });
+  }
+  for (const pending of runtime.seam.pendingS4Executions()) {
+    const view = runtime.seam.inspectProjection(pending.aggregateId);
+    if (view === undefined || view.lineage.status === 'TERMINAL') {
+      continue;
+    }
+    void supervisor.drive(pending.aggregateId, async () => {
+      const result = await driveS4SelectedHlsExecution(
+        { ...runtime } satisfies S4DriveRuntime,
+        {
+          aggregateId: pending.aggregateId,
+          contract: pending.contract,
+          selection: pending.selection,
+        },
+        s4Options,
+      );
+      if (!result.ok) {
+        throw new Error(
+          `s4 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
+    });
+  }
+}
+
+/**
  * Compose a FRESH authoritative Core Runtime over an empty durable root.
  * Refuses to clobber existing durable truth (use `reopenCoreRuntime`).
  */
@@ -428,6 +578,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
       },
       supervisor,
       transferAbort,
+      options.s4Hls,
     ),
     scheduler,
     writer,
@@ -441,6 +592,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   });
   reconcileS1Executions(runtime, supervisor, transferAbort);
   reconcileS3Executions(runtime, supervisor, transferAbort);
+  reconcileS4Lanes(runtime, supervisor, options.s4Hls ?? {});
   return runtime;
 }
 
@@ -491,6 +643,7 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
       },
       supervisor,
       transferAbort,
+      options.s4Hls,
     ),
     scheduler,
     writer,
@@ -506,6 +659,7 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   // unjournaled terminal — re-drive non-terminal intents from durable truth.
   reconcileS1Executions(runtime, supervisor, transferAbort);
   reconcileS3Executions(runtime, supervisor, transferAbort);
+  reconcileS4Lanes(runtime, supervisor, options.s4Hls ?? {});
   return runtime;
 }
 

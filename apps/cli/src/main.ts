@@ -19,6 +19,7 @@ import { parseArgv } from './args.ts';
 import {
   runAdapter,
   type AdapterPorts,
+  type RenditionSelection,
   type SelectionGesture,
   type SourceRequest,
 } from './adapter.ts';
@@ -110,6 +111,27 @@ async function main(): Promise<void> {
         const answer = await rl.question('');
         const normalized = answer.trim().toLowerCase();
         return normalized === 'y' || normalized === 'yes' ? 'confirmed' : 'declined';
+      } finally {
+        rl.close();
+      }
+    },
+    // #153: the S4 rendition (quality) choice also requires an ATTACHED
+    // interactive terminal — piped/redirected stdin never selects (a page,
+    // Recipe or script cannot answer for the user). One raw answer line is
+    // returned verbatim; the adapter maps it onto the Core-observed variants
+    // and stops on anything that does not name one.
+    selectRendition: async (prompt: string): Promise<RenditionSelection> => {
+      if (!process.stdin.isTTY || !process.stderr.isTTY) {
+        return { choice: 'unavailable' };
+      }
+      process.stderr.write(prompt);
+      const rl = readline.createInterface({ input: process.stdin });
+      try {
+        const answer = (await rl.question('')).trim();
+        if (answer.length === 0) {
+          return { choice: 'declined' };
+        }
+        return { choice: 'confirmed', renditionKey: answer };
       } finally {
         rl.close();
       }

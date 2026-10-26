@@ -15,7 +15,13 @@ import {
   type RequestedScope,
   type TerminalResult,
 } from '@xdownload/domain-contracts';
-import type { LineageState, SeamAuthorityState, TargetEvidenceReceipt } from './state.ts';
+import type {
+  S4ConfirmedSelectionRecord,
+  S4PreviewRecord,
+  LineageState,
+  SeamAuthorityState,
+  TargetEvidenceReceipt,
+} from './state.ts';
 
 export interface ContractProjectionView {
   readonly contractId: string;
@@ -88,6 +94,20 @@ export interface SeamProjectionView {
    * stay distinguishable on the sanctioned read projection.
    */
   readonly targetEvidence?: TargetEvidenceReceipt;
+  /**
+   * #153 the Core-observed S4 preview facts (L2 SEAM12 §3): present only
+   * once a PREVIEW_S4_HLS_VOD intent was durably admitted. Secret-free —
+   * the variants/failure the Core itself observed, never a CLI upload. The
+   * trusted CLI renders ONLY these projection facts when asking the user to
+   * pick a rendition.
+   */
+  readonly s4Preview?: S4PreviewRecord;
+  /**
+   * #153 the durably confirmed S4 selection facts: present only once a
+   * CONFIRM_S4_SELECTION COMMIT was durably admitted (secret-free; the raw
+   * challenge never appears here).
+   */
+  readonly s4ConfirmedSelection?: S4ConfirmedSelectionRecord;
 }
 
 /**
@@ -171,6 +191,13 @@ export function projectAggregate(
     // Additive §27-pattern exposure (#101 P2-2): the durable Target evidence
     // receipt is projected verbatim when present, absent when unknown.
     ...(lineage.targetEvidence === undefined ? {} : { targetEvidence: lineage.targetEvidence }),
+    // #153 additive exposure: the Core-observed preview facts and the
+    // confirmed selection facts ride the aggregate projection verbatim
+    // (secret-free, deep-frozen read-only values shared by reference).
+    ...(lineage.s4Preview === undefined ? {} : { s4Preview: lineage.s4Preview }),
+    ...(lineage.s4ConfirmedSelection === undefined
+      ? {}
+      : { s4ConfirmedSelection: lineage.s4ConfirmedSelection }),
   };
   return deepFreeze(view);
 }

@@ -64,7 +64,15 @@ import {
 } from './envelope.ts';
 import type { CommandRequestId } from './ids.ts';
 import { randomBytes } from 'node:crypto';
-import { S4_SEAM12_COMMAND_TYPES } from './s4-seam12-payload.ts';
+import {
+  S4_PUBLIC_MEDIA_PROFILE_ID,
+  S4_SEAM12_COMMAND_TYPES,
+  s4SelectionTupleDigest,
+  type S4ConfirmBeginPayload,
+  type S4ConfirmCommitPayload,
+  type S4ExecutePayload,
+  type S4PreviewPayload,
+} from './s4-seam12-payload.ts';
 import {
   S3_SEAM12_COMMAND_TYPES,
   s3SelectionTupleDigest,
@@ -87,6 +95,10 @@ import {
   type LineageState,
   type S3CandidateRecord,
   type S3ExecutionIntent,
+  type S4ConfirmedSelectionRecord,
+  type S4ExecutionIntent,
+  type S4PreviewRecord,
+  type S4RenditionFact,
   type SeamAuthorityState,
   type SeamJournal,
   type TargetEvidenceReceipt,
@@ -165,6 +177,34 @@ export interface CoreSeamServerOptions {
    * closed while the confirmed candidate stays durable.
    */
   readonly s3SelectedMedia?: S3SelectedMediaBeginner;
+  /**
+   * #153: clock/TTL knobs of the S4 preview records and Core-issued one-time
+   * selection challenges (L2 SEAM12 §3/§4). Test compositions inject a
+   * deterministic clock; default is wall time with a 120s lifetime.
+   */
+  readonly s4Challenge?: { readonly ttlMs?: number; readonly now?: () => number };
+  /**
+   * #153: post-commit driver for one durably admitted S4 preview intent.
+   * The PREVIEW_S4_HLS_VOD authority apply only journals the provisional
+   * PENDING preview record (journal-before-network); the runtime performs
+   * the bounded master read strictly AFTER the accepted-command journal
+   * commit and publishes the Core-observed facts through
+   * `recordS4PreviewResult`. Absent → PREVIEW_S4_HLS_VOD fails closed.
+   */
+  readonly s4Preview?: S4PreviewBeginner;
+  /**
+   * #153: post-commit driver for one registered S4 selected-HLS execution.
+   * EXECUTE_S4_SELECTED_HLS_VOD only registers one durable execution intent
+   * (journaled with the command); the runtime begins the real bounded
+   * manifest/segment/FFmpeg acquisition strictly AFTER the accepted-command
+   * journal commit and completes the lineage terminal through
+   * `recordExecutedTerminal`. Absent → EXECUTE_S4_SELECTED_HLS_VOD fails
+   * closed while the confirmed selection stays durable. Presence of this
+   * port INSTALLS the S4 1.2 command handlers behind the OS-verified
+   * session gate; absence keeps every S4 command failing closed exactly as
+   * before (legacy compositions).
+   */
+  readonly s4SelectedHls?: S4SelectedHlsBeginner;
 }
 
 /**
@@ -194,6 +234,69 @@ export interface S3SelectedMediaBeginner {
     /** The journaled EXECUTE command's idempotent identity. */
     readonly requestId: string;
   }): void;
+}
+
+/**
+ * #153 post-commit driver for one durably admitted S4 preview intent
+ * (journal-before-network): performs the bounded master read and publishes
+ * the Core-observed preview facts (or the typed refusal) through the trusted
+ * `recordS4PreviewResult` port. Fire-and-forget; a failed drive leaves the
+ * PENDING record for a later reconcile.
+ */
+export interface S4PreviewBeginner {
+  begin(input: {
+    readonly aggregateId: string;
+    readonly contract: AcquisitionContract;
+    /** The durably journaled PENDING preview record (Core-owned source binding). */
+    readonly preview: S4PreviewRecord;
+  }): void;
+}
+
+/**
+ * #153 post-commit driver for one registered S4 selected-HLS execution
+ * (journal-before-effect): performs the real bounded manifest/segment/FFmpeg
+ * acquisition and completes the lineage terminal through
+ * `recordExecutedTerminal`. Fire-and-forget: a thrown/rejected drive leaves
+ * the intent registered so a later reconcile can re-drive it.
+ */
+export interface S4SelectedHlsBeginner {
+  begin(input: {
+    readonly aggregateId: string;
+    readonly contract: AcquisitionContract;
+    /** The durably confirmed selection this execution is bound to. */
+    readonly selection: S4ConfirmedSelectionRecord;
+    /** The journaled EXECUTE command's idempotent identity. */
+    readonly requestId: string;
+  }): void;
+}
+
+/** #153: an S4 preview intent joined with the seam-authority contract. */
+export interface PendingS4Preview {
+  readonly aggregateId: string;
+  readonly contract: AcquisitionContract;
+  readonly preview: S4PreviewRecord;
+}
+
+/** #153: an S4 selected-HLS execution intent joined with its contract. */
+export interface PendingS4Execution extends S4ExecutionIntent {
+  readonly contract: AcquisitionContract;
+}
+
+/**
+ * #153 live-only (never journal-replay) S4 admission context: the OS-verified
+ * session facts of the connection the frame arrived on plus the Core-issued
+ * challenge registry. Authority appliers receive it only on the live path;
+ * journal replay trusts the already-gated durable truth.
+ */
+export interface S4LiveAdmissionContext {
+  readonly commandType:
+    'PREVIEW_S4_HLS_VOD' | 'CONFIRM_S4_SELECTION' | 'EXECUTE_S4_SELECTED_HLS_VOD';
+  readonly connectionId: string;
+  readonly verifiedPeer: NonNullable<ReturnType<VerifiedPeerSessionPort['verifiedSessionFor']>>;
+  readonly challenges: S3ChallengeMint;
+  /** The same injectable clock/TTL the preview records and challenges use. */
+  readonly ttlMs: number;
+  readonly now: () => number;
 }
 
 /**
@@ -365,6 +468,31 @@ export interface CoreSeamServer {
    */
   pendingS3Executions(): readonly PendingS3Execution[];
   /**
+   * #153 Core-internal (never a wire command): PENDING S4 preview intents
+   * awaiting the bounded master read, joined with the seam-authority
+   * contract. The runtime reconciles these after composition and on restart;
+   * an expired PENDING record closes truthfully FAILED without a fetch.
+   */
+  pendingS4Previews(): readonly PendingS4Preview[];
+  /**
+   * #153 Core-internal (never a wire command): registered S4 selected-HLS
+   * execution intents awaiting drive/completion, joined with the seam
+   * authority contract (identical discipline to S1/S3).
+   */
+  pendingS4Executions(): readonly PendingS4Execution[];
+  /**
+   * #153 trusted Core-runtime fact path: publish the Core-observed preview
+   * result (AVAILABLE variants or typed FAILED refusal) for one durably
+   * admitted PENDING preview record. Journaled for restart replay; identical
+   * receipts converge, conflicting receipts reject, and no surface command
+   * can invoke this method — the renderable preview facts a surface later
+   * reads from the projection are always Core-observed.
+   */
+  recordS4PreviewResult(
+    aggregateId: string,
+    record: S4PreviewRecord,
+  ): SeamResult<{ readonly converged: boolean }>;
+  /**
    * Core-internal (never a wire command): record the Core-derived terminal
    * result for one executed S1 lineage. The value MUST be the verbatim
    * projector output (the same gate `PROJECT_TERMINAL_RESULT` passes); the
@@ -443,64 +571,81 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
   // confirmed candidates/intents live in the journal.
   const S3_CHALLENGE_TTL_MS = options.s3Challenge?.ttlMs ?? 120_000;
   const s3Now = options.s3Challenge?.now ?? (() => Date.now());
-  const s3Challenges = new Map<
-    string,
-    {
-      readonly challenge: string;
-      readonly connectionId: string;
-      readonly aggregateId: string;
-      readonly tupleDigest: string;
-      readonly revision: number;
-      readonly expiresAtMs: number;
-      consumed: boolean;
-    }
-  >();
   const s3ChallengeResponses = new Map<
     CommandRequestId,
     { readonly response: SeamResponse; readonly payloadDigest: string }
   >();
-  const s3ChallengeMint: S3ChallengeMint = {
-    mint(input) {
-      if (s3Challenges.size > 256) {
-        const nowMs = s3Now();
-        for (const [key, record] of s3Challenges) {
-          if (record.expiresAtMs < nowMs || record.consumed) {
-            s3Challenges.delete(key);
+  // #153: S4 preview/selection TTL and the same injectable clock discipline.
+  // Preview records and confirmed selections are durable; their short
+  // Core-enforced lifetime is re-checked from THIS clock at every gate, and
+  // the S4 challenge mint below runs on the SAME clock (a composition that
+  // injects only s4Challenge never leaves S4 challenge TTLs on wall time).
+  const S4_TTL_MS = options.s4Challenge?.ttlMs ?? 120_000;
+  const s4Now = options.s4Challenge?.now ?? (() => Date.now());
+  // #153: idempotent BEGIN response cache — a duplicate BEGIN replays the
+  // prior acceptance WITHOUT the raw private challenge value (L2 SEAM12 §4).
+  const s4BeginResponses = new Map<
+    CommandRequestId,
+    { readonly response: SeamResponse; readonly payloadDigest: string }
+  >();
+  const makeChallengeMint = (now: () => number): S3ChallengeMint => {
+    const challenges = new Map<
+      string,
+      {
+        readonly challenge: string;
+        readonly connectionId: string;
+        readonly aggregateId: string;
+        readonly tupleDigest: string;
+        readonly revision: number;
+        readonly expiresAtMs: number;
+        consumed: boolean;
+      }
+    >();
+    return {
+      mint(input) {
+        if (challenges.size > 256) {
+          const nowMs = now();
+          for (const [key, record] of challenges) {
+            if (record.expiresAtMs < nowMs || record.consumed) {
+              challenges.delete(key);
+            }
           }
         }
-      }
-      const challenge = randomBytes(32).toString('hex');
-      s3Challenges.set(challenge, {
-        challenge,
-        connectionId: input.connectionId,
-        aggregateId: input.aggregateId,
-        tupleDigest: input.tupleDigest,
-        revision: input.revision,
-        expiresAtMs: s3Now() + input.ttlMs,
-        consumed: false,
-      });
-      return { challenge };
-    },
-    verify(input) {
-      const record = s3Challenges.get(input.challenge);
-      return (
-        record !== undefined &&
-        !record.consumed &&
-        record.connectionId === input.connectionId &&
-        record.aggregateId === input.aggregateId &&
-        record.tupleDigest === input.tupleDigest &&
-        record.revision === input.revision &&
-        record.expiresAtMs >= s3Now()
-      );
-    },
-    consume(challenge) {
-      const record = s3Challenges.get(challenge);
-      if (record !== undefined) {
-        record.consumed = true;
-        s3Challenges.delete(challenge);
-      }
-    },
+        const challenge = randomBytes(32).toString('hex');
+        challenges.set(challenge, {
+          challenge,
+          connectionId: input.connectionId,
+          aggregateId: input.aggregateId,
+          tupleDigest: input.tupleDigest,
+          revision: input.revision,
+          expiresAtMs: now() + input.ttlMs,
+          consumed: false,
+        });
+        return { challenge };
+      },
+      verify(input) {
+        const record = challenges.get(input.challenge);
+        return (
+          record !== undefined &&
+          !record.consumed &&
+          record.connectionId === input.connectionId &&
+          record.aggregateId === input.aggregateId &&
+          record.tupleDigest === input.tupleDigest &&
+          record.revision === input.revision &&
+          record.expiresAtMs >= now()
+        );
+      },
+      consume(challenge) {
+        const record = challenges.get(challenge);
+        if (record !== undefined) {
+          record.consumed = true;
+          challenges.delete(challenge);
+        }
+      },
+    };
   };
+  const s3ChallengeMint = makeChallengeMint(s3Now);
+  const s4ChallengeMint = makeChallengeMint(s4Now);
   let recoveryFenceReason: string | undefined;
 
   function recoveryFenceMessage(): string {
@@ -535,16 +680,20 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
             ? applyTargetEvidenceReceipt(state, entry.aggregateId, entry.receipt)
             : entry.kind === 'TARGET_WITNESS'
               ? applyTargetWitnessReceipt(state, entry.aggregateId, entry.receipt)
-              : restoreAcceptedCommand(
-                  state,
-                  gateway,
-                  entry,
-                  options.s2DeliveredAcquisition,
-                  options.s1DirectAcquisition,
-                  s1Intents,
-                  options.s3MediaProfiles,
-                  options.s3SelectedMedia,
-                );
+              : entry.kind === 'S4_PREVIEW'
+                ? applyS4PreviewReceipt(state, entry.aggregateId, entry.record)
+                : restoreAcceptedCommand(
+                    state,
+                    gateway,
+                    entry,
+                    options.s2DeliveredAcquisition,
+                    options.s1DirectAcquisition,
+                    s1Intents,
+                    options.s3MediaProfiles,
+                    options.s3SelectedMedia,
+                    options.s4Preview,
+                    options.s4SelectedHls,
+                  );
       if (!restored.ok) {
         const subject =
           entry.kind === 'COVERAGE_ACCOUNTING'
@@ -553,7 +702,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
               ? `target evidence receipt for aggregate '${entry.aggregateId}'`
               : entry.kind === 'TARGET_WITNESS'
                 ? `target witness receipt for aggregate '${entry.aggregateId}'`
-                : `request '${entry.envelope.requestId}'`;
+                : entry.kind === 'S4_PREVIEW'
+                  ? `S4 preview receipt for aggregate '${entry.aggregateId}'`
+                  : `request '${entry.envelope.requestId}'`;
         return {
           ok: false,
           diagnostics: [
@@ -653,12 +804,40 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         verifiedPeer,
       });
       if (!verified.ok) return rejected(envelope.requestId, verified.diagnostics);
+      // #153: behind the OS-verified same-user/same-logon-session gate, the
+      // installed S4 selected-HLS handlers run when this composition provides
+      // the post-commit execution driver; CONFIRM_S4_SELECTION phase BEGIN is
+      // the non-journaled Core-minted challenge half (mirrors the S3
+      // REQUEST_S3_SELECTION_CHALLENGE discipline). Without the driver every
+      // S4 command keeps failing closed exactly as before (legacy
+      // compositions), before idempotency, revision, persistence or network.
+      const s4Command = S4_SEAM12_COMMAND_TYPES.includes(
+        envelope.commandType as (typeof S4_SEAM12_COMMAND_TYPES)[number],
+      );
+      if (s4Command && options.s4SelectedHls !== undefined && verifiedPeer !== undefined) {
+        const s4Live = {
+          commandType: envelope.commandType as S4LiveAdmissionContext['commandType'],
+          connectionId: connectionId as string,
+          verifiedPeer,
+          challenges: s4ChallengeMint,
+          ttlMs: S4_TTL_MS,
+          now: s4Now,
+        };
+        if (envelope.commandType === 'CONFIRM_S4_SELECTION') {
+          const phase = (envelope.payload as { readonly phase?: unknown }).phase;
+          if (phase === 'BEGIN') {
+            return handleS4ConfirmBegin(envelope, connectionId as string, S4_TTL_MS, s4Now);
+          }
+          return handleCommand(envelope, undefined, s4Live);
+        }
+        return handleCommand(envelope, undefined, s4Live);
+      }
       // #150: behind the OS-verified same-user/same-logon-session gate, the
       // installed S3 selected-media handlers run when this composition
       // provides the Core-owned supported-media profile registry; without it
       // every S3 command keeps failing closed exactly as before (legacy
       // compositions), before idempotency, revision, persistence or network.
-      if (options.s3MediaProfiles !== undefined && verifiedPeer !== undefined) {
+      if (!s4Command && options.s3MediaProfiles !== undefined && verifiedPeer !== undefined) {
         const command = envelope.commandType as S3Seam12CommandType;
         if (command === 'REQUEST_S3_SELECTION_CHALLENGE') {
           return handleS3ChallengeRequest(
@@ -807,6 +986,132 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     return response;
   }
 
+  /**
+   * #153 CONFIRM_S4_SELECTION phase BEGIN (L2 SEAM12 §4): mint one Core-issued
+   * single-use challenge bound to the live OS-verified connection, the current
+   * aggregate revision, the AVAILABLE preview record and the canonical
+   * displayed rendition tuple digest. No authority transition, no journal
+   * write — the durable confirmed selection exists only with the later COMMIT
+   * that consumes this challenge atomically. The raw value travels ONLY on
+   * this direct response; a duplicate BEGIN with the same idempotent identity
+   * replays the secret-free prior acceptance without re-emitting the token.
+   */
+  function handleS4ConfirmBegin(
+    envelope: CommandEnvelope,
+    connectionId: string,
+    ttlMs: number,
+    now: () => number,
+  ): SeamResponse {
+    const prior = s4BeginResponses.get(envelope.requestId);
+    if (prior !== undefined) {
+      if (prior.payloadDigest !== stableStringify(envelope.payload)) {
+        return rejected(envelope.requestId, [
+          seamDiagnostic(
+            'IDEMPOTENCY_CONFLICT',
+            'requestId',
+            'same S4 BEGIN identity was already answered for a different tuple; conflicting duplicate rejects',
+            'L2-§6.8',
+          ),
+        ]);
+      }
+      // No raw token replay: the caller must start a fresh BEGIN (fresh
+      // requestId), which revokes the previously minted pending challenge.
+      // JSON.stringify drops the undefined field, so the wire form carries no
+      // raw token on replay.
+      return { ...prior.response, s4PrivateChallenge: undefined };
+    }
+    if (s4BeginResponses.size > 512) {
+      const oldest = s4BeginResponses.keys().next();
+      if (oldest.done !== true) {
+        s4BeginResponses.delete(oldest.value);
+      }
+    }
+    if (envelope.peer.surface !== 'CLI') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S4 selection challenges serve the installed CLI surface only',
+          'L2-S4-§4',
+        ),
+      ]);
+    }
+    const aggregate = state.aggregates.get(envelope.aggregateId);
+    const lineage = state.lineages.get(envelope.aggregateId);
+    if (aggregate === undefined || lineage === undefined) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+      ]);
+    }
+    if (lineage.status !== 'ACTIVE') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'LATE_COMMAND',
+          'lineage.status',
+          `lineage is ${lineage.status}; late S4 selection challenge is rejected`,
+          'L2-§11',
+        ),
+      ]);
+    }
+    const payload = envelope.payload as S4ConfirmBeginPayload;
+    const tuple = s4RenditionTupleOf(state, envelope, payload);
+    if (!tuple.ok) {
+      return rejected(envelope.requestId, tuple.diagnostics);
+    }
+    const revision = aggregate.revision;
+    if (envelope.expectedRevision !== revision) {
+      return rejected(
+        envelope.requestId,
+        [
+          seamDiagnostic(
+            'REVISION_MISMATCH',
+            'expectedRevision',
+            `S4 selection challenge requires the current aggregate revision ${String(revision)}`,
+            'L2-§10',
+          ),
+        ],
+        revision,
+      );
+    }
+    if (payload.displayedTupleDigest !== tuple.value.digest) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.displayedTupleDigest',
+          'the CLI-displayed tuple digest does not match the Core-observed preview facts for this rendition; BEGIN fails closed',
+          'L2-S4-§4',
+        ),
+      ]);
+    }
+    const expiresAtMs = now() + ttlMs;
+    const minted = s4ChallengeMint.mint({
+      connectionId,
+      aggregateId: envelope.aggregateId,
+      tupleDigest: tuple.value.digest,
+      revision,
+      ttlMs,
+      expiresAtIso: new Date(expiresAtMs).toISOString(),
+    });
+    const response: SeamResponse = {
+      schemaIdentity: currentSeamSchemaIdentity(),
+      kind: 'response',
+      inReplyTo: envelope.requestId,
+      outcome: 'ACCEPTED',
+      s4PrivateChallenge: {
+        previewId: payload.previewId,
+        renditionKey: payload.renditionKey,
+        value: minted.challenge,
+        expiresAt: new Date(expiresAtMs).toISOString(),
+      },
+      currentRevision: revision,
+    };
+    s4BeginResponses.set(envelope.requestId, {
+      response,
+      payloadDigest: stableStringify(envelope.payload),
+    });
+    return response;
+  }
+
   function handleQuery(envelope: QueryEnvelope): SeamResponse {
     if (envelope.queryType !== 'READ_PROJECTION') {
       return rejected(envelope.requestId, [
@@ -828,7 +1133,11 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     };
   }
 
-  function handleCommand(envelope: CommandEnvelope, s3Live?: S3LiveAdmissionContext): SeamResponse {
+  function handleCommand(
+    envelope: CommandEnvelope,
+    s3Live?: S3LiveAdmissionContext,
+    s4Live?: S4LiveAdmissionContext,
+  ): SeamResponse {
     // Declared payload byte bound before any parse into authority state.
     const payloadBytes = payloadByteLength(envelope.payload);
     if (payloadBytes > SEAM_MESSAGE_LIMITS.maxPayloadBytes) {
@@ -889,7 +1198,10 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       s1Intents,
       options.s3MediaProfiles,
       options.s3SelectedMedia,
+      options.s4Preview,
+      options.s4SelectedHls,
       s3Live,
+      s4Live,
     );
     if (!outcome.ok) {
       return rejected(envelope.requestId, outcome.diagnostics, currentRevision);
@@ -900,13 +1212,22 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       // #150: the journaled CONFIRM_S3_CANDIDATE carries the Core-computed
       // candidate record (including the media-registry replay pin) as its
       // payload — the durable pin's only home; replay reuses it verbatim.
-      const journalEnvelope =
-        envelope.commandType === 'CONFIRM_S3_CANDIDATE'
-          ? {
-              ...envelope,
-              payload: state.lineages.get(envelope.aggregateId)?.s3Candidate ?? envelope.payload,
-            }
-          : envelope;
+      // #153: the journaled S4 COMMIT carries the secret-free confirmed
+      // selection record — the raw private challenge never reaches durable
+      // state; replay re-applies the record shape without live verification.
+      let journalEnvelope = envelope;
+      if (envelope.commandType === 'CONFIRM_S3_CANDIDATE') {
+        journalEnvelope = {
+          ...envelope,
+          payload: state.lineages.get(envelope.aggregateId)?.s3Candidate ?? envelope.payload,
+        };
+      } else if (envelope.commandType === 'CONFIRM_S4_SELECTION') {
+        journalEnvelope = {
+          ...envelope,
+          payload:
+            state.lineages.get(envelope.aggregateId)?.s4ConfirmedSelection ?? envelope.payload,
+        };
+      }
       let durability;
       try {
         durability = journal.append({
@@ -943,6 +1264,43 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     if (envelope.commandType === 'CONFIRM_S3_CANDIDATE' && s3Live !== undefined) {
       const attestation = (envelope.payload as S3ConfirmCandidatePayload).selectionAttestation;
       s3Live.challenges.consume(attestation.interactionId);
+    }
+    // #153: the S4 private challenge is consumed single-use ATOMICALLY with
+    // the confirmed-selection journal commit — never before the durability
+    // outcome, and never durably recorded (the journaled payload above is the
+    // secret-free record).
+    if (envelope.commandType === 'CONFIRM_S4_SELECTION' && s4Live !== undefined) {
+      const commit = envelope.payload as S4ConfirmCommitPayload;
+      if (commit.confirmationChallenge !== undefined) {
+        s4Live.challenges.consume(commit.confirmationChallenge);
+      }
+    }
+    // #153: the durably admitted preview intent drives its bounded master
+    // read strictly AFTER the accepted-command journal commit.
+    if (envelope.commandType === 'PREVIEW_S4_HLS_VOD' && options.s4Preview) {
+      const preview = state.lineages.get(envelope.aggregateId)?.s4Preview;
+      const contract = state.aggregates.get(envelope.aggregateId)?.contract;
+      if (preview !== undefined && contract !== undefined) {
+        options.s4Preview.begin({
+          aggregateId: envelope.aggregateId,
+          contract,
+          preview,
+        });
+      }
+    }
+    // #153: an accepted S4 execution only registered its intent (apply); the
+    // external bounded manifest/segment/FFmpeg effect starts strictly AFTER
+    // the accepted-command journal commit.
+    if (envelope.commandType === 'EXECUTE_S4_SELECTED_HLS_VOD' && options.s4SelectedHls) {
+      const intent = state.s4ExecutionIntents.get(envelope.aggregateId);
+      if (intent !== undefined) {
+        options.s4SelectedHls.begin({
+          aggregateId: envelope.aggregateId,
+          contract: state.aggregates.get(envelope.aggregateId)!.contract,
+          selection: intent.selection,
+          requestId: envelope.requestId,
+        });
+      }
     }
     // #150: an accepted S3 selected-media execution only registered its
     // intent (apply); the external HTTP effect starts strictly AFTER the
@@ -1152,6 +1510,90 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         }
       }
       return pending;
+    },
+    pendingS4Previews() {
+      if (recoveryFenceReason !== undefined) {
+        throw new Error(recoveryFenceMessage());
+      }
+      const pending: PendingS4Preview[] = [];
+      for (const [aggregateId, aggregate] of state.aggregates) {
+        const lineage = state.lineages.get(aggregateId);
+        if (lineage?.s4Preview?.status === 'PENDING') {
+          pending.push({
+            aggregateId,
+            contract: aggregate.contract,
+            preview: lineage.s4Preview,
+          });
+        }
+      }
+      return pending;
+    },
+    pendingS4Executions() {
+      if (recoveryFenceReason !== undefined) {
+        throw new Error(recoveryFenceMessage());
+      }
+      const pending: PendingS4Execution[] = [];
+      for (const intent of state.s4ExecutionIntents.values()) {
+        const aggregate = state.aggregates.get(intent.aggregateId);
+        if (aggregate !== undefined) {
+          pending.push({ ...intent, contract: aggregate.contract });
+        }
+      }
+      return pending;
+    },
+    recordS4PreviewResult(aggregateId: string, record: S4PreviewRecord) {
+      if (recoveryFenceReason !== undefined) {
+        return seamFail([recoveryFenceDiagnostic()]);
+      }
+      if (journal === undefined) {
+        return seamFail([
+          seamDiagnostic(
+            'ADMISSION_REJECTED',
+            'journal',
+            'durable Core journal is required before an S4 preview result can be published',
+            'L2-S4-§3',
+          ),
+        ]);
+      }
+      const applied = applyS4PreviewReceipt(state, aggregateId, record);
+      if (!applied.ok) {
+        return applied;
+      }
+      if (!applied.value.converged) {
+        let durability;
+        try {
+          durability = journal.append({ kind: 'S4_PREVIEW', aggregateId, record });
+        } catch (error) {
+          poisonForRecovery(
+            `S4 preview receipt journal threw after in-memory authority apply; durability is uncertain: ${String(
+              error,
+            )}`,
+          );
+        }
+        if (
+          durability === null ||
+          typeof durability !== 'object' ||
+          !['COMMITTED', 'NOT_COMMITTED', 'UNCERTAIN'].includes(durability.status)
+        ) {
+          poisonForRecovery('S4 preview receipt journal returned an invalid durability outcome');
+        }
+        if (durability.status === 'UNCERTAIN') {
+          poisonForRecovery(
+            `S4 preview receipt durability is uncertain after in-memory authority apply: ${durability.error}`,
+          );
+        }
+        if (durability.status === 'NOT_COMMITTED') {
+          return seamFail([
+            seamDiagnostic(
+              'ADMISSION_REJECTED',
+              'journal',
+              `S4 preview receipt was not durably committed: ${durability.error}`,
+              'L2-§6.8',
+            ),
+          ]);
+        }
+      }
+      return applied;
     },
     recordExecutedTerminal(aggregateId: string, terminal: TerminalResult) {
       if (recoveryFenceReason !== undefined) {
@@ -1868,8 +2310,8 @@ interface AppliedCommand {
  * Deterministic authority application shared by the live path and restart
  * replay: domain decode → semantic gates → Core-owned state mutation.
  * Gates (authorization/bounds/idempotency/revision) run in the caller.
- * `s3Live` is present only on the live OS-verified path; journal replay
- * re-applies the already-gated durable truth without it.
+ * `s3Live`/`s4Live` are present only on the live OS-verified path; journal
+ * replay re-applies the already-gated durable truth without them.
  */
 function applyCommand(
   state: SeamAuthorityState,
@@ -1880,7 +2322,10 @@ function applyCommand(
   s1Intents: Map<string, S1ExecutionIntent>,
   s3Profiles: S3MediaProfilePort | undefined,
   s3Beginner: S3SelectedMediaBeginner | undefined,
+  s4PreviewDriver: S4PreviewBeginner | undefined,
+  s4Beginner: S4SelectedHlsBeginner | undefined,
   s3Live?: S3LiveAdmissionContext,
+  s4Live?: S4LiveAdmissionContext,
 ): SeamResult<AppliedCommand> {
   switch (envelope.commandType) {
     case 'SUBMIT_CONTRACT':
@@ -1901,10 +2346,17 @@ function applyCommand(
       return applyConfirmS3Candidate(state, envelope, s3Profiles, s3Live);
     case 'EXECUTE_S3_SELECTED_MEDIA':
       return applyExecuteS3SelectedMedia(state, envelope, s3Profiles, s3Beginner, s3Live);
+    case 'PREVIEW_S4_HLS_VOD':
+      return applyPreviewS4HlsVod(state, envelope, s4PreviewDriver, s4Live);
+    case 'CONFIRM_S4_SELECTION':
+      return applyConfirmS4Selection(state, envelope, s4Beginner, s4Live);
+    case 'EXECUTE_S4_SELECTED_HLS_VOD':
+      return applyExecuteS4SelectedHls(state, envelope, s4Beginner, s4Live);
     default:
       // This internal authority application also runs during journal reopen.
-      // No S4 command may be silently promoted through old journal replay,
-      // even if a crafted journal bypasses the live verified-peer gate.
+      // No unlisted command may be silently promoted through old journal
+      // replay, even if a crafted journal bypasses the live verified-peer
+      // gate.
       return seamFail([
         seamDiagnostic(
           'TRANSPORT_UNAUTHORIZED',
@@ -2750,8 +3202,9 @@ function applyTargetWitnessReceipt(
     ]);
   }
   // A target witness belongs to the ONE accepted direct-execution intent (S1
-  // wire command, or the #150 S3 selected-media intent over the durably
-  // confirmed candidate), not merely to any plausible effect string for this
+  // wire command, the #150 S3 selected-media intent over the durably
+  // confirmed candidate, or the #153 S4 selected-HLS intent over the durably
+  // confirmed selection), not merely to any plausible effect string for this
   // aggregate. This also rejects well-shaped but substituted
   // member/artifact/locator facts during journal replay, before a terminal
   // can be reconstructed (#113).
@@ -2761,7 +3214,11 @@ function applyTargetWitnessReceipt(
       envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION',
   );
   const s3Intent = s1Commands.length === 0 ? state.s3ExecutionIntents.get(aggregateId) : undefined;
-  if (s1Commands.length !== 1 && s3Intent === undefined) {
+  const s4Intent =
+    s1Commands.length === 0 && s3Intent === undefined
+      ? state.s4ExecutionIntents.get(aggregateId)
+      : undefined;
+  if (s1Commands.length !== 1 && s3Intent === undefined && s4Intent === undefined) {
     return seamFail([
       seamDiagnostic(
         'ADMISSION_REJECTED',
@@ -2774,8 +3231,9 @@ function applyTargetWitnessReceipt(
   // The accepted payload was validated through the closed vocabulary before
   // commit. Compare all identity and delivery-authority fields, including
   // the exact selected URL and host list, on both write and replay. The S3
-  // lane compares against the durably CONFIRMED candidate and its canonical
-  // derived artifact identity — and can never declare a publisher digest.
+  // lane compares against the durably CONFIRMED candidate and the S4 lane
+  // against the durably CONFIRMED selection — both with their canonical
+  // derived artifact identity, and neither can declare a publisher digest.
   let witnessIntent: {
     readonly snapshotId: string;
     readonly memberId: string;
@@ -2803,14 +3261,37 @@ function applyTargetWitnessReceipt(
       declaredRedirectHosts: intent.delivery.declaredRedirectHosts,
       declaredPublishedDigest: intent.delivery.expectedSha256 !== undefined,
     };
-  } else {
-    const candidate = s3Intent!.candidate;
+  } else if (s3Intent !== undefined) {
+    const candidate = s3Intent.candidate;
     witnessIntent = {
       snapshotId: candidate.snapshotId,
       memberId: candidate.memberId,
       artifactId: `s3artifact:${aggregateId}:${candidate.snapshotId}:${candidate.memberId}`,
       locatorUri: candidate.locatorUri,
       declaredRedirectHosts: candidate.declaredRedirectHosts,
+      declaredPublishedDigest: false,
+    };
+  } else {
+    const selection = s4Intent!.selection;
+    const deliveryHosts = [
+      ...new Set(
+        [selection.manifestUri, selection.renditionUri]
+          .map((uri) => {
+            try {
+              return new URL(uri).host;
+            } catch {
+              return undefined;
+            }
+          })
+          .filter((host): host is string => host !== undefined),
+      ),
+    ];
+    witnessIntent = {
+      snapshotId: selection.snapshotId,
+      memberId: selection.memberId,
+      artifactId: `s4artifact:${aggregateId}:${selection.snapshotId}:${selection.memberId}`,
+      locatorUri: selection.renditionUri,
+      declaredRedirectHosts: deliveryHosts,
       declaredPublishedDigest: false,
     };
   }
@@ -3458,6 +3939,605 @@ function applyExecuteS3SelectedMedia(
   return seamOk({ revision });
 }
 
+/**
+ * #153 PREVIEW_S4_HLS_VOD (L2 SEAM12 §3 + the adopted transport-delta §5
+ * preview bootstrap): journal the provisional Core-owned immutable manifest
+ * selection (PENDING preview record) BEFORE any network read. Identical
+ * re-preview converges; a conflicting manifest URI under the same lineage
+ * rejects — a changed source requires a successor contract, never a silent
+ * rewrite. The bounded master read starts strictly after the journal commit
+ * through the S4PreviewBeginner port.
+ */
+function applyPreviewS4HlsVod(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s4PreviewDriver: S4PreviewBeginner | undefined,
+  s4Live: S4LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s4PreviewDriver === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'TRANSPORT_UNAUTHORIZED',
+        'commandType',
+        'this Core composition provides no S4 selected-HLS preview driver; PREVIEW_S4_HLS_VOD fails closed',
+      ),
+    ]);
+  }
+  if (s4Live !== undefined && envelope.peer.surface !== 'CLI') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S4 preview serves the installed CLI surface only',
+        'L2-S4-§3',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const payload = envelope.payload as S4PreviewPayload;
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S4 preview');
+  }
+  if (
+    aggregate.contract.intentType !== 'SINGLE_RESOURCE' ||
+    aggregate.contract.requestedScope.kind !== 'single_resource'
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'contract.intentType',
+        'the S4 selected-HLS lane serves SINGLE_RESOURCE contracts only',
+        'PRD-§28 S4',
+      ),
+    ]);
+  }
+  const snapshot = lineage.snapshot;
+  if (snapshot === undefined || snapshot.snapshotId !== payload.snapshotId) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.snapshotId',
+        'S4 preview must bind the one confirmed selection snapshot of this lineage',
+        'L2-S4-§1',
+      ),
+    ]);
+  }
+  if (!snapshot.selectedMemberIds.includes(payload.memberId as MemberId)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.memberId',
+        'S4 preview member is not the frozen selected member of the confirmed snapshot',
+        'L2-S4-§1',
+      ),
+    ]);
+  }
+  if (payload.mediaProfileId !== S4_PUBLIC_MEDIA_PROFILE_ID) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.mediaProfileId',
+        'S4 preview serves the closed basic public HLS VOD profile only',
+        'L2-S4-§2',
+      ),
+    ]);
+  }
+  // Canonical composite identities must fit their 128-char bounds BEFORE the
+  // preview exists (an unexecutable selection can never wedge a lineage).
+  const previewId = `s4preview:${envelope.aggregateId}:${payload.snapshotId}:${payload.memberId}`;
+  const confirmedSelectionId = `s4select:${envelope.aggregateId}:${payload.snapshotId}:${payload.memberId}`;
+  const effectId = `effect:${envelope.aggregateId}:${payload.snapshotId}:${aggregate.contract.requestedTarget}`;
+  const artifactId = `s4artifact:${envelope.aggregateId}:${payload.snapshotId}:${payload.memberId}`;
+  if (
+    previewId.length > 128 ||
+    confirmedSelectionId.length > 128 ||
+    effectId.length > 128 ||
+    artifactId.length > 128
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ENVELOPE_MALFORMED',
+        'payload.snapshotId',
+        'the canonical composite S4 identity exceeds the 128-char id bound',
+      ),
+    ]);
+  }
+  const existing = lineage.s4Preview;
+  if (existing !== undefined) {
+    const sameIntent =
+      existing.snapshotId === payload.snapshotId &&
+      existing.memberId === payload.memberId &&
+      existing.manifestUri === payload.manifestUri &&
+      existing.mediaProfileId === payload.mediaProfileId;
+    if (!sameIntent) {
+      return seamFail([
+        seamDiagnostic(
+          'IDEMPOTENCY_CONFLICT',
+          'payload.manifestUri',
+          'a different S4 manifest source is already durably bound to this lineage; a changed source requires a successor contract',
+          'L2-S4-§3',
+        ),
+      ]);
+    }
+    // Identical intent under a new request id: converges on the recorded
+    // preview (its observed result, if any, stays the durable truth).
+    return seamOk({ revision: aggregate.revision });
+  }
+  const nowMs = s4Live?.now() ?? Date.now();
+  lineage.s4Preview = {
+    previewId,
+    snapshotId: payload.snapshotId,
+    memberId: payload.memberId,
+    manifestUri: payload.manifestUri,
+    mediaProfileId: payload.mediaProfileId,
+    status: 'PENDING',
+    createdAt: new Date(nowMs).toISOString(),
+    expiresAt: new Date(nowMs + (s4Live?.ttlMs ?? 120_000)).toISOString(),
+  };
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * Resolve the exact Core-observed rendition tuple for a BEGIN/COMMIT payload
+ * against the lineage's AVAILABLE preview record: the renditionKey must name
+ * exactly one observed variant; the returned digest covers every displayed
+ * fact (L2 SEAM12 §4). Shared by the live BEGIN handler and the COMMIT apply.
+ */
+function s4RenditionTupleOf(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  payload: { readonly previewId: string; readonly renditionKey: string },
+): SeamResult<{ readonly variant: S4RenditionFact; readonly digest: string }> {
+  const lineage = state.lineages.get(envelope.aggregateId);
+  if (lineage === undefined) {
+    return seamFail([
+      seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+    ]);
+  }
+  const preview = lineage.s4Preview;
+  if (
+    preview === undefined ||
+    preview.previewId !== payload.previewId ||
+    preview.status !== 'AVAILABLE'
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.previewId',
+        'no AVAILABLE Core-observed preview matches this identity; an explicit fresh preview is required',
+        'L2-S4-§3',
+      ),
+    ]);
+  }
+  const matches = (preview.variants ?? []).filter(
+    (variant) => variant.key === payload.renditionKey,
+  );
+  if (matches.length !== 1 || matches[0] === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.renditionKey',
+        'the selected rendition key must correspond to exactly one Core-observed preview variant',
+        'L2-S4-§4',
+      ),
+    ]);
+  }
+  const variant = matches[0];
+  return seamOk({
+    variant,
+    digest: s4SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: preview.snapshotId,
+      memberId: preview.memberId,
+      previewId: preview.previewId,
+      renditionKey: variant.key,
+      renditionUri: variant.uri,
+      manifestUri: preview.manifestUri,
+      mediaProfileId: preview.mediaProfileId,
+      bandwidth: variant.bandwidth,
+      ...(variant.width === undefined ? {} : { width: variant.width }),
+      ...(variant.height === undefined ? {} : { height: variant.height }),
+    }),
+  });
+}
+
+/**
+ * #153 CONFIRM_S4_SELECTION phase COMMIT (L2 SEAM12 §4): consume the
+ * Core-issued one-use challenge atomically with the durable confirmed
+ * selection record (the consumption itself happens in the live post-commit
+ * hook, after the journal durability outcome). Identical re-confirmation
+ * converges; a different tuple under the same lineage is an immutable
+ * conflict. Journal replay re-applies the record-shaped payload (the raw
+ * challenge never reached durable state) without live verification.
+ */
+function applyConfirmS4Selection(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s4Beginner: S4SelectedHlsBeginner | undefined,
+  s4Live: S4LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s4Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'TRANSPORT_UNAUTHORIZED',
+        'commandType',
+        'this Core composition provides no S4 selected-HLS driver; CONFIRM_S4_SELECTION fails closed',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S4 selection confirmation');
+  }
+  const raw = envelope.payload as Record<string, unknown>;
+  const isRecordShape = raw['phase'] === undefined;
+  let record: S4ConfirmedSelectionRecord;
+  if (isRecordShape) {
+    // Journal replay: the durable secret-free record is the already-gated
+    // truth; revalidate it against the observed preview, never the clock.
+    const replay = raw as unknown as S4ConfirmedSelectionRecord;
+    const tuple = s4RenditionTupleOf(state, envelope, replay);
+    if (!tuple.ok) {
+      return tuple;
+    }
+    if (
+      tuple.value.digest !== replay.displayedTupleDigest ||
+      tuple.value.variant.uri !== replay.renditionUri ||
+      replay.confirmedSelectionId !==
+        `s4select:${envelope.aggregateId}:${replay.snapshotId}:${replay.memberId}` ||
+      replay.manifestUri !== lineage.s4Preview?.manifestUri ||
+      replay.mediaProfileId !== lineage.s4Preview?.mediaProfileId ||
+      replay.previewId !== lineage.s4Preview?.previewId
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload',
+          'the journaled S4 confirmed-selection record does not match the observed preview facts; replay fails closed',
+          'L2-S4-§4',
+        ),
+      ]);
+    }
+    record = replay;
+  } else {
+    // Live COMMIT: verify the Core-issued challenge against this OS-verified
+    // connection, the current revision and the canonical displayed tuple.
+    if (s4Live === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'TRANSPORT_UNAUTHORIZED',
+          'commandType',
+          'S4 selection confirmation requires the live OS-verified admission context',
+        ),
+      ]);
+    }
+    if (envelope.peer.surface !== 'CLI') {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S4 selection confirmation serves the installed CLI surface only',
+          'L2-S4-§4',
+        ),
+      ]);
+    }
+    const payload = envelope.payload as S4ConfirmCommitPayload;
+    const tuple = s4RenditionTupleOf(state, envelope, payload);
+    if (!tuple.ok) {
+      return tuple;
+    }
+    if (
+      payload.displayedTupleDigest !== tuple.value.digest ||
+      !s4Live.challenges.verify({
+        challenge: payload.confirmationChallenge,
+        connectionId: s4Live.connectionId,
+        aggregateId: envelope.aggregateId,
+        tupleDigest: tuple.value.digest,
+        revision: aggregate.revision,
+      })
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.confirmationChallenge',
+          'the Core-issued S4 selection challenge did not verify against this session, revision and displayed tuple; confirmation fails closed',
+          'L2-S4-§4',
+        ),
+      ]);
+    }
+    const nowMs = s4Live.now();
+    record = {
+      confirmedSelectionId: `s4select:${envelope.aggregateId}:${payload.snapshotId}:${payload.memberId}`,
+      previewId: payload.previewId,
+      snapshotId: payload.snapshotId,
+      memberId: payload.memberId,
+      manifestUri: lineage.s4Preview!.manifestUri,
+      mediaProfileId: lineage.s4Preview!.mediaProfileId,
+      renditionKey: payload.renditionKey,
+      renditionUri: tuple.value.variant.uri,
+      displayedTupleDigest: tuple.value.digest,
+      confirmedAt: new Date(nowMs).toISOString(),
+      expiresAt: new Date(nowMs + s4Live.ttlMs).toISOString(),
+    };
+  }
+  // Immutable-truth convergence: an identical re-confirmation converges on
+  // the recorded selection; a different one is a conflict, never a rewrite.
+  const existing = lineage.s4ConfirmedSelection;
+  if (existing !== undefined) {
+    if (stableStringify(existing) === stableStringify(record)) {
+      return seamOk({ revision: aggregate.revision });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'payload',
+        'a different S4 confirmed selection is already durably recorded for this lineage; changed selection requires a successor contract/snapshot',
+        'L2-S4-§4',
+      ),
+    ]);
+  }
+  lineage.s4ConfirmedSelection = record;
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #153 EXECUTE_S4_SELECTED_HLS_VOD (L2 SEAM12 §5): register one durable S4
+ * execution intent over the already confirmed selection
+ * (journal-before-effect); the runtime begins the real bounded
+ * manifest/segment/FFmpeg acquisition strictly after the journal commit. A
+ * second distinct request can never create another effect, budget or HTTP
+ * request — recovery operates on the prior durable intent only.
+ */
+function applyExecuteS4SelectedHls(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s4Beginner: S4SelectedHlsBeginner | undefined,
+  s4Live: S4LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s4Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S4 selected-HLS driver; EXECUTE_S4_SELECTED_HLS_VOD fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s4Live !== undefined && envelope.peer.surface !== 'CLI') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S4 selected-HLS execution serves the installed CLI surface only',
+        'L2-S4-§5',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S4 selected-HLS execution');
+  }
+  const payload = envelope.payload as S4ExecutePayload;
+  const selection = lineage.s4ConfirmedSelection;
+  if (
+    selection === undefined ||
+    selection.confirmedSelectionId !== payload.confirmedSelectionId ||
+    selection.snapshotId !== payload.snapshotId ||
+    selection.memberId !== payload.memberId
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.confirmedSelectionId',
+        'no durably confirmed S4 selection matches this snapshot/member; execution requires the confirmed selection',
+        'L2-S4-§5',
+      ),
+    ]);
+  }
+  // Live-only freshness gate (never journal replay: the replayed intent is
+  // already durably gated truth; restart reconcile re-drives it).
+  if (s4Live !== undefined) {
+    const expiresAtMs = Date.parse(selection.expiresAt);
+    if (!Number.isFinite(expiresAtMs) || s4Live.now() >= expiresAtMs) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.confirmedSelectionId',
+          'the confirmed S4 selection has expired; a fresh preview and confirmation are required',
+          'L2-S4-§4',
+        ),
+      ]);
+    }
+  }
+  if (state.s4ExecutionIntents.has(envelope.aggregateId)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'aggregateId',
+        'an S4 selected-HLS execution is already registered for this lineage; the registered intent reconciles from durable truth',
+        'L2-S4-§5',
+      ),
+    ]);
+  }
+  state.s4ExecutionIntents.set(envelope.aggregateId, {
+    aggregateId: envelope.aggregateId,
+    requestId: envelope.requestId,
+    selection,
+  });
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+const S4_RENDITION_KEY_PATTERN = /^rend-[0-9]+$/u;
+
+/**
+ * #153 trusted Core-internal S4 preview-result receipt application (live
+ * `recordS4PreviewResult` and journal replay share it): only a PENDING
+ * preview may observe its result; identical receipts converge; a different
+ * receipt over an already-observed preview is an immutable conflict.
+ */
+function applyS4PreviewReceipt(
+  state: SeamAuthorityState,
+  aggregateId: string,
+  record: S4PreviewRecord,
+): SeamResult<{ readonly converged: boolean }> {
+  const lineage = state.lineages.get(aggregateId);
+  if (lineage === undefined) {
+    return seamFail([
+      seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+    ]);
+  }
+  const current = lineage.s4Preview;
+  if (current === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        's4Preview',
+        'an S4 preview result receipt requires a durably admitted preview intent',
+        'L2-S4-§3',
+      ),
+    ]);
+  }
+  if (stableStringify(current) === stableStringify(record)) {
+    return seamOk({ converged: true });
+  }
+  if (current.status !== 'PENDING') {
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        's4Preview',
+        'the observed S4 preview truth is immutable; a second differing receipt rejects',
+        'L2-S4-§3',
+      ),
+    ]);
+  }
+  // Receipt shape gates: the observation belongs to THIS preview, and the
+  // observed facts are renderable, secret-free and bounded.
+  if (
+    record.previewId !== current.previewId ||
+    record.snapshotId !== current.snapshotId ||
+    record.memberId !== current.memberId ||
+    record.manifestUri !== current.manifestUri ||
+    record.mediaProfileId !== current.mediaProfileId ||
+    !Number.isFinite(Date.parse(record.createdAt)) ||
+    !Number.isFinite(Date.parse(record.expiresAt))
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        's4Preview',
+        'the S4 preview receipt does not bind the admitted preview identity',
+        'L2-S4-§3',
+      ),
+    ]);
+  }
+  if (record.status === 'AVAILABLE') {
+    const variants = record.variants ?? [];
+    if (variants.length === 0 || variants.length > 32) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          's4Preview.variants',
+          'an AVAILABLE S4 preview must carry 1..32 observed variants',
+          'L2-S4-§3',
+        ),
+      ]);
+    }
+    const keys = new Set<string>();
+    const uris = new Set<string>();
+    for (const variant of variants) {
+      // Scheme/shape gate only (secret-free, canonical, bounded): the actual
+      // per-hop transport policy (public HTTPS, or the explicit in-repo
+      // loopback fixture lane) is enforced by the runtime's bounded ports.
+      let variantUrl: URL | undefined;
+      try {
+        variantUrl = new URL(variant.uri);
+      } catch {
+        variantUrl = undefined;
+      }
+      if (
+        typeof variant.key !== 'string' ||
+        !S4_RENDITION_KEY_PATTERN.test(variant.key) ||
+        typeof variant.uri !== 'string' ||
+        variant.uri.length > 2048 ||
+        variantUrl === undefined ||
+        (variantUrl.protocol !== 'https:' && variantUrl.protocol !== 'http:') ||
+        variantUrl.username !== '' ||
+        variantUrl.password !== '' ||
+        variantUrl.search !== '' ||
+        variantUrl.hash !== '' ||
+        !Number.isSafeInteger(variant.bandwidth) ||
+        variant.bandwidth <= 0 ||
+        keys.has(variant.key) ||
+        uris.has(variant.uri)
+      ) {
+        return seamFail([
+          seamDiagnostic(
+            'ADMISSION_REJECTED',
+            's4Preview.variants',
+            'an observed variant fact is not canonical and renderable; the receipt rejects',
+            'L2-S4-§3',
+          ),
+        ]);
+      }
+      keys.add(variant.key);
+      uris.add(variant.uri);
+    }
+  } else if (record.status === 'FAILED') {
+    if (typeof record.failureReason !== 'string' || record.failureReason.length === 0) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          's4Preview.failureReason',
+          'a FAILED S4 preview receipt must carry a typed failure reason',
+          'L2-S4-§3',
+        ),
+      ]);
+    }
+  } else {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        's4Preview.status',
+        'an S4 preview result receipt must observe AVAILABLE or FAILED, never re-pend',
+        'L2-S4-§3',
+      ),
+    ]);
+  }
+  lineage.s4Preview = record;
+  return seamOk({ converged: false });
+}
+
 const S1_MAX_IDENTITY_LENGTH = 256;
 /** Mirrored from persistence-ledger ARTIFACT_ID_PATTERN (seam has no ledger dependency). */
 const S1_ARTIFACT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
@@ -3790,6 +4870,8 @@ function restoreAcceptedCommand(
   s1Intents: Map<string, S1ExecutionIntent>,
   s3Profiles: S3MediaProfilePort | undefined,
   s3Beginner: S3SelectedMediaBeginner | undefined,
+  s4PreviewDriver: S4PreviewBeginner | undefined,
+  s4Beginner: S4SelectedHlsBeginner | undefined,
 ): SeamResult<void> {
   const applied = applyCommand(
     state,
@@ -3800,6 +4882,8 @@ function restoreAcceptedCommand(
     s1Intents,
     s3Profiles,
     s3Beginner,
+    s4PreviewDriver,
+    s4Beginner,
   );
   if (!applied.ok) {
     return applied;
