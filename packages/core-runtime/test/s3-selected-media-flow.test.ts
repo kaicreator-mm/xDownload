@@ -372,13 +372,20 @@ describe('#150 S3 selected-media Core flow (restart reconcile)', () => {
     origin.redirect('/media/clip_01.mp4', cdn.uri('/media/clip_01.mp4'));
     const runtime = await reopenWithS3Execution({
       contractId: 'contract-s3-cdn-001',
+      // The declared CDN host is BARE (as the 1.2 wire admits); the driver
+      // expands it onto the locator's explicit port for the adapter graph.
       candidate: candidateOf(origin.uri('/media/clip_01.mp4'), [
         new URL(origin.baseUri).host,
-        new URL(cdn.baseUri).host,
+        new URL(cdn.baseUri).hostname,
       ]),
     });
     try {
       const terminal = await awaitTerminal(runtime, 'contract-s3-cdn-001');
+      console.log('CDN-DEBUG terminal=', JSON.stringify(terminal));
+      console.log(
+        'CDN-DEBUG witness=',
+        JSON.stringify(runtime.seam.targetWitnessFor('contract-s3-cdn-001')),
+      );
       expect(terminal.requestFulfillment).toBe('COMPLETE');
       const witness = runtime.seam.targetWitnessFor('contract-s3-cdn-001');
       expect(witness?.status).toBe('RESOLVED');

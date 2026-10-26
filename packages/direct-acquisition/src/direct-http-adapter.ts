@@ -677,7 +677,7 @@ function followRedirect(
       ],
     };
   }
-  if (!request.allowedRedirectHosts.includes(nextUrl.host)) {
+  if (!declaredHostAdmits(request.allowedRedirectHosts, nextUrl)) {
     return {
       ok: false,
       scopeExpansion: false,
@@ -700,6 +700,21 @@ function followRedirect(
     return { ok: false, scopeExpansion: false, diagnostics: transition.diagnostics };
   }
   return { ok: true, binding: transition.value };
+}
+
+/**
+ * A declared delivery-graph host admits a redirect target when it matches the
+ * URL host exactly (host[:port]) or when the declaration is a bare hostname —
+ * a host-level declaration (C29/ADR-011) admits that hostname's ports; a
+ * port-qualified declaration stays exact.
+ */
+export function declaredHostAdmits(
+  declared: readonly string[],
+  target: { readonly host: string; readonly hostname: string },
+): boolean {
+  return declared.some(
+    (entry) => entry === target.host || (!entry.includes(':') && entry === target.hostname),
+  );
 }
 
 function validateRequestShape(request: DirectTransferRequest): DomainValidationResult<void> {

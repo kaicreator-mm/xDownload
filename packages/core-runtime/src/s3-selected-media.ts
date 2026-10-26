@@ -444,8 +444,11 @@ export async function driveS3SelectedMediaExecution(
     );
   }
   // The delivery graph the adapter may traverse: the selected locator's own
-  // host (with its explicit port, if any) plus the declared redirect hosts.
   const locatorHost = hostOf(candidate.locatorUri);
+  // The delivery graph the adapter may traverse: the selected locator's own
+  // host (with its explicit port, if any) plus the wire-declared bare public
+  // hostnames — host-level declarations that admit that hostname's ports
+  // (C29/ADR-011; any undeclared host still fails closed).
   const allowedRedirectHosts = [
     ...(locatorHost === undefined ? [] : [locatorHost]),
     ...candidate.declaredRedirectHosts.filter((host) => host !== locatorHost),

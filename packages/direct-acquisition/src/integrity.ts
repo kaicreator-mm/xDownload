@@ -221,7 +221,10 @@ export function validateTarget(input: TargetValidationInput): ValidationLayerOut
         `the serving URI '${input.servedUri}' is outside the http(s) declared delivery graph`,
       );
     }
-    if (!input.declaredRedirectHosts.includes(served.host)) {
+    const admitted = input.declaredRedirectHosts.some(
+      (entry) => entry === served.host || (!entry.includes(':') && entry === served.hostname),
+    );
+    if (!admitted) {
       return failed(
         'target',
         'TARGET_PROVENANCE_INVALID',
