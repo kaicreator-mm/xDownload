@@ -170,8 +170,7 @@ describe('#148 live transport-to-seam session carrier (no private effects)', () 
     expect(seam.ok).toBe(true);
     if (!seam.ok) return;
     const registry = createVerifiedPeerSessionRegistry();
-    const reject = (id?: string) =>
-      seam.value.handleFrame(s3Wire(), registry, id);
+    const reject = (id?: string) => seam.value.handleFrame(s3Wire(), registry, id);
     expect(reject().outcome).toBe('REJECTED');
     expect(reject('winpipe-0').diagnostics?.[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
     registry.record(session({ connectionId: 'winpipe-1' }));
