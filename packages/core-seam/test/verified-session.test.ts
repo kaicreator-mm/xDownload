@@ -10,6 +10,9 @@ import {
   COMMAND_TYPES,
   CORE_SEAM_SCHEMA_VERSION,
   createVerifiedPeerSessionRegistry,
+  createCoreSeamServer,
+  EXPECTED_PEER,
+  rawCommand,
   createWindowsPipeClientTransport,
   createWindowsPipeServerTransport,
   currentSeamSchemaIdentity,
@@ -146,5 +149,62 @@ describe('windows pipe transport platform discipline (fail closed)', () => {
     expect(() => createWindowsPipeClientTransport({ platform: 'linux' })).toThrow(
       WindowsPipeTransportUnsupportedError,
     );
+  });
+});
+
+describe('#148 live transport-to-seam session carrier (no private effects)', () => {
+  function s3Wire(): string {
+    return JSON.stringify({
+      ...rawCommand({
+        commandType: 'EXECUTE_S3_SELECTED_MEDIA',
+        aggregateId: 'contract-single-001',
+        requestId: 'req-s3-live-1',
+        payload: { snapshotId: 'snapshot-001', memberId: 'member-001' },
+      }),
+      schemaIdentity: { schema: 'xdownload.core-seam', version: '1.2.0' },
+    });
+  }
+
+  it('denies no session, unknown ID, wrong registry binding and revoked ID before journal', () => {
+    const seam = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
+    expect(seam.ok).toBe(true);
+    if (!seam.ok) return;
+    const registry = createVerifiedPeerSessionRegistry();
+    const reject = (id?: string) => seam.value.handleFrame(s3Wire(), registry, id);
+    expect(reject().outcome).toBe('REJECTED');
+    expect(reject('winpipe-0').diagnostics?.[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
+    registry.record(session({ connectionId: 'winpipe-1' }));
+    // A different valid ID must never authenticate this frame.
+    expect(reject('winpipe-0').diagnostics?.[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
+    registry.record(session({ connectionId: 'winpipe-0', sameUserAsCore: false }));
+    expect(reject('winpipe-0').diagnostics?.[0]?.code).toBe('TRANSPORT_UNAUTHORIZED');
+    registry.record(session({ connectionId: 'winpipe-0' }));
+    const admittedButNoHandler = reject('winpipe-0');
+    expect(admittedButNoHandler.outcome).toBe('REJECTED');
+    expect(admittedButNoHandler.diagnostics?.[0]?.path).toBe('commandType');
+    registry.forget('winpipe-0');
+    expect(reject('winpipe-0').diagnostics?.[0]?.path).toBe('peer');
+    // No event was journaled or persisted simply by admitting a live peer.
+    expect(seam.value.inspectProjection('contract-single-001')).toBeUndefined();
+  });
+
+  it('refuses mismatched/throwing registry records without consulting effects or replay', () => {
+    const seam = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
+    expect(seam.ok).toBe(true);
+    if (!seam.ok) return;
+    const impostor = {
+      size: 1,
+      verifiedSessionFor: () => session({ connectionId: 'other-pipe' }),
+    };
+    const mismatched = seam.value.handleFrame(s3Wire(), impostor, 'winpipe-0');
+    expect(mismatched.diagnostics?.[0]?.path).toBe('peer');
+    const broken = {
+      size: 1,
+      verifiedSessionFor: (): OsVerifiedPeerSession => {
+        throw new Error('transport registry unavailable');
+      },
+    };
+    expect(seam.value.handleFrame(s3Wire(), broken, 'winpipe-0').outcome).toBe('REJECTED');
+    expect(seam.value.inspectProjection('contract-single-001')).toBeUndefined();
   });
 });

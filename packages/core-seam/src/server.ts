@@ -65,7 +65,10 @@ import {
 import type { CommandRequestId } from './ids.ts';
 import { S4_SEAM12_COMMAND_TYPES } from './s4-seam12-payload.ts';
 import { S3_SEAM12_COMMAND_TYPES } from './s3-seam12-payload.ts';
-import { assertPeerTransportAuthorization } from './verified-session.ts';
+import {
+  assertPeerTransportAuthorization,
+  type VerifiedPeerSessionPort,
+} from './verified-session.ts';
 import { authorizePeer, type ExpectedPeerScope, type PeerIdentity } from './peer.ts';
 import { projectAggregate, type SeamProjectionView } from './projection.ts';
 import {
@@ -206,7 +209,16 @@ export interface CoreSeamServer {
    * Transports adapt bytes/framing to this port; socket types never leak
    * into command semantics (ADR-012 replaceability).
    */
-  handleFrame(frame: string): SeamResponse;
+  /**
+   * Core-host-only connection context. A verified-session port is owned by the
+   * OS-authenticating transport, not supplied by the decoded wire envelope.
+   * Missing/stale connection IDs fail closed for the 1.2 authority vocabulary.
+   */
+  handleFrame(
+    frame: string,
+    verifiedSessions?: VerifiedPeerSessionPort,
+    connectionId?: string,
+  ): SeamResponse;
   /**
    * Core-internal runtime fact recording (NOT a wire command): the transfer/
    * scheduler runtime reports the original failed-member identity domain for
@@ -393,7 +405,11 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     return rejected(UNKNOWN_REPLY_ID, diagnostics);
   }
 
-  function handleFrame(frame: string): SeamResponse {
+  function handleFrame(
+    frame: string,
+    verifiedSessions?: VerifiedPeerSessionPort,
+    connectionId?: string,
+  ): SeamResponse {
     if (recoveryFenceReason !== undefined) {
       return rejectedUnknown([recoveryFenceDiagnostic()]);
     }
@@ -434,28 +450,37 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         envelope.commandType as (typeof S3_SEAM12_COMMAND_TYPES)[number],
       )
     ) {
-      // A syntactically valid S4 1.2 command is NOT installed authority.
-      // This transport-neutral entry does not carry a trusted *live* Windows
-      // named-pipe connection ID. Refuse before prior requestId lookup,
-      // revision/state inspection, journal replay or network. Future #148
-      // integration must bind the real connection to the OS-verified session
-      // port (not trust the envelope peer) and only then handle S4.
+      // This is a live, per-frame lookup in the native transport's private
+      // registry. A claimed peer, command payload or remembered requestId
+      // cannot substitute for an OS-verified *current* connection. The host
+      // supplies this capability out-of-band, never from JSON.
+      let verifiedPeer;
+      if (connectionId !== undefined && connectionId.length > 0) {
+        try {
+          const current = verifiedSessions?.verifiedSessionFor(connectionId);
+          // Reject a mismatched record even if an injected port returns one.
+          if (current?.connectionId === connectionId) verifiedPeer = current;
+        } catch {
+          // A broken or revoked registry must not grant private authority.
+          verifiedPeer = undefined;
+        }
+      }
       const verified = assertPeerTransportAuthorization({
         commandType: envelope.commandType,
-        verifiedPeer: undefined,
+        verifiedPeer,
       });
-      return rejected(
-        envelope.requestId,
-        verified.ok
-          ? [
-              seamDiagnostic(
-                'TRANSPORT_UNAUTHORIZED',
-                'connection',
-                'S3/S4 requires a live Core-verified named-pipe session; no authenticated connection was supplied',
-              ),
-            ]
-          : verified.diagnostics,
-      );
+      if (!verified.ok) return rejected(envelope.requestId, verified.diagnostics);
+      // Even a genuinely live Win32 same-logon peer does not yet authorize an
+      // effect or challenge. S3/S4 handlers, journal replay binding and private
+      // response framing are separate reviewed #148/#150 implementation work.
+      // Reject before idempotency lookup, revision, persistence or network.
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'TRANSPORT_UNAUTHORIZED',
+          'commandType',
+          'S3/S4 verified session admitted but no installed private Core command handler exists',
+        ),
+      ]);
     }
     return handleCommand(envelope);
   }

@@ -266,10 +266,12 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
     }
   }
   // A core-host instance listens on exactly ONE transport, never both.
-  const transport: SeamServerTransport =
+  const pipeTransport =
     options.pipeName === undefined
-      ? createLoopbackServerTransport({ host: options.host, port: options.port })
+      ? undefined
       : createWindowsPipeServerTransport({ pipeName: options.pipeName });
+  const transport: SeamServerTransport =
+    pipeTransport ?? createLoopbackServerTransport({ host: options.host, port: options.port });
   // LISTENER-FIRST admission barrier: reopenCoreRuntime() eagerly re-drives
   // pending S1 work. A failed pipe bind must NEVER start any of those effects.
   // While the sole listener is awaiting Core initialization, connections are
@@ -285,8 +287,16 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
           connection.close();
           return;
         }
-        // Even an OS-verified pipe does not install positive S3 authority.
-        const response = activeRuntime.seam.handleFrame(frame);
+        // 1.2 permission is determined from the current OS-verified session
+        // registry, never from any peer claim inside the frame. TCP has no
+        // such registry and remains ineligible for protected 1.2 commands.
+        // The Core still refuses effects until separately reviewed handlers
+        // and durable user-confirmation authority are installed.
+        const response = activeRuntime.seam.handleFrame(
+          frame,
+          pipeTransport?.verifiedSessions,
+          connection.id,
+        );
         connection.send(JSON.stringify(response));
       },
       onConnectionEnded: () => undefined,
