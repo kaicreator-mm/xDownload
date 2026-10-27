@@ -581,16 +581,10 @@
     }
     let nextPageHref = null;
     for (const anchor of anchors) {
+      // v0.1 supports one explicitly declared next-page relation, not a
+      // guess based on arbitrary same-origin anchor text such as "next".
       const rel = (anchor.getAttribute('rel') || '').toLowerCase();
-      const text = (anchor.textContent || '').trim().toLowerCase();
-      if (
-        rel.split(/\s+/u).includes('next') ||
-        text === 'next' ||
-        text === 'next page' ||
-        text === '下一页' ||
-        text === '›' ||
-        text === '»'
-      ) {
+      if (rel.split(/\s+/u).includes('next')) {
         if (/^https?:\/\//i.test(anchor.href)) {
           nextPageHref = anchor.href;
           break;
@@ -1085,6 +1079,8 @@
       }
     }
     s6CurrentPage = pages.length > 0 ? Number(pages[pages.length - 1].pageNumber) : 0;
+    // The popup has no trustworthy cached navigation link after dismissal.
+    // Only a fresh scan of the actual recorded Core page may restore it.
     s6NextPageHref = null;
     const confirmedFacts = facts.confirmed;
     if (confirmedFacts && confirmedFacts.confirmedGroupId) {
@@ -1101,7 +1097,7 @@
       s6SectionRestore.hidden = false;
     }
     renderS6Accum();
-    s6NextPageButton.disabled = s6CurrentPage >= s6Prepared.toPage;
+    s6NextPageButton.disabled = true; // Re-enabled only after a fresh bound page scan.
     s6PrepareResult.textContent = `Restored the active S6 journey ${String(
       journey.contractId,
     )} from Core (admission ${s6Prepared.prepareId}; ${String(s6MemberAccum.size)} frozen members across ${String(
@@ -1134,17 +1130,31 @@
           Array.isArray(scanned.links) &&
           scanned.links.length > 0 &&
           typeof scanned.pageUrl === 'string' &&
-          scanned.pageUrl !== lastRecordedUrl
+          Number(scanned.observedCount) === scanned.links.length
         ) {
-          let sameOrigin = false;
-          try {
-            sameOrigin =
-              new URL(scanned.pageUrl).origin === new URL(prepared.collectionOrigin).origin;
-          } catch {
-            sameOrigin = false;
-          }
-          if (sameOrigin) {
+          const origin = new URL(prepared.collectionOrigin).origin;
+          if (new URL(scanned.pageUrl).origin !== origin) return;
+          if (scanned.pageUrl !== lastRecordedUrl) {
+            // A previous Core ADMIT is required for this already-navigated
+            // page; RECORD independently checks its exact pinned URL.
             await s6RecordPage(s6CurrentPage + 1);
+          } else if (typeof scanned.nextPageHref === 'string') {
+            // Rebuild the "next" control when the popup was dismissed on an
+            // ALREADY RECORDED page. Never activate it from old popup memory
+            // or from a cross-origin, noncanonical or self-looping anchor.
+            const next = new URL(scanned.nextPageHref);
+            if (
+              next.origin === origin &&
+              next.href === scanned.nextPageHref &&
+              next.href !== scanned.pageUrl &&
+              next.username === '' &&
+              next.password === '' &&
+              next.search === '' &&
+              next.hash === ''
+            ) {
+              s6NextPageHref = scanned.nextPageHref;
+              s6NextPageButton.disabled = false;
+            }
           }
         }
       } catch {
