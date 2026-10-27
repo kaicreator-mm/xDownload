@@ -25,9 +25,11 @@ import {
   bindLoopbackSeam,
   seamCommand,
   peer,
+  rawSingleResourceContract,
+  profileWith,
 } from '../../core-runtime/test/helpers.ts';
 import type { CoreRuntime } from '@xdownload/core-runtime';
-import { createInstalledS2Lane, isS2LaneResponse } from '../src/s2-installed-lane.ts';
+import { createInstalledS2Lane, isS2LaneResponse, s2IdentityFor } from '../src/s2-installed-lane.ts';
 
 const dirs: string[] = [];
 const runtimes: CoreRuntime[] = [];
@@ -279,6 +281,133 @@ describe('#95 installed S2 lane (native host composition)', () => {
       expect(second.contractId).toBe(first.contractId);
       expect(core.runtime.writer.reader.workItems()).toHaveLength(acceptedBefore);
       expect(core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId).lifecycleClass).toBe('ACCEPTED');
+    } finally {
+      await core.stop();
+    }
+  });
+
+  it('#176: resumes a journaled S2 chunk prefix through byte-identical Core staging', async () => {
+    const core = await startedCore();
+    try {
+      const bytes = attachmentBytes(1_500_000);
+      const payload = s2Acquire({ bytes })['s2'] as Record<string, unknown>;
+      const handoff = payload['handoff'] as Record<string, unknown>;
+      const delivery = payload['delivery'] as Record<string, unknown>;
+      const browserResponse = payload['browserResponse'] as Record<string, unknown>;
+      const slabs = payload['bytes'] as string[];
+      const ids = s2IdentityFor({
+        provenanceKey: String(handoff['provenanceKey']),
+        locatorUri: String(delivery['locatorUri']),
+      });
+      const identity = ids.contractId.slice('contract-s2-'.length);
+      const snapshotId = `snapshot-s2-${identity}`;
+      const submitted = seamCommand(core.runtime, {
+        commandType: 'SUBMIT_CONTRACT',
+        aggregateId: ids.contractId,
+        correlation: { contractId: ids.contractId },
+        asPeer: peer('BROWSER_EXTENSION'),
+        payload: rawSingleResourceContract({
+          contractId: ids.contractId,
+          requestedTarget: ids.targetId,
+          budgetProfile: profileWith({ maxBytes: 67_108_864 }),
+        }),
+      });
+      expect(submitted.outcome).toBe('ACCEPTED');
+      const count = Math.ceil(slabs.length / 224);
+      expect(count).toBeGreaterThan(1);
+      const first = seamCommand(core.runtime, {
+        commandType: 'EXECUTE_S2_ACQUISITION',
+        aggregateId: ids.contractId,
+        expectedRevision: 1,
+        correlation: { contractId: ids.contractId, snapshotId },
+        asPeer: peer('BROWSER_EXTENSION'),
+        payload: {
+          snapshotId,
+          memberId: `member-s2-${identity}`,
+          artifactId: `artifact:s2:${identity}`,
+          authorizationContextRef: 'authctx/installed-s2-lane',
+          delivery,
+          browserResponse,
+          bytes: slabs.slice(0, 224),
+          chunk: { index: 0, count },
+        },
+      });
+      expect(first.outcome).toBe('ACCEPTED');
+      expect(core.runtime.writer.reader.workItems()).toHaveLength(0);
+      // The next fresh broker connection cannot submit a NEW contract at
+      // revision 0; it must read current revision 2 and replay index 0.
+      const lane = createInstalledS2Lane({
+        broker: createAuthBroker(),
+        core: { host: core.host, port: core.port, installId: 'install-001', userId: 'user-001' },
+      });
+      const result = await lane.handle({
+        kind: 'S2_ACQUIRE',
+        requestId: 's2-resume-new-gesture',
+        payload,
+      });
+      expect(result.kind).toBe('S2_RESULT');
+      if (result.kind !== 'S2_RESULT') throw new Error(JSON.stringify(result));
+      expect((result.terminal as Record<string, unknown>)['requestFulfillment']).toBe('COMPLETE');
+      expect(core.runtime.writer.reader.workItems()).toHaveLength(1);
+      expect(core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId).bytesVerified).toBe(true);
+    } finally {
+      await core.stop();
+    }
+  });
+
+  it('#176: changed S2 prefix bytes cannot splice into a durable staged stream', async () => {
+    const core = await startedCore();
+    try {
+      const bytes = attachmentBytes(1_500_000);
+      const original = s2Acquire({ bytes })['s2'] as Record<string, unknown>;
+      const handoff = original['handoff'] as Record<string, unknown>;
+      const delivery = original['delivery'] as Record<string, unknown>;
+      const response = original['browserResponse'] as Record<string, unknown>;
+      const slabs = original['bytes'] as string[];
+      const ids = s2IdentityFor({
+        provenanceKey: String(handoff['provenanceKey']),
+        locatorUri: String(delivery['locatorUri']),
+      });
+      const identity = ids.contractId.slice('contract-s2-'.length);
+      const snapshotId = `snapshot-s2-${identity}`;
+      expect(seamCommand(core.runtime, {
+        commandType: 'SUBMIT_CONTRACT',
+        aggregateId: ids.contractId,
+        correlation: { contractId: ids.contractId },
+        asPeer: peer('BROWSER_EXTENSION'),
+        payload: rawSingleResourceContract({
+          contractId: ids.contractId,
+          requestedTarget: ids.targetId,
+          budgetProfile: profileWith({ maxBytes: 67_108_864 }),
+        }),
+      }).outcome).toBe('ACCEPTED');
+      expect(seamCommand(core.runtime, {
+        commandType: 'EXECUTE_S2_ACQUISITION',
+        aggregateId: ids.contractId,
+        expectedRevision: 1,
+        correlation: { contractId: ids.contractId, snapshotId },
+        asPeer: peer('BROWSER_EXTENSION'),
+        payload: {
+          snapshotId, memberId: `member-s2-${identity}`, artifactId: `artifact:s2:${identity}`,
+          authorizationContextRef: 'authctx/installed-s2-lane',
+          delivery, browserResponse: response, bytes: slabs.slice(0, 224),
+          chunk: { index: 0, count: Math.ceil(slabs.length / 224) },
+        },
+      }).outcome).toBe('ACCEPTED');
+      const changed = Uint8Array.from(bytes);
+      changed[0] = changed[0]! ^ 0xff;
+      const lane = createInstalledS2Lane({
+        broker: createAuthBroker(),
+        core: { host: core.host, port: core.port, installId: 'install-001', userId: 'user-001' },
+      });
+      const again = await lane.handle({
+        kind: 'S2_ACQUIRE', requestId: 's2-mismatch-gesture',
+        payload: s2Acquire({ bytes: changed })['s2'] as Record<string, unknown>,
+      });
+      expect(again.kind).toBe('S2_REJECTED');
+      if (again.kind !== 'S2_REJECTED') throw new Error('expected refusal');
+      expect(again.stage).toBe('CORE_EXECUTE');
+      expect(core.runtime.writer.reader.workItems()).toHaveLength(0);
     } finally {
       await core.stop();
     }
