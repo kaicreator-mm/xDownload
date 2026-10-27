@@ -33,6 +33,7 @@ import { pathToFileURL } from 'node:url';
 import { currentSchemaIdentity } from '@xdownload/domain-contracts';
 import { REPO_ROOT } from './build-config.ts';
 import { runPackageBuild } from './package.ts';
+import { runNamedPipeSuite } from './winpipe-e2e.ts';
 import {
   probeWindowsRegistration,
   registerWindowsNativeHost,
@@ -713,6 +714,11 @@ async function main(): Promise<void> {
   );
   await runCleanInstallSmoke(distDir);
   await runNativeHostSmoke(distDir);
+  // #T019 packaged-windows-pipe: the packaged named-pipe surface (Core
+  // --pipe-name, CLI pipe client, broker S5 batch, restart persistence) on
+  // the same copied-artifacts discipline. Windows-only; elsewhere the suite
+  // records itself honestly NOT_EXECUTED.
+  await runNamedPipeSuite();
   await runReproducibilitySmoke(distDir);
   process.stdout.write('smoke run complete\n');
 }

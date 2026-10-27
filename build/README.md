@@ -17,6 +17,10 @@ pnpm build                            # node build/package.ts
   → esbuild bundle per artifact (pinned esbuild@0.25.12, MIT)
   → extension manifest copied verbatim; native-host assets for the
     selected platform only (unselected platforms emit nothing)
+  → minimal vendored native runtime (koffi + its win32-x64 prebuilt, license
+    included) copied verbatim into every pipe-capable node artifact — the
+    exact declared file set, never the whole node_modules (skipped honestly
+    on non-selected build hosts)
   → per-artifact identity (source revision + toolchain + content hash)
   → support/NOT_PROVEN matrix copied
   → package-content audit, FAIL-CLOSED (any violation exits 1)
@@ -30,10 +34,10 @@ reproducibility check). Nothing is committed from them.
 
 | Artifact | Output | Contents (allowlist-enforced) |
 | --- | --- | --- |
-| `cli` | `dist/cli/` | `xdownload-cli.js` (bundled production entry, shebang) + `bin/xdownload` / `bin/xdownload.cmd` launchers |
-| `core` | `dist/core/` | `xdownload-core-host.js` — packaged Core host: `createCoreRuntime` (T015) behind the loopback seam transport (T004) |
+| `cli` | `dist/cli/` | `xdownload-cli.js` (bundled production entry, shebang) + `bin/xdownload` / `bin/xdownload.cmd` launchers + vendored koffi runtime |
+| `core` | `dist/core/` | `xdownload-core-host.js` — packaged Core host: `createCoreRuntime` (T015) behind the loopback seam or the OS-verified Windows named-pipe transport (T004/#101) + vendored koffi runtime |
 | `extension` | `dist/extension/` | `manifest.json` (copied verbatim) + exactly the files it references; the audit fails closed on `PACKAGE_MANIFEST_MISMATCH` |
-| `native-host` | `dist/native-host/` | `xdownload-broker-host.js` (stdio broker over the T010 package), `broker-config.json` (allowed_origins), manifest template, bin launchers |
+| `native-host` | `dist/native-host/` | `xdownload-broker-host.js` (stdio broker over the T010 package), `broker-config.json` (allowed_origins), manifest template, bin launchers + vendored koffi runtime |
 | identity | `dist/identity/` | per-artifact name/contentVersion/sourceRevision/toolchain/contentHash/hostTuple |
 | matrix | `dist/support-matrix.json` | the support/NOT_PROVEN matrix (copied from `build/support-matrix.json`) |
 
@@ -41,10 +45,27 @@ There are no installer, updater, signing or store artifacts, and none are
 claimed. No npm-publishable `package.json` is emitted (the workspace stays
 `private`; release identity is T019/T024 scope).
 
+## Vendored native runtime (#T019 packaged-windows-pipe)
+
+The bundled Windows pipe transport keeps koffi external (a prebuilt `.node`
+binary cannot be bundled) and loads it lazily with
+`createRequire(bundle).require('koffi')` — which fails closed wherever the
+runtime is absent. The build therefore vendors the EXACT runtime file set
+declared in `build/build-config.ts` (`VENDORED_NATIVE_RUNTIME`: koffi's
+loader chain `index.cjs → src/koffi/index.cjs → src/static.cjs`, the
+`@koromix/koffi-win32-x64` prebuilt, and the upstream MIT license) verbatim
+from the installed workspace tree into
+`dist/<cli|core|native-host>/node_modules/...`. Version drift against the
+declaration fails the build; on non-selected build hosts the step is skipped
+honestly. The audit admits exactly these declared paths — every other
+`node_modules` path stays denied — and the artifact identity hash covers
+every vendored byte, so tampering, loss or addition cannot pass the audit.
+
 ## Content rules (fail-closed audit, `build/audit.ts`)
 
 - `dist/` contains exactly the declared top-level set; every file inside an
-  artifact matches its allowlist;
+  artifact matches its allowlist (plus the exact declared vendored-runtime
+  paths);
 - global denylist: `.agent/**`, `docs/**`, `node_modules/**`, `test/**`,
   `toolchain-smoke*/**`, `*.ts`, `*.map`, `*.md`, `.env*`, `*.pem`, `*.key` —
   development Execution Pack material and secrets can never ship;
@@ -78,6 +99,22 @@ command+environment+result JSON to `build/evidence/`:
   registration mechanism round-trip (register → verify → unregister, machine
   left as found). The extension↔native handshake inside a real browser was
   NOT executed and stays NOT_PROVEN.
+- `windows-cli-core-named-pipe.json` (#T019, Windows-only; other hosts record
+  it honestly NOT_EXECUTED; also runnable directly as
+  `node build/winpipe-e2e.ts`) — the packaged named-pipe surface with copied
+  artifacts only: typed fail-closed TRANSPORT failure with no Core listening
+  (no TCP fallback), Core `--pipe-name` readiness, packaged CLI
+  `--pipe-name` real HTTP download (COMPLETE terminal, SHA-256-verified
+  durable bytes, exactly one origin request), the packaged stdio broker's
+  installed S5 current-page batch journey over the same OS-verified pipe
+  (prepare → confirm → execute with real per-member Core acquisition and
+  byte-verified durable members), and a Core restart re-deriving the CLI
+  download terminal from durable truth with no re-download. The S5 batch
+  terminal is durable in-session; its cross-restart re-derivation is a
+  recorded product gap (S5 reconcile re-drive), reported separately and not
+  claimed. The real-browser
+  extension↔native handshake and the interactive S3/S4 confirm gestures
+  stay NOT_PROVEN.
 - `build-reproducibility.json` — a second full build into `out/repro`
   produced byte-identical artifacts for all four artifacts (same canonical
   content hashes); any deviation would be recorded here, not hidden.

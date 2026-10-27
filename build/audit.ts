@@ -22,7 +22,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { ARTIFACTS, DIST_TOP_LEVEL_ALLOWLIST, type ArtifactSpec } from './build-config.ts';
+import {
+  ARTIFACTS,
+  DIST_TOP_LEVEL_ALLOWLIST,
+  vendoredRuntimeDistPaths,
+  type ArtifactSpec,
+} from './build-config.ts';
 import { contentManifest, canonicalContentHash, type PackageIdentity } from './identity.ts';
 
 export interface AuditViolation {
@@ -126,16 +131,23 @@ function auditArtifactFiles(
   artifactDir: string,
 ): readonly AuditViolation[] {
   const violations: AuditViolation[] = [];
+  // The vendored native runtime (#T019 packaged-windows-pipe) is admitted by
+  // exact declared path only — never by glob, never by subtree: any file
+  // under node_modules outside the declaration still fails the audit.
+  const vendoredPaths = new Set(vendoredRuntimeDistPaths(artifact.id));
   for (const full of listArtifactFiles(artifactDir)) {
     const relative = path.relative(artifactDir, full).split(path.sep).join('/');
     const allowed = artifact.allowlist.some((pattern) => globMatches(pattern, relative));
-    if (!allowed) {
+    if (!allowed && !vendoredPaths.has(relative)) {
       violations.push({
         rule: 'artifact-allowlist',
         detail: `${artifact.outDir}/${relative} is not admitted by the declared content rules`,
       });
     }
     for (const denied of DENIED_RULES) {
+      if (denied.rule === 'node-modules' && vendoredPaths.has(relative)) {
+        continue;
+      }
       if (globMatches(denied.pattern, `${artifact.outDir}/${relative}`)) {
         violations.push({ rule: denied.rule, detail: `${artifact.outDir}/${relative}` });
       }

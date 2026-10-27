@@ -150,6 +150,64 @@ export const DIST_TOP_LEVEL_ALLOWLIST: readonly string[] = [
   'support-matrix.json',
 ];
 
+/**
+ * #T019 packaged-windows-pipe: the minimal native FFI runtime the packaged
+ * Windows named-pipe transport loads at runtime (`createRequire(bundle)`
+ * → `require('koffi')`, packages/core-seam win-ipc.ts). The bundles keep
+ * koffi external (a prebuilt .node binary cannot be bundled), so the exact
+ * runtime file set below is vendored VERBATIM from the installed workspace
+ * tree into each node artifact — never the whole node_modules tree, never a
+ * second platform, and always with the upstream license. The audit admits
+ * exactly these declared paths (everything else under node_modules stays
+ * denied) and every vendored byte is covered by the artifact identity hash.
+ *
+ * Bumping `version` (lockfile bump of koffi) requires re-deriving `files`:
+ * the loader chain is index.cjs → src/koffi/index.cjs → src/static.cjs and
+ * the win32-x64 prebuilt is resolved by koffi itself as the
+ * node_modules sibling `@koromix/koffi-win32-x64`.
+ */
+/** Node artifacts whose surface can exercise the Windows pipe transport. */
+const VENDORED_RUNTIME_ARTIFACTS: readonly ArtifactSpec['id'][] = ['cli', 'core', 'native-host'];
+
+export const VENDORED_NATIVE_RUNTIME = {
+  /** The only platform tuple whose native runtime is packaged (selected platform). */
+  platform: 'win32',
+  arch: 'x64',
+  /** Pinned to the lockfile-resolved koffi version; a drift fails the build. */
+  version: '3.3.3',
+  packages: [
+    {
+      name: 'koffi',
+      files: [
+        'package.json',
+        'index.cjs',
+        'src/koffi/index.cjs',
+        'src/koffi/src/static.cjs',
+        'LICENSE.txt',
+      ],
+    },
+    {
+      name: '@koromix/koffi-win32-x64',
+      files: ['package.json', 'index.js', 'win32_x64/koffi.node'],
+    },
+  ],
+  artifacts: VENDORED_RUNTIME_ARTIFACTS,
+} as const;
+
+/**
+ * The exact dist-relative paths the vendored runtime occupies inside one
+ * artifact. The audit admits exactly these — and nothing else under
+ * node_modules — so emitted reality and declared content rules cannot drift.
+ */
+export function vendoredRuntimeDistPaths(artifactId: ArtifactSpec['id']): readonly string[] {
+  if (!VENDORED_NATIVE_RUNTIME.artifacts.includes(artifactId)) {
+    return [];
+  }
+  return VENDORED_NATIVE_RUNTIME.packages.flatMap((pkg) =>
+    pkg.files.map((file) => `node_modules/${pkg.name}/${file}`),
+  );
+}
+
 /** Global exclusion rules — development material that must never ship. */
 export const GLOBAL_DENYLIST: readonly string[] = [
   '**/.agent/**',

@@ -1,0 +1,64 @@
+{
+  "suite": "windows-cli-core-named-pipe",
+  "executedAt": "2026-10-27T12:17:26.422Z",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26300",
+    "node": "24.21.0",
+    "executable": "C:\\Users\\15549\\AppData\\Local\\fnm_multishells\\33756_1793103436393\\node.exe"
+  },
+  "checks": [
+    {
+      "id": "packaged-cli-pipe-absent-core-typed-failure",
+      "status": "PASS",
+      "detail": "with no Core listening, the packaged CLI --pipe-name request fails fast with the typed TRANSPORT document (exit 5); no TCP fallback, no fabricated status"
+    },
+    {
+      "id": "packaged-core-host-pipe-ready",
+      "status": "PASS",
+      "detail": "packaged Core host (koffi vendored) composed the runtime and reported readiness on the canonical pipe \\\\.\\pipe\\xdownload-core-winpipe-e2e-20115f58"
+    },
+    {
+      "id": "packaged-cli-pipe-real-download-complete",
+      "status": "PASS",
+      "detail": "packaged CLI --pipe-name → OS-verified seam → real HTTP transfer → COMPLETE terminal (PUBLISHED_SHA256 decisive)",
+      "command": [
+        "node",
+        "cli/xdownload-cli.js",
+        "download",
+        "--pipe-name",
+        "\\\\.\\pipe\\xdownload-core-winpipe-e2e-20115f58"
+      ],
+      "exitCode": 0,
+      "expectedExitCode": 0,
+      "stdoutExcerpt": "{\"document\":\"xdownload.cli.status\",\"schema\":\"1\",\"contract_id\":\"contract-s1-9c1ef36d-51e3-40\",\"contract_revision\":3,\"intent_type\":\"SINGLE_RESOURCE\",\"lineage_status\":\"TERMINAL\",\"projection_schema\":{\"schema\":\"xdownload.domain-contracts\",\"version\":\"1.0.0\"},\"requested_scope\":{\"kind\":\"single_resource\",\"targetId\":\"target-s1-9c1ef36d-51e3-40\"},\"continuation_scope\":{\"kind\":\"NONE\"},\"snapshot_id\":null,\"requested_count_if_known\":1,\"auth_accessible_count_if_known\":null,\"resolved_count\":null,\"selected_count\":..."
+    },
+    {
+      "id": "pipe-download-durable-bytes-sha256-verified",
+      "status": "PASS",
+      "detail": "exactly one origin request; the durable artifact is byte-identical (196608 bytes, SHA-256 match)"
+    },
+    {
+      "id": "packaged-broker-pipe-s5-prepare",
+      "status": "PASS",
+      "detail": "contract=contract-s5-cd35f5c6454f658a93103189 members=2"
+    },
+    {
+      "id": "packaged-broker-pipe-s5-confirm",
+      "status": "PASS",
+      "detail": "the explicit user-confirm decision token was consumed atomically with the durable Core-confirmed group (connection-bound challenge)"
+    },
+    {
+      "id": "packaged-broker-pipe-s5-execute-real-batch-download",
+      "status": "PASS",
+      "detail": "Core executed the confirmed batch over the pipe: 2/2 members ACQUIRED, durable bytes byte-identical, exactly 2 member requests"
+    },
+    {
+      "id": "pipe-restart-s1-terminal-rederived-from-durable-truth",
+      "status": "PASS",
+      "detail": "after a Core-host restart on the same pipe: the S1 COMPLETE terminal re-derives from durable truth with no re-download (origin requests unchanged)"
+    }
+  ],
+  "overall": "PASS"
+}
