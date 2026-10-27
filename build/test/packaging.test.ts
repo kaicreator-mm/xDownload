@@ -494,34 +494,43 @@ describe('#T019 packaged Windows named-pipe runtime (real package build)', () =>
     fs.rmSync(distRoot, { recursive: true, force: true });
   });
 
-  it('vendors exactly the declared runtime file set into every pipe-capable artifact', () => {
-    for (const artifact of ['cli', 'core', 'native-host']) {
-      const declared = vendoredRuntimeDistPaths('cli');
-      for (const relative of declared) {
-        const full = path.join(distRoot, artifact, relative);
-        expect(fs.existsSync(full), `${artifact}/${relative} must be vendored`).toBe(true);
-        expect(fs.statSync(full).size, `${artifact}/${relative} must not be empty`).toBeGreaterThan(
-          0,
-        );
-      }
-      // Nothing outside the declaration may exist under node_modules.
-      const nodeModules = path.join(distRoot, artifact, 'node_modules');
-      const walk = (dir: string, prefix: string): readonly string[] =>
-        fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-          const relative = `${prefix}${entry.name}`;
-          return entry.isDirectory()
-            ? walk(path.join(dir, entry.name), `${relative}/`)
-            : [relative];
-        });
-      const emitted = fs.existsSync(nodeModules) ? walk(nodeModules, '') : [];
-      expect(
-        new Set(emitted.map((relative) => `node_modules/${relative}`)),
-        `${artifact} node_modules must equal the declaration`,
-      ).toEqual(new Set(declared));
-    }
-  });
+  // The vendored-runtime presence assertions only hold where the build
+  // actually vendors (the selected win32-x64 tuple); elsewhere the build
+  // skips honestly and the structural mirror below is the assertion.
+  const SELECTED_TUPLE = process.platform === 'win32' && process.arch === 'x64';
 
-  it('ships the koffi upstream license with the vendored runtime', () => {
+  it.skipIf(!SELECTED_TUPLE)(
+    'vendors exactly the declared runtime file set into every pipe-capable artifact',
+    () => {
+      for (const artifact of ['cli', 'core', 'native-host']) {
+        const declared = vendoredRuntimeDistPaths('cli');
+        for (const relative of declared) {
+          const full = path.join(distRoot, artifact, relative);
+          expect(fs.existsSync(full), `${artifact}/${relative} must be vendored`).toBe(true);
+          expect(
+            fs.statSync(full).size,
+            `${artifact}/${relative} must not be empty`,
+          ).toBeGreaterThan(0);
+        }
+        // Nothing outside the declaration may exist under node_modules.
+        const nodeModules = path.join(distRoot, artifact, 'node_modules');
+        const walk = (dir: string, prefix: string): readonly string[] =>
+          fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+            const relative = `${prefix}${entry.name}`;
+            return entry.isDirectory()
+              ? walk(path.join(dir, entry.name), `${relative}/`)
+              : [relative];
+          });
+        const emitted = fs.existsSync(nodeModules) ? walk(nodeModules, '') : [];
+        expect(
+          new Set(emitted.map((relative) => `node_modules/${relative}`)),
+          `${artifact} node_modules must equal the declaration`,
+        ).toEqual(new Set(declared));
+      }
+    },
+  );
+
+  it.skipIf(!SELECTED_TUPLE)('ships the koffi upstream license with the vendored runtime', () => {
     const license = fs.readFileSync(
       path.join(distRoot, 'core', 'node_modules', 'koffi', 'LICENSE.txt'),
       'utf8',
@@ -532,9 +541,8 @@ describe('#T019 packaged Windows named-pipe runtime (real package build)', () =>
   it('skips vendoring honestly on non-selected build hosts', () => {
     // Structural mirror of the build-side rule: the declaration, not the
     // host, decides which tuple's runtime is vendored.
-    const selected = process.platform === 'win32' && process.arch === 'x64';
     const emitted = fs.existsSync(path.join(distRoot, 'cli', 'node_modules'));
-    expect(emitted).toBe(selected);
+    expect(emitted).toBe(SELECTED_TUPLE);
   });
 });
 
