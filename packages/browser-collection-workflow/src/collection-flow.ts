@@ -67,6 +67,7 @@ import type {
 import {
   CoreRuntimeFlowError,
   executeDirectAcquisition,
+  effectIdFor,
   executeHlsAcquisition,
   projectLineageResult,
   type CoreRuntime,
@@ -655,6 +656,65 @@ export async function runCollectionFlow(
           allowedRedirectHosts: delivery.declaredRedirectHosts,
           attempt: 0,
         };
+        // T019: a Core restart replays the durable S5/S6 collection intent,
+        // but its accepted per-member work is ALREADY in the ledger. Never
+        // submit the same ACQUIRE command again: writer.submitAcquisition
+        // rightly rejects duplicate identities (and repeating HTTP would
+        // double-charge transfer / misrepresent user-selected membership).
+        // Reconcile ONLY the exact canonical effect identity and verified
+        // recovery truth; any unfinished/contradictory work fails closed.
+        const effect = effectIdFor(
+          input.contract.contractId,
+          input.snapshot.snapshotId,
+          delivery.targetId,
+        );
+        if (!effect.ok) {
+          return {
+            ok: false,
+            rejection: { stage: 'MEMBER_DELIVERY_LOCATOR', memberId, diagnostics: effect.diagnostics },
+          };
+        }
+        const workItemId = `work:${effect.value}`;
+        const existing = input.runtime.writer.reader.workItem(workItemId);
+        if (existing !== undefined) {
+          if (
+            existing.contractId !== input.contract.contractId ||
+            existing.snapshotId !== input.snapshot.snapshotId ||
+            existing.memberId !== memberId ||
+            existing.effectId !== effect.value
+          ) {
+            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_IDENTITY_CONFLICT');
+          }
+          const recovery = input.runtime.recovery.classify(workItemId);
+          if (
+            recovery.lifecycleClass !== 'TERMINAL_FAILED' &&
+            !(recovery.lifecycleClass === 'ACCEPTED' && recovery.bytesVerified)
+          ) {
+            // No DB-only success and no implicit resume of an unknown effect.
+            // The supervisor retains this pending intent for a real,
+            // explicitly authorized recovery instead of fabricating terminal.
+            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_UNRESOLVED_WORK');
+          }
+          const submission = input.runtime.scheduler.submitLineage({
+            contractId: input.contract.contractId,
+            snapshotId: input.snapshot.snapshotId,
+            targetId: delivery.targetId,
+            authorizationContextRef: existing.authorizationContextRef,
+            budgetProfile: input.contract.budgetProfile,
+            frozenMemberIds: [...input.snapshot.selectedMemberIds],
+            requestedEffectId: effect.value,
+          });
+          if (!submission.ok) {
+            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_CONTROL_CONFLICT', submission.rejection);
+          }
+          memberOutcomes.push({
+            memberId,
+            kind: 'ACQUIRED',
+            accepted: recovery.successClaimable,
+          });
+          lastLineageKey = submission.value.lineageKey;
+          continue;
+        }
         const flow = await executeDirectAcquisition(input.runtime, {
           contractId: input.contract.contractId,
           snapshotId: input.snapshot.snapshotId,
