@@ -387,3 +387,80 @@ describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
     expect(sent.some((message) => message.kind === 'S6_PREPARE_COLLECTION')).toBe(false);
   });
 });
+
+
+describe('#154 S6 reopened popup recovery (R2 P1)', () => {
+  const contractId = 'contract-s6-restored';
+  const pageUrl = 'https://publisher.example.org/list.html';
+  const nextUrl = 'https://publisher.example.org/playlist/page-2';
+  const coreFacts = {
+    prepared: {
+      prepareId: 's6prepare:contract-s6-restored:snapshot-s6-restored',
+      snapshotId: 'snapshot-s6-restored',
+      collectionOrigin: 'https://publisher.example.org',
+      collectionPageUrl: pageUrl,
+      fromPage: 1,
+      toPage: 2,
+    },
+    pages: [
+      {
+        pageNumber: 1,
+        pageUrl,
+        members: [
+          { memberId: 's6member-001', href: LINKS[0]!.href, text: 'A' },
+        ],
+      },
+    ],
+    confirmed: null,
+  };
+
+  it('requests the active journey and re-scans its recorded page to recover the next link', async () => {
+    const { nodes, sent } = startPopup({
+      s6Scan: {
+        links: [LINKS[0]!],
+        observedCount: 1,
+        nextPageHref: nextUrl,
+        pageUrl,
+      },
+      respond: (message) =>
+        message.kind === 'S6_ACTIVE_COLLECTION_QUERY'
+          ? { ok: true, journey: { contractId, status: 'WALK', facts: coreFacts } }
+          : { ok: false, error: 'unexpected' },
+    });
+    await ready(nodes);
+    await vi.waitFor(() => {
+      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey');
+      expect(nodes['s6-next-page']!.disabled).toBe(false);
+    });
+    expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
+    expect(nodes['s6-members']!.children).toHaveLength(1);
+  });
+
+  it('refuses to restore a next link on another origin before Core admission', async () => {
+    const { nodes, sent } = startPopup({
+      s6Scan: {
+        links: [LINKS[0]!],
+        observedCount: 1,
+        nextPageHref: 'https://unrelated.example/playlist/page-2',
+        pageUrl,
+      },
+      respond: (message) =>
+        message.kind === 'S6_ACTIVE_COLLECTION_QUERY'
+          ? { ok: true, journey: { contractId, status: 'WALK', facts: coreFacts } }
+          : { ok: false, error: 'unexpected' },
+    });
+    await ready(nodes);
+    await vi.waitFor(() =>
+      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey'),
+    );
+    expect(nodes['s6-next-page']!.disabled).toBe(true);
+    expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
+  });
+
+  it('declares the minimal storage permission needed for worker session recovery', () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'),
+    ) as { permissions?: string[] };
+    expect(manifest.permissions).toContain('storage');
+  });
+});
