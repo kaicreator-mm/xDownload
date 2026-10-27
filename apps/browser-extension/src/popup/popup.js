@@ -597,9 +597,14 @@
         }
       }
     }
+    // The declared continuation edge is NAVIGATION, never a collection
+    // member (PRD §10.3): a pagination control must not silently become a
+    // downloadable candidate of the declared range.
+    const members =
+      nextPageHref === null ? unique : unique.filter((item) => item.href !== nextPageHref);
     return {
-      links: unique.slice(0, 20),
-      observedCount: unique.length,
+      links: members.slice(0, 20),
+      observedCount: members.length,
       nextPageHref,
       pageUrl: document.location.href,
     };
@@ -726,8 +731,8 @@
         return;
       }
       const currentTab = await activeTab();
-      if (!currentTab || currentTab.id === undefined || !s5ObservedTab) {
-        s6PrepareResult.textContent = 'S6 refused: no observed active tab; reopen the popup.';
+      if (!currentTab || currentTab.id === undefined) {
+        s6PrepareResult.textContent = 'S6 refused: no active tab; reopen the popup.';
         return;
       }
       // The declared walk navigates the collection origin's own pages. The
@@ -761,7 +766,7 @@
       if (!response || response.ok !== true) {
         s6PrepareResult.textContent = `S6 admission refused without navigating: ${
           (response && response.error) || 'UNKNOWN'
-        }`;
+        } (verbatim response: ${JSON.stringify(response)})`;
         return;
       }
       s6Prepared = {
@@ -830,15 +835,22 @@
         return;
       }
       // The durable navigation intent is recorded; only now does the
-      // privileged browser follow the page's own declared next edge.
-      await chrome.tabs.update(s5ObservedTab.id, { url: s6NextPageHref });
+      // privileged browser follow the page's own declared next edge. The
+      // walked tab is the CURRENT active tab (fresh query — a stale tab
+      // binding must never navigate a page outside the user's view).
+      const walkedTab = await activeTab();
+      if (!walkedTab || walkedTab.id === undefined) {
+        setS6State('FAILED', 'S6 page walk refused: no active tab to navigate.');
+        return;
+      }
+      await chrome.tabs.update(walkedTab.id, { url: s6NextPageHref });
       const settled = await new Promise((resolve) => {
         const timer = setTimeout(() => {
           chrome.tabs.onUpdated.removeListener(listener);
           resolve(false);
         }, 20000);
         const listener = (tabId, changeInfo) => {
-          if (tabId === s5ObservedTab.id && changeInfo.status === 'complete') {
+          if (tabId === walkedTab.id && changeInfo.status === 'complete') {
             clearTimeout(timer);
             chrome.tabs.onUpdated.removeListener(listener);
             resolve(true);
@@ -851,7 +863,9 @@
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 400));
-      s5ObservedTab.url = s6NextPageHref;
+      if (s5ObservedTab !== null) {
+        s5ObservedTab.url = s6NextPageHref;
+      }
       await s6RecordPage(nextPage);
     } catch (error) {
       setS6State('FAILED', `S6 page walk failed: ${String(error)}`);

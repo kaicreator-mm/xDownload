@@ -949,7 +949,15 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
   // Extension-internal boundary: only this extension's own pages (the action
   // popup) may submit an explicit S2 selection decision or poll journey
   // status. Content scripts and any other sender can never reach the journey.
-  if (sender.id === chrome.runtime.id && sender.tab === undefined) {
+  if (
+    sender.id === chrome.runtime.id &&
+    // Extension-internal senders are the popup page(s) — including a popup
+    // opened in its own extension-owned window, whose sender carries a tab.
+    // Content scripts (page-origin sender.url) stay excluded: only an
+    // extension page may submit an explicit journey decision.
+    (sender.tab === undefined ||
+      (typeof sender.url === 'string' && sender.url.startsWith(chrome.runtime.getURL('/'))))
+  ) {
     // #152 shipped S5 batch flow: the popup gesture is browser-observed
     // only. The worker routes it to the installed Core S5 carrier through
     // Native Messaging — the frozen members, confirmation and per-member

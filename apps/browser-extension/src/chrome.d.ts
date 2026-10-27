@@ -13,6 +13,7 @@ declare const chrome: {
   runtime: {
     /** This extension's own id (internal-message boundary check). */
     readonly id: string;
+    getURL(path: string): string;
     sendMessage(message: unknown): void;
     onMessage: {
       addListener(
@@ -21,6 +22,8 @@ declare const chrome: {
           sender: {
             readonly id?: string;
             readonly tab?: { readonly id?: number };
+            /** Origin URL of the sending context (extension page vs page-embedded script). */
+            readonly url?: string;
           },
           sendResponse: (response: unknown) => void,
         ) => boolean | void,

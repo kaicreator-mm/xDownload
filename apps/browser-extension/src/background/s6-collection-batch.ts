@@ -157,8 +157,29 @@ export function decodeS6BatchMessage(input: unknown): S6BatchDecodeResult {
     return { ok: true, value: { kind: 'S6_COLLECTION_JOURNEY_STATUS', contractId } };
   }
   const contractId = boundedId(raw['contractId']);
-  const prepareId = boundedId(raw['prepareId']);
   const snapshotId = boundedId(raw['snapshotId']);
+  // EXECUTE carries confirmedGroupId (NOT prepareId); every other batch
+  // message carries prepareId. Decode per-kind — a common pre-extraction
+  // would reject the EXECUTE shape outright.
+  if (raw['kind'] === 'S6_EXECUTE_COLLECTION') {
+    if (!exactKeys(raw, ['kind', 'contractId', 'confirmedGroupId', 'snapshotId'])) {
+      return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
+    }
+    const confirmedGroupId = boundedId(raw['confirmedGroupId']);
+    if (contractId === undefined || confirmedGroupId === undefined || snapshotId === undefined) {
+      return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
+    }
+    return {
+      ok: true,
+      value: {
+        kind: 'S6_EXECUTE_COLLECTION',
+        contractId,
+        confirmedGroupId,
+        snapshotId,
+      },
+    };
+  }
+  const prepareId = boundedId(raw['prepareId']);
   if (
     contractId === undefined ||
     prepareId === undefined ||
@@ -225,24 +246,6 @@ export function decodeS6BatchMessage(input: unknown): S6BatchDecodeResult {
         prepareId,
         snapshotId,
         selectedMemberIds: ids,
-      },
-    };
-  }
-  if (raw['kind'] === 'S6_EXECUTE_COLLECTION') {
-    if (!exactKeys(raw, ['kind', 'contractId', 'confirmedGroupId', 'snapshotId'])) {
-      return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
-    }
-    const confirmedGroupId = boundedId(raw['confirmedGroupId']);
-    if (confirmedGroupId === undefined) {
-      return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
-    }
-    return {
-      ok: true,
-      value: {
-        kind: 'S6_EXECUTE_COLLECTION',
-        contractId,
-        confirmedGroupId,
-        snapshotId,
       },
     };
   }
