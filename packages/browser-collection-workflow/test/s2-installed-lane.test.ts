@@ -256,7 +256,7 @@ describe('#95 installed S2 lane (native host composition)', () => {
     expect(response.reasons[0]?.code).toBe('CORE_UNREACHABLE');
   });
 
-  it('propagates a Core-side rejection truthfully (duplicate contract identity)', async () => {
+  it('#176: a new user gesture converges to the SAME durable S2 terminal without duplicate work', async () => {
     const core = await startedCore();
     try {
       const lane = createInstalledS2Lane({
@@ -267,15 +267,18 @@ describe('#95 installed S2 lane (native host composition)', () => {
       const payload = s2Acquire({ bytes })['s2'] as Record<string, unknown>;
       const first = await lane.handle({ kind: 'S2_ACQUIRE', requestId: 'journey-1', payload });
       expect(first.kind).toBe('S2_RESULT');
+      if (first.kind !== 'S2_RESULT') throw new Error('first terminal not projected');
+      const acceptedBefore = core.runtime.writer.reader.workItems().length;
 
-      // A DIFFERENT idempotent identity claiming the SAME derived contract
-      // identity: Core's revision gate rejects it truthfully (the aggregate is
-      // already at revision 2); the lane propagates the typed seam rejection.
+      // A different Native Messaging request id with the identical frozen
+      // browser observation must read Core's terminal, not try revision 0.
       const second = await lane.handle({ kind: 'S2_ACQUIRE', requestId: 'journey-2', payload });
-      expect(second.kind).toBe('S2_REJECTED');
-      if (second.kind !== 'S2_REJECTED') throw new Error('unreachable');
-      expect(second.stage).toBe('CORE_SUBMIT');
-      expect(JSON.stringify(second.reasons)).toContain('REVISION_MISMATCH');
+      expect(second.kind).toBe('S2_RESULT');
+      if (second.kind !== 'S2_RESULT') throw new Error('existing terminal not returned');
+      expect(second.terminal).toEqual(first.terminal);
+      expect(second.contractId).toBe(first.contractId);
+      expect(core.runtime.writer.reader.workItems()).toHaveLength(acceptedBefore);
+      expect(core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId).lifecycleClass).toBe('ACCEPTED');
     } finally {
       await core.stop();
     }
