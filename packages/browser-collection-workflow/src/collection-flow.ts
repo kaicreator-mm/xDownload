@@ -689,16 +689,6 @@ export async function runCollectionFlow(
           ) {
             throw new CoreRuntimeFlowError('COLLECTION_REPLAY_IDENTITY_CONFLICT');
           }
-          const recovery = input.runtime.recovery.classify(workItemId);
-          if (
-            recovery.lifecycleClass !== 'TERMINAL_FAILED' &&
-            !(recovery.lifecycleClass === 'ACCEPTED' && recovery.bytesVerified)
-          ) {
-            // No DB-only success and no implicit resume of an unknown effect.
-            // The supervisor retains this pending intent for a real,
-            // explicitly authorized recovery instead of fabricating terminal.
-            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_UNRESOLVED_WORK');
-          }
           const submission = input.runtime.scheduler.submitLineage({
             contractId: input.contract.contractId,
             snapshotId: input.snapshot.snapshotId,
@@ -713,6 +703,32 @@ export async function runCollectionFlow(
               'COLLECTION_REPLAY_CONTROL_CONFLICT',
               submission.rejection,
             );
+          }
+          const recovery = input.runtime.recovery.classify(workItemId);
+          // Not every definitively FAILED HTTP attempt emits a terminal
+          // ledger failure fact. Reconcile it ONLY when the durable
+          // scheduler records FAILED for every started attempt AND the
+          // ledger records the actual external effect observation.
+          // A failed effect is NOT a validation result, not accepted bytes,
+          // and is never promoted to an ACCEPTED recovery classification.
+          const control = input.runtime.scheduler.lineageView(submission.value.lineageKey);
+          const definitivelyFailed =
+            recovery.lifecycleClass === 'IN_FLIGHT_UNKNOWN' &&
+            !recovery.cancellationAuthoritative &&
+            input.runtime.writer.reader.effect(workItemId)?.outcome === 'OBSERVED' &&
+            control !== undefined &&
+            control.attemptIds.length > 0 &&
+            control.attemptIds.every(
+              (attemptId) => control.outcomes.get(attemptId)?.outcome === 'FAILED',
+            );
+          if (
+            recovery.lifecycleClass !== 'TERMINAL_FAILED' &&
+            !(recovery.lifecycleClass === 'ACCEPTED' && recovery.bytesVerified) &&
+            !definitivelyFailed
+          ) {
+            // Unknown effects cannot be silently retried or classified
+            // as a completed failure, even when the old HTTP request died.
+            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_UNRESOLVED_WORK');
           }
           memberOutcomes.push({
             memberId,
@@ -735,18 +751,6 @@ export async function runCollectionFlow(
           transfer,
         });
         const accepted = acceptedThroughRecovery(input.runtime, flow.workItemId);
-        if (!accepted && flow.effectOutcome?.outcome === 'FAILED') {
-          // A completed adapter attempt with a canonical FAILED outcome is
-          // definitive negative truth, not an uncertain in-flight attempt.
-          // Persist that negative at the moment the collection decides the
-          // member is failed, so restart recovery can re-derive PARTIAL rather
-          // than confusing an old failed command with new work. An UNKNOWN or
-          // unrecorded attempt remains unresolved and never gets this fact.
-          input.runtime.writer.recordTerminalFailure(
-            flow.workItemId,
-            `COLLECTION_MEMBER_FAILED:${flow.transfer?.reason ?? 'VALIDATION_FAILED'}`,
-          );
-        }
         memberOutcomes.push({
           memberId,
           kind: 'ACQUIRED',
