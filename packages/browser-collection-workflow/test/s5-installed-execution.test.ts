@@ -7,10 +7,12 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAuthBroker } from '@xdownload/browser-auth-broker';
+import { reopenCoreRuntime } from '@xdownload/core-runtime';
 import type { S5ConfirmedGroupRecord, S5PreparedGroupRecord } from '@xdownload/core-seam';
 import { ControlledHttpFixture } from '../../core-runtime/test/fixture-http.ts';
 import {
   closeRuntime,
+  EXPECTED_PEER,
   makeTempDir,
   openRuntime,
   removeTempDir,
@@ -200,7 +202,7 @@ describe('#151 S5 collection execution driver (real CoreRuntime + real HTTP)', (
       closeRuntime(world.runtime);
       initialClosed = true;
 
-      const reopened = openRuntime(world.root);
+      const reopened = reopenCoreRuntime({ rootDir: world.root, expectedPeer: EXPECTED_PEER });
       try {
         // recordExecutedTerminal is derived, not command-journalled. On
         // restart the Core lineage is ACTIVE while accepted per-member
@@ -237,7 +239,7 @@ describe('#151 S5 collection execution driver (real CoreRuntime + real HTTP)', (
       const requests = world.fixture.requests.length;
       closeRuntime(world.runtime);
       initialClosed = true;
-      const reopened = openRuntime(world.root);
+      const reopened = reopenCoreRuntime({ rootDir: world.root, expectedPeer: EXPECTED_PEER });
       try {
         const result = await driveS5CollectionExecution(reopened, input);
         if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
