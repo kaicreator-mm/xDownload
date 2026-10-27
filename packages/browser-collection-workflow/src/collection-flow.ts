@@ -734,11 +734,24 @@ export async function runCollectionFlow(
           artifactId: delivery.artifactId,
           transfer,
         });
+        const accepted = acceptedThroughRecovery(input.runtime, flow.workItemId);
+        if (!accepted && flow.effectOutcome?.outcome === 'FAILED') {
+          // A completed adapter attempt with a canonical FAILED outcome is
+          // definitive negative truth, not an uncertain in-flight attempt.
+          // Persist that negative at the moment the collection decides the
+          // member is failed, so restart recovery can re-derive PARTIAL rather
+          // than confusing an old failed command with new work. An UNKNOWN or
+          // unrecorded attempt remains unresolved and never gets this fact.
+          input.runtime.writer.recordTerminalFailure(
+            flow.workItemId,
+            `COLLECTION_MEMBER_FAILED:${flow.transfer?.reason ?? 'VALIDATION_FAILED'}`,
+          );
+        }
         memberOutcomes.push({
           memberId,
           kind: 'ACQUIRED',
           flow,
-          accepted: acceptedThroughRecovery(input.runtime, flow.workItemId),
+          accepted,
         });
         lastLineageKey = flow.lineageKey;
       } else {
