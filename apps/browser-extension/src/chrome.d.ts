@@ -42,6 +42,14 @@ declare const chrome: {
       };
     };
   };
+  /** R1 P2-02: session-scoped persistence of the active S6 journey id. */
+  storage: {
+    session: {
+      get(keys: string): Promise<Record<string, unknown>>;
+      set(items: Record<string, unknown>): Promise<void>;
+      remove(keys: string): Promise<void>;
+    };
+  };
   tabs: {
     get(tabId: number): Promise<{
       readonly id?: number;

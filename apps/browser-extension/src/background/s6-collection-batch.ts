@@ -17,6 +17,11 @@ export interface S6PageAdmitMessage {
   readonly prepareId: string;
   readonly snapshotId: string;
   readonly pageNumber: number;
+  /**
+   * The EXACT next-page href Core must durably pin as the only approved
+   * navigation target (R1 P1-01); RECORD verifies the landing URL against it.
+   */
+  readonly nextPageUrl: string;
 }
 
 export interface S6PageRecordMessage {
@@ -29,6 +34,8 @@ export interface S6PageRecordMessage {
     readonly href: string;
     readonly text: string;
   }[];
+  /** The actually observed page URL the members were scanned on (R1 P1-01). */
+  readonly pageUrl: string;
 }
 
 export interface S6ConfirmCollectionMessage {
@@ -51,12 +58,18 @@ export interface S6JourneyStatusMessage {
   readonly contractId: string;
 }
 
+/** Query the newest non-terminal S6 journey (R1 P2-02 popup restore). */
+export interface S6ActiveJourneyQueryMessage {
+  readonly kind: 'S6_ACTIVE_COLLECTION_QUERY';
+}
+
 export type S6BatchMessage =
   | S6PageAdmitMessage
   | S6PageRecordMessage
   | S6ConfirmCollectionMessage
   | S6ExecuteCollectionMessage
-  | S6JourneyStatusMessage;
+  | S6JourneyStatusMessage
+  | S6ActiveJourneyQueryMessage;
 
 export type S6BatchDecodeResult =
   | { readonly ok: true; readonly value: S6BatchMessage }
@@ -87,6 +100,33 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boo
 function boundedId(value: unknown): string | undefined {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) return undefined;
   return value;
+}
+
+/** Web URLs may be observed, not trusted (the #157 frozen rule). */
+function canonicalObservedUri(raw: unknown): raw is string {
+  if (
+    typeof raw !== 'string' ||
+    raw.length < 8 ||
+    raw.length > 2048 ||
+    Array.from(raw).some(
+      (character) =>
+        character === '\\' || character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
+    )
+  )
+    return false;
+  try {
+    const parsed = new URL(raw);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      parsed.href === raw &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      parsed.search === '' &&
+      parsed.hash === ''
+    );
+  } catch {
+    return false;
+  }
 }
 
 function boundedPageNumber(value: unknown): number | undefined {
@@ -140,7 +180,8 @@ export function isS6BatchMessageKind(value: unknown): boolean {
     kind === 'S6_PAGE_RECORD' ||
     kind === 'S6_CONFIRM_COLLECTION' ||
     kind === 'S6_EXECUTE_COLLECTION' ||
-    kind === 'S6_COLLECTION_JOURNEY_STATUS'
+    kind === 'S6_COLLECTION_JOURNEY_STATUS' ||
+    kind === 'S6_ACTIVE_COLLECTION_QUERY'
   );
 }
 
@@ -155,6 +196,12 @@ export function decodeS6BatchMessage(input: unknown): S6BatchDecodeResult {
       return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
     }
     return { ok: true, value: { kind: 'S6_COLLECTION_JOURNEY_STATUS', contractId } };
+  }
+  if (raw['kind'] === 'S6_ACTIVE_COLLECTION_QUERY') {
+    if (!exactKeys(raw, ['kind'])) {
+      return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
+    }
+    return { ok: true, value: { kind: 'S6_ACTIVE_COLLECTION_QUERY' } };
   }
   const contractId = boundedId(raw['contractId']);
   const snapshotId = boundedId(raw['snapshotId']);
@@ -189,11 +236,23 @@ export function decodeS6BatchMessage(input: unknown): S6BatchDecodeResult {
     return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
   }
   if (raw['kind'] === 'S6_PAGE_ADMIT') {
-    if (!exactKeys(raw, ['kind', 'contractId', 'prepareId', 'snapshotId', 'pageNumber'])) {
+    if (
+      !exactKeys(raw, [
+        'kind',
+        'contractId',
+        'prepareId',
+        'snapshotId',
+        'pageNumber',
+        'nextPageUrl',
+      ])
+    ) {
       return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
     }
     const pageNumber = boundedPageNumber(raw['pageNumber']);
-    if (pageNumber === undefined) {
+    const nextPageUrl = canonicalObservedUri(raw['nextPageUrl'])
+      ? (raw['nextPageUrl'] as string)
+      : undefined;
+    if (pageNumber === undefined || nextPageUrl === undefined) {
       return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
     }
     return {
@@ -204,18 +263,28 @@ export function decodeS6BatchMessage(input: unknown): S6BatchDecodeResult {
         prepareId,
         snapshotId,
         pageNumber,
+        nextPageUrl,
       },
     };
   }
   if (raw['kind'] === 'S6_PAGE_RECORD') {
     if (
-      !exactKeys(raw, ['kind', 'contractId', 'prepareId', 'snapshotId', 'pageNumber', 'members'])
+      !exactKeys(raw, [
+        'kind',
+        'contractId',
+        'prepareId',
+        'snapshotId',
+        'pageNumber',
+        'members',
+        'pageUrl',
+      ])
     ) {
       return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
     }
     const pageNumber = boundedPageNumber(raw['pageNumber']);
     const members = memberList(raw['members']);
-    if (pageNumber === undefined || members === undefined) {
+    const pageUrl = canonicalObservedUri(raw['pageUrl']) ? (raw['pageUrl'] as string) : undefined;
+    if (pageNumber === undefined || members === undefined || pageUrl === undefined) {
       return { ok: false, detail: 'S6_INVALID_BATCH_MESSAGE' };
     }
     return {
@@ -227,6 +296,7 @@ export function decodeS6BatchMessage(input: unknown): S6BatchDecodeResult {
         snapshotId,
         pageNumber,
         members,
+        pageUrl,
       },
     };
   }

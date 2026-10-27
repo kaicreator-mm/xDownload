@@ -45,6 +45,12 @@ export interface S6PreparePayload {
   readonly snapshotId: string;
   /** Canonical http(s) origin of the observed collection page. */
   readonly collectionOrigin: string;
+  /**
+   * The exact canonical http(s) URL of the collection page the prepare was
+   * observed on — the frozen identity of declared-range page 1 (R1 P1-01:
+   * navigation targets are Core-approved before any browser effect).
+   */
+  readonly collectionPageUrl: string;
   /** Bounded observation provenance key (tab identity of the scan). */
   readonly provenanceKey: string;
   /** The user-selected explicit CollectionIdentity (bounded identity string). */
@@ -58,6 +64,13 @@ export interface S6AdmitPagePayload {
   readonly snapshotId: string;
   readonly prepareId: string;
   readonly pageNumber: number;
+  /**
+   * The EXACT canonical next-page href the privileged browser is admitted to
+   * navigate to (same collection origin). Core records it durably BEFORE the
+   * navigation effect; RECORD verifies the actually observed page URL against
+   * it (R1 P1-01 — an off-scope/attacked next link can never steer the walk).
+   */
+  readonly nextPageUrl: string;
 }
 
 export interface S6RecordPagePayload {
@@ -65,6 +78,13 @@ export interface S6RecordPagePayload {
   readonly prepareId: string;
   readonly pageNumber: number;
   readonly members: readonly S6ObservedMember[];
+  /**
+   * The actually observed page URL the members were scanned on. For the first
+   * declared page this must equal the prepared collectionPageUrl; for every
+   * later page it must equal the admitted nextPageUrl — a changed/off-origin
+   * observation rejects before any member is frozen (R1 P1-01).
+   */
+  readonly pageUrl: string;
 }
 
 export interface S6ConfirmBeginPayload {
@@ -159,13 +179,14 @@ export type S6Seam12Decoded =
 const PREPARE_KEYS = [
   'snapshotId',
   'collectionOrigin',
+  'collectionPageUrl',
   'provenanceKey',
   'collectionIdentity',
   'fromPage',
   'toPage',
 ] as const;
-const ADMIT_KEYS = ['snapshotId', 'prepareId', 'pageNumber'] as const;
-const RECORD_KEYS = ['snapshotId', 'prepareId', 'pageNumber', 'members'] as const;
+const ADMIT_KEYS = ['snapshotId', 'prepareId', 'pageNumber', 'nextPageUrl'] as const;
+const RECORD_KEYS = ['snapshotId', 'prepareId', 'pageNumber', 'members', 'pageUrl'] as const;
 const BEGIN_KEYS = [
   'phase',
   'snapshotId',
@@ -368,6 +389,12 @@ export function decodeS6Seam12Payload(
     if (!canonicalCollectionOrigin(payload['collectionOrigin'])) {
       return malformed('payload.collectionOrigin', 'expected a canonical http(s) origin');
     }
+    if (!canonicalObservedPageUri(payload['collectionPageUrl'])) {
+      return malformed(
+        'payload.collectionPageUrl',
+        'expected a canonical credential-free http(s) page-observed URI',
+      );
+    }
     if (
       typeof payload['provenanceKey'] !== 'string' ||
       payload['provenanceKey'].length === 0 ||
@@ -410,6 +437,12 @@ export function decodeS6Seam12Payload(
         `expected a 1-based page number within ${String(S6_MAX_PAGE_NUMBER)}`,
       );
     }
+    if (!canonicalObservedPageUri(payload['nextPageUrl'])) {
+      return malformed(
+        'payload.nextPageUrl',
+        'expected a canonical credential-free http(s) page-observed URI',
+      );
+    }
     return seamOk(
       Object.freeze({
         commandType,
@@ -430,6 +463,12 @@ export function decodeS6Seam12Payload(
         `expected a 1-based page number within ${String(S6_MAX_PAGE_NUMBER)}`,
       );
     }
+    if (!canonicalObservedPageUri(payload['pageUrl'])) {
+      return malformed(
+        'payload.pageUrl',
+        'expected a canonical credential-free http(s) page-observed URI',
+      );
+    }
     const members = validateMembers(payload['members']);
     if (!members.ok) return members;
     return seamOk(
@@ -440,6 +479,7 @@ export function decodeS6Seam12Payload(
           prepareId: payload['prepareId'],
           pageNumber: payload['pageNumber'],
           members: members.value,
+          pageUrl: payload['pageUrl'],
         } as unknown as S6RecordPagePayload),
       }),
     );

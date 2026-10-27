@@ -176,10 +176,12 @@ export interface LineageState {
   /**
    * #154 pages whose navigation intent was durably admitted (journaled
    * ADMIT_S6_COLLECTION_PAGE acceptances; replay rebuilds the set). The
-   * first declared page needs no admit (it is the already-open current
-   * page); every later page must be admitted BEFORE the browser navigates.
+   * first declared page needs no admit (it is the prepared collectionPageUrl
+   * itself); every later page must be admitted BEFORE the browser navigates,
+   * bound to the EXACT approved next-page URL (R1 P1-01) — RECORD verifies
+   * the actually observed page URL against it.
    */
-  s6AdmittedPages?: readonly number[];
+  s6AdmittedPages?: readonly { readonly pageNumber: number; readonly nextPageUrl: string }[];
   /**
    * #154 Core-internal per-member S6 outcomes (Core-derived only; set by the
    * S6 execution driver alongside the lineage terminal, rebuilt by restart
@@ -412,6 +414,12 @@ export interface S6PreparedCollectionRecord {
   readonly prepareId: string;
   readonly snapshotId: string;
   readonly collectionOrigin: string;
+  /**
+   * The exact canonical URL of the collection page the prepare was observed
+   * on — the frozen identity of declared-range page 1 (R1 P1-01): page-1
+   * RECORD must observe exactly this URL.
+   */
+  readonly collectionPageUrl: string;
   readonly provenanceKey: string;
   readonly collectionIdentity: string;
   readonly fromPage: number;
@@ -424,7 +432,9 @@ export interface S6PreparedCollectionRecord {
 /**
  * #154 one Core-frozen observed collection page (the journaled
  * RECORD_S6_COLLECTION_PAGE record). Core mints the member identities; the
- * observed member tuple digest is pinned for replay validation.
+ * observed member tuple digest is pinned for replay validation. pageUrl is
+ * the actually observed page location, verified against the prepare
+ * (first page) / the durable admit (later pages) before freezing.
  */
 export interface S6PageRecord {
   readonly pageNumber: number;
@@ -434,6 +444,7 @@ export interface S6PageRecord {
     readonly href: string;
     readonly text: string;
   }[];
+  readonly pageUrl: string;
   readonly observedTupleDigest: string;
   readonly recordedAt: string;
 }

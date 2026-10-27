@@ -106,6 +106,7 @@ async function driverWorld(
         text: memberId,
       })),
     ),
+    pageUrl: `${origin}/playlist/page-${String(index + 1)}`,
     observedTupleDigest: s6PageTupleDigest({
       pageNumber: index + 1,
       hrefs: memberIds.map((memberId) => `${origin}/${memberId}.bin`),
@@ -116,6 +117,7 @@ async function driverWorld(
     prepareId: PREPARE_ID,
     snapshotId: SNAPSHOT,
     collectionOrigin: origin,
+    collectionPageUrl: `${origin}/playlist/page-1`,
     provenanceKey: PROVENANCE_KEY,
     collectionIdentity: 'playlist/s6-driver-001',
     fromPage: 1,

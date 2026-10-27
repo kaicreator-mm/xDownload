@@ -102,6 +102,8 @@ export interface SeamProjectionView {
     readonly prepareId: string;
     readonly snapshotId: string;
     readonly collectionOrigin: string;
+    /** The exact prepared collection page URL (frozen identity of declared-range page 1). */
+    readonly collectionPageUrl: string;
     readonly collectionIdentity: string;
     readonly fromPage: number;
     readonly toPage: number;
@@ -116,6 +118,8 @@ export interface SeamProjectionView {
       readonly href: string;
       readonly text: string;
     }[];
+    /** The actually observed (admit-verified) page URL the members were scanned on. */
+    readonly pageUrl: string;
     readonly observedTupleDigest: string;
   }[];
   /** #154 Core-confirmed S6 selection facts (presence = confirmed). */
@@ -276,6 +280,7 @@ export function projectAggregate(
             prepareId: lineage.s6PreparedCollection.prepareId,
             snapshotId: lineage.s6PreparedCollection.snapshotId,
             collectionOrigin: lineage.s6PreparedCollection.collectionOrigin,
+            collectionPageUrl: lineage.s6PreparedCollection.collectionPageUrl,
             collectionIdentity: lineage.s6PreparedCollection.collectionIdentity,
             fromPage: lineage.s6PreparedCollection.fromPage,
             toPage: lineage.s6PreparedCollection.toPage,
@@ -289,6 +294,7 @@ export function projectAggregate(
           s6Pages: lineage.s6Pages.map((page) => ({
             pageNumber: page.pageNumber,
             members: page.members.map((member) => ({ ...member })),
+            pageUrl: page.pageUrl,
             observedTupleDigest: page.observedTupleDigest,
           })),
         }),

@@ -136,10 +136,14 @@ function draftPageRangeContract(): Record<string, unknown> {
   };
 }
 
+const COLLECTION_PAGE_URL = `${COLLECTION_ORIGIN}/playlist/page-1`;
+const PAGE2_URL = `${COLLECTION_ORIGIN}/playlist/page-2`;
+
 function preparePayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     snapshotId: SNAPSHOT,
     collectionOrigin: COLLECTION_ORIGIN,
+    collectionPageUrl: COLLECTION_PAGE_URL,
     provenanceKey: `tab-7/frame-0/${COLLECTION_ORIGIN}/playlist/-/-`,
     collectionIdentity: COLLECTION_IDENTITY,
     fromPage: FROM_PAGE,
@@ -158,6 +162,7 @@ function recordPagePayload(
     prepareId: PREPARE_ID,
     pageNumber,
     members: hrefs.map((href, index) => ({ href, text: `file ${String(index)}` })),
+    pageUrl: pageNumber === FROM_PAGE ? COLLECTION_PAGE_URL : PAGE2_URL,
     ...overrides,
   };
 }
@@ -237,7 +242,7 @@ async function recordPage(
   w: S6World,
   pageNumber: number,
   hrefs: readonly string[],
-  options: { readonly skipAdmit?: boolean } = {},
+  options: { readonly skipAdmit?: boolean; readonly nextPageUrl?: string } = {},
 ): Promise<SeamResponse> {
   if (!options.skipAdmit && pageNumber !== FROM_PAGE) {
     const admitted = frame(
@@ -245,7 +250,12 @@ async function recordPage(
       w.registry,
       s6Command({
         commandType: 'ADMIT_S6_COLLECTION_PAGE',
-        payload: { snapshotId: SNAPSHOT, prepareId: PREPARE_ID, pageNumber },
+        payload: {
+          snapshotId: SNAPSHOT,
+          prepareId: PREPARE_ID,
+          pageNumber,
+          nextPageUrl: options.nextPageUrl ?? PAGE2_URL,
+        },
         expectedRevision: currentRevision(w),
         correlation: { snapshotId: SNAPSHOT },
       }),
@@ -383,7 +393,12 @@ describe('#154 S6 explicit-collection seam authority', () => {
       w.registry,
       s6Command({
         commandType: 'ADMIT_S6_COLLECTION_PAGE',
-        payload: { snapshotId: SNAPSHOT, prepareId: PREPARE_ID, pageNumber: TO_PAGE },
+        payload: {
+          snapshotId: SNAPSHOT,
+          prepareId: PREPARE_ID,
+          pageNumber: TO_PAGE,
+          nextPageUrl: PAGE2_URL,
+        },
         expectedRevision: 2,
         correlation: { snapshotId: SNAPSHOT },
       }),
@@ -410,6 +425,121 @@ describe('#154 S6 explicit-collection seam authority', () => {
     expect(rejected.outcome).toBe('REJECTED');
     expect(
       (rejected.diagnostics?.[0]?.message ?? '').includes('no durably admitted navigation intent'),
+    ).toBe(true);
+  });
+
+  it('rejects an off-origin next-link admit with zero navigation, HTTP or member acceptance (R1 P1-01)', async () => {
+    const w = world();
+    await submitDraft(w);
+    expect((await prepare(w)).outcome).toBe('ACCEPTED');
+    expect(
+      (
+        await recordPage(w, FROM_PAGE, [
+          `${COLLECTION_ORIGIN}/p1-file-1.bin`,
+          `${COLLECTION_ORIGIN}/p1-file-2.bin`,
+        ])
+      ).outcome,
+    ).toBe('ACCEPTED');
+    // An attacker-planted "next" anchor on a different origin can never
+    // become the approved navigation target: Core rejects the admit before
+    // any navigation could exist, and nothing is frozen afterwards.
+    const rejected = frame(
+      w.server,
+      w.registry,
+      s6Command({
+        commandType: 'ADMIT_S6_COLLECTION_PAGE',
+        payload: {
+          snapshotId: SNAPSHOT,
+          prepareId: PREPARE_ID,
+          pageNumber: TO_PAGE,
+          nextPageUrl: 'http://off-origin.example/playlist/page-2',
+        },
+        expectedRevision: currentRevision(w),
+        correlation: { snapshotId: SNAPSHOT },
+      }),
+    );
+    expect(rejected.outcome).toBe('REJECTED');
+    expect(rejected.diagnostics?.[0]?.path).toBe('payload.nextPageUrl');
+    expect((rejected.diagnostics?.[0]?.message ?? '').includes('off the collection origin')).toBe(
+      true,
+    );
+    // Zero navigation / zero member acceptance followed: no NEW page was
+    // frozen (the walk stays exactly at page-1; page-2 has no record).
+    const pages = (projectionOf(w, 's6Pages') as readonly unknown[] | undefined) ?? [];
+    expect(pages).toHaveLength(1);
+    expect(frozenMemberIds(w)).toHaveLength(2); // page-1 only
+  });
+
+  it('rejects a RECORD whose observed page URL differs from the durably admitted target (R1 P1-01)', async () => {
+    // A different same-origin URL than the admitted next href is still a
+    // changed landing page: the record fails closed before any member
+    // freezes.
+    const w = world();
+    await submitDraft(w);
+    expect((await prepare(w)).outcome).toBe('ACCEPTED');
+    expect(
+      (
+        await recordPage(w, FROM_PAGE, [
+          `${COLLECTION_ORIGIN}/p1-file-1.bin`,
+          `${COLLECTION_ORIGIN}/p1-file-2.bin`,
+        ])
+      ).outcome,
+    ).toBe('ACCEPTED');
+    const admitted = frame(
+      w.server,
+      w.registry,
+      s6Command({
+        commandType: 'ADMIT_S6_COLLECTION_PAGE',
+        payload: {
+          snapshotId: SNAPSHOT,
+          prepareId: PREPARE_ID,
+          pageNumber: TO_PAGE,
+          nextPageUrl: PAGE2_URL,
+        },
+        expectedRevision: currentRevision(w),
+        correlation: { snapshotId: SNAPSHOT },
+      }),
+    );
+    expect(admitted.outcome).toBe('ACCEPTED');
+    const mismatched = frame(
+      w.server,
+      w.registry,
+      s6Command({
+        commandType: 'RECORD_S6_COLLECTION_PAGE',
+        payload: recordPagePayload(TO_PAGE, [`${COLLECTION_ORIGIN}/p2-file-1.bin`], {
+          pageUrl: `${COLLECTION_ORIGIN}/playlist/page-2-attacked`,
+        }),
+        expectedRevision: currentRevision(w),
+        correlation: { snapshotId: SNAPSHOT },
+      }),
+    );
+    expect(mismatched.outcome).toBe('REJECTED');
+    expect(
+      (mismatched.diagnostics?.[0]?.message ?? '').includes(
+        'does not match the durably admitted navigation target',
+      ),
+    ).toBe(true);
+    // And the first declared page is bound to the prepared collection URL.
+    const w2 = world();
+    await submitDraft(w2);
+    expect((await prepare(w2)).outcome).toBe('ACCEPTED');
+    const wrongFirst = frame(
+      w2.server,
+      w2.registry,
+      s6Command({
+        commandType: 'RECORD_S6_COLLECTION_PAGE',
+        payload: recordPagePayload(FROM_PAGE, [`${COLLECTION_ORIGIN}/p1-file-1.bin`], {
+          pageUrl: `${COLLECTION_ORIGIN}/playlist/page-1-imitation`,
+        }),
+        expectedRevision: currentRevision(w2),
+        correlation: { snapshotId: SNAPSHOT },
+      }),
+    );
+    expect(wrongFirst.outcome).toBe('REJECTED');
+    expect(
+      (wrongFirst.diagnostics?.[0]?.message ?? '').includes(
+        'does not match the prepared collection page',
+      ),
     ).toBe(true);
   });
 

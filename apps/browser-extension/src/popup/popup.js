@@ -636,6 +636,11 @@
         page: s6CurrentPage,
       });
     });
+    renderS6Accum();
+  }
+
+  /** Render purely from the accumulated map (Core facts or fresh scans). */
+  function renderS6Accum() {
     s6MemberList.textContent = '';
     for (const [memberId, member] of s6MemberAccum) {
       const li = document.createElement('li');
@@ -677,6 +682,17 @@
       );
       return false;
     }
+    // R1 P1-02: a page with more member anchors than the shipped scan admits
+    // is TRUNCATED observation — recording it as the whole page could let
+    // Core project false requested-scope coverage. The walk stops here
+    // truthfully; the recorded pages stand, nothing is fabricated.
+    if (Number(observed.observedCount) > observed.links.length) {
+      setS6State(
+        'FAILED',
+        `S6 page ${String(pageNumber)} carries ${String(observed.observedCount)} member anchors and the shipped scan admits only ${String(observed.links.length)}; recording a truncated page could fabricate coverage, so the declared walk stopped truthfully before Core froze anything from this page.`,
+      );
+      return false;
+    }
     const response = await chrome.runtime.sendMessage({
       kind: 'S6_PAGE_RECORD',
       contractId: s6Prepared.contractId,
@@ -684,6 +700,9 @@
       snapshotId: s6Prepared.snapshotId,
       pageNumber,
       members: observed.links.map((item) => ({ href: item.href, text: item.text })),
+      // R1 P1-01: the actually observed page location travels with the
+      // record; Core verifies it against the prepare/admit before freezing.
+      pageUrl: String(observed.pageUrl || ''),
     });
     if (!response || response.ok !== true) {
       setS6State(
@@ -728,6 +747,16 @@
       ) {
         s6PrepareResult.textContent =
           'S6 refused: the page range must be a bounded 1-based inclusive range with fromPage <= toPage.';
+        return;
+      }
+      // R1 P2-01: the shipped v0.1 installed lane binds declared-range page 1
+      // to the CURRENTLY OPEN collection page (the prepare freezes this exact
+      // URL). A range starting later has no executable, provably-current
+      // first page here — refuse truthfully instead of admitting an
+      // unreachable selection.
+      if (fromPage !== 1) {
+        s6PrepareResult.textContent =
+          'S6 refused: the shipped v0.1 lane starts a declared range only at the currently open page (fromPage must be 1). Open the page you want to start from and declare the range from there; a later start requires opening that page first.';
         return;
       }
       const currentTab = await activeTab();
@@ -826,6 +855,10 @@
         prepareId: s6Prepared.prepareId,
         snapshotId: s6Prepared.snapshotId,
         pageNumber: nextPage,
+        // R1 P1-01: Core durably pins THIS exact href as the only approved
+        // navigation target for the page; RECORD verifies the landing URL
+        // against it.
+        nextPageUrl: s6NextPageHref,
       });
       if (!admitted || admitted.ok !== true) {
         setS6State(
@@ -1003,4 +1036,123 @@
       setS6State('FAILED', `Execution failed: ${String(error)}`);
     }
   });
+
+  // ------------------------------------------------------------------ S6 restore
+  // R1 P2-02: the anchored action popup auto-dismisses whenever browser
+  // focus moves (official popup lifecycle) — mid-walk that orphans state
+  // held only in this closure. The workflow therefore restores FROM CORE:
+  // the worker persists the active journey id; this popup rebuilds its view
+  // from the verbatim Core projection facts (frozen admission, recorded
+  // pages with Core-minted member identities, confirmed selection) and
+  // never from its own memory.
+  async function s6RestoreActiveJourney() {
+    let active = null;
+    try {
+      active = await chrome.runtime.sendMessage({ kind: 'S6_ACTIVE_COLLECTION_QUERY' });
+    } catch {
+      return; // no worker answer — nothing to restore, fresh open works
+    }
+    if (!active || active.ok !== true || !active.journey) {
+      return;
+    }
+    const journey = active.journey;
+    if (journey.status !== 'PREPARE' && journey.status !== 'WALK' && journey.status !== 'CONFIRM') {
+      return;
+    }
+    const facts = journey.facts || {};
+    const prepared = facts.prepared || {};
+    const pages = Array.isArray(facts.pages) ? facts.pages : [];
+    const preparedId = String(prepared.prepareId ?? facts.prepareId ?? '');
+    if (preparedId === '') {
+      return; // nothing restorable without the frozen admission
+    }
+    s6Prepared = {
+      contractId: String(journey.contractId),
+      prepareId: preparedId,
+      snapshotId: String(prepared.snapshotId ?? facts.snapshotId ?? ''),
+      fromPage: Number(prepared.fromPage ?? facts.fromPage ?? 1),
+      toPage: Number(prepared.toPage ?? facts.toPage ?? 1),
+    };
+    s6MemberAccum.clear();
+    s6MemberUnchecked.clear();
+    for (const page of pages) {
+      for (const member of Array.isArray(page.members) ? page.members : []) {
+        s6MemberAccum.set(String(member.memberId), {
+          href: String(member.href || ''),
+          text: String(member.text || ''),
+          page: Number(page.pageNumber),
+        });
+      }
+    }
+    s6CurrentPage = pages.length > 0 ? Number(pages[pages.length - 1].pageNumber) : 0;
+    s6NextPageHref = null;
+    const confirmedFacts = facts.confirmed;
+    if (confirmedFacts && confirmedFacts.confirmedGroupId) {
+      s6Confirmed = {
+        contractId: String(journey.contractId),
+        confirmedGroupId: String(confirmedFacts.confirmedGroupId),
+        snapshotId: s6Prepared.snapshotId,
+      };
+      s6ExecuteButton.disabled = false;
+    }
+    s6WalkBox.hidden = false;
+    const s6SectionRestore = document.getElementById('s6-collection');
+    if (s6SectionRestore !== null) {
+      s6SectionRestore.hidden = false;
+    }
+    renderS6Accum();
+    s6NextPageButton.disabled = s6CurrentPage >= s6Prepared.toPage;
+    s6PrepareResult.textContent = `Restored the active S6 journey ${String(
+      journey.contractId,
+    )} from Core (admission ${s6Prepared.prepareId}; ${String(s6MemberAccum.size)} frozen members across ${String(
+      pages.length,
+    )} walked page(s)). The declared range ${String(s6Prepared.fromPage)}..${String(
+      s6Prepared.toPage,
+    )} stays the only navigation bound.`;
+    setS6State(
+      'RUNNING',
+      `Restored from Core: ${String(s6MemberAccum.size)} frozen members on ${String(pages.length)} declared page(s) walked so far. ${
+        s6Confirmed
+          ? 'The subset is already confirmed — you can start the collection download.'
+          : 'Uncheck any member you do not want, then confirm; or continue the declared walk.'
+      }`,
+    );
+    // R1 P2-02 continuation: the dismissed-mid-walk case leaves the browser
+    // sitting on the page the durable ADMIT approved but the dead popup never
+    // recorded. If the currently open page is a NEW declared-range page
+    // (same collection origin, different from the last recorded page), the
+    // scan is real and Core alone decides whether the observation qualifies —
+    // attempt the record; a typed refusal is honest and keeps the bounds.
+    if (s6CurrentPage < s6Prepared.toPage && s6MemberAccum.size > 0) {
+      try {
+        const scanned = await s6ScanCurrentPage();
+        const lastRecordedUrl = String(
+          pages.length > 0 ? pages[pages.length - 1].pageUrl || '' : '',
+        );
+        if (
+          scanned &&
+          Array.isArray(scanned.links) &&
+          scanned.links.length > 0 &&
+          typeof scanned.pageUrl === 'string' &&
+          scanned.pageUrl !== lastRecordedUrl
+        ) {
+          let sameOrigin = false;
+          try {
+            sameOrigin =
+              new URL(scanned.pageUrl).origin === new URL(prepared.collectionOrigin).origin;
+          } catch {
+            sameOrigin = false;
+          }
+          if (sameOrigin) {
+            await s6RecordPage(s6CurrentPage + 1);
+          }
+        }
+      } catch {
+        // Continuation is best-effort: a refused/unavailable scan leaves the
+        // restored state intact and truthful.
+      }
+    }
+  }
+
+  void s6RestoreActiveJourney();
 })();

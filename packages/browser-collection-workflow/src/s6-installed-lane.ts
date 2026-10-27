@@ -309,8 +309,8 @@ const S6_PAYLOAD_KEYS: Readonly<Record<string, readonly string[]>> = {
     'fromPage',
     'toPage',
   ],
-  S6_PAGE_ADMIT: ['contractId', 'prepareId', 'snapshotId', 'pageNumber'],
-  S6_PAGE_RECORD: ['contractId', 'prepareId', 'snapshotId', 'pageNumber', 'members'],
+  S6_PAGE_ADMIT: ['contractId', 'prepareId', 'snapshotId', 'pageNumber', 'nextPageUrl'],
+  S6_PAGE_RECORD: ['contractId', 'prepareId', 'snapshotId', 'pageNumber', 'members', 'pageUrl'],
   S6_GROUP_CONFIRM: ['contractId', 'prepareId', 'snapshotId', 'selectedMemberIds', 'decisionToken'],
   S6_GROUP_EXECUTE: ['contractId', 'confirmedGroupId', 'snapshotId'],
   S6_GROUP_STATUS: ['contractId'],
@@ -793,6 +793,9 @@ async function handlePrepare(
     payload: {
       snapshotId: identity.snapshotId,
       collectionOrigin,
+      // R1 P1-01: the exact observed collection page URL is frozen as the
+      // identity of declared-range page 1 (page-1 RECORD must observe it).
+      collectionPageUrl: prepare.pageUrl,
       provenanceKey: `tab-${String(prepare.tabId)}/frame-0/${prepare.pageUrl}/-/-`,
       collectionIdentity: prepare.collectionIdentity,
       fromPage: prepare.fromPage,
@@ -823,6 +826,7 @@ async function handlePrepare(
       prepareId: facts['prepareId'],
       snapshotId: identity.snapshotId,
       collectionOrigin,
+      collectionPageUrl: prepare.pageUrl,
       collectionIdentity: prepare.collectionIdentity,
       fromPage: prepare.fromPage,
       toPage: prepare.toPage,
@@ -848,6 +852,19 @@ async function handlePageAdmit(
   if (!snapshotId.ok) return laneFail(command.requestId, 'LANE_DECODE', snapshotId.diagnostics);
   const pageNumber = requirePageNumber(payload);
   if (!pageNumber.ok) return laneFail(command.requestId, 'LANE_DECODE', pageNumber.diagnostics);
+  // R1 P1-01: the admitted navigation target is the EXACT canonical next
+  // href (same collection origin) — Core pins it durably before the browser
+  // may navigate, and RECORD verifies the observed landing URL against it.
+  const nextPageUrl = payload['nextPageUrl'];
+  if (!canonicalObservedUri(nextPageUrl)) {
+    return laneFail(command.requestId, 'LANE_DECODE', [
+      brokerDiagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        's6.nextPageUrl',
+        'nextPageUrl must be a canonical credential-free http(s) URI',
+      ),
+    ]);
+  }
   const view = projectionViewOf(await ports.readProjection(contractId.value));
   const revision = revisionOf(view);
   const admitted = await ports.submit({
@@ -860,6 +877,7 @@ async function handlePageAdmit(
       snapshotId: snapshotId.value,
       prepareId: prepareId.value,
       pageNumber: pageNumber.value,
+      nextPageUrl,
     },
   });
   const admittedRejected = mustAccept(command.requestId, 'CORE_SUBMIT', admitted);
@@ -871,7 +889,7 @@ async function handlePageAdmit(
     requestId: command.requestId,
     phase: 'PAGE_ADMITTED',
     contractId: contractId.value,
-    facts: { pageNumber: pageNumber.value },
+    facts: { pageNumber: pageNumber.value, nextPageUrl },
   } as BrokerResponse;
 }
 
@@ -894,6 +912,19 @@ async function handlePageRecord(
   if (!pageNumber.ok) return laneFail(command.requestId, 'LANE_DECODE', pageNumber.diagnostics);
   const members = requireMembers(payload);
   if (!members.ok) return laneFail(command.requestId, 'LANE_DECODE', members.diagnostics);
+  // R1 P1-01: the actually observed page location travels with the record;
+  // Core verifies it against the prepare (page 1) / the durable admit (later
+  // pages) before freezing any member.
+  const pageUrl = payload['pageUrl'];
+  if (!canonicalObservedUri(pageUrl)) {
+    return laneFail(command.requestId, 'LANE_DECODE', [
+      brokerDiagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        's6.pageUrl',
+        'pageUrl must be a canonical credential-free http(s) URI',
+      ),
+    ]);
+  }
   const view = projectionViewOf(await ports.readProjection(contractId.value));
   const revision = revisionOf(view);
   const recorded = await ports.submit({
@@ -907,6 +938,7 @@ async function handlePageRecord(
       prepareId: prepareId.value,
       pageNumber: pageNumber.value,
       members: members.value.map((member) => ({ href: member.href, text: member.text })),
+      pageUrl,
     },
   });
   const recordedRejected = mustAccept(command.requestId, 'CORE_SUBMIT', recorded);
@@ -1201,6 +1233,14 @@ async function handleStatus(
       terminal: terminal ?? null,
       members: current['s6Members'] ?? [],
       lineageStatus: lineage?.['status'] ?? null,
+      // R1 P2-02: verbatim Core truth for popup restore after the anchored
+      // surface auto-dismisses — the frozen admission, the recorded pages
+      // (Core-minted member identities joined to their observed anchors) and
+      // the confirmed selection. The popup re-derives its view from THESE
+      // facts only; it never rebuilds state from its own memory.
+      prepared: current['s6PreparedCollection'] ?? null,
+      pages: current['s6Pages'] ?? [],
+      confirmed: current['s6ConfirmedCollection'] ?? null,
     },
   } as BrokerResponse;
 }

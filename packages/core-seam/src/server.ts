@@ -5747,6 +5747,31 @@ function applyPrepareS6Collection(
       ),
     ]);
   }
+  // R1 P1-01: the observed collection page URL is frozen as the identity of
+  // declared-range page 1 — an off-origin page can never become page 1.
+  let pageOrigin: string;
+  try {
+    pageOrigin = new URL(payload.collectionPageUrl).origin;
+  } catch {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.collectionPageUrl',
+        'the collection page URL has no parseable origin; preparation fails closed',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
+  if (pageOrigin !== payload.collectionOrigin) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.collectionPageUrl',
+        'the collection page URL is off the collection origin; preparation fails closed',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
   const observedTupleDigest = s6CollectionTupleDigest({
     collectionOrigin: payload.collectionOrigin,
     provenanceKey: payload.provenanceKey,
@@ -5758,6 +5783,7 @@ function applyPrepareS6Collection(
     prepareId: `s6prepare:${envelope.aggregateId}:${payload.snapshotId}`,
     snapshotId: payload.snapshotId,
     collectionOrigin: payload.collectionOrigin,
+    collectionPageUrl: payload.collectionPageUrl,
     provenanceKey: payload.provenanceKey,
     collectionIdentity: payload.collectionIdentity,
     fromPage: payload.fromPage,
@@ -5879,7 +5905,36 @@ function applyAdmitS6CollectionPage(
       ),
     ]);
   }
-  lineage.s6AdmittedPages = Object.freeze([...(lineage.s6AdmittedPages ?? []), payload.pageNumber]);
+  // R1 P1-01: the admitted navigation target is the EXACT canonical next
+  // href, bound to the collection origin and pinned durably before the
+  // browser effect; RECORD verifies the actually observed URL against it.
+  let nextOrigin: string;
+  try {
+    nextOrigin = new URL(payload.nextPageUrl).origin;
+  } catch {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.nextPageUrl',
+        'the admitted next-page URL has no parseable origin; admission fails closed',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  if (nextOrigin !== prepared.collectionOrigin) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.nextPageUrl',
+        `the admitted next-page URL is off the collection origin (${prepared.collectionOrigin}); an off-scope navigation target rejects`,
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  lineage.s6AdmittedPages = Object.freeze([
+    ...(lineage.s6AdmittedPages ?? []),
+    { pageNumber: payload.pageNumber, nextPageUrl: payload.nextPageUrl },
+  ]);
   const revision = aggregate.revision + 1;
   aggregate.revision = revision;
   return seamOk({ revision });
@@ -5971,16 +6026,42 @@ function applyRecordS6CollectionPage(
       ),
     ]);
   }
-  if (
-    payload.pageNumber !== prepared.fromPage &&
-    !(lineage.s6AdmittedPages ?? []).includes(payload.pageNumber)
-  ) {
+  if (payload.pageNumber !== prepared.fromPage) {
+    const admitted = (lineage.s6AdmittedPages ?? []).find(
+      (entry) => entry.pageNumber === payload.pageNumber,
+    );
+    if (admitted === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.pageNumber',
+          `page ${String(payload.pageNumber)} has no durably admitted navigation intent; record fails closed`,
+          'L2-#154-§navigate',
+        ),
+      ]);
+    }
+    // R1 P1-01: the actually observed page URL must equal the EXACT approved
+    // navigation target — a changed or off-origin landing page rejects before
+    // any member is frozen.
+    if (payload.pageUrl !== admitted.nextPageUrl) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.pageUrl',
+          `the observed page URL does not match the durably admitted navigation target for page ${String(payload.pageNumber)}; record fails closed`,
+          'L2-#154-§navigate',
+        ),
+      ]);
+    }
+  } else if (payload.pageUrl !== prepared.collectionPageUrl) {
+    // R1 P1-01: the first declared page must be observed on the exact
+    // prepared collection page.
     return seamFail([
       seamDiagnostic(
         'ADMISSION_REJECTED',
-        'payload.pageNumber',
-        `page ${String(payload.pageNumber)} has no durably admitted navigation intent; record fails closed`,
-        'L2-#154-§navigate',
+        'payload.pageUrl',
+        'the observed page URL does not match the prepared collection page; record fails closed',
+        'L2-#154-§prepare',
       ),
     ]);
   }
@@ -6007,6 +6088,7 @@ function applyRecordS6CollectionPage(
   const record: S6PageRecord = {
     pageNumber: payload.pageNumber,
     members: Object.freeze(members),
+    pageUrl: payload.pageUrl,
     observedTupleDigest,
     recordedAt: new Date(s6Live?.now() ?? Date.now()).toISOString(),
   };
@@ -6014,6 +6096,7 @@ function applyRecordS6CollectionPage(
   if (existing !== undefined) {
     if (
       existing.observedTupleDigest === record.observedTupleDigest &&
+      existing.pageUrl === record.pageUrl &&
       stableStringify(existing.members) === stableStringify(record.members)
     ) {
       return seamOk({ revision: aggregate.revision });

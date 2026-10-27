@@ -685,8 +685,36 @@ interface S6JourneyState {
 
 const s6Journeys = new Map<string, S6JourneyState>();
 
+/**
+ * R1 P2-02: the anchored action popup auto-dismisses whenever browser focus
+ * moves (official Chrome popup lifecycle), which mid-walk would orphan the
+ * journey state held only in the popup closure. The MINIMUM workflow state
+ * (the active journey's contract id) therefore persists in the existing
+ * worker across SW restarts via the session store; everything else is
+ * restored FROM CORE (the verbatim projection facts carried on the journey),
+ * never from popup memory.
+ */
+const S6_ACTIVE_JOURNEY_KEY = 's6ActiveJourneyContractId';
+
+async function persistActiveS6Journey(journey: S6JourneyState): Promise<void> {
+  try {
+    if (journey.status === 'TERMINAL' || journey.status === 'FAILED') {
+      const stored = await chrome.storage.session.get(S6_ACTIVE_JOURNEY_KEY);
+      if (stored[S6_ACTIVE_JOURNEY_KEY] === journey.contractId) {
+        await chrome.storage.session.remove(S6_ACTIVE_JOURNEY_KEY);
+      }
+      return;
+    }
+    await chrome.storage.session.set({ [S6_ACTIVE_JOURNEY_KEY]: journey.contractId });
+  } catch {
+    // Persistence is best-effort resilience; the journey itself is durable
+    // in Core and every phase fails closed without it.
+  }
+}
+
 function rememberS6Journey(journey: S6JourneyState): void {
   s6Journeys.set(journey.contractId, journey);
+  void persistActiveS6Journey(journey);
   while (s6Journeys.size > 64) {
     const oldest = s6Journeys.keys().next();
     if (oldest.done === true) {
@@ -694,6 +722,45 @@ function rememberS6Journey(journey: S6JourneyState): void {
     }
     s6Journeys.delete(oldest.value);
   }
+}
+
+/**
+ * R1 P2-02: the newest non-terminal S6 journey across worker restarts —
+ * memory first, session store second (a fresh worker's memory is empty but
+ * the store survives within the browser session). The caller restores the
+ * workflow view from the returned journey's verbatim Core facts.
+ */
+async function newestActiveS6Journey(): Promise<S6JourneyState | undefined> {
+  const activeInMemory = [...s6Journeys.values()]
+    .reverse()
+    .find((journey) => journey.status !== 'TERMINAL' && journey.status !== 'FAILED');
+  if (activeInMemory !== undefined) {
+    return activeInMemory;
+  }
+  try {
+    const stored = await chrome.storage.session.get(S6_ACTIVE_JOURNEY_KEY);
+    const contractId = stored[S6_ACTIVE_JOURNEY_KEY];
+    if (typeof contractId === 'string') {
+      const storedJourney = s6Journeys.get(contractId);
+      if (storedJourney !== undefined) {
+        return storedJourney;
+      }
+      // A fresh worker: rehydrate the journey shell from Core via a status
+      // round trip, then keep answering from memory.
+      await s6RefreshStatus(contractId);
+      const rehydrated = s6Journeys.get(contractId);
+      if (
+        rehydrated !== undefined &&
+        rehydrated.status !== 'TERMINAL' &&
+        rehydrated.status !== 'FAILED'
+      ) {
+        return rehydrated;
+      }
+    }
+  } catch {
+    // Storage unavailable — answer truthfully from memory only.
+  }
+  return undefined;
 }
 
 /** Verbatim S6 lane frame → one typed fact bundle (the S5 discipline). */
@@ -774,6 +841,7 @@ async function runS6PageAdmit(message: {
   readonly prepareId: string;
   readonly snapshotId: string;
   readonly pageNumber: number;
+  readonly nextPageUrl: string;
 }): Promise<{ ok: true; facts: Record<string, unknown> } | { ok: false; error: string }> {
   const journey: S6JourneyState = s6Journeys.get(message.contractId) ?? {
     contractId: message.contractId,
@@ -790,6 +858,7 @@ async function runS6PageAdmit(message: {
         prepareId: message.prepareId,
         snapshotId: message.snapshotId,
         pageNumber: message.pageNumber,
+        nextPageUrl: message.nextPageUrl,
       },
     }),
   );
@@ -809,6 +878,7 @@ async function runS6PageRecord(message: {
   readonly snapshotId: string;
   readonly pageNumber: number;
   readonly members: readonly { readonly href: string; readonly text: string }[];
+  readonly pageUrl: string;
 }): Promise<{ ok: true; facts: Record<string, unknown> } | { ok: false; error: string }> {
   const journey: S6JourneyState = s6Journeys.get(message.contractId) ?? {
     contractId: message.contractId,
@@ -826,6 +896,7 @@ async function runS6PageRecord(message: {
         snapshotId: message.snapshotId,
         pageNumber: message.pageNumber,
         members: message.members.map((member) => ({ href: member.href, text: member.text })),
+        pageUrl: message.pageUrl,
       },
     }),
   );
@@ -1043,6 +1114,23 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
       }
       const message = decoded.value;
       void (async () => {
+        // R1 P2-02: the reopened popup asks for the newest non-terminal
+        // journey and restores its view from the returned verbatim Core
+        // facts (prepared/pages/confirmed) — never from popup memory.
+        if (message.kind === 'S6_ACTIVE_COLLECTION_QUERY') {
+          const journey = await newestActiveS6Journey();
+          if (journey === undefined) {
+            sendResponse({ ok: true, journey: null });
+            return;
+          }
+          await s6RefreshStatus(journey.contractId);
+          const refreshed = s6Journeys.get(journey.contractId);
+          sendResponse({
+            ok: true,
+            journey: refreshed ?? journey,
+          });
+          return;
+        }
         if (message.kind === 'S6_PAGE_ADMIT') {
           const outcome = await runS6PageAdmit(message);
           sendResponse(
