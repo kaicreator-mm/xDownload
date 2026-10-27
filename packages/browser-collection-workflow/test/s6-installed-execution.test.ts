@@ -8,6 +8,7 @@
  * (reconcile-first).
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { reopenCoreRuntime } from '@xdownload/core-runtime';
 import type {
   S6ConfirmedCollectionRecord,
   S6PageRecord,
@@ -22,6 +23,7 @@ import { decodeAcquisitionContract, decodeSelectionSnapshot } from '@xdownload/d
 import { ControlledHttpFixture } from '../../core-runtime/test/fixture-http.ts';
 import {
   closeRuntime,
+  EXPECTED_PEER,
   makeTempDir,
   openRuntime,
   removeTempDir,
@@ -44,6 +46,7 @@ afterEach(async () => {
 });
 
 interface DriverWorld {
+  readonly root: string;
   readonly fixture: ControlledHttpFixture;
   readonly origin: string;
   readonly prepared: S6PreparedCollectionRecord;
@@ -179,7 +182,7 @@ async function driverWorld(
     closeRuntime(runtime);
     throw new Error(`snapshot binding failed: ${JSON.stringify(snapshotted.diagnostics)}`);
   }
-  return { fixture, origin, prepared, pages, confirmed, runtime };
+  return { fixture, origin, prepared, pages, confirmed, runtime, root };
 }
 
 describe('#154 S6 collection execution driver (real CoreRuntime + real HTTP)', () => {
@@ -268,6 +271,41 @@ describe('#154 S6 collection execution driver (real CoreRuntime + real HTTP)', (
       expect(terminal['requestFulfillment']).toBe('PARTIAL');
     } finally {
       closeRuntime(world.runtime);
+    }
+  });
+
+  it('re-derives S6 declared-range terminal from verified durable member work after restart', async () => {
+    const world = await driverWorld();
+    const input = {
+      aggregateId: AGGREGATE,
+      requestId: 'req-s6-restart',
+      confirmed: world.confirmed,
+      prepared: world.prepared,
+      pages: world.pages,
+    };
+    let initiallyClosed = false;
+    try {
+      const initial = await driveS6CollectionExecution(world.runtime, input);
+      expect(initial.ok).toBe(true);
+      const requests = world.fixture.requests.length;
+      closeRuntime(world.runtime);
+      initiallyClosed = true;
+      const reopened = reopenCoreRuntime({ rootDir: world.root, expectedPeer: EXPECTED_PEER });
+      try {
+        expect(reopened.seam.inspectProjection(AGGREGATE)?.lineage.status).toBe('ACTIVE');
+        const result = await driveS6CollectionExecution(reopened, input);
+        if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+        const view = reopened.seam.inspectProjection(AGGREGATE);
+        expect(view?.lineage.status).toBe('TERMINAL');
+        expect(view?.terminal?.requestFulfillment).toBe('COMPLETE');
+        expect(view?.terminal?.coverage).toBe('VERIFIED_COMPLETE');
+        expect(reopened.writer.reader.workItems()).toHaveLength(3);
+        expect(world.fixture.requests.length).toBe(requests);
+      } finally {
+        closeRuntime(reopened);
+      }
+    } finally {
+      if (!initiallyClosed) closeRuntime(world.runtime);
     }
   });
 

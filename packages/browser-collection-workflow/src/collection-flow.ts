@@ -67,6 +67,7 @@ import type {
 import {
   CoreRuntimeFlowError,
   executeDirectAcquisition,
+  effectIdFor,
   executeHlsAcquisition,
   projectLineageResult,
   type CoreRuntime,
@@ -655,6 +656,88 @@ export async function runCollectionFlow(
           allowedRedirectHosts: delivery.declaredRedirectHosts,
           attempt: 0,
         };
+        // T019: a Core restart replays the durable S5/S6 collection intent,
+        // but its accepted per-member work is ALREADY in the ledger. Never
+        // submit the same ACQUIRE command again: writer.submitAcquisition
+        // rightly rejects duplicate identities (and repeating HTTP would
+        // double-charge transfer / misrepresent user-selected membership).
+        // Reconcile ONLY the exact canonical effect identity and verified
+        // recovery truth; any unfinished/contradictory work fails closed.
+        const effect = effectIdFor(
+          input.contract.contractId,
+          input.snapshot.snapshotId,
+          delivery.targetId,
+        );
+        if (!effect.ok) {
+          return {
+            ok: false,
+            rejection: {
+              stage: 'MEMBER_DELIVERY_LOCATOR',
+              memberId,
+              diagnostics: effect.diagnostics,
+            },
+          };
+        }
+        const workItemId = `work:${effect.value}`;
+        const existing = input.runtime.writer.reader.workItem(workItemId);
+        if (existing !== undefined) {
+          if (
+            existing.contractId !== input.contract.contractId ||
+            existing.snapshotId !== input.snapshot.snapshotId ||
+            existing.memberId !== memberId ||
+            existing.effectId !== effect.value
+          ) {
+            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_IDENTITY_CONFLICT');
+          }
+          const submission = input.runtime.scheduler.submitLineage({
+            contractId: input.contract.contractId,
+            snapshotId: input.snapshot.snapshotId,
+            targetId: delivery.targetId,
+            authorizationContextRef: existing.authorizationContextRef,
+            budgetProfile: input.contract.budgetProfile,
+            frozenMemberIds: [...input.snapshot.selectedMemberIds],
+            requestedEffectId: effect.value,
+          });
+          if (!submission.ok) {
+            throw new CoreRuntimeFlowError(
+              'COLLECTION_REPLAY_CONTROL_CONFLICT',
+              submission.rejection,
+            );
+          }
+          const recovery = input.runtime.recovery.classify(workItemId);
+          // Not every definitively FAILED HTTP attempt emits a terminal
+          // ledger failure fact. Reconcile it ONLY when the durable
+          // scheduler records FAILED for every started attempt AND the
+          // ledger records the actual external effect observation.
+          // A failed effect is NOT a validation result, not accepted bytes,
+          // and is never promoted to an ACCEPTED recovery classification.
+          const control = input.runtime.scheduler.lineageView(submission.value.lineageKey);
+          const definitivelyFailed =
+            recovery.lifecycleClass !== 'ACCEPTED' &&
+            !recovery.cancellationAuthoritative &&
+            input.runtime.writer.reader.effect(workItemId)?.outcome === 'OBSERVED' &&
+            control !== undefined &&
+            control.attemptIds.length > 0 &&
+            control.attemptIds.every(
+              (attemptId) => control.outcomes.get(attemptId)?.outcome === 'FAILED',
+            );
+          if (
+            recovery.lifecycleClass !== 'TERMINAL_FAILED' &&
+            !(recovery.lifecycleClass === 'ACCEPTED' && recovery.bytesVerified) &&
+            !definitivelyFailed
+          ) {
+            // Unknown effects cannot be silently retried or classified
+            // as a completed failure, even when the old HTTP request died.
+            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_UNRESOLVED_WORK');
+          }
+          memberOutcomes.push({
+            memberId,
+            kind: 'ACQUIRED',
+            accepted: recovery.successClaimable,
+          });
+          lastLineageKey = submission.value.lineageKey;
+          continue;
+        }
         const flow = await executeDirectAcquisition(input.runtime, {
           contractId: input.contract.contractId,
           snapshotId: input.snapshot.snapshotId,
@@ -667,11 +750,12 @@ export async function runCollectionFlow(
           artifactId: delivery.artifactId,
           transfer,
         });
+        const accepted = acceptedThroughRecovery(input.runtime, flow.workItemId);
         memberOutcomes.push({
           memberId,
           kind: 'ACQUIRED',
           flow,
-          accepted: acceptedThroughRecovery(input.runtime, flow.workItemId),
+          accepted,
         });
         lastLineageKey = flow.lineageKey;
       } else {
