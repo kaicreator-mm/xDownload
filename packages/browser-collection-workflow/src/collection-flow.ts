@@ -713,7 +713,7 @@ export async function runCollectionFlow(
           // and is never promoted to an ACCEPTED recovery classification.
           const control = input.runtime.scheduler.lineageView(submission.value.lineageKey);
           const definitivelyFailed =
-            recovery.lifecycleClass === 'IN_FLIGHT_UNKNOWN' &&
+            recovery.lifecycleClass !== 'ACCEPTED' &&
             !recovery.cancellationAuthoritative &&
             input.runtime.writer.reader.effect(workItemId)?.outcome === 'OBSERVED' &&
             control !== undefined &&
