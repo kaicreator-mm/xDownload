@@ -1,13 +1,13 @@
 {
   "suite": "windows-native-host-smoke",
-  "executedAt": "2026-10-21T21:08:12.037Z",
+  "executedAt": "2026-10-27T12:17:23.186Z",
   "environment": {
     "platform": "win32",
     "arch": "x64",
     "osRelease": "10.0.26300",
     "osVersion": "Windows 11 Pro",
     "node": "24.21.0",
-    "executable": "C:\\Users\\15549\\AppData\\Local\\fnm_multishells\\29052_1792616890648\\node.exe",
+    "executable": "C:\\Users\\15549\\AppData\\Local\\fnm_multishells\\33756_1793103436393\\node.exe",
     "tmpRoot": "C:\\Users\\15549\\AppData\\Local\\Temp"
   },
   "checks": [

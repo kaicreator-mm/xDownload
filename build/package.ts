@@ -18,6 +18,7 @@
  * recorded (TEST_MATRIX: rebuild determinism).
  */
 
+import { createRequire } from 'node:module';
 import esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,6 +31,9 @@ import {
   captureToolchain,
   configuredExtensionOrigins,
   NATIVE_HOST_NAME,
+  VENDORED_NATIVE_RUNTIME,
+  vendoredRuntimeDistPaths,
+  type ArtifactSpec,
 } from './build-config.ts';
 import { buildIdentity, currentSourceRevision } from './identity.ts';
 import { auditDist } from './audit.ts';
@@ -79,11 +83,12 @@ async function bundleArtifacts(distDir: string): Promise<void> {
       sourcemap: false,
       legalComments: 'none',
       logLevel: 'warning',
-      // #101 S3-WIN-IPC-001: the native FFI bridge (koffi) is a lazy, win32-only
-      // runtime dependency that cannot be bundled (prebuilt .node binary). It
-      // stays external: bundles keep the guarded loader, which fails closed in
-      // artifacts until the native bridge is packaged with the installed Core
-      // surface; the pipe transport is exercised in-repo on the Build Host.
+      // #101 S3-WIN-IPC-001 / #T019 packaged-windows-pipe: the native FFI
+      // bridge (koffi) is a lazy, win32-only runtime dependency that cannot be
+      // bundled (prebuilt .node binary). It stays external; the exact runtime
+      // file set is vendored next to each bundle by vendorNativeRuntime()
+      // below, so the guarded loader resolves `require('koffi')` from the
+      // clean dist instead of failing closed there.
       external: ['koffi', '@koromix/*'],
       ...(artifact.withShebang ? { banner: { js: SHEBANG } } : {}),
     });
@@ -130,6 +135,110 @@ function writeStaticAssets(distDir: string): void {
   writeTextFile(path.join(distDir, 'cli', 'bin', 'xdownload.cmd'), CLI_BIN_CMD);
 }
 
+interface VendoredSource {
+  readonly distPrefix: string;
+  readonly dir: string;
+}
+
+/**
+ * Resolve the vendored-runtime source directories from the installed
+ * workspace tree (the same tree the build's own pipe tests load koffi from).
+ * Resolution mirrors the runtime's own rules: koffi resolvable from the
+ * core-seam dependency context; the win32-x64 prebuilt resolvable from
+ * koffi's own package context (the node_modules sibling).
+ */
+function resolveVendoredSources(): Record<string, VendoredSource> {
+  const requireFromCoreSeam = createRequire(path.join(REPO_ROOT, 'packages/core-seam', 'noop.js'));
+  const koffiDir = path.dirname(requireFromCoreSeam.resolve('koffi'));
+  const koffiPackage = JSON.parse(fs.readFileSync(path.join(koffiDir, 'package.json'), 'utf8')) as {
+    version?: unknown;
+  };
+  if (koffiPackage.version !== VENDORED_NATIVE_RUNTIME.version) {
+    throw new Error(
+      `vendored native runtime drift: installed koffi ${String(koffiPackage.version)} != declared ${VENDORED_NATIVE_RUNTIME.version}; re-derive VENDORED_NATIVE_RUNTIME (build-config.ts) from the lockfile before packaging`,
+    );
+  }
+  let koromixDir: string;
+  try {
+    koromixDir = path.dirname(
+      createRequire(path.join(koffiDir, 'package.json')).resolve('@koromix/koffi-win32-x64'),
+    );
+  } catch {
+    koromixDir = path.resolve(koffiDir, '..', '@koromix/koffi-win32-x64');
+  }
+  if (!fs.existsSync(path.join(koromixDir, 'package.json'))) {
+    throw new Error(
+      `vendored native runtime drift: the ${VENDORED_NATIVE_RUNTIME.platform}-${VENDORED_NATIVE_RUNTIME.arch} prebuilt (@koromix/koffi-win32-x64@${VENDORED_NATIVE_RUNTIME.version}) is not installed; run the pinned install before packaging`,
+    );
+  }
+  const koromixPackage = JSON.parse(
+    fs.readFileSync(path.join(koromixDir, 'package.json'), 'utf8'),
+  ) as { version?: unknown };
+  if (koromixPackage.version !== VENDORED_NATIVE_RUNTIME.version) {
+    throw new Error(
+      `vendored native runtime drift: installed @koromix/koffi-win32-x64 ${String(koromixPackage.version)} != declared ${VENDORED_NATIVE_RUNTIME.version}; the native module refuses mismatched versions at runtime`,
+    );
+  }
+  return {
+    koffi: { distPrefix: 'node_modules/koffi', dir: koffiDir },
+    '@koromix/koffi-win32-x64': {
+      distPrefix: 'node_modules/@koromix/koffi-win32-x64',
+      dir: koromixDir,
+    },
+  };
+}
+
+/**
+ * Vendor the minimal Windows native runtime (koffi + its win32-x64 prebuilt,
+ * license included) verbatim into every node artifact that can exercise the
+ * named-pipe transport. Files are the exact VENDORED_NATIVE_RUNTIME
+ * declaration; anything else under node_modules stays audit-denied. Copies
+ * happen before identity hashing, so every vendored byte is covered by the
+ * artifact content hash. Non-selected build hosts skip the step honestly
+ * (the emitted artifact set stays audit-clean; the selected win32-x64 tuple
+ * is the only one allowed to claim the packaged pipe).
+ */
+function vendorNativeRuntime(distDir: string): void {
+  if (
+    process.platform !== VENDORED_NATIVE_RUNTIME.platform ||
+    process.arch !== VENDORED_NATIVE_RUNTIME.arch
+  ) {
+    process.stdout.write(
+      `package: native runtime not vendored (${process.platform}-${process.arch} is not the selected ${VENDORED_NATIVE_RUNTIME.platform}-${VENDORED_NATIVE_RUNTIME.arch} tuple)\n`,
+    );
+    return;
+  }
+  const sources = resolveVendoredSources();
+  const targetArtifacts: readonly ArtifactSpec[] = ARTIFACTS.filter((artifact) =>
+    VENDORED_NATIVE_RUNTIME.artifacts.includes(artifact.id),
+  );
+  for (const artifact of targetArtifacts) {
+    for (const pkg of VENDORED_NATIVE_RUNTIME.packages) {
+      const source = sources[pkg.name];
+      if (source === undefined) {
+        throw new Error(`vendored native runtime source missing for ${pkg.name}`);
+      }
+      for (const file of pkg.files) {
+        const destination = path.join(distDir, artifact.outDir, source.distPrefix, file);
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.copyFileSync(path.join(source.dir, file), destination);
+      }
+    }
+  }
+  // Fail closed on any declared-but-absent path: a partial vendoring would
+  // otherwise ship a dist whose pipe transport fails closed at runtime.
+  for (const artifact of targetArtifacts) {
+    for (const relative of vendoredRuntimeDistPaths(artifact.id)) {
+      if (!fs.existsSync(path.join(distDir, artifact.outDir, relative))) {
+        throw new Error(`vendored runtime file missing after copy: ${artifact.outDir}/${relative}`);
+      }
+    }
+  }
+  process.stdout.write(
+    `package: vendored native runtime koffi@${VENDORED_NATIVE_RUNTIME.version} (${VENDORED_NATIVE_RUNTIME.arch}) into ${targetArtifacts.map((artifact) => artifact.outDir).join(', ')}\n`,
+  );
+}
+
 export async function runPackageBuild(distDir: string): Promise<{
   hashes: Record<string, string>;
 }> {
@@ -137,6 +246,7 @@ export async function runPackageBuild(distDir: string): Promise<{
   fs.mkdirSync(distDir, { recursive: true });
   await bundleArtifacts(distDir);
   writeStaticAssets(distDir);
+  vendorNativeRuntime(distDir);
   const sourceRevision = currentSourceRevision(REPO_ROOT);
   const toolchain = captureToolchain(esbuild.version);
   const hashes: Record<string, string> = {};

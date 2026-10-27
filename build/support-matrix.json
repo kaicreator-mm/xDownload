@@ -1,6 +1,6 @@
 {
-  "matrixVersion": "t018-concern-level-1",
-  "note": "T018 support/NOT_PROVEN matrix (durable data, TEST_MATRIX required output 5). Statuses: BUILT_AND_SMOKED only where the artifact was actually built AND smoke-proven on the recorded real host with cited PASS evidence; everything else is NOT_PROVEN or BLOCKED — a platform blocker is BLOCKED, never an invented PASS. Platform qualification is owned by T023 on the exact T019 candidate; no entry here implies it. claimType vocabulary: built-and-smoked-on-host | not-proven | blocked.",
+  "matrixVersion": "t019-packaged-windows-pipe-1",
+  "note": "T018 support/NOT_PROVEN matrix (durable data, TEST_MATRIX required output 5), extended by the #T019 packaged-windows-pipe repair: the packages now vendor the minimal koffi win32-x64 runtime and the named-pipe surface is smoke-proven. Statuses: BUILT_AND_SMOKED only where the artifact was actually built AND smoke-proven on the recorded real host with cited PASS evidence; everything else is NOT_PROVEN or BLOCKED — a platform blocker is BLOCKED, never an invented PASS. Platform qualification is owned by T023 on the exact T019 candidate; no entry here implies it. claimType vocabulary: built-and-smoked-on-host | not-proven | blocked.",
   "exercisedBuildHost": {
     "platform": "win32",
     "form": "windows-11-x64 (Build Host of record for this task)",
@@ -22,6 +22,21 @@
       "evidence": ["windows-cli-core-clean-install.json", "build-reproducibility.json"],
       "claim": "CLI and Core-host packages were built from the pinned lockfile toolchain and smoke-proven on this Windows host: clean-environment launch, CLI<->Core reachability through the loopback seam, typed transport-failure degradation, NEEDS_USER_ACTION honesty, and byte-identical rebuild.",
       "scopeNote": "Concern-level evidence only. No installer, updater, signing or release claim; surface independence (CLI does not depend on Desktop lifetime) is structural here because no Desktop process exists."
+    },
+    {
+      "id": "cli-core-windows-x64-node24-named-pipe",
+      "tuple": {
+        "os": "windows",
+        "arch": "x64",
+        "runtime": "node@24.21.0",
+        "surface": "CLI + Core host + native messaging host over the Windows named pipe"
+      },
+      "artifact": "cli+core+native-host",
+      "status": "BUILT_AND_SMOKED",
+      "claimType": "built-and-smoked-on-host",
+      "evidence": ["windows-cli-core-named-pipe.json"],
+      "claim": "#T019 packaged-windows-pipe: the packages carry the minimal vendored koffi@3.3.3 win32-x64 runtime (upstream license included, every vendored byte covered by the artifact identity hash) and the named-pipe surface was smoke-proven on this Windows host with copied artifacts only: Core --pipe-name readiness, packaged CLI --pipe-name real HTTP download (COMPLETE terminal, SHA-256-verified durable bytes), the packaged stdio broker's installed S5 current-page batch journey over the same OS-verified pipe (prepare/confirm/execute with real per-member Core acquisition, durable in-session terminal), the typed fail-closed TRANSPORT failure with no Core listening (no TCP fallback), and a Core restart re-deriving the CLI download terminal from durable truth with no re-download.",
+      "scopeNote": "Concern-level evidence only. The S5 batch terminal's CROSS-RESTART re-derivation is NOT claimed: a product gap in the S5 reconcile re-drive (duplicate durable acquire command identity) was reproduced on the in-repo core sources and reported separately for authorization — it is core state, independent of the packaged pipe transport. The real-browser extension<->native handshake and the interactive S3/S4 confirm gestures (attached TTY) also stay NOT_PROVEN; version-level platform qualification is owned by T020-T023."
     },
     {
       "id": "extension-chromium-windows-x64",

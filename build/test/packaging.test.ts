@@ -24,6 +24,7 @@ import {
   verifyIdentity,
 } from '../identity.ts';
 import { renderFilledHostManifest, renderHostManifestTemplate } from '../native-host.ts';
+import { vendoredRuntimeDistPaths } from '../build-config.ts';
 
 const ORIGIN = 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/';
 
@@ -105,6 +106,16 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
     ['cli/bin/xdownload', LAUNCHER_STUB],
     ['cli/bin/xdownload.cmd', '@echo off\r\nnode xdownload-cli.js %*\r\n'],
     ['core/xdownload-core-host.js', BUNDLE_STUB],
+    // #T019 packaged-windows-pipe: the exact declared vendored-runtime paths
+    // are part of an honest dist on the selected tuple, so the fixture
+    // carries them (stub bytes; identity hashes are computed below over the
+    // completed tree, exactly like the real build hashes after vendoring).
+    ...['cli', 'core', 'native-host'].flatMap((artifact): readonly [string, string][] =>
+      vendoredRuntimeDistPaths('cli').map((relative) => [
+        `${artifact}/${relative}`,
+        relative.endsWith('.node') ? 'faux-binary-bytes' : `vendored stub ${relative}\n`,
+      ]),
+    ),
     [
       'extension/manifest.json',
       JSON.stringify({
@@ -213,6 +224,13 @@ describe('package-content audit over a fixture dist', () => {
     expect(auditFixture(makeFixture())).toEqual([]);
   });
 
+  it('admits exactly the declared vendored runtime paths (no node_modules violation)', () => {
+    const violations = auditFixture(makeFixture()).filter(
+      (violation) => violation.rule === 'node-modules' || violation.rule === 'artifact-allowlist',
+    );
+    expect(violations).toEqual([]);
+  });
+
   it('passes with a BUILT_AND_SMOKED tuple backed by real PASS evidence', () => {
     expect(auditFixture(makeFixture({ matrixTupleStatus: 'BUILT_AND_SMOKED' }))).toEqual([]);
   });
@@ -290,6 +308,25 @@ describe('package-content audit over a fixture dist', () => {
         fs.writeFileSync(path.join(root, 'surprise', 'x.js'), '', 'utf8');
       },
       rule: 'dist-top-level-allowlist',
+    },
+    {
+      name: 'an undeclared node_modules path ships (vendored runtime is exact-path only)',
+      mutate: (root) => {
+        fs.mkdirSync(path.join(root, 'cli', 'node_modules', 'leftpad'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'cli', 'node_modules', 'leftpad', 'index.js'), '', 'utf8');
+      },
+      rule: 'node-modules',
+    },
+    {
+      name: 'an undeclared file inside the vendored koffi package ships',
+      mutate: (root) => {
+        fs.writeFileSync(
+          path.join(root, 'core', 'node_modules', 'koffi', 'README.md'),
+          '# koffi docs',
+          'utf8',
+        );
+      },
+      rule: 'markdown',
     },
     {
       name: 'an identity is tampered with',
@@ -437,6 +474,67 @@ describe('native host manifest generation', () => {
         allowedOrigins: ['chrome-extension://*/*'],
       }),
     ).toThrow(/exact chrome-extension/);
+  });
+});
+
+// --------------------------------- #T019 packaged-windows-pipe vendored runtime
+
+describe('#T019 packaged Windows named-pipe runtime (real package build)', () => {
+  // One real build shared by the section (the same orchestrator `pnpm build`
+  // runs; on the selected win32-x64 host it vendors the koffi runtime).
+  let distRoot: string;
+
+  beforeAll(async () => {
+    distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xdownload-winpipe-'));
+    const { runPackageBuild } = await import('../package.ts');
+    await runPackageBuild(distRoot);
+  });
+
+  afterAll(() => {
+    fs.rmSync(distRoot, { recursive: true, force: true });
+  });
+
+  it('vendors exactly the declared runtime file set into every pipe-capable artifact', () => {
+    for (const artifact of ['cli', 'core', 'native-host']) {
+      const declared = vendoredRuntimeDistPaths('cli');
+      for (const relative of declared) {
+        const full = path.join(distRoot, artifact, relative);
+        expect(fs.existsSync(full), `${artifact}/${relative} must be vendored`).toBe(true);
+        expect(fs.statSync(full).size, `${artifact}/${relative} must not be empty`).toBeGreaterThan(
+          0,
+        );
+      }
+      // Nothing outside the declaration may exist under node_modules.
+      const nodeModules = path.join(distRoot, artifact, 'node_modules');
+      const walk = (dir: string, prefix: string): readonly string[] =>
+        fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+          const relative = `${prefix}${entry.name}`;
+          return entry.isDirectory()
+            ? walk(path.join(dir, entry.name), `${relative}/`)
+            : [relative];
+        });
+      const emitted = fs.existsSync(nodeModules) ? walk(nodeModules, '') : [];
+      expect(
+        new Set(emitted.map((relative) => `node_modules/${relative}`)),
+        `${artifact} node_modules must equal the declaration`,
+      ).toEqual(new Set(declared));
+    }
+  });
+
+  it('ships the koffi upstream license with the vendored runtime', () => {
+    const license = fs.readFileSync(
+      path.join(distRoot, 'core', 'node_modules', 'koffi', 'LICENSE.txt'),
+      'utf8',
+    );
+    expect(license.toUpperCase()).toContain('MIT');
+  });
+
+  it('skips vendoring honestly on non-selected build hosts', () => {
+    // Structural mirror of the build-side rule: the declaration, not the
+    // host, decides which tuple's runtime is vendored.
+    const selected = process.platform === 'win32' && process.arch === 'x64';
+    const emitted = fs.existsSync(path.join(distRoot, 'cli', 'node_modules'));
+    expect(emitted).toBe(selected);
   });
 });
 
