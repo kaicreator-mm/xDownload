@@ -663,15 +663,15 @@ export async function runCollectionFlow(
         // double-charge transfer / misrepresent user-selected membership).
         // Reconcile ONLY the exact canonical effect identity and verified
         // recovery truth; any unfinished/contradictory work fails closed.
-        const effect = effectIdFor(
-          input.contract.contractId,
-          input.snapshot.snapshotId,
-          delivery.targetId,
-        );
+        const effect = effectIdFor(input.contract.contractId, input.snapshot.snapshotId, delivery.targetId);
         if (!effect.ok) {
           return {
             ok: false,
-            rejection: { stage: 'MEMBER_DELIVERY_LOCATOR', memberId, diagnostics: effect.diagnostics },
+            rejection: {
+              stage: 'MEMBER_DELIVERY_LOCATOR',
+              memberId,
+              diagnostics: effect.diagnostics,
+            },
           };
         }
         const workItemId = `work:${effect.value}`;
@@ -705,7 +705,10 @@ export async function runCollectionFlow(
             requestedEffectId: effect.value,
           });
           if (!submission.ok) {
-            throw new CoreRuntimeFlowError('COLLECTION_REPLAY_CONTROL_CONFLICT', submission.rejection);
+            throw new CoreRuntimeFlowError(
+              'COLLECTION_REPLAY_CONTROL_CONFLICT',
+              submission.rejection,
+            );
           }
           memberOutcomes.push({
             memberId,
