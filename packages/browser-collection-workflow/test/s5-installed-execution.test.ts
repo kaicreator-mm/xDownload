@@ -183,6 +183,77 @@ describe('#151 S5 collection execution driver (real CoreRuntime + real HTTP)', (
     }
   });
 
+  it('recovers accepted S5 member work after a real Core restart without duplicate acquire commands', async () => {
+    const world = await driverWorld();
+    const input = {
+      aggregateId: 'contract-s5-driver-001',
+      requestId: 'req-s5-restart-reconcile',
+      confirmed: world.confirmed,
+      prepared: world.prepared,
+    };
+    let initialClosed = false;
+    try {
+      const first = await driveS5CollectionExecution(world.runtime, input);
+      expect(first.ok).toBe(true);
+      const requests = world.fixture.requests.length;
+      expect(requests).toBe(3);
+      closeRuntime(world.runtime);
+      initialClosed = true;
+
+      const reopened = openRuntime(world.root);
+      try {
+        // recordExecutedTerminal is derived, not command-journalled. On
+        // restart the Core lineage is ACTIVE while accepted per-member
+        // ledger rows remain; replay MUST NOT resubmit duplicate ACQUIRE.
+        const before = reopened.seam.inspectProjection(input.aggregateId);
+        expect(before?.lineage.status).toBe('ACTIVE');
+        const again = await driveS5CollectionExecution(reopened, input);
+        if (!again.ok) throw new Error(JSON.stringify(again.diagnostics));
+        const after = reopened.seam.inspectProjection(input.aggregateId);
+        expect(after?.lineage.status).toBe('TERMINAL');
+        expect(after?.terminal?.requestFulfillment).toBe('COMPLETE');
+        expect(reopened.writer.reader.workItems()).toHaveLength(3);
+        expect(world.fixture.requests.length).toBe(requests);
+      } finally {
+        closeRuntime(reopened);
+      }
+    } finally {
+      if (!initialClosed) closeRuntime(world.runtime);
+    }
+  });
+
+  it('recovers a partial S5 group after restart without treating a 404 as success', async () => {
+    const world = await driverWorld({ failingMember: true });
+    const input = {
+      aggregateId: 'contract-s5-driver-001',
+      requestId: 'req-s5-partial-restart',
+      confirmed: world.confirmed,
+      prepared: world.prepared,
+    };
+    let initialClosed = false;
+    try {
+      const first = await driveS5CollectionExecution(world.runtime, input);
+      expect(first.ok).toBe(true);
+      const requests = world.fixture.requests.length;
+      closeRuntime(world.runtime);
+      initialClosed = true;
+      const reopened = openRuntime(world.root);
+      try {
+        const result = await driveS5CollectionExecution(reopened, input);
+        if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+        const view = reopened.seam.inspectProjection(input.aggregateId);
+        expect(view?.lineage.status).toBe('TERMINAL');
+        expect(view?.terminal?.requestFulfillment).toBe('PARTIAL');
+        expect(view?.terminal?.coverage).toBe('UNKNOWN');
+        expect(world.fixture.requests.length).toBe(requests);
+      } finally {
+        closeRuntime(reopened);
+      }
+    } finally {
+      if (!initialClosed) closeRuntime(world.runtime);
+    }
+  });
+
   it('records a truthful partial terminal when one member cannot be acquired', async () => {
     const world = await driverWorld({ failingMember: true });
     try {
