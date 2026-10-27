@@ -1003,15 +1003,36 @@ async function s6RefreshStatus(contractId: string): Promise<void> {
       s6: { contractId },
     }),
   );
-  const journey: S6JourneyState = s6Journeys.get(contractId) ?? { contractId, status: 'EXECUTE' };
-  rememberS6Journey(journey);
-  if (response.ok) {
-    journey.phase = response.phase;
-    journey.facts = response.facts;
-    if (response.facts['terminal'] !== null && response.facts['terminal'] !== undefined) {
-      journey.status = 'TERMINAL';
-    }
+  // A cold service worker has no local phase; derive it from Core's
+  // durable projection rather than pretending an unexecuted walk is EXECUTE.
+  if (!response.ok) return;
+  const previous = s6Journeys.get(contractId);
+  const facts = response.facts;
+  const status: S6JourneyState['status'] =
+    (facts['terminal'] !== null && facts['terminal'] !== undefined) ||
+    facts['lineageStatus'] === 'CANCELLED' ||
+    facts['lineageStatus'] === 'TERMINAL'
+      ? 'TERMINAL'
+      : previous?.status === 'EXECUTE'
+        ? 'EXECUTE'
+        : facts['confirmed'] !== null && facts['confirmed'] !== undefined
+          ? 'CONFIRM'
+          : Array.isArray(facts['pages']) && facts['pages'].length > 0
+            ? 'WALK'
+            : facts['prepared'] !== null && facts['prepared'] !== undefined
+              ? 'PREPARE'
+              : 'FAILED';
+  const journey: S6JourneyState = previous ?? { contractId, status };
+  journey.status = status;
+  journey.phase = response.phase;
+  journey.facts = facts;
+  if (status === 'FAILED') {
+    journey.failure = {
+      stage: 'STATUS',
+      detail: 'Core returned no durable S6 preparation or terminal for this contract',
+    };
   }
+  rememberS6Journey(journey);
 }
 
 // ------------------------------------------------------------- entrypoints
