@@ -663,7 +663,11 @@ export async function runCollectionFlow(
         // double-charge transfer / misrepresent user-selected membership).
         // Reconcile ONLY the exact canonical effect identity and verified
         // recovery truth; any unfinished/contradictory work fails closed.
-        const effect = effectIdFor(input.contract.contractId, input.snapshot.snapshotId, delivery.targetId);
+        const effect = effectIdFor(
+          input.contract.contractId,
+          input.snapshot.snapshotId,
+          delivery.targetId,
+        );
         if (!effect.ok) {
           return {
             ok: false,
