@@ -46,6 +46,14 @@ export interface NativeHostSessionOptions {
    * behavior of existing deployments is unchanged.
    */
   readonly s5Lane?: S5LaneHandler;
+  /**
+   * #154: the installed S6 explicit-collection lane (browser finite
+   * playlist/gallery prepare/page-walk/confirm/execute/status over the
+   * OS-verified Core pipe). Absent -> every S6 command fails closed with a
+   * typed rejection; the broker-only behavior of existing deployments is
+   * unchanged.
+   */
+  readonly s6Lane?: S6LaneHandler;
 }
 
 export type BrokerCommand =
@@ -80,6 +88,11 @@ export type BrokerCommand =
       readonly seq: number;
       readonly data: string;
     }
+  | {
+      readonly kind: 'S5_GROUP_STATUS';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
   | { readonly kind: 'S2_ACQUIRE_END'; readonly requestId: string }
   | {
       readonly kind: 'S5_GROUP_PREPARE';
@@ -98,6 +111,36 @@ export type BrokerCommand =
     }
   | {
       readonly kind: 'S5_GROUP_STATUS';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_GROUP_PREPARE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_PAGE_ADMIT';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_PAGE_RECORD';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_GROUP_CONFIRM';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_GROUP_EXECUTE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_GROUP_STATUS';
       readonly requestId: string;
       readonly payload: Record<string, unknown>;
     };
@@ -148,6 +191,48 @@ export type S5LaneCommandShape =
 /** Async installed-S5 lane handler (#151). See `s5-installed-lane.ts`. */
 export interface S5LaneHandler {
   handle(command: S5LaneCommandShape): Promise<BrokerResponse>;
+}
+
+/**
+ * Structurally decoded S6 command (closed top-level shape only — semantic
+ * decode, confirmation challenge handling and Core submission live in the
+ * injected installed-lane implementation, never in the broker session).
+ */
+export type S6LaneCommandShape =
+  | {
+      readonly kind: 'S6_GROUP_PREPARE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_PAGE_ADMIT';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_PAGE_RECORD';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_GROUP_CONFIRM';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_GROUP_EXECUTE';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    }
+  | {
+      readonly kind: 'S6_GROUP_STATUS';
+      readonly requestId: string;
+      readonly payload: Record<string, unknown>;
+    };
+
+/** Async installed-S6 lane handler (#154). See `s6-installed-lane.ts`. */
+export interface S6LaneHandler {
+  handle(command: S6LaneCommandShape): Promise<BrokerResponse>;
 }
 
 /**
@@ -228,6 +313,28 @@ export type BrokerResponse =
       readonly requestId: string;
       readonly stage: string;
       readonly reasons: readonly S2LaneDiagnostic[];
+    }
+  | {
+      /** #154 installed S6 lane: truthful Core phase facts (verbatim projection). */
+      readonly kind: 'S6_RESULT';
+      readonly requestId: string;
+      readonly phase:
+        | 'PREPARED'
+        | 'PAGE_ADMITTED'
+        | 'PAGE_RECORDED'
+        | 'CONFIRMED'
+        | 'TERMINAL'
+        | 'RUNNING'
+        | 'STATUS';
+      readonly contractId: string;
+      readonly facts: Record<string, unknown>;
+    }
+  | {
+      /** #154 installed S6 lane: typed stage-labelled rejection (fail closed). */
+      readonly kind: 'S6_REJECTED';
+      readonly requestId: string;
+      readonly stage: string;
+      readonly reasons: readonly S2LaneDiagnostic[];
     };
 
 /**
@@ -256,6 +363,12 @@ const COMMAND_KEYS_BY_KIND: Readonly<Record<string, readonly string[]>> = {
   S5_GROUP_CONFIRM: ['kind', 'requestId', 's5'],
   S5_GROUP_EXECUTE: ['kind', 'requestId', 's5'],
   S5_GROUP_STATUS: ['kind', 'requestId', 's5'],
+  S6_GROUP_PREPARE: ['kind', 'requestId', 's6'],
+  S6_PAGE_ADMIT: ['kind', 'requestId', 's6'],
+  S6_PAGE_RECORD: ['kind', 'requestId', 's6'],
+  S6_GROUP_CONFIRM: ['kind', 'requestId', 's6'],
+  S6_GROUP_EXECUTE: ['kind', 'requestId', 's6'],
+  S6_GROUP_STATUS: ['kind', 'requestId', 's6'],
 };
 
 // #95 R1/F04: bytes cross as bounded S2_ACQUIRE_CHUNK frames, never inline;
@@ -358,6 +471,32 @@ export function decodeBrokerCommand(payload: unknown): BrokerResult<BrokerComman
       kind,
       requestId,
       payload: s5Payload as Record<string, unknown>,
+    } as BrokerCommand);
+  }
+  if (
+    kind === 'S6_GROUP_PREPARE' ||
+    kind === 'S6_PAGE_ADMIT' ||
+    kind === 'S6_PAGE_RECORD' ||
+    kind === 'S6_GROUP_CONFIRM' ||
+    kind === 'S6_GROUP_EXECUTE' ||
+    kind === 'S6_GROUP_STATUS'
+  ) {
+    // Semantic decode, challenge handling and Core submission live in the
+    // injected lane; the session only enforces the closed payload shape.
+    const s6Payload = record['s6'];
+    if (typeof s6Payload !== 'object' || s6Payload === null || Array.isArray(s6Payload)) {
+      return brokerFail([
+        brokerDiagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'command.s6',
+          'the S6 payload must be a closed object',
+        ),
+      ]);
+    }
+    return brokerOk({
+      kind,
+      requestId,
+      payload: s6Payload as Record<string, unknown>,
     } as BrokerCommand);
   }
   if (kind === 'S2_ACQUIRE') {
@@ -519,6 +658,35 @@ export function establishNativeHostSession(
           } as BrokerResponse);
         }
         return options.s5Lane
+          .handle({
+            kind: command.value.kind,
+            requestId: command.value.requestId,
+            payload: command.value.payload,
+          })
+          .then((response) => brokerOk(response));
+      }
+      if (
+        command.value.kind === 'S6_GROUP_PREPARE' ||
+        command.value.kind === 'S6_PAGE_ADMIT' ||
+        command.value.kind === 'S6_PAGE_RECORD' ||
+        command.value.kind === 'S6_GROUP_CONFIRM' ||
+        command.value.kind === 'S6_GROUP_EXECUTE' ||
+        command.value.kind === 'S6_GROUP_STATUS'
+      ) {
+        if (options.s6Lane === undefined) {
+          return brokerOk({
+            kind: 'REJECTED',
+            requestId: command.value.requestId,
+            reasons: [
+              brokerDiagnostic(
+                'S6_LANE_UNAVAILABLE',
+                'command.kind',
+                'this native host was not configured with the installed S6 lane; fail closed',
+              ),
+            ],
+          } as BrokerResponse);
+        }
+        return options.s6Lane
           .handle({
             kind: command.value.kind,
             requestId: command.value.requestId,
@@ -730,6 +898,12 @@ function dispatchCommand(
     | { readonly kind: 'S5_GROUP_CONFIRM' }
     | { readonly kind: 'S5_GROUP_EXECUTE' }
     | { readonly kind: 'S5_GROUP_STATUS' }
+    | { readonly kind: 'S6_GROUP_PREPARE' }
+    | { readonly kind: 'S6_PAGE_ADMIT' }
+    | { readonly kind: 'S6_PAGE_RECORD' }
+    | { readonly kind: 'S6_GROUP_CONFIRM' }
+    | { readonly kind: 'S6_GROUP_EXECUTE' }
+    | { readonly kind: 'S6_GROUP_STATUS' }
   >,
   broker: AuthBroker,
 ): BrokerResult<BrokerResponse> {

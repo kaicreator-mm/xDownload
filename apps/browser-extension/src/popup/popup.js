@@ -526,8 +526,643 @@
         'RUNNING',
         'Select an S2 attachment to Download, or preview an S5 page group without acquisition.',
       );
+      const s6SectionEl = document.getElementById('s6-collection');
+      if (s6SectionEl !== null) {
+        s6SectionEl.hidden = false;
+      }
     } catch (error) {
       setState('FAILED', `page scan failed: ${String(error)}`);
     }
   })();
+
+  // ------------------------------------------------------------------ S6 collection
+  // The declared page range is frozen by Core BEFORE any navigation effect
+  // (PREPARE), every later page needs a durable Core navigation admit, and
+  // Core alone freezes the observed page members (RECORD). The popup only
+  // navigates along the page's own declared next-page edge inside the frozen
+  // range and renders verbatim Core facts — it never derives a member
+  // identity, coverage claim or terminal of its own.
+  const s6IdentityInput = document.getElementById('s6-identity');
+  const s6KindSelect = document.getElementById('s6-kind');
+  const s6FromInput = document.getElementById('s6-from');
+  const s6ToInput = document.getElementById('s6-to');
+  const s6PrepareButton = document.getElementById('s6-prepare');
+  const s6PrepareResult = document.getElementById('s6-prepare-result');
+  const s6WalkBox = document.getElementById('s6-walk');
+  const s6MemberList = document.getElementById('s6-members');
+  const s6NextPageButton = document.getElementById('s6-next-page');
+  const s6ConfirmButton = document.getElementById('s6-confirm');
+  const s6ExecuteButton = document.getElementById('s6-execute');
+  const s6BatchResult = document.getElementById('s6-batch-result');
+  let s6Prepared = null;
+  let s6Confirmed = null;
+  let s6CurrentPage = 0;
+  let s6NextPageHref = null;
+  let s6Walking = false;
+
+  function setS6State(kind, text) {
+    s6BatchResult.className = `state ${kind}`;
+    s6BatchResult.textContent = text;
+  }
+
+  /** Injected into the page (self-contained; returns plain data only). */
+  function scrapeCollectionPage() {
+    const anchors = Array.from(document.querySelectorAll('a[href]'));
+    const candidates = anchors
+      .map((anchor) => ({ href: anchor.href, text: (anchor.textContent || '').trim() }))
+      .filter((item) => /^https?:\/\//i.test(item.href));
+    const unique = [];
+    const seen = new Set();
+    for (const item of candidates) {
+      if (!seen.has(item.href)) {
+        seen.add(item.href);
+        unique.push(item);
+      }
+    }
+    let nextPageHref = null;
+    for (const anchor of anchors) {
+      // v0.1 supports one explicitly declared next-page relation, not a
+      // guess based on arbitrary same-origin anchor text such as "next".
+      const rel = (anchor.getAttribute('rel') || '').toLowerCase();
+      if (rel.split(/\s+/u).includes('next')) {
+        if (/^https?:\/\//i.test(anchor.href)) {
+          nextPageHref = anchor.href;
+          break;
+        }
+      }
+    }
+    // The declared continuation edge is NAVIGATION, never a collection
+    // member (PRD §10.3): a pagination control must not silently become a
+    // downloadable candidate of the declared range.
+    const members =
+      nextPageHref === null ? unique : unique.filter((item) => item.href !== nextPageHref);
+    return {
+      links: members.slice(0, 20),
+      observedCount: members.length,
+      nextPageHref,
+      pageUrl: document.location.href,
+    };
+  }
+
+  async function s6ScanCurrentPage() {
+    const currentTab = await activeTab();
+    if (!currentTab || currentTab.id === undefined || !s6Prepared) return null;
+    const latest = await chrome.scripting.executeScript({
+      target: { tabId: currentTab.id },
+      func: scrapeCollectionPage,
+    });
+    return latest && latest[0] ? latest[0].result : null;
+  }
+
+  // Members accumulate across the walked pages (the confirm step selects
+  // from the WHOLE declared-range collection, not just the last page); the
+  // checkbox state is preserved per Core member identity across re-renders.
+  const s6MemberAccum = new Map();
+  const s6MemberUnchecked = new Set();
+
+  function renderS6Members(facts, scannedLinks) {
+    const memberIds = Array.isArray(facts.memberIds) ? facts.memberIds : [];
+    memberIds.forEach((memberId, index) => {
+      const observed = scannedLinks[index] || { href: '', text: '' };
+      s6MemberAccum.set(String(memberId), {
+        href: String(observed.href || ''),
+        text: String(observed.text || ''),
+        page: s6CurrentPage,
+      });
+    });
+    renderS6Accum();
+  }
+
+  /** Render purely from the accumulated map (Core facts or fresh scans). */
+  function renderS6Accum() {
+    s6MemberList.textContent = '';
+    for (const [memberId, member] of s6MemberAccum) {
+      const li = document.createElement('li');
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = !s6MemberUnchecked.has(memberId);
+      checkbox.dataset.memberId = memberId;
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          s6MemberUnchecked.delete(memberId);
+        } else {
+          s6MemberUnchecked.add(memberId);
+        }
+      });
+      label.appendChild(checkbox);
+      label.appendChild(
+        document.createTextNode(
+          ` [p${String(member.page)}] ${member.text || '(untitled)'} — ${member.href}`,
+        ),
+      );
+      li.appendChild(label);
+      s6MemberList.appendChild(li);
+    }
+  }
+
+  function selectedS6MemberIds() {
+    return Array.from(s6MemberList.querySelectorAll('input[type=checkbox]:checked')).map(
+      (checkbox) => checkbox.dataset.memberId,
+    );
+  }
+
+  async function s6RecordPage(pageNumber) {
+    const observed = await s6ScanCurrentPage();
+    if (!observed || !Array.isArray(observed.links) || observed.links.length === 0) {
+      setS6State(
+        'FAILED',
+        `S6 page ${String(pageNumber)} scan produced no member anchors; the declared walk stopped truthfully (nothing was widened).`,
+      );
+      return false;
+    }
+    // R1 P1-02: a page with more member anchors than the shipped scan admits
+    // is TRUNCATED observation — recording it as the whole page could let
+    // Core project false requested-scope coverage. The walk stops here
+    // truthfully; the recorded pages stand, nothing is fabricated.
+    if (Number(observed.observedCount) > observed.links.length) {
+      setS6State(
+        'FAILED',
+        `S6 page ${String(pageNumber)} carries ${String(observed.observedCount)} member anchors and the shipped scan admits only ${String(observed.links.length)}; recording a truncated page could fabricate coverage, so the declared walk stopped truthfully before Core froze anything from this page.`,
+      );
+      return false;
+    }
+    const response = await chrome.runtime.sendMessage({
+      kind: 'S6_PAGE_RECORD',
+      contractId: s6Prepared.contractId,
+      prepareId: s6Prepared.prepareId,
+      snapshotId: s6Prepared.snapshotId,
+      pageNumber,
+      members: observed.links.map((item) => ({ href: item.href, text: item.text })),
+      // R1 P1-01: the actually observed page location travels with the
+      // record; Core verifies it against the prepare/admit before freezing.
+      pageUrl: String(observed.pageUrl || ''),
+    });
+    if (!response || response.ok !== true) {
+      setS6State(
+        'FAILED',
+        `Core refused the page ${String(pageNumber)} observation: ${(response && response.error) || 'UNKNOWN'}`,
+      );
+      return false;
+    }
+    s6CurrentPage = pageNumber;
+    s6NextPageHref = pageNumber < s6Prepared.toPage ? observed.nextPageHref : null;
+    renderS6Members(response.facts || {}, observed.links);
+    s6NextPageButton.disabled = pageNumber >= s6Prepared.toPage || s6NextPageHref === null;
+    setS6State(
+      'RUNNING',
+      `Core froze page ${String(pageNumber)} with ${String(
+        (response.facts &&
+          Array.isArray(response.facts.memberIds) &&
+          response.facts.memberIds.length) ||
+          0,
+      )} members. Uncheck any member you do not want; then walk the next declared page or confirm.`,
+    );
+    return true;
+  }
+
+  s6PrepareButton.addEventListener('click', async () => {
+    s6PrepareButton.disabled = true;
+    try {
+      const identity = s6IdentityInput.value.trim();
+      const fromPage = Number(s6FromInput.value.trim());
+      const toPage = Number(s6ToInput.value.trim());
+      if (!/^[A-Za-z0-9_./:-]{1,256}$/u.test(identity) || identity.includes('//')) {
+        s6PrepareResult.textContent =
+          'S6 refused: the collection identity must be a bounded identity path (e.g. playlist/my-list).';
+        return;
+      }
+      if (
+        !Number.isSafeInteger(fromPage) ||
+        !Number.isSafeInteger(toPage) ||
+        fromPage < 1 ||
+        toPage < fromPage ||
+        toPage > 10000
+      ) {
+        s6PrepareResult.textContent =
+          'S6 refused: the page range must be a bounded 1-based inclusive range with fromPage <= toPage.';
+        return;
+      }
+      // R1 P2-01: the shipped v0.1 installed lane binds declared-range page 1
+      // to the CURRENTLY OPEN collection page (the prepare freezes this exact
+      // URL). A range starting later has no executable, provably-current
+      // first page here — refuse truthfully instead of admitting an
+      // unreachable selection.
+      if (fromPage !== 1) {
+        s6PrepareResult.textContent =
+          'S6 refused: the shipped v0.1 lane starts a declared range only at the currently open page (fromPage must be 1). Open the page you want to start from and declare the range from there; a later start requires opening that page first.';
+        return;
+      }
+      const currentTab = await activeTab();
+      if (!currentTab || currentTab.id === undefined) {
+        s6PrepareResult.textContent = 'S6 refused: no active tab; reopen the popup.';
+        return;
+      }
+      // The declared walk navigates the collection origin's own pages. The
+      // scoped host permission for EXACTLY this origin (an explicit user
+      // decision inside this gesture) is what lets the popup re-scan each
+      // walked page after navigation; activeTab alone dies with the first
+      // navigation. The request is best-effort inside this gesture: a denial
+      // OR an environment without a gesture (programmatic open) is honest —
+      // the walk then only proceeds on pages the extension can already scan
+      // (pre-granted site access), and stops truthfully everywhere else.
+      let scopedNote = '';
+      try {
+        const origin = new URL(currentTab.url).origin;
+        const scopedGranted = await chrome.permissions.request({ origins: [`${origin}/*`] });
+        if (!scopedGranted) {
+          scopedNote =
+            'S6: the scoped collection-origin permission was not granted; only already-scannable pages can be walked.';
+        }
+      } catch (error) {
+        scopedNote = `S6: the scoped permission request could not run (${String(error)}); walking proceeds only on already-scannable pages.`;
+      }
+      const response = await chrome.runtime.sendMessage({
+        kind: 'S6_PREPARE_COLLECTION',
+        tabId: currentTab.id,
+        pageUrl: currentTab.url,
+        collectionIdentity: identity,
+        collectionKind: s6KindSelect.value === 'gallery' ? 'gallery' : 'playlist',
+        fromPage,
+        toPage,
+      });
+      if (!response || response.ok !== true) {
+        s6PrepareResult.textContent = `S6 admission refused without navigating: ${
+          (response && response.error) || 'UNKNOWN'
+        } (verbatim response: ${JSON.stringify(response)})`;
+        return;
+      }
+      s6Prepared = {
+        contractId: response.contractId,
+        prepareId: (response.facts && response.facts.prepareId) || '',
+        snapshotId: (response.facts && response.facts.snapshotId) || '',
+        fromPage,
+        toPage,
+      };
+      s6WalkBox.hidden = false;
+      s6ExecuteButton.disabled = true;
+      s6PrepareResult.textContent = `${scopedNote ? `${scopedNote} ` : ''}Core froze the collection admission for ${identity} pages ${String(
+        fromPage,
+      )}..${String(toPage)} (digest ${String(
+        (response.facts && response.facts.observedTupleDigest) || '',
+      ).slice(0, 16)}…). The declared range is now the only navigation bound.`;
+      // Page 1 is the already-open current page: record it (no navigation).
+      const recorded = await s6RecordPage(1);
+      if (recorded && s6Prepared.toPage === 1) {
+        setS6State(
+          'RUNNING',
+          'Declared range fully walked (single page). Uncheck members you do not want and confirm.',
+        );
+      }
+    } catch (error) {
+      s6PrepareResult.textContent = `S6 preparation failed without navigating: ${String(error)}`;
+    } finally {
+      s6PrepareButton.disabled = false;
+    }
+  });
+
+  s6NextPageButton.addEventListener('click', async () => {
+    if (!s6Prepared || s6Walking) {
+      return;
+    }
+    const nextPage = s6CurrentPage + 1;
+    if (nextPage > s6Prepared.toPage) {
+      setS6State(
+        'RUNNING',
+        'The declared range is fully walked; Core will never treat extra pages as part of this collection.',
+      );
+      return;
+    }
+    if (!s6NextPageHref) {
+      setS6State(
+        'FAILED',
+        'The page declares no next-page edge; the declared walk stopped truthfully. You may still confirm the recorded members.',
+      );
+      return;
+    }
+    s6Walking = true;
+    s6NextPageButton.disabled = true;
+    try {
+      const admitted = await chrome.runtime.sendMessage({
+        kind: 'S6_PAGE_ADMIT',
+        contractId: s6Prepared.contractId,
+        prepareId: s6Prepared.prepareId,
+        snapshotId: s6Prepared.snapshotId,
+        pageNumber: nextPage,
+        // R1 P1-01: Core durably pins THIS exact href as the only approved
+        // navigation target for the page; RECORD verifies the landing URL
+        // against it.
+        nextPageUrl: s6NextPageHref,
+      });
+      if (!admitted || admitted.ok !== true) {
+        setS6State(
+          'FAILED',
+          `Core refused the page ${String(nextPage)} navigation admit: ${(admitted && admitted.error) || 'UNKNOWN'}`,
+        );
+        return;
+      }
+      // The durable navigation intent is recorded; only now does the
+      // privileged browser follow the page's own declared next edge. The
+      // walked tab is the CURRENT active tab (fresh query — a stale tab
+      // binding must never navigate a page outside the user's view).
+      const walkedTab = await activeTab();
+      if (!walkedTab || walkedTab.id === undefined) {
+        setS6State('FAILED', 'S6 page walk refused: no active tab to navigate.');
+        return;
+      }
+      await chrome.tabs.update(walkedTab.id, { url: s6NextPageHref });
+      const settled = await new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve(false);
+        }, 20000);
+        const listener = (tabId, changeInfo) => {
+          if (tabId === walkedTab.id && changeInfo.status === 'complete') {
+            clearTimeout(timer);
+            chrome.tabs.onUpdated.removeListener(listener);
+            resolve(true);
+          }
+        };
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+      if (!settled) {
+        setS6State('FAILED', `S6 page ${String(nextPage)} navigation timed out; the walk stopped.`);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      if (s5ObservedTab !== null) {
+        s5ObservedTab.url = s6NextPageHref;
+      }
+      await s6RecordPage(nextPage);
+    } catch (error) {
+      setS6State('FAILED', `S6 page walk failed: ${String(error)}`);
+    } finally {
+      s6Walking = false;
+      s6NextPageButton.disabled =
+        !s6Prepared || s6CurrentPage >= s6Prepared.toPage || s6NextPageHref === null;
+    }
+  });
+
+  s6ConfirmButton.addEventListener('click', async () => {
+    if (!s6Prepared) {
+      setS6State('FAILED', 'No frozen Core collection; request S6 collection admission first.');
+      return;
+    }
+    const selected = selectedS6MemberIds();
+    if (selected.length === 0) {
+      setS6State('FAILED', 'Select at least one frozen member for the collection batch.');
+      return;
+    }
+    s6ConfirmButton.disabled = true;
+    try {
+      const response = await chrome.runtime.sendMessage({
+        kind: 'S6_CONFIRM_COLLECTION',
+        contractId: s6Prepared.contractId,
+        prepareId: s6Prepared.prepareId,
+        snapshotId: s6Prepared.snapshotId,
+        selectedMemberIds: selected,
+      });
+      if (!response || response.ok !== true) {
+        setS6State(
+          'FAILED',
+          `Core refused the confirmation: ${(response && response.error) || 'UNKNOWN'}`,
+        );
+        return;
+      }
+      const facts = response.facts || {};
+      s6Confirmed = {
+        contractId: s6Prepared.contractId,
+        confirmedGroupId: facts.confirmedGroupId || '',
+        snapshotId: s6Prepared.snapshotId,
+      };
+      s6ExecuteButton.disabled = false;
+      setS6State(
+        'RUNNING',
+        `Core durably confirmed ${String(Array.isArray(facts.selectedMemberIds) ? facts.selectedMemberIds.length : '?')} members (group ${String(facts.confirmedGroupId || '')}). Start the collection download when ready.`,
+      );
+    } catch (error) {
+      setS6State('FAILED', `Confirmation failed: ${String(error)}`);
+    } finally {
+      s6ConfirmButton.disabled = false;
+    }
+  });
+
+  function renderS6Terminal(facts) {
+    const members = Array.isArray(facts.members) ? facts.members : [];
+    const lines = members.map(
+      (member) =>
+        `[${member.outcome === 'ACQUIRED' && member.accepted ? 'OK' : member.outcome}] ${member.href} — ${member.detail}`,
+    );
+    // The state class mirrors the verbatim Core aggregate only: COMPLETE
+    // renders green, anything else (PARTIAL/TRUNCATED/UNKNOWN…) renders the
+    // honest mixed style — the popup never upgrades a partial or truncated
+    // collection to green, and budget exhaustion is never a COMPLETE.
+    const aggregate = facts.terminal || {};
+    const kind = aggregate.requestFulfillment === 'COMPLETE' ? 'COMPLETE' : 'PARTIAL';
+    setS6State(
+      kind,
+      `${lines.join('\n')}\n\nCore aggregate terminal (verbatim):\n${JSON.stringify(facts.terminal, null, 2)}`,
+    );
+  }
+
+  function pollS6Terminal() {
+    const started = Date.now();
+    const timer = setInterval(async () => {
+      let payload = null;
+      try {
+        payload = await chrome.runtime.sendMessage({
+          kind: 'S6_COLLECTION_JOURNEY_STATUS',
+          contractId: s6Confirmed.contractId,
+        });
+      } catch (error) {
+        clearInterval(timer);
+        setS6State('UNKNOWN', `journey status unreadable: ${String(error)}`);
+        return;
+      }
+      const facts = payload && payload.facts;
+      if (payload && payload.ok === true && payload.status === 'TERMINAL') {
+        clearInterval(timer);
+        renderS6Terminal(facts || {});
+        return;
+      }
+      if (payload && payload.ok !== true) {
+        clearInterval(timer);
+        setS6State('FAILED', `collection failed: ${payload.error || 'unknown failure'}`);
+        return;
+      }
+      setS6State(
+        'RUNNING',
+        `Core is downloading the collection (${Math.round((Date.now() - started) / 1000)}s)… per-member status so far:\n${JSON.stringify(
+          (facts && facts.members) || [],
+          null,
+          2,
+        )}`,
+      );
+    }, 700);
+  }
+
+  s6ExecuteButton.addEventListener('click', async () => {
+    if (!s6Confirmed) {
+      setS6State('FAILED', 'Confirm the collection with Core before downloading.');
+      return;
+    }
+    s6ExecuteButton.disabled = true;
+    try {
+      const response = await chrome.runtime.sendMessage({
+        kind: 'S6_EXECUTE_COLLECTION',
+        contractId: s6Confirmed.contractId,
+        confirmedGroupId: s6Confirmed.confirmedGroupId,
+        snapshotId: s6Confirmed.snapshotId,
+      });
+      if (!response || response.ok !== true) {
+        setS6State(
+          'FAILED',
+          `Core refused the execution: ${(response && response.error) || 'UNKNOWN'}`,
+        );
+        return;
+      }
+      if (response.status === 'TERMINAL') {
+        renderS6Terminal(response.facts || {});
+        return;
+      }
+      pollS6Terminal();
+    } catch (error) {
+      setS6State('FAILED', `Execution failed: ${String(error)}`);
+    }
+  });
+
+  // ------------------------------------------------------------------ S6 restore
+  // R1 P2-02: the anchored action popup auto-dismisses whenever browser
+  // focus moves (official popup lifecycle) — mid-walk that orphans state
+  // held only in this closure. The workflow therefore restores FROM CORE:
+  // the worker persists the active journey id; this popup rebuilds its view
+  // from the verbatim Core projection facts (frozen admission, recorded
+  // pages with Core-minted member identities, confirmed selection) and
+  // never from its own memory.
+  async function s6RestoreActiveJourney() {
+    let active = null;
+    try {
+      active = await chrome.runtime.sendMessage({ kind: 'S6_ACTIVE_COLLECTION_QUERY' });
+    } catch {
+      return; // no worker answer — nothing to restore, fresh open works
+    }
+    if (!active || active.ok !== true || !active.journey) {
+      return;
+    }
+    const journey = active.journey;
+    if (journey.status !== 'PREPARE' && journey.status !== 'WALK' && journey.status !== 'CONFIRM') {
+      return;
+    }
+    const facts = journey.facts || {};
+    const prepared = facts.prepared || {};
+    const pages = Array.isArray(facts.pages) ? facts.pages : [];
+    const preparedId = String(prepared.prepareId ?? facts.prepareId ?? '');
+    if (preparedId === '') {
+      return; // nothing restorable without the frozen admission
+    }
+    s6Prepared = {
+      contractId: String(journey.contractId),
+      prepareId: preparedId,
+      snapshotId: String(prepared.snapshotId ?? facts.snapshotId ?? ''),
+      fromPage: Number(prepared.fromPage ?? facts.fromPage ?? 1),
+      toPage: Number(prepared.toPage ?? facts.toPage ?? 1),
+    };
+    s6MemberAccum.clear();
+    s6MemberUnchecked.clear();
+    for (const page of pages) {
+      for (const member of Array.isArray(page.members) ? page.members : []) {
+        s6MemberAccum.set(String(member.memberId), {
+          href: String(member.href || ''),
+          text: String(member.text || ''),
+          page: Number(page.pageNumber),
+        });
+      }
+    }
+    s6CurrentPage = pages.length > 0 ? Number(pages[pages.length - 1].pageNumber) : 0;
+    // The popup has no trustworthy cached navigation link after dismissal.
+    // Only a fresh scan of the actual recorded Core page may restore it.
+    s6NextPageHref = null;
+    const confirmedFacts = facts.confirmed;
+    if (confirmedFacts && confirmedFacts.confirmedGroupId) {
+      s6Confirmed = {
+        contractId: String(journey.contractId),
+        confirmedGroupId: String(confirmedFacts.confirmedGroupId),
+        snapshotId: s6Prepared.snapshotId,
+      };
+      s6ExecuteButton.disabled = false;
+    }
+    s6WalkBox.hidden = false;
+    const s6SectionRestore = document.getElementById('s6-collection');
+    if (s6SectionRestore !== null) {
+      s6SectionRestore.hidden = false;
+    }
+    renderS6Accum();
+    s6NextPageButton.disabled = true; // Re-enabled only after a fresh bound page scan.
+    s6PrepareResult.textContent = `Restored the active S6 journey ${String(
+      journey.contractId,
+    )} from Core (admission ${s6Prepared.prepareId}; ${String(s6MemberAccum.size)} frozen members across ${String(
+      pages.length,
+    )} walked page(s)). The declared range ${String(s6Prepared.fromPage)}..${String(
+      s6Prepared.toPage,
+    )} stays the only navigation bound.`;
+    setS6State(
+      'RUNNING',
+      `Restored from Core: ${String(s6MemberAccum.size)} frozen members on ${String(pages.length)} declared page(s) walked so far. ${
+        s6Confirmed
+          ? 'The subset is already confirmed — you can start the collection download.'
+          : 'Uncheck any member you do not want, then confirm; or continue the declared walk.'
+      }`,
+    );
+    // R1 P2-02 continuation: the dismissed-mid-walk case leaves the browser
+    // sitting on the page the durable ADMIT approved but the dead popup never
+    // recorded. If the currently open page is a NEW declared-range page
+    // (same collection origin, different from the last recorded page), the
+    // scan is real and Core alone decides whether the observation qualifies —
+    // attempt the record; a typed refusal is honest and keeps the bounds.
+    if (s6CurrentPage < s6Prepared.toPage && s6MemberAccum.size > 0) {
+      try {
+        const scanned = await s6ScanCurrentPage();
+        const lastRecordedUrl = String(
+          pages.length > 0 ? pages[pages.length - 1].pageUrl || '' : '',
+        );
+        if (
+          scanned &&
+          Array.isArray(scanned.links) &&
+          scanned.links.length > 0 &&
+          typeof scanned.pageUrl === 'string' &&
+          Number(scanned.observedCount) === scanned.links.length
+        ) {
+          const origin = new URL(prepared.collectionOrigin).origin;
+          if (new URL(scanned.pageUrl).origin !== origin) return;
+          if (scanned.pageUrl !== lastRecordedUrl) {
+            // A previous Core ADMIT is required for this already-navigated
+            // page; RECORD independently checks its exact pinned URL.
+            await s6RecordPage(s6CurrentPage + 1);
+          } else if (typeof scanned.nextPageHref === 'string') {
+            // Rebuild the "next" control when the popup was dismissed on an
+            // ALREADY RECORDED page. Never activate it from old popup memory
+            // or from a cross-origin, noncanonical or self-looping anchor.
+            const next = new URL(scanned.nextPageHref);
+            if (
+              next.origin === origin &&
+              next.href === scanned.nextPageHref &&
+              next.href !== scanned.pageUrl &&
+              next.username === '' &&
+              next.password === '' &&
+              next.search === '' &&
+              next.hash === ''
+            ) {
+              s6NextPageHref = scanned.nextPageHref;
+              s6NextPageButton.disabled = false;
+            }
+          }
+        }
+      } catch {
+        // Continuation is best-effort: a refused/unavailable scan leaves the
+        // restored state intact and truthful.
+      }
+    }
+  }
+
+  void s6RestoreActiveJourney();
 })();

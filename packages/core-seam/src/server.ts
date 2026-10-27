@@ -95,6 +95,19 @@ import {
   type S5Seam12CommandType,
 } from './s5-seam12-payload.ts';
 import {
+  S6_SEAM12_COMMAND_TYPES,
+  s6CollectionTupleDigest,
+  s6PageTupleDigest,
+  s6SelectionTupleDigest,
+  type S6AdmitPagePayload,
+  type S6ConfirmBeginPayload,
+  type S6ConfirmCommitPayload,
+  type S6ExecutePayload,
+  type S6PreparePayload,
+  type S6RecordPagePayload,
+  type S6Seam12CommandType,
+} from './s6-seam12-payload.ts';
+import {
   assertPeerTransportAuthorization,
   type VerifiedPeerSessionPort,
 } from './verified-session.ts';
@@ -116,6 +129,11 @@ import {
   type S5ExecutionIntent,
   type S5MemberOutcomeRecord,
   type S5PreparedGroupRecord,
+  type S6ConfirmedCollectionRecord,
+  type S6ExecutionIntent,
+  type S6MemberOutcomeRecord,
+  type S6PageRecord,
+  type S6PreparedCollectionRecord,
   type SeamAuthorityState,
   type SeamJournal,
   type TargetEvidenceReceipt,
@@ -239,6 +257,23 @@ export interface CoreSeamServerOptions {
    * every S5 command failing closed exactly as before (legacy compositions).
    */
   readonly s5PageGroup?: S5PageGroupBeginner;
+  /**
+   * #154: clock/TTL knobs of the S6 prepared collections and Core-issued
+   * one-time selection challenges. Test compositions inject a deterministic
+   * clock; default is wall time with a 120s single-use lifetime.
+   */
+  readonly s6Challenge?: { readonly ttlMs?: number; readonly now?: () => number };
+  /**
+   * #154: post-commit driver for one registered S6 explicit-collection
+   * execution. EXECUTE_S6_COLLECTION only registers one durable execution
+   * intent (journaled with the command); the runtime begins the real
+   * bounded per-member acquisition strictly AFTER the accepted-command
+   * journal commit through this port and completes the lineage terminal
+   * through `recordExecutedTerminal`. Presence of this port INSTALLS the S6
+   * 1.2 command handlers behind the OS-verified session gate; absence keeps
+   * every S6 command failing closed exactly as before (legacy compositions).
+   */
+  readonly s6Collection?: S6CollectionBeginner;
 }
 
 /**
@@ -335,6 +370,48 @@ export interface S5PageGroupBeginner {
 
 /** #151: an S5 collection execution intent joined with its frozen truth. */
 export type PendingS5Execution = S5ExecutionIntent;
+
+/**
+ * #154 post-commit driver for one registered S6 explicit-collection
+ * execution (journal-before-effect): performs the real bounded per-member
+ * acquisition through the trusted collection flow and completes the lineage
+ * terminal through `recordExecutedTerminal` with truthful per-member
+ * outcomes. Fire-and-forget: a thrown/rejected drive leaves the intent
+ * registered so a later reconcile can re-drive it.
+ */
+export interface S6ExecutionIntentInput {
+  readonly aggregateId: string;
+  /** The journaled EXECUTE command's idempotent identity. */
+  readonly requestId: string;
+  /** The Core-constructed durably confirmed collection record (contract+snapshot). */
+  readonly confirmed: S6ConfirmedCollectionRecord;
+  /** The Core-frozen collection admission this execution delivers from. */
+  readonly prepared: S6PreparedCollectionRecord;
+  /** The Core-frozen observed pages (declared-range order). */
+  readonly pages: readonly S6PageRecord[];
+}
+
+export interface S6CollectionBeginner {
+  begin(input: S6ExecutionIntentInput): void;
+}
+
+/** #154: an S6 collection execution intent joined with its frozen truth. */
+export type PendingS6Execution = S6ExecutionIntent;
+
+/**
+ * #154 live-only (never journal-replay) S6 admission context: the OS-verified
+ * session facts of the connection the frame arrived on plus the Core-issued
+ * challenge registry. Authority appliers receive it only on the live path;
+ * journal replay trusts the already-gated durable truth.
+ */
+export interface S6LiveAdmissionContext {
+  readonly commandType: S6Seam12CommandType;
+  readonly connectionId: string;
+  readonly verifiedPeer: NonNullable<ReturnType<VerifiedPeerSessionPort['verifiedSessionFor']>>;
+  readonly challenges: S3ChallengeMint;
+  readonly ttlMs: number;
+  readonly now: () => number;
+}
 
 /**
  * #151 live-only (never journal-replay) S5 admission context: the OS-verified
@@ -573,6 +650,24 @@ export interface CoreSeamServer {
     members: readonly S5MemberOutcomeRecord[],
   ): SeamResult<void>;
   /**
+   * #154 Core-internal (never a wire command): registered S6 collection
+   * execution intents awaiting drive/completion (identical discipline to
+   * S1/S3/S4/S5). The runtime reconciles these against durable truth after
+   * composition and on restart.
+   */
+  pendingS6Executions(): readonly PendingS6Execution[];
+  /**
+   * #154 Core-internal (never a wire command): record the Core-derived
+   * per-member S6 outcomes for one executing lineage. Verbatim truth from
+   * the collection flow; presentation only — the aggregate terminal stays
+   * owned by `recordExecutedTerminal`. Not journaled: restart reconcile
+   * re-derives the identical outcomes from durable truth.
+   */
+  recordS6MemberOutcomes(
+    aggregateId: string,
+    members: readonly S6MemberOutcomeRecord[],
+  ): SeamResult<void>;
+  /**
    * #153 trusted Core-runtime fact path: publish the Core-observed preview
    * result (AVAILABLE variants or typed FAILED refusal) for one durably
    * admitted PENDING preview record. Journaled for restart replay; identical
@@ -757,6 +852,13 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     string,
     { readonly payloadDigest: string; readonly response: SeamResponse }
   >();
+  const S6_TTL_MS = options.s6Challenge?.ttlMs ?? 120_000;
+  const s6Now = options.s6Challenge?.now ?? (() => Date.now());
+  const s6ChallengeMint = makeChallengeMint(s6Now);
+  const s6BeginResponses = new Map<
+    string,
+    { readonly payloadDigest: string; readonly response: SeamResponse }
+  >();
   let recoveryFenceReason: string | undefined;
 
   function recoveryFenceMessage(): string {
@@ -805,6 +907,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
                     options.s4Preview,
                     options.s4SelectedHls,
                     options.s5PageGroup,
+                    options.s6Collection,
                   );
       if (!restored.ok) {
         const subject =
@@ -897,6 +1000,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       ) ||
       S5_SEAM12_COMMAND_TYPES.includes(
         envelope.commandType as (typeof S5_SEAM12_COMMAND_TYPES)[number],
+      ) ||
+      S6_SEAM12_COMMAND_TYPES.includes(
+        envelope.commandType as (typeof S6_SEAM12_COMMAND_TYPES)[number],
       )
     ) {
       // This is a live, per-frame lookup in the native transport's private
@@ -973,6 +1079,33 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
           return handleCommand(envelope, undefined, undefined, s5Live);
         }
         return handleCommand(envelope, undefined, undefined, s5Live);
+      }
+      // #154: behind the OS-verified same-user/same-logon-session gate, the
+      // installed S6 explicit-collection handlers run when this composition
+      // provides the post-commit execution driver; CONFIRM BEGIN is the
+      // non-journaled Core-minted challenge half (the S3/S4/S5 discipline).
+      // Without the driver every S6 command keeps failing closed exactly as
+      // before (legacy compositions).
+      const s6Command = S6_SEAM12_COMMAND_TYPES.includes(
+        envelope.commandType as (typeof S6_SEAM12_COMMAND_TYPES)[number],
+      );
+      if (s6Command && options.s6Collection !== undefined && verifiedPeer !== undefined) {
+        const s6Live = {
+          commandType: envelope.commandType as S6LiveAdmissionContext['commandType'],
+          connectionId: connectionId as string,
+          verifiedPeer,
+          challenges: s6ChallengeMint,
+          ttlMs: S6_TTL_MS,
+          now: s6Now,
+        };
+        if (envelope.commandType === 'CONFIRM_S6_COLLECTION') {
+          const phase = (envelope.payload as { readonly phase?: unknown }).phase;
+          if (phase === 'BEGIN') {
+            return handleS6ConfirmBegin(envelope, connectionId as string, S6_TTL_MS, s6Now);
+          }
+          return handleCommand(envelope, undefined, undefined, undefined, s6Live);
+        }
+        return handleCommand(envelope, undefined, undefined, undefined, s6Live);
       }
       // #150: behind the OS-verified same-user/same-logon-session gate, the
       // installed S3 selected-media handlers run when this composition
@@ -1434,6 +1567,160 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     return response;
   }
 
+  /**
+   * #154 CONFIRM_S6_COLLECTION phase BEGIN: mint the single-use
+   * connection-bound Core challenge bound to the displayed selection tuple
+   * over the frozen collection members (the S3/S4/S5 discipline; never
+   * journaled — the COMMIT consumes it atomically with the durable record).
+   */
+  function handleS6ConfirmBegin(
+    envelope: CommandEnvelope,
+    connectionId: string,
+    ttlMs: number,
+    now: () => number,
+  ): SeamResponse {
+    const prior = s6BeginResponses.get(envelope.requestId);
+    if (prior !== undefined) {
+      if (prior.payloadDigest !== stableStringify(envelope.payload)) {
+        return rejected(envelope.requestId, [
+          seamDiagnostic(
+            'IDEMPOTENCY_CONFLICT',
+            'requestId',
+            'same S6 BEGIN identity was already answered for a different tuple; conflicting duplicate rejects',
+            'L2-§6.8',
+          ),
+        ]);
+      }
+      return { ...prior.response, s6PrivateChallenge: undefined };
+    }
+    if (s6BeginResponses.size > 512) {
+      const oldest = s6BeginResponses.keys().next();
+      if (oldest.done !== true) {
+        s6BeginResponses.delete(oldest.value);
+      }
+    }
+    if (envelope.peer.surface !== 'BROWSER_EXTENSION') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S6 selection challenges serve the installed browser-extension surface only',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    const aggregate = state.aggregates.get(envelope.aggregateId);
+    const lineage = state.lineages.get(envelope.aggregateId);
+    if (aggregate === undefined || lineage === undefined) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+      ]);
+    }
+    if (lineage.status !== 'ACTIVE') {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'LATE_COMMAND',
+          'lineage.status',
+          `lineage is ${lineage.status}; late S6 selection challenge is rejected`,
+          'L2-§11',
+        ),
+      ]);
+    }
+    const payloadBytes = payloadByteLength(envelope.payload);
+    if (payloadBytes > SEAM_MESSAGE_LIMITS.maxPayloadBytes) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'PAYLOAD_TOO_LARGE',
+          'payload',
+          `serialized payload of ${String(payloadBytes)} bytes exceeds declared bound ${String(SEAM_MESSAGE_LIMITS.maxPayloadBytes)}`,
+        ),
+      ]);
+    }
+    const payload = envelope.payload as S6ConfirmBeginPayload;
+    const prepared = lineage.s6PreparedCollection;
+    if (
+      prepared === undefined ||
+      prepared.status !== 'AVAILABLE' ||
+      prepared.prepareId !== payload.prepareId ||
+      prepared.snapshotId !== payload.snapshotId
+    ) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.prepareId',
+          'no AVAILABLE frozen S6 collection record matches this prepare/snapshot; confirmation fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    const selection = s6SelectionOf(prepared, lineage.s6Pages ?? [], payload.selectedMemberIds);
+    if (!selection.ok) {
+      return rejected(envelope.requestId, selection.diagnostics);
+    }
+    const revision = aggregate.revision;
+    if (envelope.expectedRevision !== revision) {
+      return rejected(
+        envelope.requestId,
+        [
+          seamDiagnostic(
+            'REVISION_MISMATCH',
+            'expectedRevision',
+            `S6 selection challenge requires the current aggregate revision ${String(revision)}`,
+            'L2-§10',
+          ),
+        ],
+        revision,
+      );
+    }
+    const digest = s6SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: payload.snapshotId,
+      prepareId: payload.prepareId,
+      selectedMemberIds: payload.selectedMemberIds,
+    });
+    if (payload.displayedTupleDigest !== digest) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.displayedTupleDigest',
+          'the browser-displayed tuple digest does not match the frozen Core facts for this selection; BEGIN fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    // A fresh BEGIN (fresh requestId) revokes the previous pending challenge
+    // of this connection+aggregate — only the newest confirmation intent
+    // stays answerable (the S4 F3 discipline).
+    s6ChallengeMint.revokePending(connectionId, envelope.aggregateId);
+    const expiresAtMs = now() + ttlMs;
+    const minted = s6ChallengeMint.mint({
+      connectionId,
+      aggregateId: envelope.aggregateId,
+      tupleDigest: digest,
+      revision,
+      ttlMs,
+      expiresAtIso: new Date(expiresAtMs).toISOString(),
+    });
+    const response: SeamResponse = {
+      schemaIdentity: currentSeamSchemaIdentity(),
+      kind: 'response',
+      inReplyTo: envelope.requestId,
+      outcome: 'ACCEPTED',
+      s6PrivateChallenge: {
+        prepareId: payload.prepareId,
+        confirmedGroupId: `s6group:${envelope.aggregateId}:${payload.snapshotId}`,
+        value: minted.challenge,
+        expiresAt: new Date(expiresAtMs).toISOString(),
+      },
+      currentRevision: revision,
+    };
+    s6BeginResponses.set(envelope.requestId, {
+      response,
+      payloadDigest: stableStringify(envelope.payload),
+    });
+    return response;
+  }
+
   function handleQuery(envelope: QueryEnvelope): SeamResponse {
     if (envelope.queryType !== 'READ_PROJECTION') {
       return rejected(envelope.requestId, [
@@ -1460,6 +1747,7 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
     s3Live?: S3LiveAdmissionContext,
     s4Live?: S4LiveAdmissionContext,
     s5Live?: S5LiveAdmissionContext,
+    s6Live?: S6LiveAdmissionContext,
   ): SeamResponse {
     // Declared payload byte bound before any parse into authority state.
     const payloadBytes = payloadByteLength(envelope.payload);
@@ -1524,9 +1812,11 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       options.s4Preview,
       options.s4SelectedHls,
       options.s5PageGroup,
+      options.s6Collection,
       s3Live,
       s4Live,
       s5Live,
+      s6Live,
     );
     if (!outcome.ok) {
       return rejected(envelope.requestId, outcome.diagnostics, currentRevision);
@@ -1552,6 +1842,17 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
           payload:
             state.lineages.get(envelope.aggregateId)?.s4ConfirmedSelection ?? envelope.payload,
         };
+      } else if (envelope.commandType === 'CONFIRM_S6_COLLECTION') {
+        // #154: the journaled S6 COMMIT carries ONLY the secret-free
+        // confirmed collection record — the raw private challenge never
+        // reaches durable state (the identical S5 discipline).
+        const s6Confirmed = state.lineages.get(envelope.aggregateId)?.s6ConfirmedCollection;
+        if (s6Confirmed === undefined) {
+          poisonForRecovery(
+            `accepted S6 confirm has no durable confirmed record; refusing to journal the raw payload`,
+          );
+        }
+        journalEnvelope = { ...envelope, payload: s6Confirmed };
       } else if (envelope.commandType === 'CONFIRM_S5_PAGE_GROUP') {
         // #151: the journaled S5 COMMIT carries ONLY the secret-free
         // confirmed group record — the raw private challenge never reaches
@@ -1621,6 +1922,14 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         s5Live.challenges.consume(commit.confirmationChallenge);
       }
     }
+    // #154: the S6 private challenge is consumed single-use ATOMICALLY with
+    // the confirmed-collection journal commit (the same S3/S4/S5 discipline).
+    if (envelope.commandType === 'CONFIRM_S6_COLLECTION' && s6Live !== undefined) {
+      const commit = envelope.payload as S6ConfirmCommitPayload;
+      if (commit.confirmationChallenge !== undefined) {
+        s6Live.challenges.consume(commit.confirmationChallenge);
+      }
+    }
     // #151: an accepted S5 collection execution only registered its intent
     // (apply); the real bounded per-member acquisition starts strictly AFTER
     // the accepted-command journal commit.
@@ -1632,6 +1941,21 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
           requestId: envelope.requestId,
           confirmed: intent.confirmed,
           prepared: intent.prepared,
+        });
+      }
+    }
+    // #154: an accepted S6 collection execution only registered its intent
+    // (apply); the real bounded per-member acquisition starts strictly AFTER
+    // the accepted-command journal commit.
+    if (envelope.commandType === 'EXECUTE_S6_COLLECTION' && options.s6Collection) {
+      const intent = state.s6ExecutionIntents.get(envelope.aggregateId);
+      if (intent !== undefined) {
+        options.s6Collection.begin({
+          aggregateId: envelope.aggregateId,
+          requestId: envelope.requestId,
+          confirmed: intent.confirmed,
+          prepared: intent.prepared,
+          pages: intent.pages,
         });
       }
     }
@@ -1899,6 +2223,19 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
         ]);
       }
       lineage.s5MemberOutcomes = Object.freeze([...members]);
+      return seamOk(undefined);
+    },
+    pendingS6Executions() {
+      return [...state.s6ExecutionIntents.values()] as PendingS6Execution[];
+    },
+    recordS6MemberOutcomes(aggregateId: string, members: readonly S6MemberOutcomeRecord[]) {
+      const lineage = state.lineages.get(aggregateId);
+      if (lineage === undefined) {
+        return seamFail([
+          seamDiagnostic('AGGREGATE_NOT_FOUND', 'aggregateId', 'no aggregate exists for this id'),
+        ]);
+      }
+      lineage.s6MemberOutcomes = Object.freeze([...members]);
       return seamOk(undefined);
     },
     pendingS4Executions() {
@@ -2698,9 +3035,11 @@ function applyCommand(
   s4PreviewDriver: S4PreviewBeginner | undefined,
   s4Beginner: S4SelectedHlsBeginner | undefined,
   s5Beginner: S5PageGroupBeginner | undefined,
+  s6Beginner: S6CollectionBeginner | undefined,
   s3Live?: S3LiveAdmissionContext,
   s4Live?: S4LiveAdmissionContext,
   s5Live?: S5LiveAdmissionContext,
+  s6Live?: S6LiveAdmissionContext,
 ): SeamResult<AppliedCommand> {
   switch (envelope.commandType) {
     case 'SUBMIT_CONTRACT':
@@ -2733,6 +3072,16 @@ function applyCommand(
       return applyConfirmS5PageGroup(state, envelope, s5Beginner, s5Live);
     case 'EXECUTE_S5_COLLECTION':
       return applyExecuteS5Collection(state, envelope, s5Beginner, s5Live);
+    case 'PREPARE_S6_COLLECTION':
+      return applyPrepareS6Collection(state, envelope, s6Beginner, s6Live);
+    case 'ADMIT_S6_COLLECTION_PAGE':
+      return applyAdmitS6CollectionPage(state, envelope, s6Beginner, s6Live);
+    case 'RECORD_S6_COLLECTION_PAGE':
+      return applyRecordS6CollectionPage(state, envelope, s6Beginner, s6Live);
+    case 'CONFIRM_S6_COLLECTION':
+      return applyConfirmS6Collection(state, envelope, s6Beginner, s6Live);
+    case 'EXECUTE_S6_COLLECTION':
+      return applyExecuteS6Collection(state, envelope, s6Beginner, s6Live);
     default:
       // This internal authority application also runs during journal reopen.
       // No unlisted command may be silently promoted through old journal
@@ -2742,7 +3091,7 @@ function applyCommand(
         seamDiagnostic(
           'TRANSPORT_UNAUTHORIZED',
           'commandType',
-          'S3/S4/S5 1.2 execution has no installed verified Core handler; fail closed',
+          'S3/S4/S5/S6 1.2 execution has no installed verified Core handler; fail closed',
         ),
       ]);
   }
@@ -5279,6 +5628,857 @@ function applyExecuteS5Collection(
   return seamOk({ revision });
 }
 
+/**
+ * #154 validate a user-chosen member subset against the frozen Core page
+ * records: nonempty, unique, and every id an element of the frozen members
+ * across the recorded declared-range pages — the browser can never
+ * introduce, duplicate or drop-then-replace membership.
+ */
+function s6SelectionOf(
+  prepared: S6PreparedCollectionRecord,
+  pages: readonly S6PageRecord[],
+  selectedMemberIds: readonly string[],
+): SeamResult<{ readonly memberIds: readonly string[] }> {
+  if (prepared.status !== 'AVAILABLE' || pages.length === 0 || selectedMemberIds.length === 0) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.selectedMemberIds',
+        'the S6 selection requires an AVAILABLE collection admission with at least one recorded page',
+        'L2-#154-§confirm',
+      ),
+    ]);
+  }
+  const frozen = new Set<string>();
+  for (const page of pages) {
+    for (const member of page.members) {
+      frozen.add(member.memberId);
+    }
+  }
+  if (
+    selectedMemberIds.length > frozen.size ||
+    new Set(selectedMemberIds).size !== selectedMemberIds.length ||
+    selectedMemberIds.some((memberId) => !frozen.has(memberId))
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.selectedMemberIds',
+        'the selection references a member outside the frozen Core collection pages; forged or stale membership rejects',
+        'L2-#154-§confirm',
+      ),
+    ]);
+  }
+  return seamOk({ memberIds: [...selectedMemberIds] });
+}
+
+/** Deterministic Core-minted S6 member identity for one frozen page href. */
+function s6MemberIdOf(aggregateId: string, pageNumber: number, href: string): string {
+  return `s6m-${createHash('sha256')
+    .update(`${aggregateId}\n${String(pageNumber)}\n${href}`)
+    .digest('hex')
+    .slice(0, 16)}`;
+}
+
+/**
+ * #154 PREPARE_S6_COLLECTION: freeze the explicit collection admission
+ * (identity, user-confirmed finite page range, provenance) as immutable Core
+ * truth (journal-before-effect; no network). The declared range is the ONLY
+ * navigation bound; the aggregate's DRAFT contract must already carry the
+ * SAME collection_page_range scope and identity or the prepare rejects. An
+ * identical re-prepare converges; a different tuple under the same lineage
+ * rejects (a changed collection requires a successor contract).
+ */
+function applyPrepareS6Collection(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s6Beginner: S6CollectionBeginner | undefined,
+  s6Live: S6LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s6Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S6 collection driver; PREPARE_S6_COLLECTION fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s6Live !== undefined && envelope.peer.surface !== 'BROWSER_EXTENSION') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S6 collection preparation serves the installed browser-extension surface only',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S6 collection preparation');
+  }
+  const payload = envelope.payload as S6PreparePayload;
+  // The submitted DRAFT contract must be the matching S6 page-range scope —
+  // a prepare can never widen or rebind the already-submitted scope.
+  const contract = aggregate.contract;
+  if (
+    contract.intentType !== 'COLLECTION' ||
+    contract.requestedScope.kind !== 'collection_page_range' ||
+    contract.requestedScope.collectionIdentity !== payload.collectionIdentity ||
+    contract.requestedScope.fromPage !== payload.fromPage ||
+    contract.requestedScope.toPage !== payload.toPage
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.collectionIdentity',
+        'the S6 prepare tuple does not match the submitted collection_page_range contract scope; fails closed',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
+  // R1 P1-01: the observed collection page URL is frozen as the identity of
+  // declared-range page 1 — an off-origin page can never become page 1.
+  let pageOrigin: string;
+  try {
+    pageOrigin = new URL(payload.collectionPageUrl).origin;
+  } catch {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.collectionPageUrl',
+        'the collection page URL has no parseable origin; preparation fails closed',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
+  if (pageOrigin !== payload.collectionOrigin) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.collectionPageUrl',
+        'the collection page URL is off the collection origin; preparation fails closed',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
+  const observedTupleDigest = s6CollectionTupleDigest({
+    collectionOrigin: payload.collectionOrigin,
+    provenanceKey: payload.provenanceKey,
+    collectionIdentity: payload.collectionIdentity,
+    fromPage: payload.fromPage,
+    toPage: payload.toPage,
+  });
+  const record: S6PreparedCollectionRecord = {
+    prepareId: `s6prepare:${envelope.aggregateId}:${payload.snapshotId}`,
+    snapshotId: payload.snapshotId,
+    collectionOrigin: payload.collectionOrigin,
+    collectionPageUrl: payload.collectionPageUrl,
+    provenanceKey: payload.provenanceKey,
+    collectionIdentity: payload.collectionIdentity,
+    fromPage: payload.fromPage,
+    toPage: payload.toPage,
+    observedTupleDigest,
+    status: 'AVAILABLE',
+    preparedAt: new Date(s6Live?.now() ?? Date.now()).toISOString(),
+  };
+  const existing = lineage.s6PreparedCollection;
+  if (existing !== undefined) {
+    if (
+      existing.prepareId === record.prepareId &&
+      existing.observedTupleDigest === record.observedTupleDigest
+    ) {
+      return seamOk({ revision: aggregate.revision });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'payload',
+        'a different S6 collection admission is already durably recorded for this lineage; a changed collection/scope requires a successor contract',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
+  lineage.s6PreparedCollection = record;
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #154 ADMIT_S6_COLLECTION_PAGE: journal the navigation intent for one page
+ * of the declared range BEFORE the privileged browser navigates (L2 §2 —
+ * durable intent precedes the generated navigation effect). Only the next
+ * page in the declared range is ever admissible: the walk cannot skip,
+ * revisit or leave the frozen bounds. An admit for an already-recorded page
+ * converges (restart replay idempotency).
+ */
+function applyAdmitS6CollectionPage(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s6Beginner: S6CollectionBeginner | undefined,
+  s6Live: S6LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s6Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S6 collection driver; ADMIT_S6_COLLECTION_PAGE fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s6Live !== undefined && envelope.peer.surface !== 'BROWSER_EXTENSION') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S6 page navigation admission serves the installed browser-extension surface only',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S6 page navigation admission');
+  }
+  const payload = envelope.payload as S6AdmitPagePayload;
+  const prepared = lineage.s6PreparedCollection;
+  if (
+    prepared === undefined ||
+    prepared.status !== 'AVAILABLE' ||
+    prepared.prepareId !== payload.prepareId ||
+    prepared.snapshotId !== payload.snapshotId
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.prepareId',
+        'no AVAILABLE frozen S6 collection record matches this prepare/snapshot; navigation admission fails closed',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  const pages = lineage.s6Pages ?? [];
+  const nextAdmissible =
+    pages.length > 0 ? (pages[pages.length - 1]?.pageNumber ?? 0) + 1 : prepared.fromPage;
+  if (payload.pageNumber > prepared.toPage) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.pageNumber',
+        `page ${String(payload.pageNumber)} is outside the declared frozen range (${String(prepared.fromPage)}..${String(prepared.toPage)}); the walk never widens`,
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  if (pages.some((page) => page.pageNumber === payload.pageNumber)) {
+    // Already recorded: an idempotent re-admit converges (no new effect).
+    return seamOk({ revision: aggregate.revision });
+  }
+  if (payload.pageNumber !== nextAdmissible) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.pageNumber',
+        `page ${String(payload.pageNumber)} is not the next declared-range page (${String(nextAdmissible)}); skipping or revisiting pages rejects`,
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  // R1 P1-01: the admitted navigation target is the EXACT canonical next
+  // href, bound to the collection origin and pinned durably before the
+  // browser effect; RECORD verifies the actually observed URL against it.
+  let nextOrigin: string;
+  try {
+    nextOrigin = new URL(payload.nextPageUrl).origin;
+  } catch {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.nextPageUrl',
+        'the admitted next-page URL has no parseable origin; admission fails closed',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  if (nextOrigin !== prepared.collectionOrigin) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.nextPageUrl',
+        `the admitted next-page URL is off the collection origin (${prepared.collectionOrigin}); an off-scope navigation target rejects`,
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  lineage.s6AdmittedPages = Object.freeze([
+    ...(lineage.s6AdmittedPages ?? []),
+    { pageNumber: payload.pageNumber, nextPageUrl: payload.nextPageUrl },
+  ]);
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #154 RECORD_S6_COLLECTION_PAGE: freeze one observed declared-range page
+ * and its member tuple as immutable Core truth (journal-before-effect; no
+ * network). Core mints the member identities; the browser can never
+ * construct this record. The page must be the next one in the declared
+ * range, and every page after the first must have had its navigation intent
+ * durably admitted first.
+ */
+function applyRecordS6CollectionPage(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s6Beginner: S6CollectionBeginner | undefined,
+  s6Live: S6LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s6Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S6 collection driver; RECORD_S6_COLLECTION_PAGE fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s6Live !== undefined && envelope.peer.surface !== 'BROWSER_EXTENSION') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S6 page observation serves the installed browser-extension surface only',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S6 page observation');
+  }
+  const payload = envelope.payload as S6RecordPagePayload;
+  const prepared = lineage.s6PreparedCollection;
+  if (
+    prepared === undefined ||
+    prepared.status !== 'AVAILABLE' ||
+    prepared.prepareId !== payload.prepareId ||
+    prepared.snapshotId !== payload.snapshotId
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.prepareId',
+        'no AVAILABLE frozen S6 collection record matches this prepare/snapshot; page recording fails closed',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  if (payload.pageNumber < prepared.fromPage || payload.pageNumber > prepared.toPage) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.pageNumber',
+        `page ${String(payload.pageNumber)} is outside the declared frozen range (${String(prepared.fromPage)}..${String(prepared.toPage)}); the walk never widens`,
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  const pages = lineage.s6Pages ?? [];
+  const nextRecordable =
+    pages.length > 0 ? (pages[pages.length - 1]?.pageNumber ?? 0) + 1 : prepared.fromPage;
+  if (payload.pageNumber !== nextRecordable) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.pageNumber',
+        `page ${String(payload.pageNumber)} is not the next declared-range page (${String(nextRecordable)}); the declared walk is sequential and never skips`,
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  if (payload.pageNumber !== prepared.fromPage) {
+    const admitted = (lineage.s6AdmittedPages ?? []).find(
+      (entry) => entry.pageNumber === payload.pageNumber,
+    );
+    if (admitted === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.pageNumber',
+          `page ${String(payload.pageNumber)} has no durably admitted navigation intent; record fails closed`,
+          'L2-#154-§navigate',
+        ),
+      ]);
+    }
+    // R1 P1-01: the actually observed page URL must equal the EXACT approved
+    // navigation target — a changed or off-origin landing page rejects before
+    // any member is frozen.
+    if (payload.pageUrl !== admitted.nextPageUrl) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.pageUrl',
+          `the observed page URL does not match the durably admitted navigation target for page ${String(payload.pageNumber)}; record fails closed`,
+          'L2-#154-§navigate',
+        ),
+      ]);
+    }
+  } else if (payload.pageUrl !== prepared.collectionPageUrl) {
+    // R1 P1-01: the first declared page must be observed on the exact
+    // prepared collection page.
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.pageUrl',
+        'the observed page URL does not match the prepared collection page; record fails closed',
+        'L2-#154-§prepare',
+      ),
+    ]);
+  }
+  const members = payload.members.map((member) => ({
+    memberId: s6MemberIdOf(envelope.aggregateId, payload.pageNumber, member.href),
+    href: member.href,
+    text: member.text,
+  }));
+  const totalFrozen = pages.reduce((sum, page) => sum + page.members.length, 0) + members.length;
+  if (totalFrozen > 80) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.members',
+        'the frozen collection member set exceeds the bounded installed-lane budget (80); fails closed',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  const observedTupleDigest = s6PageTupleDigest({
+    pageNumber: payload.pageNumber,
+    hrefs: members.map((member) => member.href),
+  });
+  const record: S6PageRecord = {
+    pageNumber: payload.pageNumber,
+    members: Object.freeze(members),
+    pageUrl: payload.pageUrl,
+    observedTupleDigest,
+    recordedAt: new Date(s6Live?.now() ?? Date.now()).toISOString(),
+  };
+  const existing = pages.find((page) => page.pageNumber === payload.pageNumber);
+  if (existing !== undefined) {
+    if (
+      existing.observedTupleDigest === record.observedTupleDigest &&
+      existing.pageUrl === record.pageUrl &&
+      stableStringify(existing.members) === stableStringify(record.members)
+    ) {
+      return seamOk({ revision: aggregate.revision });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'payload',
+        'a different S6 page observation is already durably recorded for this page; a changed page requires a successor contract',
+        'L2-#154-§navigate',
+      ),
+    ]);
+  }
+  lineage.s6Pages = Object.freeze([...pages, record]);
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #154 CONFIRM_S6_COLLECTION COMMIT: consume the Core-issued single-use
+ * challenge atomically with the journal commit and construct the durable
+ * CONFIRMED contract + BATCH selection snapshot over the user-chosen subset
+ * of the frozen page members. Core alone mints these authority objects; the
+ * raw challenge never reaches durable state.
+ */
+function applyConfirmS6Collection(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s6Beginner: S6CollectionBeginner | undefined,
+  s6Live: S6LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s6Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'TRANSPORT_UNAUTHORIZED',
+        'commandType',
+        'this Core composition provides no S6 collection driver; CONFIRM_S6_COLLECTION fails closed',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S6 collection confirmation');
+  }
+  const raw = envelope.payload as Record<string, unknown>;
+  const isRecordShape = raw['phase'] === undefined;
+  let record: S6ConfirmedCollectionRecord;
+  if (isRecordShape) {
+    // Journal replay: the durable secret-free record is the already-gated
+    // truth; revalidate it against the frozen prepare, never the clock.
+    const replay = raw as unknown as S6ConfirmedCollectionRecord;
+    const prepared = lineage.s6PreparedCollection;
+    if (
+      prepared === undefined ||
+      replay.prepareId !== prepared.prepareId ||
+      replay.snapshotId !== prepared.snapshotId ||
+      replay.confirmedGroupId !== `s6group:${envelope.aggregateId}:${replay.snapshotId}` ||
+      !replay.selectedMemberIds.every((id) =>
+        (lineage.s6Pages ?? []).some((page) =>
+          page.members.some((member) => member.memberId === id),
+        ),
+      )
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload',
+          'the journaled S6 confirmed-collection record does not match the frozen prepare facts; replay fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    const digest = s6SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: replay.snapshotId,
+      prepareId: replay.prepareId,
+      selectedMemberIds: replay.selectedMemberIds,
+    });
+    if (digest !== replay.displayedTupleDigest) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload',
+          'the journaled S6 confirmed-collection tuple digest does not re-derive; replay fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    record = replay;
+  } else {
+    // Live COMMIT: verify the Core-issued challenge against this OS-verified
+    // connection, the current revision and the canonical displayed tuple.
+    if (s6Live === undefined) {
+      return seamFail([
+        seamDiagnostic(
+          'TRANSPORT_UNAUTHORIZED',
+          'commandType',
+          'S6 collection confirmation requires the live OS-verified admission context',
+        ),
+      ]);
+    }
+    if (envelope.peer.surface !== 'BROWSER_EXTENSION') {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'peer.surface',
+          'S6 collection confirmation serves the installed browser-extension surface only',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    const payload = envelope.payload as S6ConfirmCommitPayload;
+    const prepared = lineage.s6PreparedCollection;
+    if (
+      prepared === undefined ||
+      prepared.status !== 'AVAILABLE' ||
+      prepared.prepareId !== payload.prepareId ||
+      prepared.snapshotId !== payload.snapshotId
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.prepareId',
+          'no AVAILABLE frozen S6 collection record matches this prepare/snapshot; confirmation fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    const selection = s6SelectionOf(prepared, lineage.s6Pages ?? [], payload.selectedMemberIds);
+    if (!selection.ok) {
+      return selection;
+    }
+    const digest = s6SelectionTupleDigest({
+      contractId: envelope.aggregateId,
+      snapshotId: payload.snapshotId,
+      prepareId: payload.prepareId,
+      selectedMemberIds: payload.selectedMemberIds,
+    });
+    if (
+      payload.displayedTupleDigest !== digest ||
+      !s6Live.challenges.verify({
+        challenge: payload.confirmationChallenge,
+        connectionId: s6Live.connectionId,
+        aggregateId: envelope.aggregateId,
+        tupleDigest: digest,
+        revision: aggregate.revision,
+      })
+    ) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.confirmationChallenge',
+          'the Core-issued S6 selection challenge did not verify against this session, revision and displayed tuple; confirmation fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    // Core alone constructs the CONFIRMED contract and the BATCH selection
+    // snapshot over the chosen subset (a browser can never mint these).
+    const draft = aggregate.contract;
+    const nowMs = s6Live.now();
+    const confirmedAt = new Date(nowMs).toISOString();
+    const confirmedContract = decodeAcquisitionContract({
+      ...JSON.parse(stableStringify(draft)),
+      status: 'CONFIRMED',
+      selectionSnapshotRef: payload.snapshotId,
+      confirmedAt,
+    });
+    if (!confirmedContract.ok) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'contract',
+          'the Core-constructed confirmed S6 contract fails canonical decode; confirmation fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    const snapshot = decodeSelectionSnapshot({
+      schemaIdentity: draft.schemaIdentity,
+      snapshotId: payload.snapshotId,
+      contractId: draft.contractId,
+      collectionIdentity: draft.collectionIdentity,
+      requestedScope: draft.requestedScope,
+      continuationScope: draft.continuationScope,
+      coverageTarget: {
+        ...coverageTargetFor(draft.requestedScope, 1),
+        collectionIdentity: draft.collectionIdentity,
+      },
+      requestedMemberBasis: { kind: 'SUPPORTED_COLLECTION_MEMBERSHIP' },
+      authAccessibleBasis: { kind: 'UNKNOWN' },
+      selectedMemberIds: [...payload.selectedMemberIds],
+      authorizationContextRef: draft.authorizationContextRef,
+      profileContextRef: 'profile/default-001',
+      selectionClaims: [
+        {
+          kind: 'BATCH',
+          confirmationType: 'CONFIRM_SELECTION',
+          memberRefs: [...payload.selectedMemberIds],
+        },
+      ],
+      sourceMarker: { system: 'xdownload-core-seam', version: 'v0.1.0' },
+      createdAt: confirmedAt,
+    });
+    if (!snapshot.ok) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'snapshot',
+          'the Core-constructed S6 selection snapshot fails canonical decode; confirmation fails closed',
+          'L2-#154-§confirm',
+        ),
+      ]);
+    }
+    record = {
+      confirmedGroupId: `s6group:${envelope.aggregateId}:${payload.snapshotId}`,
+      prepareId: payload.prepareId,
+      snapshotId: payload.snapshotId,
+      selectedMemberIds: Object.freeze([...payload.selectedMemberIds]),
+      displayedTupleDigest: digest,
+      contract: confirmedContract.value,
+      snapshot: snapshot.value,
+      confirmedAt,
+      expiresAt: new Date(nowMs + s6Live.ttlMs).toISOString(),
+    };
+  }
+  // Immutable-truth convergence: an identical re-confirmation converges on
+  // the recorded group; a different one is a conflict, never a rewrite.
+  const existing = lineage.s6ConfirmedCollection;
+  if (existing !== undefined) {
+    if (stableStringify(existing) === stableStringify(record)) {
+      return seamOk({ revision: aggregate.revision });
+    }
+    return seamFail([
+      seamDiagnostic(
+        'IDEMPOTENCY_CONFLICT',
+        'payload',
+        'a different S6 confirmed collection is already durably recorded for this lineage; changed selection requires a successor contract/snapshot',
+        'L2-#154-§confirm',
+      ),
+    ]);
+  }
+  lineage.s6ConfirmedCollection = record;
+  // Bind the Core-constructed confirmed snapshot on the lineage exactly as
+  // the generic CONFIRM_SNAPSHOT command does: the collection coverage
+  // accounting gate requires a confirmed snapshot binding for COLLECTION
+  // contracts (the projection's requested-identity basis).
+  lineage.snapshot = record.snapshot;
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
+/**
+ * #154 EXECUTE_S6_COLLECTION: register one durable S6 execution intent over
+ * the already confirmed collection (journal-before-effect); the runtime
+ * begins the real bounded per-member acquisition strictly after the journal
+ * commit. A second distinct request can never create another effect,
+ * budget or HTTP request — recovery operates on the prior durable intent.
+ */
+function applyExecuteS6Collection(
+  state: SeamAuthorityState,
+  envelope: CommandEnvelope,
+  s6Beginner: S6CollectionBeginner | undefined,
+  s6Live: S6LiveAdmissionContext | undefined,
+): SeamResult<AppliedCommand> {
+  if (s6Beginner === undefined) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'commandType',
+        'this Core composition provides no S6 collection driver; EXECUTE_S6_COLLECTION fails closed',
+        'L2-§6.1',
+      ),
+    ]);
+  }
+  if (s6Live !== undefined && envelope.peer.surface !== 'BROWSER_EXTENSION') {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'peer.surface',
+        'S6 collection execution serves the installed browser-extension surface only',
+        'L2-#154-§execute',
+      ),
+    ]);
+  }
+  const binding = bindCorrelation(envelope);
+  if (!binding.ok) {
+    return binding;
+  }
+  const required = requireLineage(state, envelope);
+  if (!required.ok) {
+    return required;
+  }
+  const { aggregate, lineage } = required.value;
+  if (lineage.status !== 'ACTIVE') {
+    return rejectLate(lineage.status, 'S6 collection execution');
+  }
+  const payload = envelope.payload as S6ExecutePayload;
+  const confirmed = lineage.s6ConfirmedCollection;
+  if (
+    confirmed === undefined ||
+    confirmed.confirmedGroupId !== payload.confirmedGroupId ||
+    confirmed.snapshotId !== payload.snapshotId
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.confirmedGroupId',
+        'no durably confirmed S6 collection matches this snapshot; execution requires the confirmed collection',
+        'L2-#154-§execute',
+      ),
+    ]);
+  }
+  const prepared = lineage.s6PreparedCollection;
+  if (prepared === undefined || prepared.prepareId !== confirmed.prepareId) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.confirmedGroupId',
+        'the frozen collection admission backing this confirmed selection is missing; execution fails closed',
+        'L2-#154-§execute',
+      ),
+    ]);
+  }
+  const pages = lineage.s6Pages ?? [];
+  if (pages.length === 0) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'payload.confirmedGroupId',
+        'the confirmed S6 collection has no frozen observed pages; execution fails closed',
+        'L2-#154-§execute',
+      ),
+    ]);
+  }
+  // Live-only freshness gate (never journal replay: the replayed intent is
+  // already durably gated truth; restart reconcile re-drives it).
+  if (s6Live !== undefined) {
+    const expiresAtMs = Date.parse(confirmed.expiresAt);
+    if (!Number.isFinite(expiresAtMs) || s6Live.now() >= expiresAtMs) {
+      return seamFail([
+        seamDiagnostic(
+          'ADMISSION_REJECTED',
+          'payload.confirmedGroupId',
+          'the confirmed S6 collection has expired; a fresh prepare and confirmation are required',
+          'L2-#154-§execute',
+        ),
+      ]);
+    }
+  }
+  if (state.s6ExecutionIntents.has(envelope.aggregateId)) {
+    return seamFail([
+      seamDiagnostic(
+        'ADMISSION_REJECTED',
+        'aggregateId',
+        'an S6 collection execution is already registered for this lineage; the registered intent reconciles from durable truth',
+        'L2-#154-§execute',
+      ),
+    ]);
+  }
+  state.s6ExecutionIntents.set(envelope.aggregateId, {
+    aggregateId: envelope.aggregateId,
+    requestId: envelope.requestId,
+    confirmed,
+    prepared,
+    pages,
+  });
+  const revision = aggregate.revision + 1;
+  aggregate.revision = revision;
+  return seamOk({ revision });
+}
+
 const S4_RENDITION_KEY_PATTERN = /^rend-[0-9]+$/u;
 
 /**
@@ -5754,6 +6954,7 @@ function restoreAcceptedCommand(
   s4PreviewDriver: S4PreviewBeginner | undefined,
   s4Beginner: S4SelectedHlsBeginner | undefined,
   s5Beginner: S5PageGroupBeginner | undefined,
+  s6Beginner: S6CollectionBeginner | undefined,
 ): SeamResult<void> {
   const applied = applyCommand(
     state,
@@ -5767,6 +6968,7 @@ function restoreAcceptedCommand(
     s4PreviewDriver,
     s4Beginner,
     s5Beginner,
+    s6Beginner,
   );
   if (!applied.ok) {
     return applied;

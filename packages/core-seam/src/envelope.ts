@@ -38,6 +38,11 @@ import {
   S5_SEAM12_COMMAND_TYPES,
   type S5Seam12CommandType,
 } from './s5-seam12-payload.ts';
+import {
+  decodeS6Seam12Payload,
+  S6_SEAM12_COMMAND_TYPES,
+  type S6Seam12CommandType,
+} from './s6-seam12-payload.ts';
 
 /** Seam wire schema identity — independent of the domain-contracts version space. */
 export const CORE_SEAM_SCHEMA_ID = 'xdownload.core-seam' as const;
@@ -104,6 +109,20 @@ export interface S5PrivateChallenge {
   readonly expiresAt: string;
 }
 
+/**
+ * #154 connection-private S6 selection challenge (CONFIRM_S6_COLLECTION
+ * phase BEGIN only); never serialized to legacy sessions or projections.
+ * Shape-identical to the S5 challenge (same mint discipline, different
+ * command namespace).
+ */
+export interface S6PrivateChallenge {
+  readonly prepareId: string;
+  readonly confirmedGroupId: string;
+  /** 64-hex CSPRNG value; single-use, consumed atomically with the COMMIT journal commit. */
+  readonly value: string;
+  readonly expiresAt: string;
+}
+
 export type SeamMessageKind = 'command' | 'query' | 'response';
 
 /**
@@ -135,7 +154,11 @@ export const COMMAND_TYPES = [
 
 /** The 1.2 S4/S5 authority vocabulary is distinct from legacy 1.0/1.1. */
 export type CommandType =
-  (typeof COMMAND_TYPES)[number] | S4Seam12CommandType | S3Seam12CommandType | S5Seam12CommandType;
+  | (typeof COMMAND_TYPES)[number]
+  | S4Seam12CommandType
+  | S3Seam12CommandType
+  | S5Seam12CommandType
+  | S6Seam12CommandType;
 
 /** Closed v1 read vocabulary: the only surface query is the projection read. */
 export const QUERY_TYPES = ['READ_PROJECTION'] as const;
@@ -211,6 +234,7 @@ export interface SeamResponse {
    */
   readonly s4PrivateChallenge?: S4PrivateChallenge;
   readonly s5PrivateChallenge?: S5PrivateChallenge;
+  readonly s6PrivateChallenge?: S6PrivateChallenge;
   readonly diagnostics?: readonly SeamDiagnostic[];
 }
 
@@ -444,12 +468,16 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
   const s5Command =
     typeof commandType === 'string' &&
     S5_SEAM12_COMMAND_TYPES.includes(commandType as S5Seam12CommandType);
+  const s6Command =
+    typeof commandType === 'string' &&
+    S6_SEAM12_COMMAND_TYPES.includes(commandType as S6Seam12CommandType);
   if (
     typeof commandType !== 'string' ||
     (!COMMAND_TYPES.includes(commandType as (typeof COMMAND_TYPES)[number]) &&
       !s4Command &&
       !s3Command &&
-      !s5Command)
+      !s5Command &&
+      !s6Command)
   ) {
     return seamFail([
       seamDiagnostic(
@@ -480,6 +508,13 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
     ? decodeS5Seam12Payload(commandType, schemaIdentity.value.version, record['payload'])
     : undefined;
   if (s5Payload !== undefined && !s5Payload.ok) return s5Payload;
+  // S6's explicit finite collection syntax is browser-observed candidates
+  // only — never a confirmed snapshot, a user gesture, a Core challenge or a
+  // trusted OS connection. No effect grant until the #154 private handlers.
+  const s6Payload = s6Command
+    ? decodeS6Seam12Payload(commandType, schemaIdentity.value.version, record['payload'])
+    : undefined;
+  if (s6Payload !== undefined && !s6Payload.ok) return s6Payload;
   // EXECUTE_S1_DIRECT_ACQUISITION is introduced only in seam 1.1.
   // Major-1 backwards decoding remains valid for the old closed vocabulary,
   // but a 1.0 frame can never gain the new network-effect authority.
@@ -626,6 +661,7 @@ export function decodeSeamResponse(value: unknown): SeamResult<SeamResponse> {
     challenge: decodeS3SelectionChallenge(value['challenge']),
     s4PrivateChallenge: decodeS4PrivateChallenge(value['s4PrivateChallenge']),
     s5PrivateChallenge: decodeS5PrivateChallenge(value['s5PrivateChallenge']),
+    s6PrivateChallenge: decodeS6PrivateChallenge(value['s6PrivateChallenge']),
     diagnostics: Array.isArray(value['diagnostics'])
       ? (value['diagnostics'] as readonly SeamDiagnostic[])
       : undefined,
@@ -652,6 +688,41 @@ function decodeS5PrivateChallenge(value: unknown): S5PrivateChallenge | undefine
     return undefined;
   }
   const unknown = Object.keys(value).filter((key) => !S5_PRIVATE_CHALLENGE_KEYS.includes(key));
+  if (unknown.length > 0) {
+    return undefined;
+  }
+  const prepareId = value['prepareId'];
+  const confirmedGroupId = value['confirmedGroupId'];
+  const challenge = value['value'];
+  const expiresAt = value['expiresAt'];
+  if (
+    typeof prepareId !== 'string' ||
+    !/^[A-Za-z0-9_.:-]{1,128}$/u.test(prepareId) ||
+    typeof confirmedGroupId !== 'string' ||
+    !/^[A-Za-z0-9_.:-]{1,128}$/u.test(confirmedGroupId) ||
+    typeof challenge !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(challenge) ||
+    typeof expiresAt !== 'string' ||
+    !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/u.test(expiresAt)
+  ) {
+    return undefined;
+  }
+  return { prepareId, confirmedGroupId, value: challenge, expiresAt };
+}
+
+const S6_PRIVATE_CHALLENGE_KEYS: readonly string[] = [
+  'prepareId',
+  'confirmedGroupId',
+  'value',
+  'expiresAt',
+];
+
+/** Strict decode of the Core-minted S6 private challenge on the client side (#154). */
+function decodeS6PrivateChallenge(value: unknown): S6PrivateChallenge | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const unknown = Object.keys(value).filter((key) => !S6_PRIVATE_CHALLENGE_KEYS.includes(key));
   if (unknown.length > 0) {
     return undefined;
   }

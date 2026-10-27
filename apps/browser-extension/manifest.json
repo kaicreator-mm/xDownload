@@ -3,7 +3,7 @@
   "name": "xDownload Browser Integration",
   "version": "0.1.0",
   "description": "xDownload Browser Integration. Observations are provenance-bound evidence inputs; the explicit current-page attachment (S2) journey runs from the action popup through the local native host to the single local Core authority with opaque AuthorizationContextRef only.",
-  "permissions": ["activeTab", "scripting", "nativeMessaging", "notifications"],
+  "permissions": ["activeTab", "scripting", "nativeMessaging", "notifications", "storage"],
   "host_permissions": [],
   "optional_permissions": [],
   "optional_host_permissions": ["https://*/*", "http://*/*"],

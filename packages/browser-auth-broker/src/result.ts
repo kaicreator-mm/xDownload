@@ -31,6 +31,8 @@ export type BrokerBoundaryCode =
   | 'S2_LANE_REJECTED'
   | 'S5_LANE_UNAVAILABLE'
   | 'S5_LANE_REJECTED'
+  | 'S6_LANE_UNAVAILABLE'
+  | 'S6_LANE_REJECTED'
   | 'CORE_UNREACHABLE';
 
 /** Local codes plus the canonical diagnostic codes reused verbatim. */

@@ -33,6 +33,7 @@ import {
   type ExpectedPeerScope,
   type SeamJournal,
   type S5ExecutionIntentInput,
+  type S6ExecutionIntentInput,
   type SeamResult,
 } from '@xdownload/core-seam';
 import { CoreScheduler, serializeFacts } from '@xdownload/core-scheduler';
@@ -117,6 +118,15 @@ export interface CoreRuntimeOptions {
   readonly s5Collection?: (
     runtime: CoreRuntime,
   ) => (input: S5ExecutionIntentInput) => Promise<SeamResult<void>>;
+  /**
+   * #154: the injected S6 explicit-collection execution drive (dependency
+   * inversion — the driver lives in browser-collection-workflow; the
+   * supervised bounded-retry/restart-reconcile discipline is identical to
+   * the S5 drive). Absent: every S6 command keeps failing closed.
+   */
+  readonly s6Collection?: (
+    runtime: CoreRuntime,
+  ) => (input: S6ExecutionIntentInput) => Promise<SeamResult<void>>;
 }
 
 /** The composed authoritative Core Runtime (one instance per install). */
@@ -181,6 +191,10 @@ function bindSeam(
     runtime: CoreRuntime,
   ) => (input: S5ExecutionIntentInput) => Promise<SeamResult<void>>,
   s5RuntimeHolder?: { current?: CoreRuntime },
+  s6Factory?: (
+    runtime: CoreRuntime,
+  ) => (input: S6ExecutionIntentInput) => Promise<SeamResult<void>>,
+  s6RuntimeHolder?: { current?: CoreRuntime },
 ): CoreSeamServer {
   // #95 R1/F04: chunked delivered streams stage inside the composition so
   // journal replay during seam construction rebuilds staged truth through
@@ -304,6 +318,32 @@ function bindSeam(
                 if (!result.ok) {
                   throw new Error(
                     `s5 drive rejected: ${result.diagnostics
+                      .map((d) => `${d.code}:${d.path}`)
+                      .join(', ')}`,
+                  );
+                }
+              });
+            },
+          },
+        }),
+    // #154: install the private S6 explicit-collection authority behind the
+    // OS-verified session gate — the injected execution drive over the full
+    // authoritative composition (real per-member acquisition through the
+    // trusted collection flow; never browser-delivered bytes).
+    ...(s6Factory === undefined
+      ? {}
+      : {
+          s6Collection: {
+            begin: (input: S6ExecutionIntentInput): void => {
+              const runtime = s6RuntimeHolder?.current;
+              if (runtime === undefined) {
+                return;
+              }
+              void supervisor.drive(input.aggregateId, async () => {
+                const result = await s6Factory(runtime)(input);
+                if (!result.ok) {
+                  throw new Error(
+                    `s6 drive rejected: ${result.diagnostics
                       .map((d) => `${d.code}:${d.path}`)
                       .join(', ')}`,
                   );
@@ -628,6 +668,33 @@ function reconcileS5Executions(
 }
 
 /**
+ * #154: reconcile registered S6 collection execution intents against durable
+ * truth (identical discipline to S1/S3/S4/S5): journal replay re-registered
+ * every intent; non-terminal intents re-drive through the injected drive
+ * (reconcile-first — accepted members never re-download).
+ */
+function reconcileS6Executions(
+  runtime: CoreRuntime,
+  supervisor: S1DriveSupervisor,
+  s6Factory: (runtime: CoreRuntime) => (input: S6ExecutionIntentInput) => Promise<SeamResult<void>>,
+): void {
+  for (const pending of runtime.seam.pendingS6Executions()) {
+    const view = runtime.seam.inspectProjection(pending.aggregateId);
+    if (view === undefined || view.lineage.status === 'TERMINAL') {
+      continue;
+    }
+    void supervisor.drive(pending.aggregateId, async () => {
+      const result = await s6Factory(runtime)(pending);
+      if (!result.ok) {
+        throw new Error(
+          `s6 drive rejected: ${result.diagnostics.map((d) => `${d.code}:${d.path}`).join(', ')}`,
+        );
+      }
+    });
+  }
+}
+
+/**
  * Compose a FRESH authoritative Core Runtime over an empty durable root.
  * Refuses to clobber existing durable truth (use `reopenCoreRuntime`).
  */
@@ -642,6 +709,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const transferAbort = createS1TransferAbortHub();
   const s5RuntimeHolder: { current?: CoreRuntime } = {};
+  const s6RuntimeHolder: { current?: CoreRuntime } = {};
   const runtime: CoreRuntime = Object.freeze({
     seam: bindSeam(
       options.expectedPeer,
@@ -658,6 +726,8 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
       options.s4Hls,
       options.s5Collection,
       s5RuntimeHolder,
+      options.s6Collection,
+      s6RuntimeHolder,
     ),
     scheduler,
     writer,
@@ -670,11 +740,15 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     s1DriveHealth: supervisor.health,
   });
   s5RuntimeHolder.current = runtime;
+  s6RuntimeHolder.current = runtime;
   reconcileS1Executions(runtime, supervisor, transferAbort);
   reconcileS3Executions(runtime, supervisor, transferAbort);
   reconcileS4Lanes(runtime, supervisor, options.s4Hls ?? {});
   if (options.s5Collection !== undefined) {
     reconcileS5Executions(runtime, supervisor, options.s5Collection);
+  }
+  if (options.s6Collection !== undefined) {
+    reconcileS6Executions(runtime, supervisor, options.s6Collection);
   }
   return runtime;
 }
@@ -714,6 +788,7 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const transferAbort = createS1TransferAbortHub();
   const s5RuntimeHolder: { current?: CoreRuntime } = {};
+  const s6RuntimeHolder: { current?: CoreRuntime } = {};
   const runtime: CoreRuntime = Object.freeze({
     seam: bindSeam(
       options.expectedPeer,
@@ -730,6 +805,8 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
       options.s4Hls,
       options.s5Collection,
       s5RuntimeHolder,
+      options.s6Collection,
+      s6RuntimeHolder,
     ),
     scheduler,
     writer,
@@ -742,6 +819,7 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     s1DriveHealth: supervisor.health,
   });
   s5RuntimeHolder.current = runtime;
+  s6RuntimeHolder.current = runtime;
   // Restart reconcile: replay re-registered every S1 intent but never the
   // unjournaled terminal — re-drive non-terminal intents from durable truth.
   reconcileS1Executions(runtime, supervisor, transferAbort);
@@ -749,6 +827,9 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   reconcileS4Lanes(runtime, supervisor, options.s4Hls ?? {});
   if (options.s5Collection !== undefined) {
     reconcileS5Executions(runtime, supervisor, options.s5Collection);
+  }
+  if (options.s6Collection !== undefined) {
+    reconcileS6Executions(runtime, supervisor, options.s6Collection);
   }
   return runtime;
 }

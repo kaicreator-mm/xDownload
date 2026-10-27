@@ -97,6 +97,43 @@
         <div id="s5-batch-result" class="state UNKNOWN" aria-live="polite"></div>
       </div>
     </section>
+    <section id="s6-collection" hidden>
+      <p class="label">
+        S6 explicit playlist/gallery: name the collection, confirm the exact finite page range, let
+        Core freeze the admission, walk only the declared pages, and confirm the members for the
+        Core batch download. Core itself downloads every confirmed member and renders a truthful
+        coverage terminal (the declared range is the only navigation bound; budget exhaustion is
+        never called a complete collection).
+      </p>
+      <label class="label"
+        >Collection identity (e.g. playlist/my-list)
+        <input id="s6-identity" type="text" placeholder="playlist/my-list" />
+      </label>
+      <label class="label"
+        >Kind
+        <select id="s6-kind">
+          <option value="playlist">playlist</option>
+          <option value="gallery">gallery</option>
+        </select>
+      </label>
+      <label class="label"
+        >Page range (1-based, inclusive; from ≤ to)
+        <input id="s6-from" type="text" value="1" />
+        <input id="s6-to" type="text" value="1" />
+      </label>
+      <button id="s6-prepare" type="button">Prepare S6 collection admission</button>
+      <div id="s6-prepare-result" class="state UNKNOWN" aria-live="polite"></div>
+      <div id="s6-walk" hidden>
+        <p class="label">
+          Core-frozen page members (verbatim Core identities; uncheck any member you do not want).
+        </p>
+        <ul id="s6-members"></ul>
+        <button id="s6-next-page" type="button">Admit &amp; walk next declared page</button>
+        <button id="s6-confirm" type="button">Confirm selected collection members</button>
+        <button id="s6-execute" type="button" disabled>Download confirmed collection</button>
+        <div id="s6-batch-result" class="state UNKNOWN" aria-live="polite"></div>
+      </div>
+    </section>
     <div id="state" class="state UNKNOWN">Scanning the current page…</div>
     <script src="popup.js"></script>
   </body>

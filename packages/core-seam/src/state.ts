@@ -157,6 +157,37 @@ export interface LineageState {
    * restart reconcile — never writable by any surface command).
    */
   s5MemberOutcomes?: readonly S5MemberOutcomeRecord[];
+  /**
+   * #154 the Core-owned frozen S6 collection admission (one per lineage; the
+   * PREPARE_S6_COLLECTION intent is journaled). Identical re-prepare
+   * converges; a conflicting tuple under the same lineage rejects (a changed
+   * collection/scope requires a successor contract).
+   */
+  s6PreparedCollection?: S6PreparedCollectionRecord;
+  /**
+   * #154 the Core-frozen observed collection pages (one record per recorded
+   * page, in ascending page order; each RECORD intent is journaled). A page
+   * outside the declared range or out of sequence is rejected at the gate;
+   * the walk never widens the declared bounds.
+   */
+  s6Pages?: readonly S6PageRecord[];
+  /** #154 durably confirmed S6 collection selection (exactly one per lineage). */
+  s6ConfirmedCollection?: S6ConfirmedCollectionRecord;
+  /**
+   * #154 pages whose navigation intent was durably admitted (journaled
+   * ADMIT_S6_COLLECTION_PAGE acceptances; replay rebuilds the set). The
+   * first declared page needs no admit (it is the prepared collectionPageUrl
+   * itself); every later page must be admitted BEFORE the browser navigates,
+   * bound to the EXACT approved next-page URL (R1 P1-01) — RECORD verifies
+   * the actually observed page URL against it.
+   */
+  s6AdmittedPages?: readonly { readonly pageNumber: number; readonly nextPageUrl: string }[];
+  /**
+   * #154 Core-internal per-member S6 outcomes (Core-derived only; set by the
+   * S6 execution driver alongside the lineage terminal, rebuilt by restart
+   * reconcile — never writable by any surface command).
+   */
+  s6MemberOutcomes?: readonly S6MemberOutcomeRecord[];
   /** Original failed-member identity domain (the only legal retry domain, C12). */
   failedMembers: MemberId[];
   /** Members whose explicit retry has been authorized through the seam. */
@@ -284,6 +315,12 @@ export interface SeamAuthorityState {
    * from journal replay, awaiting/under runtime drive through the S5 flow.
    */
   readonly s5ExecutionIntents: Map<string, S5ExecutionIntent>;
+  /**
+   * #154 registered S6 explicit-collection execution intents (one per
+   * lineage): the durably journaled EXECUTE_S6_COLLECTION commands, rebuilt
+   * from journal replay, awaiting/under runtime drive through the S6 flow.
+   */
+  readonly s6ExecutionIntents: Map<string, S6ExecutionIntent>;
   /** Monotonic counter implementing the single Core control order for cancels. */
   cancelOrderCounter: number;
 }
@@ -363,6 +400,95 @@ export interface S5ExecutionIntent {
   readonly prepared: S5PreparedGroupRecord;
 }
 
+/**
+ * #154 the Core-owned frozen S6 collection admission record (the journaled
+ * PREPARE_S6_COLLECTION record). The explicit CollectionIdentity, the
+ * user-confirmed finite page range and the observation provenance are
+ * immutable truth: the declared range is the ONLY navigation bound (the
+ * frozen validateScopeContinuationPair requires continuationScope NONE for
+ * collection_page_range), and every page/member record must name THIS
+ * prepare. A browser can never mint this record — only the OS-verified
+ * PREPARE handler can.
+ */
+export interface S6PreparedCollectionRecord {
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly collectionOrigin: string;
+  /**
+   * The exact canonical URL of the collection page the prepare was observed
+   * on — the frozen identity of declared-range page 1 (R1 P1-01): page-1
+   * RECORD must observe exactly this URL.
+   */
+  readonly collectionPageUrl: string;
+  readonly provenanceKey: string;
+  readonly collectionIdentity: string;
+  readonly fromPage: number;
+  readonly toPage: number;
+  readonly observedTupleDigest: string;
+  readonly status: 'AVAILABLE';
+  readonly preparedAt: string;
+}
+
+/**
+ * #154 one Core-frozen observed collection page (the journaled
+ * RECORD_S6_COLLECTION_PAGE record). Core mints the member identities; the
+ * observed member tuple digest is pinned for replay validation. pageUrl is
+ * the actually observed page location, verified against the prepare
+ * (first page) / the durable admit (later pages) before freezing.
+ */
+export interface S6PageRecord {
+  readonly pageNumber: number;
+  /** Core-minted immutable member identities joined to observed anchor facts. */
+  readonly members: readonly {
+    readonly memberId: string;
+    readonly href: string;
+    readonly text: string;
+  }[];
+  readonly pageUrl: string;
+  readonly observedTupleDigest: string;
+  readonly recordedAt: string;
+}
+
+/**
+ * #154 the Core-constructed confirmed S6 collection selection (the secret-
+ * free journaled CONFIRM_S6_COLLECTION COMMIT record). Core alone mints the
+ * CONFIRMED contract and the BATCH selection snapshot over the frozen page
+ * members; the raw confirmation challenge never reaches durable state.
+ */
+export interface S6ConfirmedCollectionRecord {
+  readonly confirmedGroupId: string;
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly selectedMemberIds: readonly string[];
+  readonly displayedTupleDigest: string;
+  readonly contract: AcquisitionContract;
+  readonly snapshot: SelectionSnapshot;
+  readonly confirmedAt: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * #154 Core-internal per-member S6 outcome as recorded by the execution
+ * driver (verbatim truth from the collection flow; presentation only).
+ */
+export interface S6MemberOutcomeRecord {
+  readonly memberId: string;
+  readonly href: string;
+  readonly outcome: 'ACQUIRED' | 'AUTH_DENIED' | 'NOT_RUN';
+  readonly accepted: boolean;
+  readonly detail: string;
+}
+
+/** #154 one registered S6 collection execution intent (rebuilt from journal). */
+export interface S6ExecutionIntent {
+  readonly aggregateId: string;
+  readonly requestId: string;
+  readonly confirmed: S6ConfirmedCollectionRecord;
+  readonly prepared: S6PreparedCollectionRecord;
+  /** The frozen observed pages this execution delivers from (range order). */
+  readonly pages: readonly S6PageRecord[];
+}
+
 export function createSeamAuthorityState(): SeamAuthorityState {
   return {
     aggregates: new Map(),
@@ -371,6 +497,7 @@ export function createSeamAuthorityState(): SeamAuthorityState {
     s3ExecutionIntents: new Map(),
     s4ExecutionIntents: new Map(),
     s5ExecutionIntents: new Map(),
+    s6ExecutionIntents: new Map(),
     cancelOrderCounter: 0,
   };
 }

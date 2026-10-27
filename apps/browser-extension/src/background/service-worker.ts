@@ -48,6 +48,8 @@ import {
 } from './s2-glue.ts';
 import { decodeS5PageGroupGesture, isS5PageGroupGesture } from './s5-group-intent.ts';
 import { decodeS5BatchMessage, isS5BatchMessageKind } from './s5-batch.ts';
+import { decodeS6CollectionGesture, isS6CollectionGesture } from './s6-collection-intent.ts';
+import { decodeS6BatchMessage, isS6BatchMessageKind } from './s6-collection-batch.ts';
 
 /**
  * Module-scoped ambient surface for the browser fetch used by the byte lane
@@ -665,13 +667,389 @@ async function s5RefreshStatus(contractId: string): Promise<void> {
   }
 }
 
+// ------------------------------------------------------------- S6 journeys
+
+/**
+ * SW-lifetime S6 collection journey registry (durable truth stays in Core;
+ * the popup polls this for phase/coverage rendering, and a fresh worker
+ * answers UNKNOWN truthfully — the Core projection remains reachable through
+ * a new S6_GROUP_STATUS round trip).
+ */
+interface S6JourneyState {
+  readonly contractId: string;
+  status: 'PREPARE' | 'WALK' | 'CONFIRM' | 'EXECUTE' | 'TERMINAL' | 'FAILED';
+  phase?: string;
+  facts?: unknown;
+  failure?: { readonly stage: string; readonly detail: string };
+}
+
+const s6Journeys = new Map<string, S6JourneyState>();
+
+/**
+ * R1 P2-02: the anchored action popup auto-dismisses whenever browser focus
+ * moves (official Chrome popup lifecycle), which mid-walk would orphan the
+ * journey state held only in the popup closure. The MINIMUM workflow state
+ * (the active journey's contract id) therefore persists in the existing
+ * worker across SW restarts via the session store; everything else is
+ * restored FROM CORE (the verbatim projection facts carried on the journey),
+ * never from popup memory.
+ */
+const S6_ACTIVE_JOURNEY_KEY = 's6ActiveJourneyContractId';
+
+async function persistActiveS6Journey(journey: S6JourneyState): Promise<void> {
+  try {
+    if (journey.status === 'TERMINAL' || journey.status === 'FAILED') {
+      const stored = await chrome.storage.session.get(S6_ACTIVE_JOURNEY_KEY);
+      if (stored[S6_ACTIVE_JOURNEY_KEY] === journey.contractId) {
+        await chrome.storage.session.remove(S6_ACTIVE_JOURNEY_KEY);
+      }
+      return;
+    }
+    await chrome.storage.session.set({ [S6_ACTIVE_JOURNEY_KEY]: journey.contractId });
+  } catch {
+    // Persistence is best-effort resilience; the journey itself is durable
+    // in Core and every phase fails closed without it.
+  }
+}
+
+function rememberS6Journey(journey: S6JourneyState): void {
+  s6Journeys.set(journey.contractId, journey);
+  void persistActiveS6Journey(journey);
+  while (s6Journeys.size > 64) {
+    const oldest = s6Journeys.keys().next();
+    if (oldest.done === true) {
+      break;
+    }
+    s6Journeys.delete(oldest.value);
+  }
+}
+
+/**
+ * R1 P2-02: the newest non-terminal S6 journey across worker restarts —
+ * memory first, session store second (a fresh worker's memory is empty but
+ * the store survives within the browser session). The caller restores the
+ * workflow view from the returned journey's verbatim Core facts.
+ */
+async function newestActiveS6Journey(): Promise<S6JourneyState | undefined> {
+  const activeInMemory = [...s6Journeys.values()]
+    .reverse()
+    .find((journey) => journey.status !== 'TERMINAL' && journey.status !== 'FAILED');
+  if (activeInMemory !== undefined) {
+    return activeInMemory;
+  }
+  try {
+    const stored = await chrome.storage.session.get(S6_ACTIVE_JOURNEY_KEY);
+    const contractId = stored[S6_ACTIVE_JOURNEY_KEY];
+    if (typeof contractId === 'string') {
+      const storedJourney = s6Journeys.get(contractId);
+      if (storedJourney !== undefined) {
+        return storedJourney;
+      }
+      // A fresh worker: rehydrate the journey shell from Core via a status
+      // round trip, then keep answering from memory.
+      await s6RefreshStatus(contractId);
+      const rehydrated = s6Journeys.get(contractId);
+      if (
+        rehydrated !== undefined &&
+        rehydrated.status !== 'TERMINAL' &&
+        rehydrated.status !== 'FAILED'
+      ) {
+        return rehydrated;
+      }
+    }
+  } catch {
+    // Storage unavailable — answer truthfully from memory only.
+  }
+  return undefined;
+}
+
+/** Verbatim S6 lane frame → one typed fact bundle (the S5 discipline). */
+function s6NmResponse(
+  response: Record<string, unknown>,
+): { ok: true; phase: string; facts: Record<string, unknown> } | { ok: false; error: string } {
+  if (response['kind'] === 'S6_RESULT') {
+    return {
+      ok: true,
+      phase: typeof response['phase'] === 'string' ? response['phase'] : 'UNKNOWN',
+      facts: {
+        ...((response['facts'] as Record<string, unknown> | undefined) ?? {}),
+        ...(typeof response['contractId'] === 'string'
+          ? { contractId: response['contractId'] }
+          : {}),
+      },
+    };
+  }
+  const stage = typeof response['stage'] === 'string' ? response['stage'] : 'UNKNOWN';
+  const reasons = Array.isArray(response['reasons'])
+    ? (response['reasons'] as readonly { readonly message?: string }[])
+        .map((reason) => reason.message ?? '')
+        .join('; ')
+        .slice(0, 300)
+    : '';
+  if (response['kind'] === 'REJECTED' && stage === 'NATIVE_HOST') {
+    return { ok: false, error: 'S6_CORE_CARRIER_NOT_INSTALLED' };
+  }
+  return { ok: false, error: reasons || `S6 lane rejection at ${stage}` };
+}
+
+/** The #154 shipped collection flow: prepare → (bounded page walk) → confirm → execute. */
+async function runS6Prepare(gesture: {
+  readonly tabId: number;
+  readonly pageUrl: string;
+  readonly collectionIdentity: string;
+  readonly collectionKind: 'playlist' | 'gallery';
+  readonly fromPage: number;
+  readonly toPage: number;
+}): Promise<
+  { ok: true; contractId: string; facts: Record<string, unknown> } | { ok: false; error: string }
+> {
+  const response = s6NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S6_GROUP_PREPARE',
+      requestId: `s6prep-${Date.now().toString(36)}`,
+      s6: {
+        tabId: gesture.tabId,
+        pageUrl: gesture.pageUrl,
+        collectionIdentity: gesture.collectionIdentity,
+        collectionKind: gesture.collectionKind,
+        fromPage: gesture.fromPage,
+        toPage: gesture.toPage,
+      },
+    }),
+  );
+  if (!response.ok) {
+    return response;
+  }
+  const contractId =
+    typeof response.facts['contractId'] === 'string'
+      ? (response.facts['contractId'] as string)
+      : '';
+  if (contractId === '') {
+    return { ok: false, error: 'S6 lane returned no contract identity' };
+  }
+  rememberS6Journey({
+    contractId,
+    status: 'PREPARE',
+    phase: response.phase,
+    facts: response.facts,
+  });
+  return { ok: true, contractId, facts: response.facts };
+}
+
+async function runS6PageAdmit(message: {
+  readonly contractId: string;
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly pageNumber: number;
+  readonly nextPageUrl: string;
+}): Promise<{ ok: true; facts: Record<string, unknown> } | { ok: false; error: string }> {
+  const journey: S6JourneyState = s6Journeys.get(message.contractId) ?? {
+    contractId: message.contractId,
+    status: 'WALK',
+  };
+  journey.status = 'WALK';
+  rememberS6Journey(journey);
+  const response = s6NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S6_PAGE_ADMIT',
+      requestId: `s6admit-${Date.now().toString(36)}`,
+      s6: {
+        contractId: message.contractId,
+        prepareId: message.prepareId,
+        snapshotId: message.snapshotId,
+        pageNumber: message.pageNumber,
+        nextPageUrl: message.nextPageUrl,
+      },
+    }),
+  );
+  if (!response.ok) {
+    journey.status = 'FAILED';
+    journey.failure = { stage: 'PAGE_ADMIT', detail: response.error };
+    return response;
+  }
+  journey.phase = response.phase;
+  journey.facts = response.facts;
+  return { ok: true, facts: response.facts };
+}
+
+async function runS6PageRecord(message: {
+  readonly contractId: string;
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly pageNumber: number;
+  readonly members: readonly { readonly href: string; readonly text: string }[];
+  readonly pageUrl: string;
+}): Promise<{ ok: true; facts: Record<string, unknown> } | { ok: false; error: string }> {
+  const journey: S6JourneyState = s6Journeys.get(message.contractId) ?? {
+    contractId: message.contractId,
+    status: 'WALK',
+  };
+  journey.status = 'WALK';
+  rememberS6Journey(journey);
+  const response = s6NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S6_PAGE_RECORD',
+      requestId: `s6rec-${Date.now().toString(36)}`,
+      s6: {
+        contractId: message.contractId,
+        prepareId: message.prepareId,
+        snapshotId: message.snapshotId,
+        pageNumber: message.pageNumber,
+        members: message.members.map((member) => ({ href: member.href, text: member.text })),
+        pageUrl: message.pageUrl,
+      },
+    }),
+  );
+  if (!response.ok) {
+    journey.status = 'FAILED';
+    journey.failure = { stage: 'PAGE_RECORD', detail: response.error };
+    return response;
+  }
+  journey.phase = response.phase;
+  journey.facts = response.facts;
+  return { ok: true, facts: response.facts };
+}
+
+async function runS6Confirm(message: {
+  readonly contractId: string;
+  readonly prepareId: string;
+  readonly snapshotId: string;
+  readonly selectedMemberIds: readonly string[];
+}): Promise<void> {
+  const journey: S6JourneyState = s6Journeys.get(message.contractId) ?? {
+    contractId: message.contractId,
+    status: 'CONFIRM',
+  };
+  journey.status = 'CONFIRM';
+  rememberS6Journey(journey);
+  const response = s6NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S6_GROUP_CONFIRM',
+      requestId: `s6conf-${Date.now().toString(36)}`,
+      s6: {
+        contractId: message.contractId,
+        prepareId: message.prepareId,
+        snapshotId: message.snapshotId,
+        selectedMemberIds: [...message.selectedMemberIds],
+        decisionToken: `user-confirm:${message.contractId}`,
+      },
+    }),
+  );
+  if (response.ok) {
+    journey.phase = response.phase;
+    journey.facts = response.facts;
+    notify(
+      'xDownload S6 — collection confirmed',
+      `${String(response.facts['selectedMemberIds'] ?? []).length} members frozen by Core`,
+    );
+  } else {
+    journey.status = 'FAILED';
+    journey.failure = { stage: 'CONFIRM', detail: response.error };
+    notify('xDownload S6 — confirmation refused', response.error);
+  }
+}
+
+async function runS6Execute(message: {
+  readonly contractId: string;
+  readonly confirmedGroupId: string;
+  readonly snapshotId: string;
+}): Promise<void> {
+  const journey: S6JourneyState = s6Journeys.get(message.contractId) ?? {
+    contractId: message.contractId,
+    status: 'EXECUTE',
+  };
+  journey.status = 'EXECUTE';
+  rememberS6Journey(journey);
+  const response = s6NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S6_GROUP_EXECUTE',
+      requestId: `s6exec-${Date.now().toString(36)}`,
+      s6: {
+        contractId: message.contractId,
+        confirmedGroupId: message.confirmedGroupId,
+        snapshotId: message.snapshotId,
+      },
+    }),
+  );
+  if (response.ok && (response.phase === 'TERMINAL' || response.phase === 'RUNNING')) {
+    journey.phase = response.phase;
+    journey.facts = response.facts;
+    if (response.phase === 'TERMINAL') {
+      const terminal = response.facts['terminal'] as Record<string, unknown> | null;
+      const fulfillment = terminal?.['requestFulfillment'] ?? 'UNKNOWN';
+      journey.status = 'TERMINAL';
+      notify(
+        fulfillment === 'COMPLETE'
+          ? 'xDownload S6 — collection complete'
+          : 'xDownload S6 — collection terminal (truthful)',
+        `Core terminal requestFulfillment: ${String(fulfillment)}`,
+      );
+    }
+  } else if (response.ok) {
+    journey.phase = response.phase;
+    journey.facts = response.facts;
+  } else {
+    journey.status = 'FAILED';
+    journey.failure = { stage: 'EXECUTE', detail: response.error };
+    notify('xDownload S6 — execution refused', response.error);
+  }
+}
+
+async function s6RefreshStatus(contractId: string): Promise<void> {
+  const response = s6NmResponse(
+    await s5NmRoundTrip({
+      kind: 'S6_GROUP_STATUS',
+      requestId: `s6stat-${Date.now().toString(36)}`,
+      s6: { contractId },
+    }),
+  );
+  // A cold service worker has no local phase; derive it from Core's
+  // durable projection rather than pretending an unexecuted walk is EXECUTE.
+  if (!response.ok) return;
+  const previous = s6Journeys.get(contractId);
+  const facts = response.facts;
+  const status: S6JourneyState['status'] =
+    (facts['terminal'] !== null && facts['terminal'] !== undefined) ||
+    facts['lineageStatus'] === 'CANCELLED' ||
+    facts['lineageStatus'] === 'TERMINAL'
+      ? 'TERMINAL'
+      : previous?.status === 'EXECUTE'
+        ? 'EXECUTE'
+        : facts['confirmed'] !== null && facts['confirmed'] !== undefined
+          ? 'CONFIRM'
+          : Array.isArray(facts['pages']) && facts['pages'].length > 0
+            ? 'WALK'
+            : facts['prepared'] !== null && facts['prepared'] !== undefined
+              ? 'PREPARE'
+              : 'FAILED';
+  const journey: S6JourneyState = previous ?? { contractId, status };
+  journey.status = status;
+  journey.phase = response.phase;
+  journey.facts = facts;
+  if (status === 'FAILED') {
+    journey.failure = {
+      stage: 'STATUS',
+      detail: 'Core returned no durable S6 preparation or terminal for this contract',
+    };
+  }
+  rememberS6Journey(journey);
+}
+
 // ------------------------------------------------------------- entrypoints
 
 chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
   // Extension-internal boundary: only this extension's own pages (the action
   // popup) may submit an explicit S2 selection decision or poll journey
   // status. Content scripts and any other sender can never reach the journey.
-  if (sender.id === chrome.runtime.id && sender.tab === undefined) {
+  if (
+    sender.id === chrome.runtime.id &&
+    // Extension-internal senders are the popup page(s) — including a popup
+    // opened in its own extension-owned window, whose sender carries a tab.
+    // Content scripts (page-origin sender.url) stay excluded: only an
+    // extension page may submit an explicit journey decision.
+    (sender.tab === undefined ||
+      (typeof sender.url === 'string' && sender.url.startsWith(chrome.runtime.getURL('/'))))
+  ) {
     // #152 shipped S5 batch flow: the popup gesture is browser-observed
     // only. The worker routes it to the installed Core S5 carrier through
     // Native Messaging — the frozen members, confirmation and per-member
@@ -711,6 +1089,93 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
         const journey = s5Journeys.get(message.contractId);
         if (journey === undefined) {
           sendResponse({ ok: false, error: 'S5_JOURNEY_UNKNOWN_TO_WORKER' });
+          return;
+        }
+        if (journey.status === 'FAILED') {
+          sendResponse({ ok: false, error: journey.failure?.detail ?? 'unknown failure' });
+          return;
+        }
+        sendResponse({
+          ok: true,
+          status: journey.status,
+          phase: journey.phase,
+          facts: journey.facts,
+        });
+      })();
+      return true;
+    }
+    // #154 shipped S6 collection flow: the popup gestures are browser-observed
+    // only. The worker routes them to the installed Core S6 carrier through
+    // Native Messaging — the frozen admission, page records, confirmation,
+    // per-member outcomes and the coverage terminal all come back as verbatim
+    // Core projection facts, never derived here. Every phase fails closed
+    // when the carrier is absent, and the declared page range is frozen by
+    // Core before any navigation effect.
+    if (isS6CollectionGesture(raw)) {
+      const prepared = decodeS6CollectionGesture(raw);
+      if (!prepared.ok) {
+        sendResponse({ ok: false, error: prepared.detail });
+        return false;
+      }
+      void (async () => {
+        const outcome = await runS6Prepare(prepared.value);
+        if (!outcome.ok) {
+          sendResponse({ ok: false, error: outcome.error });
+          return;
+        }
+        sendResponse({ ok: true, contractId: outcome.contractId, facts: outcome.facts });
+      })();
+      return true;
+    }
+    if (isS6BatchMessageKind(raw)) {
+      const decoded = decodeS6BatchMessage(raw);
+      if (!decoded.ok) {
+        sendResponse({ ok: false, error: decoded.detail });
+        return false;
+      }
+      const message = decoded.value;
+      void (async () => {
+        // R1 P2-02: the reopened popup asks for the newest non-terminal
+        // journey and restores its view from the returned verbatim Core
+        // facts (prepared/pages/confirmed) — never from popup memory.
+        if (message.kind === 'S6_ACTIVE_COLLECTION_QUERY') {
+          const journey = await newestActiveS6Journey();
+          if (journey === undefined) {
+            sendResponse({ ok: true, journey: null });
+            return;
+          }
+          await s6RefreshStatus(journey.contractId);
+          const refreshed = s6Journeys.get(journey.contractId);
+          sendResponse({
+            ok: true,
+            journey: refreshed ?? journey,
+          });
+          return;
+        }
+        if (message.kind === 'S6_PAGE_ADMIT') {
+          const outcome = await runS6PageAdmit(message);
+          sendResponse(
+            outcome.ok ? { ok: true, facts: outcome.facts } : { ok: false, error: outcome.error },
+          );
+          return;
+        }
+        if (message.kind === 'S6_PAGE_RECORD') {
+          const outcome = await runS6PageRecord(message);
+          sendResponse(
+            outcome.ok ? { ok: true, facts: outcome.facts } : { ok: false, error: outcome.error },
+          );
+          return;
+        }
+        if (message.kind === 'S6_CONFIRM_COLLECTION') {
+          await runS6Confirm(message);
+        } else if (message.kind === 'S6_EXECUTE_COLLECTION') {
+          await runS6Execute(message);
+        } else {
+          await s6RefreshStatus(message.contractId);
+        }
+        const journey = s6Journeys.get(message.contractId);
+        if (journey === undefined) {
+          sendResponse({ ok: false, error: 'S6_JOURNEY_UNKNOWN_TO_WORKER' });
           return;
         }
         if (journey.status === 'FAILED') {

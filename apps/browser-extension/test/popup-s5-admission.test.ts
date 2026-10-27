@@ -61,6 +61,12 @@ function startPopup(
     changed?: boolean;
     staleMembers?: boolean;
     respond?: (payload: { kind: string }) => unknown;
+    s6Scan?: {
+      links: { href: string; text: string }[];
+      observedCount: number;
+      nextPageHref?: string;
+      pageUrl?: string;
+    };
   } = {},
 ) {
   const ids = [
@@ -75,6 +81,19 @@ function startPopup(
     's5-confirm',
     's5-execute',
     's5-batch-result',
+    's6-collection',
+    's6-identity',
+    's6-kind',
+    's6-from',
+    's6-to',
+    's6-prepare',
+    's6-prepare-result',
+    's6-walk',
+    's6-members',
+    's6-next-page',
+    's6-confirm',
+    's6-execute',
+    's6-batch-result',
   ];
   const nodes = Object.fromEntries(ids.map((id) => [id, makeNode()])) as Record<string, StubNode>;
   const links = LINKS;
@@ -103,6 +122,18 @@ function startPopup(
       scripting: {
         executeScript: async () => {
           scans += 1;
+          if (options.s6Scan && scans > 1) {
+            return [
+              {
+                result: {
+                  links: options.s6Scan.links,
+                  observedCount: options.s6Scan.observedCount,
+                  nextPageHref: options.s6Scan.nextPageHref ?? null,
+                  pageUrl: options.s6Scan.pageUrl ?? tab.url,
+                },
+              },
+            ];
+          }
           return [
             {
               result: {
@@ -132,6 +163,11 @@ async function ready(nodes: Record<string, StubNode>) {
   await vi.waitFor(() => expect(nodes['attachments']!.children.length).toBe(2));
 }
 
+/** R1 P2-02: the popup's S6 restore query on open is not an S5 gesture. */
+function s5Gestures(sent: readonly { kind: string }[]): readonly { kind: string }[] {
+  return sent.filter((message) => message.kind !== 'S6_ACTIVE_COLLECTION_QUERY');
+}
+
 describe('#152 packaged S5 popup -> worker gesture (Core carrier absent)', () => {
   it('sends one bounded full-page gesture and renders the truthful lane refusal', async () => {
     const { nodes, sent } = startPopup();
@@ -139,8 +175,8 @@ describe('#152 packaged S5 popup -> worker gesture (Core carrier absent)', () =>
     const list = nodes['attachments']!;
     expect(list.children.length).toBe(2);
     await nodes['s5-prepare']!.handlers['click']!();
-    expect(sent).toHaveLength(1);
-    expect(decodeS5PageGroupGesture(sent[0]).ok).toBe(true);
+    expect(s5Gestures(sent)).toHaveLength(1);
+    expect(decodeS5PageGroupGesture(s5Gestures(sent)[0]).ok).toBe(true);
     expect(nodes['s5-preview-result']!.textContent).toContain('S5_CORE_CARRIER_NOT_INSTALLED');
     expect(nodes['s5-prepare']!.disabled).toBe(false);
     // No frozen-member rows were fabricated without Core facts.
@@ -152,7 +188,7 @@ describe('#152 packaged S5 popup -> worker gesture (Core carrier absent)', () =>
       const { nodes, sent } = startPopup(scenario);
       await ready(nodes);
       await nodes['s5-prepare']!.handlers['click']!();
-      expect(sent).toHaveLength(0);
+      expect(s5Gestures(sent)).toHaveLength(0);
       expect(nodes['s5-preview-result']!.textContent).toMatch(/refused|changed/iu);
     }
   });
@@ -215,7 +251,7 @@ describe('#152 packaged S5 popup -> installed batch flow', () => {
     const { nodes, sent } = startPopup({ respond: installedResponses });
     await ready(nodes);
     await nodes['s5-prepare']!.handlers['click']!();
-    expect(sent).toHaveLength(1);
+    expect(s5Gestures(sent)).toHaveLength(1);
     const frozen = nodes['s5-frozen']!;
     expect(frozen.children).toHaveLength(2);
     expect(nodes['s5-batch']!.hidden).toBe(false);
@@ -238,16 +274,16 @@ describe('#152 packaged S5 popup -> installed batch flow', () => {
       return [a, b];
     };
     await nodes['s5-confirm']!.handlers['click']!();
-    expect(sent).toHaveLength(2);
-    expect(sent[1]).toMatchObject({
+    expect(s5Gestures(sent)).toHaveLength(2);
+    expect(s5Gestures(sent)[1]).toMatchObject({
       kind: 'S5_CONFIRM_GROUP',
       contractId: 'contract-s5-installed-001',
       selectedMemberIds: FROZEN_MEMBERS.map((member) => member.memberId),
     });
     expect(nodes['s5-execute']!.disabled).toBe(false);
     await nodes['s5-execute']!.handlers['click']!();
-    expect(sent).toHaveLength(3);
-    expect(sent[2]).toMatchObject({
+    expect(s5Gestures(sent)).toHaveLength(3);
+    expect(s5Gestures(sent)[2]).toMatchObject({
       kind: 'S5_EXECUTE_GROUP',
       confirmedGroupId: 's5group:contract-s5-installed-001:snapshot-s5-001',
     });
@@ -275,5 +311,153 @@ describe('#152 packaged S5 popup -> installed batch flow', () => {
     await nodes['s5-confirm']!.handlers['click']!();
     expect(nodes['s5-batch-result']!.textContent).toContain('Core refused the confirmation');
     expect(nodes['s5-execute']!.disabled).toBe(true);
+  });
+});
+
+describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
+  it('refuses to record a truncated declared page and never forwards it to Core', async () => {
+    const twenty = Array.from({ length: 20 }, (_unused, index) => ({
+      href: `https://publisher.example.org/s6-file-${String(index)}.mp4`,
+      text: `F${String(index)}`,
+    }));
+    const { nodes, sent } = startPopup({
+      s6Scan: {
+        links: twenty,
+        observedCount: 21,
+        nextPageHref: 'https://publisher.example.org/list.html?p=2',
+        pageUrl: 'https://publisher.example.org/list.html',
+      },
+      respond: (payload) => {
+        if (payload.kind === 'S6_ACTIVE_COLLECTION_QUERY') {
+          return { ok: true, journey: null };
+        }
+        if (payload.kind === 'S6_PREPARE_COLLECTION') {
+          return {
+            ok: true,
+            contractId: 'contract-s6-truncated',
+            facts: {
+              prepareId: 's6prepare:contract-s6-truncated:snapshot-s6-truncated',
+              snapshotId: 'snapshot-s6-truncated',
+              collectionPageUrl: 'https://publisher.example.org/list.html',
+              fromPage: 1,
+              toPage: 2,
+              observedTupleDigest: 'c'.repeat(64),
+            },
+          };
+        }
+        return { ok: false, error: 'S6_CORE_CARRIER_NOT_INSTALLED' };
+      },
+    });
+    await ready(nodes);
+    nodes['s6-identity']!.value = 'playlist/truncated';
+    nodes['s6-kind']!.value = 'playlist';
+    nodes['s6-from']!.value = '1';
+    nodes['s6-to']!.value = '2';
+    await nodes['s6-prepare']!.handlers['click']!();
+    await vi.waitFor(() =>
+      expect(sent.some((message) => message.kind === 'S6_PREPARE_COLLECTION')).toBe(true),
+    );
+    // The 21-anchor page is a TRUNCATED observation: the popup must stop
+    // truthfully BEFORE any RECORD reaches Core — a truncated page can never
+    // become a full requested-scope or VERIFIED_COMPLETE claim.
+    await vi.waitFor(() => {
+      expect(nodes['s6-batch-result']!.textContent).toContain('truncated');
+    });
+    expect(sent.some((message) => message.kind === 'S6_PAGE_RECORD')).toBe(false);
+  });
+
+  it('refuses a fromPage greater than 1 truthfully (R1 P2-01)', async () => {
+    const { nodes, sent } = startPopup({
+      respond: (payload) => {
+        if (payload.kind === 'S6_ACTIVE_COLLECTION_QUERY') {
+          return { ok: true, journey: null };
+        }
+        return { ok: false, error: 'S6_CORE_CARRIER_NOT_INSTALLED' };
+      },
+    });
+    await ready(nodes);
+    nodes['s6-identity']!.value = 'playlist/late-start';
+    nodes['s6-kind']!.value = 'playlist';
+    nodes['s6-from']!.value = '2';
+    nodes['s6-to']!.value = '3';
+    await nodes['s6-prepare']!.handlers['click']!();
+    await vi.waitFor(() => {
+      expect(nodes['s6-prepare-result']!.textContent).toContain('fromPage must be 1');
+    });
+    expect(sent.some((message) => message.kind === 'S6_PREPARE_COLLECTION')).toBe(false);
+  });
+});
+
+describe('#154 S6 reopened popup recovery (R2 P1)', () => {
+  const contractId = 'contract-s6-restored';
+  const pageUrl = 'https://publisher.example.org/list.html';
+  const nextUrl = 'https://publisher.example.org/playlist/page-2';
+  const coreFacts = {
+    prepared: {
+      prepareId: 's6prepare:contract-s6-restored:snapshot-s6-restored',
+      snapshotId: 'snapshot-s6-restored',
+      collectionOrigin: 'https://publisher.example.org',
+      collectionPageUrl: pageUrl,
+      fromPage: 1,
+      toPage: 2,
+    },
+    pages: [
+      {
+        pageNumber: 1,
+        pageUrl,
+        members: [{ memberId: 's6member-001', href: LINKS[0]!.href, text: 'A' }],
+      },
+    ],
+    confirmed: null,
+  };
+
+  it('requests the active journey and re-scans its recorded page to recover the next link', async () => {
+    const { nodes, sent } = startPopup({
+      s6Scan: {
+        links: [LINKS[0]!],
+        observedCount: 1,
+        nextPageHref: nextUrl,
+        pageUrl,
+      },
+      respond: (message) =>
+        message.kind === 'S6_ACTIVE_COLLECTION_QUERY'
+          ? { ok: true, journey: { contractId, status: 'WALK', facts: coreFacts } }
+          : { ok: false, error: 'unexpected' },
+    });
+    await ready(nodes);
+    await vi.waitFor(() => {
+      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey');
+      expect(nodes['s6-next-page']!.disabled).toBe(false);
+    });
+    expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
+    expect(nodes['s6-members']!.children).toHaveLength(1);
+  });
+
+  it('refuses to restore a next link on another origin before Core admission', async () => {
+    const { nodes, sent } = startPopup({
+      s6Scan: {
+        links: [LINKS[0]!],
+        observedCount: 1,
+        nextPageHref: 'https://unrelated.example/playlist/page-2',
+        pageUrl,
+      },
+      respond: (message) =>
+        message.kind === 'S6_ACTIVE_COLLECTION_QUERY'
+          ? { ok: true, journey: { contractId, status: 'WALK', facts: coreFacts } }
+          : { ok: false, error: 'unexpected' },
+    });
+    await ready(nodes);
+    await vi.waitFor(() =>
+      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey'),
+    );
+    expect(nodes['s6-next-page']!.disabled).toBe(true);
+    expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
+  });
+
+  it('declares the minimal storage permission needed for worker session recovery', () => {
+    const manifestPath = new URL('../manifest.json', import.meta.url);
+    const manifestText = readFileSync(manifestPath, 'utf8');
+    const manifest = JSON.parse(manifestText) as { permissions?: string[] };
+    expect(manifest.permissions).toContain('storage');
   });
 });

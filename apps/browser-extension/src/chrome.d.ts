@@ -13,6 +13,7 @@ declare const chrome: {
   runtime: {
     /** This extension's own id (internal-message boundary check). */
     readonly id: string;
+    getURL(path: string): string;
     sendMessage(message: unknown): void;
     onMessage: {
       addListener(
@@ -21,6 +22,8 @@ declare const chrome: {
           sender: {
             readonly id?: string;
             readonly tab?: { readonly id?: number };
+            /** Origin URL of the sending context (extension page vs page-embedded script). */
+            readonly url?: string;
           },
           sendResponse: (response: unknown) => void,
         ) => boolean | void,
@@ -37,6 +40,14 @@ declare const chrome: {
       onDisconnect: {
         addListener(listener: () => void): void;
       };
+    };
+  };
+  /** R1 P2-02: session-scoped persistence of the active S6 journey id. */
+  storage: {
+    session: {
+      get(keys: string): Promise<Record<string, unknown>>;
+      set(items: Record<string, unknown>): Promise<void>;
+      remove(keys: string): Promise<void>;
     };
   };
   tabs: {
