@@ -388,7 +388,6 @@ describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
   });
 });
 
-
 describe('#154 S6 reopened popup recovery (R2 P1)', () => {
   const contractId = 'contract-s6-restored';
   const pageUrl = 'https://publisher.example.org/list.html';
@@ -406,9 +405,7 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
       {
         pageNumber: 1,
         pageUrl,
-        members: [
-          { memberId: 's6member-001', href: LINKS[0]!.href, text: 'A' },
-        ],
+        members: [{ memberId: 's6member-001', href: LINKS[0]!.href, text: 'A' }],
       },
     ],
     confirmed: null,
@@ -458,9 +455,9 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
   });
 
   it('declares the minimal storage permission needed for worker session recovery', () => {
-    const manifest = JSON.parse(
-      readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'),
-    ) as { permissions?: string[] };
+    const manifestPath = new URL('../manifest.json', import.meta.url);
+    const manifestText = readFileSync(manifestPath, 'utf8');
+    const manifest = JSON.parse(manifestText) as { permissions?: string[] };
     expect(manifest.permissions).toContain('storage');
   });
 });
