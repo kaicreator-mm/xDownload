@@ -18,8 +18,16 @@ import { join, resolve } from "node:path";
 import { error as consoleError, log as consoleLog } from "node:console";
 import process from "node:process";
 
+const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+
 const SDK_COMMIT = "061376f4a023070f215f9feffad5c24d96d503cb";
-const PACKAGES = ["contracts", "microkernel", "host-node"];
+// name → repo-relative package dir (the build producer lives under tooling/).
+const PACKAGES = [
+  ["contracts", "packages/contracts"],
+  ["microkernel", "packages/microkernel"],
+  ["host-node", "packages/host-node"],
+  ["build", "tooling/build"],
+];
 
 const checkout = process.argv[2];
 if (!checkout) {
@@ -43,11 +51,12 @@ const outDir = resolve("evidence", "e01-sdk-pack");
 mkdirSync(outDir, { recursive: true });
 
 const hashes = {};
-for (const pkg of PACKAGES) {
-  const pkgDir = join(repo, "packages", pkg);
-  execFileSync("npm", ["pack", "--pack-destination", outDir], {
+for (const [pkg, dir] of PACKAGES) {
+  const pkgDir = join(repo, dir);
+  execFileSync(npmBin, ["pack", "--pack-destination", outDir], {
     cwd: pkgDir,
     stdio: ["ignore", "ignore", "inherit"],
+    shell: process.platform === "win32",
   });
 }
 for (const f of readdirSync(outDir)) {
