@@ -1,12 +1,12 @@
 # xDownload v0.2.0 — Candidate Task Packs (ADS v4.18)
 
-STATUS=PLANNED_NOT_FROZEN
+STATUS=FROZEN_R1 (packs executable only via their own Task Issues + accepted JIT Claims; no claim is granted by this text)
 WORK_ITEM=#188
-PROJECT_PRODUCT=docs/planning/v0.2.0/PRODUCT_R0.md (NOT_FROZEN)
-PROJECT_L2=docs/architecture/v0.2.0/L2_R0.md (NOT_FROZEN)
-SCAFFOLD=docs/planning/v0.2.0/SCAFFOLD_R0.md (NOT_ACCEPTED_SOURCE)
+PROJECT_PRODUCT=docs/planning/v0.2.0/PRODUCT_R0.md (FROZEN R1)
+PROJECT_L2=docs/architecture/v0.2.0/L2_R0.md (FROZEN R1)
+SCAFFOLD=docs/planning/v0.2.0/SCAFFOLD_R0.md (FROZEN R1, structure-only)
 PLANNING_DAG=docs/implementation/v0.2.0/TASK_DAG_R0.md
-FUTURE_INTEGRATION_TARGET=version/v0.2.0 (NOT_CREATED)
+FUTURE_INTEGRATION_TARGET=version/v0.2.0 (TO BE CREATED FROM THE FREEZE MERGE)
 SDK=v0.10.3 frozen contract only; exact current SDK package proof at JIT
 
 These are durable **planning candidates** only, not issued implementation Claims, Execution Packs, release gate results or Task IDs mapped to canonical GitHub Issues. They become executable only after accepted Product/L2, scaffold/source authority, DAG Review/Freeze, Task Issue+native dependency materialization and current valid Claim. JIT baselines must be re-read; historical v0.1 research SHA does NOT authorize source writes.

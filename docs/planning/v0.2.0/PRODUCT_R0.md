@@ -1,6 +1,6 @@
-# xDownload v0.2.0 — Product/Scope R0 (candidate for independent review)
+# xDownload v0.2.0 — Product/Scope R0 (frozen R1)
 
-STATUS=REVIEW_CANDIDATE_NOT_FROZEN
+STATUS=FROZEN v0.2.0 R1 — receipt: docs/implementation/v0.2.0/FREEZE_RECEIPT_R1.md (freeze merge SHA recorded in #188 freeze receipt comment)
 OWNER_ISSUE=#188
 STANDARD=ADS 4.18.0@2c395c55569fe2edf3f4135f12d3d069e526d0b7
 PRODUCT_RELEASE_TARGET=v0.2.0
