@@ -25,23 +25,23 @@ flowchart LR
   T01 --> T03[03 Direct Host/C]
   T01 --> T04[04 S/Recipe]
   T01 --> T05[05 HLS Host/C]
-  T01 --> T06[07 CLI adapter]
-  T01 --> T07[08 Browser adapter]
-  T01 --> T08[09 Authority migration]
-  T01 --> T09[10 Validation fixtures]
-  T02 --> T10[11 Direct integration]
+  T01 --> T06[06 CLI adapter]
+  T01 --> T07[07 Browser adapter]
+  T01 --> T08[08 Authority migration]
+  T01 --> T09[09 Validation fixtures]
+  T02 --> T10[10 Direct integration]
   T03 --> T10
   T08 --> T10
-  T10 --> T11[12 Other journeys integration]
+  T10 --> T11[11 Other journeys integration]
   T04 --> T11
   T05 --> T11
   T07 --> T11
-  T10 --> T12[13 Central BUILD and packaging]
+  T10 --> T12[12 Central BUILD and packaging]
   T11 --> T12
   T06 --> T12
-  T09 --> T13[14 Independent product and platform validation]
+  T09 --> T13[13 Independent product and platform validation]
   T12 --> T13
-  T13 --> T14[15 Candidate/Hidden/Closure/RQ]
+  T13 --> T14[14 Candidate/Hidden/Closure/RQ]
 ```
 
 ## Coherent concern → Task mapping
