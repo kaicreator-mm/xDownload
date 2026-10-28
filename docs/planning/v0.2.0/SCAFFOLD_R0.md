@@ -19,36 +19,36 @@ The following is a bounded **overlay blueprint** only. Paths marked NEW are not 
 ```text
 xDownload/                                 # EXISTING pnpm Git monorepo
 ├── apps/
-│   ├── cli/                               # EXISTING; task T07 owns v0.2 adapter
-│   └── browser-extension/                 # EXISTING; task T08 owns v0.2 adapter
+│   ├── cli/                               # EXISTING; task T06 owns v0.2 adapter
+│   └── browser-extension/                 # EXISTING; task T07 owns v0.2 adapter
 ├── packages/
 │   ├── domain-contracts/                  # EXISTING canonical product DTO; T01 additive only if proven necessary
 │   ├── direct-acquisition/                # EXISTING transport engine; READ-ONLY reuse
 │   ├── hls-vod-adapter/                    # EXISTING; READ-ONLY reuse
 │   ├── discovery-recipe/                  # EXISTING; READ-ONLY reuse
 │   ├── ai-proposal/                       # EXISTING; READ-ONLY reuse
-│   ├── core-runtime/                      # EXISTING v0.1 authority; READ-ONLY until T09 migration plan
+│   ├── core-runtime/                      # EXISTING v0.1 authority; READ-ONLY until T08 migration plan
 │   ├── core-scheduler/                    # EXISTING; no second mutable writer
 │   ├── persistence-ledger/                # EXISTING; old lineage authority only
 │   ├── download-domain-app/               # NEW selected Domain App authoring
-│   │   ├── package.json                   # T13 exclusive packaging owner
+│   │   ├── package.json                   # T12 exclusive packaging owner
 │   │   ├── src/
 │   │   │   ├── contracts/                  # T01 typed intent/operation schema
 │   │   │   ├── business/                   # T02 K-governed B policy
 │   │   │   ├── semantic/                   # T04 recipe/advisory S
-│   │   │   ├── migration/                  # T09 lineage authority decision
-│   │   │   ├── composition/                # T11 S1 direct application join
-│   │   │   ├── integrations/               # T12 non-direct convergence
-│   │   │   └── index.ts                    # T13 exclusive public facade export
-│   │   └── README.md                       # T13 packaged behavior, not fake release
+│   │   │   ├── migration/                  # T08 lineage authority decision
+│   │   │   ├── composition/                # T10 S1 direct application join
+│   │   │   ├── integrations/               # T11 non-direct convergence
+│   │   │   └── index.ts                    # T12 exclusive public facade export
+│   │   └── README.md                       # T12 packaged behavior, not fake release
 │   └── download-domain-host/              # NEW Host/C adapter
-│       ├── package.json                   # T13 exclusive package/BUILD owner
+│       ├── package.json                   # T12 exclusive package/BUILD owner
 │       └── src/
 │           ├── direct/                     # T03 trusted C/Host, no new transport
 │           └── media/                      # T05 optional HLS C/Host
 ├── tests/
-│   └── domain-app/                         # T10 fixtures and tests; validation state NOT_RUN
-├── build/                                  # EXISTING; T13 single central-writer changes
+│   └── domain-app/                         # T09 fixtures and tests; validation state NOT_RUN
+├── build/                                  # EXISTING; T12 single central-writer changes
 ├── .dev-standard/                          # v0.2 effective pin/overrides after adoption review
 └── docs/
     ├── planning/v0.2.0/
@@ -67,13 +67,13 @@ Never import DomainHarness BUILD into Microkernel/runtime. Trusted producer seal
 | SF-03 | C direct | packages/download-domain-host/src/direct/ | only selected K Permit can call existing direct acquisition via trusted Host | T03 |
 | SF-04 | S | packages/download-domain-app/src/semantic/ | existing recipe+finite collection and selection | T04 |
 | SF-05 | C media | packages/download-domain-host/src/media/ | existing HLS adapter port, bounded source | T05 |
-| SF-06 | CLI | apps/cli/src/ (scoped new adapter files) | external user operation and real status | T07 |
-| SF-07 | Browser | apps/browser-extension/src/ (scoped new adapter files) | reuses existing auth and native Host, no cookie authority transfer | T08 |
-| SF-08 | Migration | packages/download-domain-app/src/migration/ | old/new lineage ownership, recovery, schema truth | T09 |
-| SF-09 | Tests | tests/domain-app/ | positive/negative inputs, independent fixture/validation harness | T10 |
-| SF-10 | Direct join | packages/download-domain-app/src/composition/ | single K/B/C/Host direct activation end-to-end | T11 |
-| SF-11 | Other join | packages/download-domain-app/src/integrations/ | collection/media/browser integration, no new crawler | T12 |
-| SF-12 | Manifest/root wiring | packages/download-domain-app/package.json, packages/download-domain-host/package.json, packages/download-domain-app/src/index.ts, build/ and root package.json/pnpm-lock.yaml only if actual dependency requires | unique manifest writer | T13 |
+| SF-06 | CLI | apps/cli/src/ (scoped new adapter files) | external user operation and real status | T06 |
+| SF-07 | Browser | apps/browser-extension/src/ (scoped new adapter files) | reuses existing auth and native Host, no cookie authority transfer | T07 |
+| SF-08 | Migration | packages/download-domain-app/src/migration/ | old/new lineage ownership, recovery, schema truth | T08 |
+| SF-09 | Tests | tests/domain-app/ | positive/negative inputs, independent fixture/validation harness | T09 |
+| SF-10 | Direct join | packages/download-domain-app/src/composition/ | single K/B/C/Host direct activation end-to-end | T10 |
+| SF-11 | Other join | packages/download-domain-app/src/integrations/ | collection/media/browser integration, no new crawler | T11 |
+| SF-12 | Manifest/root wiring | packages/download-domain-app/package.json, packages/download-domain-host/package.json, packages/download-domain-app/src/index.ts, build/ and root package.json/pnpm-lock.yaml only if actual dependency requires | unique manifest writer | T12 |
 
 **SF-01 to SF-12 are future locations**, not accepted source Git-object anchors. If source-first Scaffold becomes accepted, the Task-side DF binding must reference its *actual* commit and material tree and check both anchor→Task and Task→anchor with native Issue identities before Freeze. Don't fabricate immutable SF hashes for nonexistent directories.
 
