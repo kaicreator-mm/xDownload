@@ -39,9 +39,19 @@ flowchart LR
   T10 --> T12[12 Central BUILD and packaging]
   T11 --> T12
   T06 --> T12
-  T09 --> T13[13 Independent product and platform validation]
+  T09 --> T13[13 Core recovery Validation]
   T12 --> T13
-  T13 --> T14[14 Candidate/Hidden/Closure/RQ]
+  T12 --> T14[14 Browser security Validation]
+  T12 --> T15[15 Product journey Validation]
+  T12 --> T16[16 Platform packaging Validation]
+  T13 --> T17[17 Candidate Freeze]
+  T14 --> T17
+  T15 --> T17
+  T16 --> T17
+  T17 --> T18[18 Hidden Validation]
+  T18 --> T19[19 Version Closure]
+  T19 --> T20[20 Release Qualification]
+  T20 --> T21[21 Main integration]
 ```
 
 ## Coherent concern → Task mapping
@@ -62,14 +72,21 @@ Each row is a **proposed Task Pack** (content in `TASK_PACKS_R0.md`); Issue numb
 | T10 | TBD | integration-direct | T02,T03,T08 | NO | H | S1 end-to-end K→C/Host→file→truth, single integration owner | senior integration Builder | actual bytes/terminal/cancel/restart | required | JIT integrated | TODO |
 | T11 | TBD | integration-other | T04,T05,T07,T10 | NO | H | S2–S6 required released-path adaptation and finite collections | senior integration Builder | installed journeys and regressions | required | JIT integrated | TODO |
 | T12 | TBD | build-packaging | T06,T10,T11 | NO | H | one manifest/lockfile/root BUILD owner, CLI/browser packaged join | Node24/Woodpecker/Windows Builder | clean packed SDK/Host and platform smoke | required | JIT integrated | TODO |
-| T13 | TBD | validation | T09,T12 | NO | H | independent exact-candidate Windows/core/browser/critical journeys | independent Validators | actual Node24/Windows; G0/G1 parity if applicable | not-required | exact candidate | TODO |
-| T14 | TBD | closure-release | T13 | NO | H | ADS Candidate Freeze → Hidden → Closure → RQ → authorized main integration | independent Release/Integration Controllers | ADS version gates, source/provenance | as required by release | exact candidate | TODO |
+| T13 | TBD | validation-core | T09,T12 | YES | H | crash/restart/UNKNOWN, ledger and file-integrity exact-candidate Validation | independent core Validator | real Node24/Windows data and replay evidence | not-required | exact candidate | TODO |
+| T14 | TBD | validation-browser | T12 | YES | H | browser/native Host/auth and scope/security exact-candidate Validation | independent browser Validator | real Chromium + Windows Host/permissions | not-required | exact candidate | TODO |
+| T15 | TBD | validation-product | T12 | YES | H | installed S1–S6 journeys and Product G0/G1 parity if applicable | independent product Validator | real user path, oracle/effort evidence | not-required | exact candidate | TODO |
+| T16 | TBD | validation-platform | T12 | YES | H | clean packed SDK, Windows/platform package qualification | independent platform Validator | exact package hashes/Node24 and installed package | not-required | exact candidate | TODO |
+| T17 | TBD | candidate-freeze | T13,T14,T15,T16 | NO | H | one exact-candidate visible validation reconciliation and Freeze | Candidate Freeze Controller | all required visible gates current on same SHA | not-required | exact candidate | TODO |
+| T18 | TBD | hidden-validation | T17 | NO | H | post-freeze independent Hidden Validation | independent Hidden Validator | frozen candidate/pack/environment identity | not-required | frozen candidate | TODO |
+| T19 | TBD | version-closure | T18 | NO | H | validated version closure and provenance/currentness | Closure Controller | complete evidence and acceptance ledger | not-required | frozen candidate | TODO |
+| T20 | TBD | release-qualification | T19 | NO | H | independent READY/CONDITIONAL/BLOCKED/FAIL release verdict | independent Release Controller | exact qualified candidate and actual RQ | not-required | frozen candidate | TODO |
+| T21 | TBD | main-integration | T20 | NO | H | qualified version PR and main integration only when READY | Repository Integration Controller | exact diff, branch protection/merge identity | required | current qualified version | TODO |
 
-**Fourteen coherent Tasks:** no extra overlapping facade Task was invented. The K/B policy, migration/recovery and integration concerns have distinct owners.
+**Twenty-one coherent Tasks:** 12 concern/packaging Tasks, four independent validation concerns, and five distinct Candidate/Hidden/Closure/RQ/Repository authority Tasks. No overlapping façade Task was invented; the required ADS release authorities are not hidden in one oversized Task.
 
 ## Maximum safe parallelism
 
-After T01 genuinely merges and its contract is frozen, T02, T03, T04, T05, T06, T07, T08 and T09 have **eight distinct source ownership concerns**; up to 8 safe workfronts is the *graph-theoretical* width, not a guaranteed executor capacity or time saving. The essential joins are T10 for the direct path and T11 for non-direct. CLI can finish independently, and T09 fixtures are prepared without waiting for functional integration. T12 is the **single** root/package-lock/manifest/exports writer to avoid repeated merge conflicts.
+After T01 genuinely merges and its contract is frozen, T02, T03, T04, T05, T06, T07, T08 and T09 have **eight distinct source ownership concerns**; up to 8 safe workfronts is the *graph-theoretical* width, not a guaranteed executor capacity or time saving. The essential joins are T10 for the direct path and T11 for non-direct. CLI can finish independently, and T09 fixtures are prepared without waiting for functional integration. After T12, T13–T16 can validate distinct physical/quality concerns against one exact candidate in parallel; T17–T21 are intentionally sequential authority gates. T12 is the **single** root/package-lock/manifest/exports writer to avoid repeated merge conflicts.
 
 | Lane | Exclusive planned write set | Can work with | Join |
 | --- | --- | --- | --- |
@@ -81,10 +98,10 @@ After T01 genuinely merges and its contract is frozen, T02, T03, T04, T05, T06, 
 | cli T06 | apps/cli/src/domain-app-*.ts (authorized exact file list at JIT) | other independent lanes | T12 |
 | browser T07 | apps/browser-extension/src/domain-app/** | other independent lanes | T11 |
 | migration T08 | packages/download-domain-app/src/migration/** | other independent lanes | T10 |
-| tests T09 | tests/domain-app/** | implementation lanes | T13 |
+| tests T09 | tests/domain-app/** | implementation lanes | T13–T16 |
 | direct integration T10 | packages/download-domain-app/src/composition/** | T04/T05/T06/T07/T09 | T11, T12 |
 | other integration T11 | packages/download-domain-app/src/integrations/** | T06/T09 | T12 |
-| single-writer central T12 | package manifests, lockfile, build/** and public index | none on these paths | T13 |
+| single-writer central T12 | package manifests, lockfile, build/** and public index | none on these paths | T13–T16 |
 
 Existing `packages/core-scheduler`, `packages/persistence-ledger`, `packages/direct-acquisition` and `packages/hls-vod-adapter` are **read-only** for this migration unless a separately reviewed explicit Task DAG amendment assigns narrow writes. Host performance and past security fixes must be reused.
 
@@ -92,15 +109,15 @@ Existing `packages/core-scheduler`, `packages/persistence-ledger`, `packages/dir
 
 | Product acceptance | Tasks / reason |
 | --- | --- |
-| P01 correct target and digest | T01/T03/T10/T13 |
-| P02 honest K state & UNKNOWN | T02/T08/T10/T13 |
-| P03 finite collection/selection | T04/T07/T11/T13 |
-| P04 restart/cancel/recovery | T08/T10/T13 |
-| P05 installed parity S1–S6 | T06/T07/T11/T12/T13 |
-| P06 deterministic without model | T02/T04/T09/T13 |
-| P07 least authority | T02/T03/T07/T08/T13 |
-| P08 measured performance/cost | T09 baseline/T13 comparison |
-| P09 SDK v0.10.3 exact package | T10/T12/T13 |
+| P01 correct target and digest | T01/T03/T10/T13–T16 |
+| P02 honest K state & UNKNOWN | T02/T08/T10/T13–T16 |
+| P03 finite collection/selection | T04/T07/T11/T13–T16 |
+| P04 restart/cancel/recovery | T08/T10/T13–T16 |
+| P05 installed parity S1–S6 | T06/T07/T11/T12/T13–T16 |
+| P06 deterministic without model | T02/T04/T09/T13–T16 |
+| P07 least authority | T02/T03/T07/T08/T13–T16 |
+| P08 measured performance/cost | T09 baseline/T13–T16 comparison |
+| P09 SDK v0.10.3 exact package | T10/T12/T13–T16 |
 
 ## Alternative topology assessment
 
