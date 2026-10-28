@@ -19,6 +19,8 @@ npm notice total files: 20   (microkernel)
 npm notice total files: 32   (host-node)
 ```
 
+`$ cd <sdk-worktree>/tooling/build && npm pack --pack-destination <out>       ; EXIT=0` (producer devDep; R1 F-05 alignment: `scripts/pack-sdk.mjs` packs all four into this directory)
+
 ## Tarball SHA256 (consumed by the clean consumer)
 
 | package | file | sha256 |

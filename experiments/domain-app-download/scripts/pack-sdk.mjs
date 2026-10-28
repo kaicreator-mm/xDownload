@@ -39,7 +39,7 @@ if (status.trim().length > 0) {
   process.exit(4);
 }
 
-const outDir = resolve("vendor");
+const outDir = resolve("evidence", "e01-sdk-pack");
 mkdirSync(outDir, { recursive: true });
 
 const hashes = {};

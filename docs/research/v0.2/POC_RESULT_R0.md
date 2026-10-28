@@ -2,8 +2,9 @@
 
 **Status: BUILDER EVIDENCE ONLY — NOT a self-marked PASS.** Verdict ownership is the
 independent exact-SHA reviewer per the Task Pack (`POC_LOCAL_AGENT_HANDOFF_R0.md`
-@ `git-blob-sha1:5b2499ffe4e6668819d4cbccd22896f0e80661f9`). Everything below is
-reproducible from the committed tree: `cd experiments/domain-app-download && npm ci && npm test`.
+@ `git-blob-sha1:5b2499ffe4e6668819d4cbccd22896f0e80661f9`). Reproduction (two steps, both required — R1 F-02):
+1. repo root: `pnpm install` (provides the `@xdownload/*` workspace links the aliased direct-acquisition imports resolve through);
+2. `cd experiments/domain-app-download && npm ci && npm test` (installs the four committed SDK tarball bytes plus vitest).
 
 ## Identity bindings (all read back live)
 
@@ -14,7 +15,7 @@ reproducible from the committed tree: `cd experiments/domain-app-download && npm
 | SDK source | `kaicreator-mm/domain-harness` tag `v0.10.3` → commit `061376f4a023070f215f9feffad5c24d96d503cb`, tree `099cdc831aef63befd62aaede7e7a853d1be468f` |
 | npm publication | NOT done; manifests `0.10.2-rc.0`; registry never consulted (tarball-only install) |
 | Packed SDK tarballs (SHA256 in `evidence/e01-sdk-pack/PACK_EVIDENCE.md`) | contracts `859c55e1…`, microkernel `cd716f08…`, host-node `3a0a1139…`, build `c04c5ee2…` |
-| Sealed app | appId `app:xdownload-download-poc`, buildId `xdownload-i183-poc-v1`, subjectDigest `3d79758d9199b700c53c48ab0902b2001e0c0340263708a56d2573d875e68e13`, closure digest `5a36a20b5cde1b390a549bf530abdd087f238c388e47fa3149fb5bcf6c40c774` (4 modules: K `v08-kernel-mechanism@v0.10.0` + S `standard-sdk@v08.1.0.0` + B `business-download@0.1.0` + C `capability-acquisition@0.1.0` externalEffect) |
+| Sealed app | appId `app:xdownload-download-poc`, buildId `xdownload-i183-poc-v1`, subjectDigest `5f3d1626f524b4b7df7dc42d78c510482a66431204899ca1c950e7bb001fba82`, closure digest `94a30dcc30528d418a099da724c6ad2e50d0031b268a7bed579010e7f57338b4` (4 modules: K `v08-kernel-mechanism@v0.10.0` + S `standard-sdk@v08.1.0.0` + B `business-download@0.1.0` + C `capability-acquisition@0.1.0` externalEffect) |
 | Runtime | Windows 10.0.26300 x64, Node v24.21.0 (fnm), vitest 4.1.11; store = caller-owned atomic-JSON CAS (`PlainFileDocStore`) |
 
 ## Selected public SDK surface actually exercised (no internal imports anywhere)

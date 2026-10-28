@@ -16,6 +16,7 @@
     "@kaicreator/domain-harness-microkernel": "file:evidence/e01-sdk-pack/kaicreator-domain-harness-microkernel-0.10.2-rc.0.tgz"
   },
   "devDependencies": {
-    "@kaicreator/domain-harness-build": "file:evidence/e01-sdk-pack/kaicreator-domain-harness-build-0.10.2-rc.0.tgz"
+    "@kaicreator/domain-harness-build": "file:evidence/e01-sdk-pack/kaicreator-domain-harness-build-0.10.2-rc.0.tgz",
+    "vitest": "^4.1.11"
   }
 }

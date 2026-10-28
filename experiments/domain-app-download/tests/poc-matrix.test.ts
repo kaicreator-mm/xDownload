@@ -129,6 +129,10 @@ describe("P01 — valid declared fixture → K admission → real transfer → m
     expect(effect?.disposition).toBe("executed");
     expect(effect?.output?.outcome?.ok).toBe(true);
     expect(effect?.output?.outcome?.output?.fileSha256).toBe(fileSha256);
+    // The dispatch ran under a LIVE K-issued Effect Permit: the external gate
+    // handed the sealed adapter a kernel-minted permit identity (R1 F-03).
+    expect(typeof effect?.output?.outcome?.output?.permitEffectId).toBe("string");
+    expect((effect?.output?.outcome?.output?.permitEffectId as string).length).toBeGreaterThan(0);
 
     const filePath = join(workspace.outputRoot, "p01-file.bin");
     expect(existsSync(filePath)).toBe(true);
@@ -580,26 +584,47 @@ describe("N07 — altered/unselected BUILD module refuses before effect", () => 
     expect(refused).toContain("SEALED_BUILD_MODULE_ALTERED");
   });
 
-  it("buildV10App refuses a route to an unselected capability", async () => {
+  it("buildV10App refuses a route to an unselected capability with the exact typed code", async () => {
     const { buildV10App } = await import("@kaicreator/domain-harness-build");
-    const { V10_TARGET_PROFILE, sha256Hex } = await import("@kaicreator/domain-harness-contracts");
-    let refused = "";
+    const { V10_TARGET_PROFILE } = await import("@kaicreator/domain-harness-contracts");
+    // Use the REAL sealed module payloads from the committed BUILD so the ONLY
+    // refusal variable is the unselected capabilityId in the route (R1 F-04).
+    const built = JSON.parse(
+      readFileSync(join(import.meta.dirname, "..", "build", "app.build.json"), "utf8"),
+    ) as V10BuiltApp;
+    const stripNullable = (module: Record<string, unknown>) =>
+      Object.fromEntries(Object.entries(module).filter(([, value]) => value !== null && value !== undefined));
+    const modules = built.modules.map((m) => stripNullable(m as unknown as Record<string, unknown>));
+
+    let controlRefused = "";
+    try {
+      buildV10App({
+        appId: "app:xdownload-n07-control",
+        audience: "aud:xdownload-i183-research",
+        targetProfile: V10_TARGET_PROFILE,
+        modules: modules as never,
+        routes: [
+          {
+            intentId: "confirmDownload",
+            operationId: "acquire",
+            capabilityId: "acquisition",
+            handlerId: "acquireFile",
+          },
+        ],
+        hardBudget: { maxStepsPerTurn: 16, maxWorkUnitsPerTurn: 64 },
+      });
+    } catch (error) {
+      controlRefused = String((error as { code?: string })?.code ?? (error as Error)?.name ?? error);
+    }
+    expect(controlRefused).toBe(""); // control: valid composition builds
+
+    let refusedCode = "";
     try {
       buildV10App({
         appId: "app:xdownload-n07-unselected",
         audience: "aud:xdownload-i183-research",
         targetProfile: V10_TARGET_PROFILE,
-        modules: [
-          {
-            packageId: "v08-kernel-mechanism@v0.10.0",
-            role: "kernel-primary",
-            abiVersion: "v08-kernel-abi/1",
-            moduleSource: "// minimal invalid module for refusal probe",
-            moduleSha256: sha256Hex("// minimal invalid module for refusal probe"),
-            endpoint: "occurrence-runtime",
-            provides: ["kernel:occurrence-runtime/1"],
-          },
-        ],
+        modules: modules as never,
         routes: [
           {
             intentId: "confirmDownload",
@@ -608,12 +633,12 @@ describe("N07 — altered/unselected BUILD module refuses before effect", () => 
             handlerId: "acquireFile",
           },
         ],
-        hardBudget: { maxStepsPerTurn: 4, maxWorkUnitsPerTurn: 8 },
+        hardBudget: { maxStepsPerTurn: 16, maxWorkUnitsPerTurn: 64 },
       });
     } catch (error) {
-      refused = String((error as { code?: string; name?: string })?.code ?? (error as Error)?.name ?? error);
+      refusedCode = String((error as { code?: string })?.code ?? (error as Error)?.name ?? error);
     }
-    expect(refused).toMatch(/V10|BUILD/);
+    expect(refusedCode).toBe("V10_ROUTE_INVALID");
   });
 });
 

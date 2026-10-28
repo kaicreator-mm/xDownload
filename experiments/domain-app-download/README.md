@@ -24,9 +24,11 @@ Nothing here is a product package, a v0.1 candidate, or a v0.2 freeze input.
 - **M01** (if measurable): baseline direct path vs K-orchestrated path on the
   same fixture.
 
-Run: `npm install ./evidence/e01-sdk-pack/*.tgz && npm test` (after
-`node scripts/pack-sdk.mjs <sdk-checkout>` on a fresh machine; see
-`scripts/pack-sdk.mjs` for the pinned-tag guard).
+Run (R1 F-02 recipe): from the repo root `pnpm install` (workspace links for the
+aliased `@xdownload/direct-acquisition` TS source), then
+`cd experiments/domain-app-download && npm ci && npm test`. On a fresh SDK
+machine, first `node scripts/pack-sdk.mjs <sdk-checkout>` (pinned-tag guard;
+packs into `evidence/e01-sdk-pack/`, including the `tooling/build` producer).
 
 ## What is NOT proven
 

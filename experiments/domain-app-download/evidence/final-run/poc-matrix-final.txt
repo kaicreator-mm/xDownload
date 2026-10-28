@@ -1,14 +1,13 @@
-[1m[43m DEPRECATED [49m[22m [33m`test.poolOptions` was removed in Vitest 4. All previous `poolOptions` are now top-level options. Please, refer to the migration guide: https://vitest.dev/guide/migration#pool-rework[39m
 
 [1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mC:/xDev/kAiCreator/xDownload/xd-i183-builder[39m
 
 [90mstdout[2m | experiments/domain-app-download/tests/poc-matrix.test.ts[2m > [22m[2mM01 — measured overhead on the same bounded fixture[2m > [22m[2mrecords wall clock for direct vs K-orchestrated transfer of the same bytes
-[22m[39m[M01] direct=2.0ms orchestrated=18.9ms overhead=16.9ms bytes=4096
+[22m[39m[M01] direct=2.0ms orchestrated=15.6ms overhead=13.6ms bytes=4096
 
- [32m✓[39m experiments/domain-app-download/tests/poc-matrix.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 824[2mms[22m[39m
+ [32m✓[39m experiments/domain-app-download/tests/poc-matrix.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 774[2mms[22m[39m
 
 [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[32m17 passed[39m[22m[90m (17)[39m
-[2m   Start at [22m 04:38:24
-[2m   Duration [22m 1.29s[2m (transform 215ms, setup 0ms, import 299ms, tests 824ms, environment 0ms)[22m
+[2m   Start at [22m 04:59:20
+[2m   Duration [22m 1.19s[2m (transform 198ms, setup 0ms, import 277ms, tests 774ms, environment 0ms)[22m
 
