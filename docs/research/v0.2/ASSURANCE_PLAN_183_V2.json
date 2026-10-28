@@ -1,0 +1,180 @@
+{
+  "protocol_version": "ai-dev-assurance/v2",
+  "owner_family": "assurance-plan",
+  "predecessor_protocol_version": "ai-dev-assurance/v1",
+  "assurance_plan_id": "XD-POC-183-V2-R0",
+  "operation_id": "stage2.2-research-demo-183",
+  "subject_ref": "https://github.com/kaicreator-mm/xDownload/issues/183",
+  "subject_identity_ref": "kaicreator-mm/xDownload#183:research-demo:experiment-ads-v418-poc",
+  "identity_binding": "project-defined",
+  "finding_disposition_policy": "p2-and-p3-explicit",
+  "finding_carry_forward_policy": "unresolved-valid-findings-carry-forward",
+  "activities": [
+    {
+      "assurance_id": "VAL183",
+      "kind": "validation",
+      "policy": "required",
+      "mode": "executable-validation",
+      "coverage": [
+        "Node>=24 exact git-tag v0.10.3 public SDK clean packed consumer; actual K/S/B/C/Host direct download digest and journal",
+        "P01/P02 N01-N08 finite positive/negative tests, evidence of zero effect / raw-send journal safety",
+        "U01/U02/U03 unknown disposition; measured M01 if practical"
+      ],
+      "independence": {
+        "context": "none",
+        "model": "none",
+        "executor": "none",
+        "evidence": "required"
+      },
+      "depends_on": [],
+      "collaboration_selected": false
+    },
+    {
+      "assurance_id": "REV183",
+      "kind": "review",
+      "policy": "required",
+      "mode": "single-independent",
+      "coverage": [
+        "Exact-SHA source diff and admissible environment/effects",
+        "Actual VAL183 receipts, N08 raw-send no-poisoning, one lineage writer, no scope widening"
+      ],
+      "independence": {
+        "context": "required",
+        "model": "none",
+        "executor": "required",
+        "evidence": "required"
+      },
+      "depends_on": [
+        "VAL183"
+      ],
+      "collaboration_selected": false
+    }
+  ],
+  "assurance_floor": {
+    "composition": "owner-scoped-conjunctive-floor",
+    "requirements": [
+      {
+        "requirement_id": "REQ-VAL183",
+        "owner_ref": "kaicreator-mm/ai-development-standard@2c395c55569fe2edf3f4135f12d3d069e526d0b7:standards/VALIDATION_STANDARD.md",
+        "gate_ref": "kaicreator-mm/xDownload#183:P01-P02-N01-N08-M01",
+        "policy": "required",
+        "strength_ref": "actual-Node24-public-packed-SDK-K-Host-evidence"
+      },
+      {
+        "requirement_id": "REQ-REV183",
+        "owner_ref": "kaicreator-mm/xDownload#183:review:required",
+        "gate_ref": "independent-exact-SHA-R1",
+        "policy": "required",
+        "strength_ref": "separate-logical-reviewer-current-head"
+      },
+      {
+        "requirement_id": "REQ-N08",
+        "owner_ref": "kaicreator-mm/domain-harness#1437",
+        "gate_ref": "trusted-pre-send-no-poisoning-before-K",
+        "policy": "required",
+        "strength_ref": "journal-and-host-negative-invalid-then-valid-same-identity"
+      }
+    ]
+  },
+  "concern_resolutions": [
+    {
+      "concern_id": "C1",
+      "owner_ref": "kaicreator-mm/ai-development-standard@2c395c55569fe2edf3f4135f12d3d069e526d0b7:standards/VALIDATION_STANDARD.md",
+      "gate_ref": "kaicreator-mm/xDownload#183:P01-P02-N01-N08-M01",
+      "baseline_requirement_ref": "REQ-VAL183",
+      "owner_permission": {
+        "decision": "DENY_REDUCTION",
+        "authority_ref": "kaicreator-mm/ai-development-standard@2c395c55569fe2edf3f4135f12d3d069e526d0b7:standards/VALIDATION_STANDARD.md",
+        "currentness_ref": "subject-ref-readback-before-claim"
+      },
+      "predicate_proofs": [],
+      "resolution": "BASELINE",
+      "selected_requirement_ref": "REQ-VAL183",
+      "currentness_ref": "full-binding-recheck-before-claim"
+    },
+    {
+      "concern_id": "C2",
+      "owner_ref": "kaicreator-mm/xDownload#183:review:required",
+      "gate_ref": "independent-exact-SHA-R1",
+      "baseline_requirement_ref": "REQ-REV183",
+      "owner_permission": {
+        "decision": "DENY_REDUCTION",
+        "authority_ref": "kaicreator-mm/xDownload#183:review:required",
+        "currentness_ref": "subject-ref-readback-before-claim"
+      },
+      "predicate_proofs": [],
+      "resolution": "BASELINE",
+      "selected_requirement_ref": "REQ-REV183",
+      "currentness_ref": "full-binding-recheck-before-claim"
+    },
+    {
+      "concern_id": "C3",
+      "owner_ref": "kaicreator-mm/domain-harness#1437",
+      "gate_ref": "trusted-pre-send-no-poisoning-before-K",
+      "baseline_requirement_ref": "REQ-N08",
+      "owner_permission": {
+        "decision": "DENY_REDUCTION",
+        "authority_ref": "kaicreator-mm/domain-harness#1437",
+        "currentness_ref": "subject-ref-readback-before-claim"
+      },
+      "predicate_proofs": [],
+      "resolution": "BASELINE",
+      "selected_requirement_ref": "REQ-N08",
+      "currentness_ref": "full-binding-recheck-before-claim"
+    }
+  ],
+  "cross_owner_composition": {
+    "policy": "conjunctive-no-cancellation",
+    "concern_resolution_refs": [
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "cancellation_allowed": false
+  },
+  "selected_path": {
+    "rule": "floor-or-stronger-after-valid-owner-reductions",
+    "selected_requirement_refs": [
+      "REQ-VAL183",
+      "REQ-REV183",
+      "REQ-N08"
+    ],
+    "relation_to_floor": "SATISFIES_FLOOR"
+  },
+  "currentness_binding": {
+    "rule": "all-components-exact-current",
+    "subject_identity_ref": "kaicreator-mm/xDownload#183:research-demo:experiment-ads-v418-poc",
+    "owner_authority_refs": [
+      "kaicreator-mm/ai-development-standard@2c395c55569fe2edf3f4135f12d3d069e526d0b7:standards/ASSURANCE_PLAN_STANDARD.md#12",
+      "kaicreator-mm/xDownload@86bf394a36b78209f39b503b65d57ce1c7bcbecd:.dev-standard/VERSION",
+      "kaicreator-mm/xDownload#183:research-demo",
+      "kaicreator-mm/domain-harness@061376f4a023070f215f9feffad5c24d96d503cb:tag/v0.10.3"
+    ],
+    "owner_authority_digest": "sha256:ee8a7f07aa25ef984391793ce8c5a70079b879ed35d107b44e440085d812dc1a",
+    "proof_input_refs": [
+      "kaicreator-mm/xDownload#192:independent-R1-PASS",
+      "kaicreator-mm/xDownload#196:independent-R1-PASS",
+      "kaicreator-mm/xDownload#193:planning-only-R3-PASS",
+      "kaicreator-mm/domain-harness#1419:Git-source-CONDITIONAL-release",
+      "kaicreator-mm/xDownload#183:controller-blocker-6478352923"
+    ],
+    "proof_input_digest": "sha256:86b80e72b2d876d0020c2b8291216dc0fa786c9e77e9a1440d8c3ab506e3991f",
+    "task_pack_ref": "docs/research/v0.2/POC_LOCAL_AGENT_HANDOFF_R0.md",
+    "task_pack_digest": "git-blob-sha1:5b2499ffe4e6668819d4cbccd22896f0e80661f9",
+    "release_decision_refs": [],
+    "release_decision_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "unresolved_finding_refs": [
+      "kaicreator-mm/domain-harness#1437:unresolved-raw-send-journal-poisoning-risk"
+    ],
+    "unresolved_finding_digest": "sha256:49ce0a74e72b6d634aa5c35d52327fee40faf6e537a2086bf618115f82e6ab08",
+    "binding_digest": "sha256:177b890b3983631c4a3cc9d969f5cd31eec2462b5cae130fd0dacb1f8bc147eb",
+    "state": "UNKNOWN"
+  },
+  "aggregation": {
+    "policy": "finding-union-blocker-dominance",
+    "blocker_resolution": "unresolved-valid-blocker-dominates",
+    "majority_vote_for_correctness": false,
+    "conflict_route": "BLOCKED_PENDING_OWNER_CURRENTNESS_OR_FINDING_DISPOSITION"
+  },
+  "completion_predicate": "Actual Node>=24 v0.10.3 Git-tag SDK packed consumer and real K/Host/DirectHttpAdapter: P01/P02/N01-N08 with commands/exit/files/journal; separate independent exact-SHA R1 P0/P1/P2 and unresolved U01/U02/U03; cannot self-mark PASS."
+}
