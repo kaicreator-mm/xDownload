@@ -37,7 +37,10 @@ import {
   type S2AcquireCommandShape,
   type S2LaneHandler,
 } from '@xdownload/browser-auth-broker';
-import { createLoopbackClientTransport, createWindowsPipeClientTransport } from '@xdownload/core-seam';
+import {
+  createLoopbackClientTransport,
+  createWindowsPipeClientTransport,
+} from '@xdownload/core-seam';
 import type { SeamDiagnostic, SeamResponse } from '@xdownload/core-seam';
 import { bindSurfaceToCore, type BoundSurface } from '@xdownload/converged-runtime';
 import {
