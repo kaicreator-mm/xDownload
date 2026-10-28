@@ -1,166 +1,74 @@
-# Project Overrides
+# xDownload — ADS 4.18.0 scoped Project Overrides (Domain App research/PoC only)
 
-## Project Identity
+> **Effective scope:** isolated `experiment/ads-v418-poc` line and its separately reviewed descendants only, once the exact change is approved and actually integrated there. This file is a **successor to the inherited stale Stage-2 v0.1 planning override** on this isolated branch. It is neither a retroactive rewrite of old v0.1 authority nor effective on `version/v0.1.0` / `main`.
+>
+> **Status:** DRAFT / independent review required — Issue #194. **ADS pin:** `.dev-standard/VERSION` = `4.18.0@2c395c55569fe2edf3f4135f12d3d069e526d0b7`. **PoC:** Issue #183. **Adoption:** #182, independent #192 R1 PASS on prior two-file pin, NOT this successor.
 
-- Repository: `kaicreator-mm/xDownload`
-- Product / Service: `xDownload`
-- Standard revision: read `.dev-standard/VERSION`
+## 1. Project identity and actual inspected layout
 
-## Structure Profile
+- Repository: `kaicreator-mm/xDownload`; existing pnpm TypeScript monorepo.
+- Immutable **inspection-only** initial source baseline: `version/v0.1.0@195355d03b847825ce5acf78c73e06f7386e11e2`. This is **not** a v0.1 release qualification or authorized v0.2 code baseline.
+- Root `package.json` inspected at baseline: `private: true`, ESM, `engines.node: "24.21.0"`, `packageManager: "pnpm@12.8.1"`. It already declares `build`, `smoke`, `format:check`, `lint`, `typecheck`, `test:unit`, `ci:verify`. These are a **declared source profile**, not evidence that a particular machine ran or passed.
+- Existing code sources include `apps/cli`, `apps/browser-extension`, `packages/domain-contracts`, `packages/core-runtime`, `packages/core-scheduler`, `packages/persistence-ledger`, `packages/direct-acquisition`, `packages/hls-vod-adapter` and others. Root `pnpm-workspace.yaml` covers `packages/*`. The inherited "docs-only, no production workspace" text was **historically true for an earlier stage** but is NOT the currently inspected repository layout.
+- Existing root `pnpm-lock.yaml` is canonical for the inspected baseline. Do not create a second lockfile, silently upgrade dependencies, or rewrite v0.1 evidence for the PoC.
 
-- Repository profile: `other — Stage 2.4 Task DAG Freeze checkpoint; Product/Scope FROZEN; Architecture FROZEN; Task DAG FROZEN; Stage 2.5 materialization next`
-- Main modules: `docs/` only at the current frozen planning checkpoint
-- Intentional deviations from `PROJECT_STRUCTURE.md`:
-  - `Production implementation layout is not yet established. T001 may establish the implementation monorepo/toolchain only after Stage 2.5 materialization and an authorized dependency-ready/JIT dispatch.`
+## 2. Branch/version and authority boundary
 
-## Integration / GitHub Execution Profile
+| Concern | Current disposition |
+| --- | --- |
+| v0.1 Product/L2/DAG/Claims/Release | **HISTORICAL_ONLY**: bound to ADS 4.0.0 at `94cad2b0487e8a552c66d6bcd1cba36b7779383d`; exact frozen source and authorized execution history must be read on their own branch |
+| This future-only ADS 4.18 research adoption | **SCOPED**: only the isolated branch where `.dev-standard/VERSION` and this override are independently accepted |
+| PoC research #183 | **PLANNED_NOT_DISPATCHED**: public DomainHarness v0.10.3 selected K/S/B/C, build/Host/DirectHttpAdapter and Node24 proof NOT_RUN |
+| xDownload v0.2 Product/L2/Scaffold/DAG | **CANDIDATE_ONLY**: separate planning #188 / Draft PR #190, no Freeze or source-first Scaffold Claim |
+| Future `version/v0.2.0` | **NOT_CREATED/NOT_QUALIFIED**: must choose actual post-v0.1 integration base, adopt a qualified pin and independently approve an effective successor override |
+| Native Task blocked_by and `DISPATCH_CLAIMED` | **NOT_PROVEN**: neither Issue text nor workflow labels nor static DAG are legal substitutes |
 
-- Integration mode: `version-branch`
-- Version integration branch pattern: `version/vX.Y.Z`
-- Current integration/checkpoint branch: `version/v0.1.0` (`Product/Scope FROZEN`; `Architecture FROZEN`; `Task DAG FROZEN`; Stage 2.5 materialization `NOT STARTED`)
-- Prior Stage 1 planning/evidence branch: `docs/product-baseline-2026-10-01`
-- Issue-based execution DAG: `disabled until a separately authorized Stage 2.5 materialization creates Task Issues and native Issue Dependencies from the Frozen Task DAG`
-- Task Issue template/profile: `canonical pinned-standard task issue contract`
-- Stacked PR policy: `allowed only for a real unmerged code-baseline dependency`
+- Integration mode for future substantial version: **version branch with JIT Task branches**, only when version baseline, Product/L2/DAG authority and native dependencies are qualified.
+- Research mode here: isolated spike/demo branch, protected source only under a lawful existing Issue + accepted current serialized Claim and exact write scope. A **draft PR and a review PASS on this override are NOT Claim/dispatch**.
+- GitHub Issue + accepted event history is the durable work source; chat triggers carry only repo/Issue/role pointers.
+- No automatic `main`, `version/v0.1.0`, release tag or publication integration.
 
-Rules:
+## 3. ADS v4.18 role and review profile
 
-- Initial release target version MUST be selected before the Version Branch Stage 1 checkpoint is created.
-- PRD document versions (for example v0.4.1) MUST NOT be treated as product release versions.
-- The exact reviewed `docs/implementation/v0.1.0/TASK_DAG.md`, `TASK_PACKS.json` and 28 Task Packs are FROZEN by `docs/planning/STAGE2_TASK_DAG_FREEZE.md`; embedded pre-freeze `CANDIDATE / NOT FROZEN` markers in those exact reviewed bytes are historical review-state markers and do not override the Freeze record.
-- Before Stage 2.5 materialization, the Frozen planning DAG is not a live execution status board and no Task Issue/native Issue Dependency execution DAG exists yet.
-- After future Stage 2.5 materialization, the Frozen Task DAG remains the planning/history checkpoint and GitHub Issue Dependencies become the canonical live execution DAG.
-- Task branches follow the pinned standard JIT branch rule and are not created before dependency readiness/current integration identity except for a real stacked-code dependency.
+- `v4.adoption_level=A1_MANUAL_PROTOCOL`. No unsupported reducer/interchange/controller implementation is presumed active.
+- `v4.compatibility_mode=native-v4` for **new admitted work only**. No migration/reinterpretation of historical v0.1 event-v2 / old stage state.
+- New structured events use applicable ADS `ai-dev:event:v2` writer/role/operator attribution when emitted. A single connected GitHub transport user is not proof of an independent logical Reviewer. Actual session/reviewer identity must be recorded in accepted evidence.
+- Review policy is **risk-based and uniquely selected before dispatch**. Required for public DomainHarness ABI, network/Host/permission, durable budget/journal, migration and material effective admission rules. Recommended or not-required only where qualified policy permits, never as a waiver of physical Validation.
+- No code/source write without the current exact integration base, lawful Issue/Task Pack, native dependencies readback where material, validated JIT `DISPATCH_CLAIMED`, exclusive write set and admissible effect boundary.
+- If this stack cannot create/read the native dependency or accepted Claim, record `NATIVE_DAG_NOT_PROVEN` / `CLAIM_NOT_PROVEN` and **HOLD**; use a narrowly authorized local controller handoff rather than a Markdown substitute.
 
-## v4 Adoption / Compatibility Profile
+## 4. CI, tests, build host and platform evidence
 
-- `v4.adoption_level`: `A1_MANUAL_PROTOCOL`
-- `v4.compatibility_mode`: `native-v4`
-- `v4.assurance.default`: `manual-minimum`
-- `v4.model_diversity.default_basis`: `none by default; explicit Stage/Task authority may require provider/model-diverse assurance`
-- `v4.interchange`: `disabled`
-- `v4.reducer`: `disabled`
-- `v4.controllers`: `disabled`
-- `v4.fast_path`: `canonical, but initial product development is substantial and uses version-branch mode`
+- Source-available project command: `pnpm run ci:verify` → format check, lint, typecheck and unit tests per actual root scripts. A command's existence is **not** an observed successful run.
+- Independent ADS #192 R1 verified 3 success-labelled GitHub check runs at experiment PR #185 exact source. That evidence establishes only the checks' **declared subject and recorded success**, not an unqualified general CI backend, fresh SDK consumer, accepted source Scaffold or an actual Windows installed path.
+- CI provider/runner topology for new v0.2/PoC execution: **inspect current checked-in workflow and authoritative job receipt first**; cannot infer universal GitHub Actions vs external Woodpecker from old text or an individual check. Retry infrastructure faults on a fresh trace when appropriate, without turning unexecuted test cases into PASS.
+- Real local/build environment for PoC: **Node >=24** supported upstream; actual xDownload inspected root pins `24.21.0`. Use a host satisfying **both actual constraints**, with a clean public DomainHarness **v0.10.3** candidate package build/pack/consumer, actual Node version, OS, package byte SHA256, commands and exit codes. No v0.10.2 compatibility fallback.
+- Windows browser/native Host, filesystem/SQLite effects, external network/source authorization and release claims: `NOT_RUN` / `UNKNOWN` until the actual protected environment and artifact identity prove them. Unit CI cannot substitute.
+- No environment secret/paid model is needed for the deterministic minimum PoC. No automatic network, installation script execution, arbitrary external fetch or permission elevation merely from an SDK manifest.
 
-No adoption choice may weaken exact-subject Review/Validation, Candidate Freeze, Release Qualification or Repository Integration truth.
+## 5. Source ownership / deployment and failure handling
 
-## Agent / Operator Attribution Profile
+- User intent, target/member set, file destination, browser session/authorization, receipt and final digest remain scope-bound; no model, Recipe or Host can grant new effect permissions.
+- The prospective new Domain App's selected **K** owns new-lineage admission, Permit, business journal, recovery and UNKNOWN; legacy Core owns old-lineage work until independently qualified partition or migration. Physical Host/SQLite and transfer budget are **not** a second app business authority.
+- Source-only PoC development, when separately admitted under #183: bounded under `experiments/domain-app-download/**` plus sanitized research result artifact, as governed by Issue #183 and linked handoff. `apps/**`, `packages/**`, root manifests/lock and v0.1/main remain read-only without an explicit new authority.
+- If public SDK, Native Issue Graph, Claim, legal Host boundary, budget/permit identity, or shipped baseline is unknown/conflicting, mark gate `BLOCKED`/`NOT_RUN`, stop affected execution and route to its actual owner. Avoid speculative new security/Host abstractions.
+- Do not reuse this experiment's v0.10.3 candidate SDK hashes as final release package identity. Re-pin the real final SDK and requalify downstream compatibility in the future version.
 
-- Event schema for new structured events: `ai-dev:event:v2`
-- Operator ID convention: `<kind>:<project-local-id>`
-- ChatGPT Web examples: `chatgpt-web:product-a`, `chatgpt-web:review-a`
-- Local Agent examples: `codex:ubuntu-build-01`, `claude-code:windows-01`
-- Session reference convention: `non-secret session/run alias`
-- Transport actor convention: `github:<account>`
-- Role claim policy: `ROLE_CLAIMED/ROLE_RELEASED for substantial concurrent work when useful`
+## 6. Required gates and current state
 
-Required independent review must be attributable to an independent reviewer context even if the same GitHub transport account is used.
+```ini
+SCOPED_ADS_PIN=4.18.0@2c395c55569fe2edf3f4135f12d3d069e526d0b7
+PARENT_ADOPTION_R1_192=PASS_RESEARCH_ONLY
+THIS_OVERRIDE_INDEPENDENT_REVIEW=NOT_RUN
+EFFECTIVE_MERGE_TO_EXPERIMENT=NOT_AUTHORIZED
+POC_183_SOURCE=NOT_STARTED
+POC_183_NODE24_REAL_SDK_HOST=NOT_RUN
+POC_183_INDEPENDENT_VERDICT=NOT_RUN
+V02_PRODUCT_FREEZE=NO
+V02_L2_FREEZE=NO
+V02_SCAFFOLD_ACCEPTED=NO
+V02_NATIVE_TASK_DAG=NOT_MATERIALIZED
+V01_RELEASE_IMPACT=NONE
+```
 
-## Independent Review Profile
-
-- Review profile: `risk-based`
-- Default Task Review Policy: `recommended`
-- Required triggers: `security/auth/authorization; public API/schema/migration semantics; cross-service contracts; concurrency/data integrity; destructive/recovery behavior; high-blast-radius integration; explicit release blocker; Frozen Stage authority requiring review`
-- Not-required examples: `mechanical/generated docs-only changes when no higher authority requires review`
-- Allowed reviewer sources: `fresh ChatGPT session; Claude; Codex/other independent reviewer; human`
-- Exact-SHA re-review policy: `pinned standard default`
-
-For Stage 1 Product Freeze of the initial xDownload product definition, independent adversarial product review is REQUIRED by project authority until a current exact-subject PASS is obtained.
-
-The initial Stage 2.4 v0.1.0 Task DAG received the required Fresh Independent Task DAG Review/Re-Review and is now **FROZEN** by `docs/planning/STAGE2_TASK_DAG_FREEZE.md`. Any semantic Task DAG amendment requires a successor review/freeze path as authorized by ADS; the Freeze does not itself materialize execution work.
-
-## Validation Execution Profile
-
-Current post-Stage-2.4-Freeze / pre-Stage-2.5-materialization state:
-
-- Linux validation: `NOT_RUN — production implementation/runtime not established`
-- Windows validation: `NOT_RUN — production implementation/runtime not established`
-- macOS validation: `NOT_RUN — concrete release-claimed production platform tuple not established`
-- Other real environment/device: `NOT_RUN — not yet qualified`
-- Planned version-level visible Validation ownership after implementation/candidate stabilization: `T020 core recovery/data integrity; T021 browser/auth/security; T022 Product gates/Critical Journeys; T023 package/platform qualification`
-- Candidate Freeze / Hidden Validation / Closure / Release Qualification ownership: `T024 / T025 / T026 / T027`, all currently `NOT_RUN`
-
-Exact platform/runtime validation tuples remain downstream of actual implementation/package choices and Frozen Product/Architecture boundaries.
-
-## CI Profile
-
-- CI profile: `disabled`
-- Disabled reason: `planning-stage repository; implementation/toolchain has not yet been established`
-- Planned activation owner after authorized implementation dispatch: `T001 Repository/toolchain bootstrap + CI activation`
-- Exact-SHA clean-validation fallback: `NOT_RUN — implementation validation is not yet applicable to current planning artifacts; formal document Review remains exact-subject bound`
-
-CI profile MUST be revisited by T001 before dependent implementation tasks begin.
-
-## CI Execution Profile
-
-- CI provider: `NOT_APPLICABLE — planning stage only`
-- CI backend / execution model: `NOT_APPLICABLE — planning stage only`
-- CI runner role: `NOT_APPLICABLE — planning stage only`
-- Workflow config: `NOT_APPLICABLE — planning stage only`
-- Workflow config source: `NOT_APPLICABLE — planning stage only`
-- Execution shell / entrypoint model: `NOT_APPLICABLE — planning stage only`
-- Runtime source: `NOT_APPLICABLE — planning stage only`
-- Clone / checkout model: `NOT_APPLICABLE — planning stage only`
-- Partial clone policy: `NOT_APPLICABLE — planning stage only`
-- Submodule policy: `NOT_APPLICABLE — planning stage only`
-- Git LFS policy: `NOT_APPLICABLE — planning stage only`
-- Fresh-run / rerun policy: `new exact subject requires new applicable Review/Validation evidence`
-
-## Required Commands
-
-- Bootstrap: `NOT_RUN — implementation/toolchain not established`
-- Format: `NOT_RUN — implementation/toolchain not established`
-- Lint: `NOT_RUN — implementation/toolchain not established`
-- Typecheck: `NOT_RUN — implementation/toolchain not established`
-- Unit: `NOT_RUN — implementation/toolchain not established`
-- Contract: `NOT_RUN — implementation/toolchain not established`
-- Integration: `NOT_RUN — implementation/toolchain not established`
-- Critical Journey: `NOT_RUN — executable harness planned by T003; exact-candidate execution owned by T022`
-- Hidden Validation: `NOT_RUN — downstream T025 only after Candidate Freeze`
-- Production Build / Package: `NOT_RUN — implementation stage not reached; planned T018/T023`
-
-## Runtime / Platform Requirements
-
-- Supported OS/platform: `NOT_QUALIFIED — Frozen Architecture intentionally leaves concrete release matrix replaceable until downstream implementation and exact platform Validation`
-- Required runtime/toolchain versions: `NOT_SELECTED/NOT_QUALIFIED — downstream T001/T018 subject to Frozen Architecture`
-- Required services: `local product architecture only; exact implementation dependencies not yet established`
-- Required SDK/device/browser tuple: `NOT_QUALIFIED`
-
-## Project-specific Hard Boundaries
-
-- `kaicreator-mm/ai-development-standard` pinned revision is the lifecycle/process authority.
-- Chat discussion is not a durable project fact; material planning/review outputs must be checkpointed in GitHub.
-- Stage 1 Product Freeze requires the ADS Stage 1 artifact set and current exact-subject required review PASS; reviewer agreement does not replace later executable Validation.
-- No L2 Architecture work before PRD/Scope Freeze checkpoint.
-- No Task DAG freeze before L2 Architecture Freeze.
-- The exact reviewed Stage 2.4 Task DAG/Task Pack planning bytes are `FROZEN` by `docs/planning/STAGE2_TASK_DAG_FREEZE.md`; no Task Issue/Issue Dependency materialization is authorized by Freeze alone.
-- No implementation dispatch before Frozen Task DAG materialization and task Review Policy assignment in the canonical live execution DAG.
-- xDownload remains subject to its Frozen PRD product/security boundaries once Product Freeze occurs.
-- Frozen Architecture Facts/Decisions may change only through the formal ADS Architecture Amendment / newly discovered material UNKNOWN process.
-- Frozen Task planning semantics may change only through an explicit Task DAG amendment / successor review-and-freeze path; do not silently mutate the reviewed Task DAG, index or Task Packs.
-- Task/PR Review or Validation PASS does not imply Candidate Freeze, Version Closure, Release Qualification or Release PASS.
-
-## Required Release Gates
-
-The Frozen Stage 2.4 Task DAG plans the downstream authority chain without claiming any result:
-
-- `T020` Core crash/restart/data-integrity Validation — `NOT_RUN`
-- `T021` Browser/auth/security real-host Validation — `NOT_RUN`
-- `T022` Product gates + Critical Journey Validation — `NOT_RUN`
-- `T023` Package/platform qualification Validation — `NOT_RUN`
-- `T024` Candidate Freeze — `NOT_RUN`
-- `T025` Hidden Validation — `NOT_RUN`
-- `T026` Version Closure — `NOT_RUN`
-- `T027` Release Qualification — `NOT_RUN`
-- `T028` Version PR/release-baseline integration — `NOT_STARTED`
-
-Actual release qualification remains governed by Frozen Product/Architecture and pinned ADS exact-subject evidence rules.
-
-## Ownership / Sensitive Areas
-
-- Product/Scope docs → Stage 1 Product authority; required independent review before Product Freeze.
-- Frozen Architecture → Stage 2 Architecture authority; changes require the formal amendment/new-material-UNKNOWN path.
-- Frozen Stage 2.4 Task DAG / Task Packs → planning/history authority bound by `docs/planning/STAGE2_TASK_DAG_FREEZE.md`; Stage 2.5 must separately materialize Task Issues/native Issue Dependencies before the live execution DAG exists.
-- Security/credential/browser-session boundaries → required independent review when implementation concerns exist.
-- Public contracts/schema/migration/data integrity → required independent review when applicable.
+Version-level Candidate Freeze, Hidden, Version Closure, independent Release Qualification and authorized Repository Integration remain completely separate ADS authorities. No planning/PoC/CI result implies their PASS.
