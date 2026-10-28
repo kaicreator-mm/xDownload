@@ -4,7 +4,7 @@ STATUS=PLANNED_NOT_FROZEN
 WORK_ITEM=#188
 PROJECT_PRODUCT=docs/planning/v0.2.0/PRODUCT_R0.md (NOT_FROZEN)
 PROJECT_L2=docs/architecture/v0.2.0/L2_R0.md (NOT_FROZEN)
-SCaffold=docs/planning/v0.2.0/SCAFFOLD_R0.md (NOT_ACCEPTED_SOURCE)
+SCAFFOLD=docs/planning/v0.2.0/SCAFFOLD_R0.md (NOT_ACCEPTED_SOURCE)
 PLANNING_DAG=docs/implementation/v0.2.0/TASK_DAG_R0.md
 FUTURE_INTEGRATION_TARGET=version/v0.2.0 (NOT_CREATED)
 SDK=v0.10.3 frozen contract only; exact current SDK package proof at JIT
@@ -34,9 +34,20 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T02 — Selected B/K admission, confirmation, governed Effect and truthful status
+### T02 — Minimal DomainHarness v0.10.3 SDK / pnpm workspace bootstrap
 
-- **Lane:** business; **Depends on:** T01; **Risk:** high; **Independent Review:** required.
+- **Lane:** sdk-bootstrap; **Depends on:** T01; **Risk:** high; **Independent Review:** required.
+- **Allowed FIRST-phase exclusive write set:** `packages/download-domain-app/package.json`, `packages/download-domain-host/package.json`, and ONLY needed additive root `package.json`/`pnpm-lock.yaml` dependency/lockfile wiring. Do not change old downloader source, root build entrypoints, or user release surface; `pnpm-workspace.yaml` already uses `packages/*` and normally needs no change. Exact file list must be bound to the Task Issue at JIT.
+- **Inputs:** qualified Product/L2, genuinely frozen T01 contract and selected v0.10.3 public ABI/source candidate. Real SDK final publication is NOT an authoring prerequisite.
+- **Output and acceptance:** create two minimal private ESM package manifests with workspace-local dependencies and real selected v0.10.3 public SDK package dependency identities; capture installed package tarball/SHA proof for the selected candidate, verify a fresh Node24/pnpm install resolves those two package roots and required SDK exports, and run a bounded contract/BUILD smoke without pretending to have completed direct acquisition or actual Host effects.
+- **Runtime evidence ownership:** Node24 local Builder, independent Reviewer for ABI/dependency/auth risks; all commands/exits recorded. Root lockfile provenance and no-download/no-untrusted-postinstall controls must be visible.
+- **Write succession:** once T02 is reviewed, validated and merged into the integration baseline, the T02 writer is CLOSED; later T13 may take exclusive custody of these same manifest/lock paths (additive final BUILD/packaging only). No simultaneous accepted Claims/branches writing these paths. After a T02 source-baseline update, downstream T03–T09 must use refreshed JIT base.
+- **Forbidden and negative:** no new downloader, no proprietary SDK patching, no silent v0.10.2 fallback, no dual business journal, no automatic npm publisher/release assertions. Any unsupported public SDK/Node24 consumer is a bounded upstream v0.10.3 gap and BLOCKED, not a mock PASS.
+- **Status:** PLANNED; native Issue # TBD; exact SDK package hashes and Claim NOT_RUN; no executable source written under this planning issue.
+
+### T03 — Selected B/K admission, confirmation, governed Effect and truthful status
+
+- **Lane:** business; **Depends on:** T02; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `packages/download-domain-app/src/business/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** permitted external effect versus permitless zero dispatch, no LLM grant, accepted is not file completion.
@@ -46,9 +57,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T03 — Direct acquisition C/Host bridge with budgets and verified file acceptance
+### T04 — Direct acquisition C/Host bridge with budgets and verified file acceptance
 
-- **Lane:** direct-host; **Depends on:** T01; **Risk:** high; **Independent Review:** required.
+- **Lane:** direct-host; **Depends on:** T02; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `packages/download-domain-host/src/direct/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** existing DirectHttpAdapter call only after K permit, single budget truth, digest-backed bytes, rejected URL/path and zero-network negatives.
@@ -58,9 +69,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T04 — Deterministic recipe/selection S and bounded optional advisory
+### T05 — Deterministic recipe/selection S and bounded optional advisory
 
-- **Lane:** semantic; **Depends on:** T01; **Risk:** medium; **Independent Review:** recommended.
+- **Lane:** semantic; **Depends on:** T02; **Risk:** medium; **Independent Review:** recommended.
 - **Allowed exclusive write set:** `packages/download-domain-app/src/semantic/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** finite discovery scope, deterministic no-LLM path, ambiguous result triggers confirmation, advisory never self-grants.
@@ -70,9 +81,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T05 — Existing HLS media C/Host adapter
+### T06 — Existing HLS media C/Host adapter
 
-- **Lane:** media-host; **Depends on:** T01; **Risk:** high; **Independent Review:** required.
+- **Lane:** media-host; **Depends on:** T02; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `packages/download-domain-host/src/media/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** supported HLS only, no new broad protocol claims, permission and budget negative cases.
@@ -82,9 +93,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T06 — CLI adapter to one selected Domain App status and commands
+### T07 — CLI adapter to one selected Domain App status and commands
 
-- **Lane:** cli; **Depends on:** T01; **Risk:** medium; **Independent Review:** recommended.
+- **Lane:** cli; **Depends on:** T02; **Risk:** medium; **Independent Review:** recommended.
 - **Allowed exclusive write set:** `apps/cli/src/domain-app-*.ts (materialize exact paths at JIT)`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** real command→query/status, faithful UNKNOWN/FAILED, no private K internals exported.
@@ -94,9 +105,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T07 — Browser/native-host bounded-authorization surface adapter
+### T08 — Browser/native-host bounded-authorization surface adapter
 
-- **Lane:** browser; **Depends on:** T01; **Risk:** high; **Independent Review:** required.
+- **Lane:** browser; **Depends on:** T02; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `apps/browser-extension/src/domain-app/** (final exact files at JIT)`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** real authorized browser user action, no cookies/secrets to model and no scope widening, native Host check.
@@ -106,9 +117,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T08 — Single-authority old-Core / new-K lineage migration and rollback
+### T09 — Single-authority old-Core / new-K lineage migration and rollback
 
-- **Lane:** migration; **Depends on:** T01; **Risk:** high; **Independent Review:** required.
+- **Lane:** migration; **Depends on:** T02; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `packages/download-domain-app/src/migration/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** one writer per lineage; crash/restart and UNKNOWN; old-lineage v0.1 owner persists; rollback documented.
@@ -118,7 +129,7 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T09 — Independent regression fixtures, oracles and baseline preparation
+### T10 — Independent regression fixtures, oracles and baseline preparation
 
 - **Lane:** validation-harness; **Depends on:** T01; **Risk:** medium; **Independent Review:** recommended.
 - **Allowed exclusive write set:** `tests/domain-app/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
@@ -130,9 +141,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T10 — One authoritative direct K→C/Host→file composition
+### T11 — One authoritative direct K→C/Host→file composition
 
-- **Lane:** integration-direct; **Depends on:** T02,T03,T08; **Risk:** high; **Independent Review:** required.
+- **Lane:** integration-direct; **Depends on:** T03,T04,T09; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `packages/download-domain-app/src/composition/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** Node24 selected K/S/B/C, real bytes and digest, exactly one K permit, no double journal, cancellation/recovery.
@@ -142,9 +153,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T11 — Non-direct S2-S6 and media/browser convergence
+### T12 — Non-direct S2-S6 and media/browser convergence
 
-- **Lane:** integration-other; **Depends on:** T04,T05,T07,T10; **Risk:** high; **Independent Review:** required.
+- **Lane:** integration-other; **Depends on:** T05,T06,T08,T11; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `packages/download-domain-app/src/integrations/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** each release-claimed installed journey connects existing adapters to K without widening collection/authorization.
@@ -154,10 +165,10 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T12 — Single-writer BUILD manifest, exports, lockfile and packaged facade
+### T13 — Final BUILD manifest, exports, lockfile and packaged facade (after T02 handoff)
 
-- **Lane:** build-packaging; **Depends on:** T06,T10,T11; **Risk:** high; **Independent Review:** required.
-- **Allowed exclusive write set:** `packages/download-domain-app/package.json, packages/download-domain-host/package.json, packages/download-domain-app/src/index.ts, packages/download-domain-app/README.md, build/**, root package.json, pnpm-lock.yaml (only if needed)`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
+- **Lane:** build-packaging; **Depends on:** T07,T11,T12; **Risk:** high; **Independent Review:** required.
+- **Allowed exclusive write set (ONLY after T02 merged and its writer is closed):** `packages/download-domain-app/package.json, packages/download-domain-host/package.json, packages/download-domain-app/src/index.ts, packages/download-domain-app/README.md, build/**, root package.json, pnpm-lock.yaml (only if actually required)`. T02 is the INITIAL manifest writer; T13 is the LATER final packaging writer; this is a sequenced ownership transfer, never concurrent. No unrelated root edits. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
 - **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
 - **Output/acceptance:** actual v0.10.3 packed SDK, sealed selected module hashes, clean install and actual package smoke; no duplicate package root.
 - **Candidate Builder:** Node24/Woodpecker packaging Builder.
@@ -166,9 +177,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T13 — Core crash/restart, UNKNOWN, integrity and durable replay Validation
+### T14 — Core crash/restart, UNKNOWN, integrity and durable replay Validation
 
-- **Lane:** validation-core; **Depends on:** T09,T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** validation-core; **Depends on:** T10,T13; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/core/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** Actual Node24/Windows source-bound K/Host, accepted file digest, fail-closed unknown/reconcile, no double grant; test commands and real EXIT.
@@ -178,9 +189,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T14 — Browser/native Host auth and security Validation
+### T15 — Browser/native Host auth and security Validation
 
-- **Lane:** validation-browser; **Depends on:** T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** validation-browser; **Depends on:** T13; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/browser/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** Real Windows/Chromium trusted browser sessions, native Host confinement, secret/redaction/scope zero-execution negatives, file owner truth.
@@ -190,9 +201,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T15 — Product critical journeys and G0/G1 parity Validation
+### T16 — Product critical journeys and G0/G1 parity Validation
 
-- **Lane:** validation-product; **Depends on:** T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** validation-product; **Depends on:** T13; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/product/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** Installed user path for release-claimed S1–S6, product correctness/effort comparison where required, no false completion; current oracle/denominator.
@@ -202,9 +213,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T16 — Packed SDK and Windows/platform qualification Validation
+### T17 — Packed SDK and Windows/platform qualification Validation
 
-- **Lane:** validation-platform; **Depends on:** T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** validation-platform; **Depends on:** T13; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/platform/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** Clean packed v0.10.3 public SDK consumer with actual package bytes/hash, Node24 and claimed platform physical package smoke, reproducible exact candidate evidence.
@@ -214,9 +225,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T17 — Candidate Freeze exact visible gate reconciliation
+### T18 — Candidate Freeze exact visible gate reconciliation
 
-- **Lane:** candidate-freeze; **Depends on:** T13,T14,T15,T16; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** candidate-freeze; **Depends on:** T14,T15,T16,T17; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/candidate/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** All required visible Validation PASS and current on exactly one version candidate, correct tree/ref, freeze identity and no unresolved P0/P1.
@@ -226,9 +237,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T18 — Independent Hidden Validation on frozen candidate
+### T19 — Independent Hidden Validation on frozen candidate
 
-- **Lane:** hidden-validation; **Depends on:** T17; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** hidden-validation; **Depends on:** T18; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/hidden-public-index/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** Actual isolated hidden pack/environment/reviewer identity for frozen candidate, PASS/FAIL with privacy-preserving evidence pointers.
@@ -238,9 +249,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T19 — Version closure and evidence reconciliation
+### T20 — Version closure and evidence reconciliation
 
-- **Lane:** version-closure; **Depends on:** T18; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** version-closure; **Depends on:** T19; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/closure/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** Pinned closure checklist, issue/PR and candidate evidence currentness, migration/SDK baseline audit and truthful blockers.
@@ -250,9 +261,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T20 — Independent Release Qualification owner verdict
+### T21 — Independent Release Qualification owner verdict
 
-- **Lane:** release-qualification; **Depends on:** T19; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** release-qualification; **Depends on:** T20; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/rq/**`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
 - **Output/acceptance and required physical evidence:** Real exact-SHA RQ READY/CONDITIONAL/BLOCKED/FAIL decision, explicit scope/limitations and main integration permission if READY.
@@ -262,12 +273,12 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 
-### T21 — Qualified mainline integration
+### T22 — Qualified mainline integration
 
-- **Lane:** main-integration; **Depends on:** T20; **Risk:** high; **Review:** required. Gate owner decisions and independent Validator roles remain distinct.
+- **Lane:** main-integration; **Depends on:** T21; **Risk:** high; **Review:** required. Gate owner decisions and independent Validator roles remain distinct.
 - **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/integration/** (and protected repository merge authority only when allowed)`, version integration/candidate ref only when stage authority admits it.
 - **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
-- **Output/acceptance and required physical evidence:** Only when T20 READY, exact version PR diff/base protection re-read, permitted merge and merged SHA/readback.
+- **Output/acceptance and required physical evidence:** Only when T21 READY, exact version PR diff/base protection re-read, permitted merge and merged SHA/readback.
 - **Executor:** Repository Integration Controller; independent of relevant implementation Builder.
 - **Forbidden/negative:** No main merge before RQ, no new package tag inferred.
 - **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
@@ -275,7 +286,9 @@ These are durable **planning candidates** only, not issued implementation Claims
 
 ## Source scaffold / Task DAG binding
 
-SF-01→T01, SF-02→T02, SF-03→T03, SF-04→T04, SF-05→T05, SF-06→T06, SF-07→T07, SF-08→T08, SF-09→T09, SF-10→T10, SF-11→T11, SF-12→T12; T13–T16 are four independent validation owners; T17–T21 are distinct Candidate/Hidden/Closure/RQ/Integration controllers (no source Scaffold anchors).
+The final package manifest and lockfile write set is *temporal*: T02 first, T13 last after all required integration dependencies. The actual effective writer at any moment must be unique. T02 accepted package bytes are input to T13, not a second live authority or a self-certifying source Scaffold.
+
+SF-01→T01 (contract); SF-02→T02 (initial package/SDK bootstrap); SF-03→T03 (B); SF-04→T04 (direct C/Host); SF-05→T05 (S); SF-06→T06 (HLS); SF-07→T07 (CLI); SF-08→T08 (browser); SF-09→T09 (migration); SF-10→T10 (fixtures); SF-11→T11 (direct join); SF-12→T12 (other join); SF-13→T13 (final BUILD/packaging). T14–T17 own four independent Validations; T18–T22 own the distinct Candidate/Hidden/Closure/RQ/main integration authority gates. **SF-02 and SF-13 touch two identical package manifest paths only at different times: T02 initial bootstrap closes and integrates before T13's final writer Claim. No overlapping active authority; native Task Issue writes and JIT currentness must prove the handoff.**
 
 Binding currently means **proposed path ownership**; no accepted Scaffold Git-object/mode inventory, real Task Issue binding, native Issue Dependency, DF blob freeze or independently recomputed MI digest exists. An actually accepted source-first Scaffold must be materialized in a separate current, lawful source-only Claim; then the Task-side immutable pair record is created *after* both SF and DF identities are fixed, never self-hashed.
 
