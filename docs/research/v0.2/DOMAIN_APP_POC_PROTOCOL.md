@@ -11,7 +11,7 @@ Using only actual selected public DomainHarness APIs, a download Domain App can 
 ## Required source identity and build
 
 - Node >=24 clean checkout, exact SDK source SHA, public packed package hashes, real BUILD selection of K/S/B/C IDs and module hashes.
-- **SDK target is frozen DomainHarness v0.10.3 only. Development is allowed before final RQ/Tag.** Use exact `version/v0.10.3` candidate commit (initial observed SHA `7d571858bd6524ffd13a7985227183dbecb2924a`) with its actual public exports; build/pack the candidate SDK on Node24 and capture source/package-byte hashes. Clean-consumer qualification is **part of this PoC's acceptance**, not a pre-authoring gate. An SDK incompatibility is a concrete v0.10.3 gap/BLOCKED; do not downgrade to v0.10.2 or construct undocumented APIs. Once a v0.10.3 final release identity is available, re-pin and re-run compatibility/relevant negatives without retroactively altering preliminary evidence.
+- **SDK version identity (2026-10-29): DomainHarness v0.10.3 has completed its CONDITIONAL GIT-SOURCE-ONLY release.** Pin immutable Git tag `v0.10.3` → real **main merge SHA `061376f4a023070f215f9feffad5c24d96d503cb`**, whose Git tree `099cdc831aef63befd62aaede7e7a853d1be468f` is byte-identical to independently qualified version candidate `7d571858bd6524ffd13a7985227183dbecb2924a`. Git release RQ is CONDITIONAL (P0=0/P1=0/P2=3), not unconditional `PASS`. **npm publication was not authorized and is NOT DONE; package manifests can still contain `0.10.2-rc.0`.** Therefore use locally built and packed public packages from the verified Git source SHA/tree on Node >=24; pin/hash actual consumed tarball bytes and prohibit silent registry/v0.10.2 fallback. Exact public clean-consumer qualification remains part of this xDownload PoC, **not** something transferred from upstream Full/Hidden or other consumers. Verify tag→commit→tree and package exports before the first run; a mismatch is BLOCKED, not shimmed or guessed.
 - External BUILD/selected modules; runtime Microkernel load/send/query/subscribe; trusted Node Host configuration. No internal SDK shortcut.
 - xDownload existing direct-acquisition, domain contracts, local bounded HTTP fixture, temporary authorized output directory; no new downloader or network security stack.
 
@@ -28,7 +28,12 @@ Using only actual selected public DomainHarness APIs, a download Domain App can 
 | N05 | Corrupt receipt, persistence identity or digest | Fail closed, no unauthorized journal clearing |
 | N06 | Two business writers attempt same lineage | Reject or prove a single-authority mapping |
 | N07 | Modified or unselected BUILD module | Reject before effect |
+| N08 | Malformed/untrusted raw public `DomainApp.send` input before stable-Case / Effect Journal reservation | Trusted pre-send schema/intent/identity validation **before entering K**, zero Host effect and **zero poisoned persistent Effect Journal entry** for invalid request; subsequent valid same identity must not be blocked by earlier invalid attempt |
 | M01 | Same fixture baseline engine vs K orchestration | Record real latency, CPU/memory and development complexity |
+
+## Explicit known SDK consumer hazard (v0.10.3 conditional release boundary)
+
+DomainHarness upstream [#1437](https://github.com/kaicreator-mm/domain-harness/issues/1437) documented an **unfixed** public raw-send ordering hazard: malformed stable-Case data can reserve/poison the K Effect Journal before the public path rejects it, causing later valid same-identity sends to return `ADMISSION_EFFECT_JOURNAL_CONFLICT/UNKNOWN`. **The Git v0.10.3 release does not fix this.** For the xDownload PoC, **never expose raw public send with unvalidated user/Recipe/Browser input**. Require a trusted *pre-send* validation gateway that checks schema, confirmed source/targetRef, immutable identity, output root and scope before calling public `send`, and explicitly test N08 invalid→valid same-identity with journal/readback and zero physical side effects. A gateway does not claim to repair an already poisoned foreign journal; if that is needed, classify as BLOCKED and file a real bounded SDK issue. Do not invent auto-retry/auto-clear.
 
 ## Authority decision
 
