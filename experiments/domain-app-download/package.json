@@ -1,0 +1,21 @@
+{
+  "name": "@xdownload/domain-app-download-poc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "xDownload #183 research demo: DomainHarness v0.10.3 Git-source SDK clean consumer orchestrating the existing direct-acquisition engine. Research only; not a product package.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@kaicreator/domain-harness-contracts": "file:evidence/e01-sdk-pack/kaicreator-domain-harness-contracts-0.10.2-rc.0.tgz",
+    "@kaicreator/domain-harness-host-node": "file:evidence/e01-sdk-pack/kaicreator-domain-harness-host-node-0.10.2-rc.0.tgz",
+    "@kaicreator/domain-harness-microkernel": "file:evidence/e01-sdk-pack/kaicreator-domain-harness-microkernel-0.10.2-rc.0.tgz"
+  },
+  "devDependencies": {
+    "@kaicreator/domain-harness-build": "file:evidence/e01-sdk-pack/kaicreator-domain-harness-build-0.10.2-rc.0.tgz"
+  }
+}

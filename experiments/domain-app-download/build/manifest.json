@@ -1,0 +1,64 @@
+{
+  "schema": "xdownload.poc.build-manifest/1",
+  "app": "app:xdownload-download-poc",
+  "buildId": "xdownload-i183-poc-v1",
+  "sdkSource": {
+    "repository": "kaicreator-mm/domain-harness",
+    "tag": "v0.10.3",
+    "commit": "061376f4a023070f215f9feffad5c24d96d503cb",
+    "tree": "099cdc831aef63befd62aaede7e7a853d1be468f"
+  },
+  "targetProfile": "node24-esm/1",
+  "subjectDigest": "5f3d1626f524b4b7df7dc42d78c510482a66431204899ca1c950e7bb001fba82",
+  "packageClosureDigest": "94a30dcc30528d418a099da724c6ad2e50d0031b268a7bed579010e7f57338b4",
+  "loadOrder": [
+    "v08-kernel-mechanism@v0.10.0",
+    "standard-sdk@v08.1.0.0",
+    "business-download@0.1.0",
+    "capability-acquisition@0.1.0"
+  ],
+  "sourceSha": "061376f4a023070f215f9feffad5c24d96d503cb",
+  "buildInputSha256": "42106324f26ce539ace68c53ee7deb2fd482287dbe6f67aaa336201b38472ad5",
+  "modules": [
+    {
+      "packageId": "v08-kernel-mechanism@v0.10.0",
+      "role": "kernel-primary",
+      "abiVersion": "v08-kernel-abi/1",
+      "moduleSha256": "e1ed59556f8b447b5f559302a893738eeae1d272e3a30ac4545fedfb1da8a3e7",
+      "bytes": 310911,
+      "externalEffect": false
+    },
+    {
+      "packageId": "standard-sdk@v08.1.0.0",
+      "role": "standard-primary",
+      "abiVersion": "v08-standard-sdk-abi/1",
+      "moduleSha256": "93aad26d2c3118548e2be3eefc0bcb9012e20bd6381077b58fbd1d2f59ce4606",
+      "bytes": 86412,
+      "externalEffect": false
+    },
+    {
+      "packageId": "business-download@0.1.0",
+      "role": "business",
+      "abiVersion": "v08-business-abi/1",
+      "moduleSha256": "0a5eb583e35c7e37162e520308d585f166af8934cd3d8a12f71f9071d379a708",
+      "bytes": 5256,
+      "externalEffect": false
+    },
+    {
+      "packageId": "capability-acquisition@0.1.0",
+      "role": "capability",
+      "abiVersion": "v08-capability-abi/1",
+      "moduleSha256": "a049549f600b12595aa10418927572a5a11525b9c3f2fe87eae1a9ba4be43bda",
+      "bytes": 2869,
+      "externalEffect": true
+    }
+  ],
+  "routes": [
+    {
+      "intentId": "confirmDownload",
+      "operationId": "acquire",
+      "capabilityId": "acquisition",
+      "handlerId": "acquireFile"
+    }
+  ]
+}
