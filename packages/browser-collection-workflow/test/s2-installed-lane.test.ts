@@ -29,7 +29,11 @@ import {
   profileWith,
 } from '../../core-runtime/test/helpers.ts';
 import type { CoreRuntime } from '@xdownload/core-runtime';
-import { createInstalledS2Lane, isS2LaneResponse, s2IdentityFor } from '../src/s2-installed-lane.ts';
+import {
+  createInstalledS2Lane,
+  isS2LaneResponse,
+  s2IdentityFor,
+} from '../src/s2-installed-lane.ts';
 
 const dirs: string[] = [];
 const runtimes: CoreRuntime[] = [];
