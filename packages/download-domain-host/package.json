@@ -1,0 +1,16 @@
+{
+  "name": "@xdownload/download-domain-host",
+  "version": "0.2.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "xDownload v0.2 trusted Domain App Host (C/Host integration: direct/media adapters behind the selected Kernel permit gate). Runtime wiring lands in T04/T06/T13.",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@kaicreator/domain-harness-host-node": "0.10.2-rc.0"
+  },
+  "devDependencies": {
+    "@xdownload/download-domain-app": "workspace:*"
+  }
+}
