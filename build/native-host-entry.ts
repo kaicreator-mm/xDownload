@@ -36,9 +36,9 @@ export interface BrokerConfig {
   readonly allowedOrigins: AllowedOrigins;
   /**
    * #95/#151: the ONE Core authority seam target. Absent → both lanes fail
-   * closed. The loopback TCP section serves the S2 delivered-bytes lane; the
-   * canonical Windows pipe namespace serves the OS-verified S5 collection
-   * lane (both same install/user; at least one transport required).
+   * closed. The OS-verified Windows pipe can serve installed S2/S5/S6 through the
+   * ONE Core authority; explicit TCP-only S2 remains available for legacy
+   * test/host tuples (same install/user; no pipe-to-TCP fallback).
    */
   readonly core:
     | {
@@ -174,9 +174,9 @@ export async function runBrokerHost(argv: readonly string[]): Promise<number> {
   }
   // Session establishment enforces the exact allow-listed caller origin
   // from the browser-passed argv (T010 semantics, unmodified). The S2 lane
-  // is composed only when the loopback TCP Core target is configured; the
-  // S5 collection lane only when the canonical OS-verified pipe namespace
-  // is configured. Either lane absent → its commands fail closed.
+  // uses the same canonical OS-verified pipe as S5/S6 when installed with
+  // pipeName, or explicit TCP only for legacy S2 compatibility. On pipe
+  // failure there is NO fallback to TCP or another Core authority.
   const broker = createAuthBroker();
   const tcpCore =
     core !== undefined && core.host !== undefined && core.port !== undefined
@@ -186,16 +186,19 @@ export async function runBrokerHost(argv: readonly string[]): Promise<number> {
     core !== undefined && core.pipeName !== undefined
       ? { pipeName: core.pipeName, installId: core.installId, userId: core.userId }
       : undefined;
+  // Prefer ONE OS-verified Core pipe for all installed browser lanes.
+  // Even in a mixed config S2 cannot silently switch to a second Core.
+  const s2Core = pipeCore ?? tcpCore;
   const session = establishNativeHostSession({
     argv,
     allowedOrigins,
     broker,
-    ...(tcpCore === undefined
+    ...(s2Core === undefined
       ? {}
       : {
           s2Lane: createInstalledS2Lane({
             broker,
-            core: tcpCore,
+            core: s2Core,
           }),
         }),
     ...(pipeCore === undefined

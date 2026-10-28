@@ -32,6 +32,7 @@ import type { CoreRuntime } from '@xdownload/core-runtime';
 import {
   createInstalledS2Lane,
   isS2LaneResponse,
+  selectInstalledS2CoreTransport,
   s2IdentityFor,
 } from '../src/s2-installed-lane.ts';
 
@@ -125,6 +126,46 @@ async function startedCore(): Promise<{
   const loopback = await bindLoopbackSeam(runtime);
   return { runtime, host: loopback.target.host, port: loopback.target.port, stop: loopback.stop };
 }
+
+describe('#178 S2 Core selection', () => {
+  const identity = { installId: 'install-001', userId: 'user-001' };
+  const pipeName = 'named-pipe';
+
+  it('routes pipe-only S2 to the verified transport', () => {
+    const chosen = selectInstalledS2CoreTransport({ ...identity, pipeName });
+    expect(chosen.kind).toBe('WINDOWS_PIPE');
+    expect(chosen.target).toEqual({
+      host: '127.0.0.1',
+      port: 0,
+      pipeName,
+    });
+  });
+
+  it('prefers the pipe when both endpoints are configured', () => {
+    const chosen = selectInstalledS2CoreTransport({
+      ...identity,
+      pipeName,
+      host: '127.0.0.1',
+      port: 18888,
+    });
+    expect(chosen.kind).toBe('WINDOWS_PIPE');
+    expect(chosen.target).toHaveProperty('port', 0);
+  });
+
+  it('keeps the explicit legacy loopback tuple', () => {
+    const chosen = selectInstalledS2CoreTransport({
+      ...identity,
+      host: '127.0.0.1',
+      port: 18888,
+    });
+    expect(chosen.kind).toBe('LOOPBACK');
+    expect(chosen.target).toHaveProperty('port', 18888);
+  });
+
+  it('refuses when no endpoint is configured', () => {
+    expect(() => selectInstalledS2CoreTransport(identity)).toThrow();
+  });
+});
 
 describe('#95 installed S2 lane (native host composition)', () => {
   it('carries the journey to the one Core authority and returns the verbatim terminal projection', async () => {
