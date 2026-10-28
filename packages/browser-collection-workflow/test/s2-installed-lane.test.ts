@@ -280,7 +280,10 @@ describe('#95 installed S2 lane (native host composition)', () => {
       expect(second.terminal).toEqual(first.terminal);
       expect(second.contractId).toBe(first.contractId);
       expect(core.runtime.writer.reader.workItems()).toHaveLength(acceptedBefore);
-      expect(core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId).lifecycleClass).toBe('ACCEPTED');
+      expect(
+        core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId)
+          .lifecycleClass,
+      ).toBe('ACCEPTED');
     } finally {
       await core.stop();
     }
@@ -349,7 +352,10 @@ describe('#95 installed S2 lane (native host composition)', () => {
       if (result.kind !== 'S2_RESULT') throw new Error(JSON.stringify(result));
       expect((result.terminal as Record<string, unknown>)['requestFulfillment']).toBe('COMPLETE');
       expect(core.runtime.writer.reader.workItems()).toHaveLength(1);
-      expect(core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId).bytesVerified).toBe(true);
+      expect(
+        core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId)
+          .bytesVerified,
+      ).toBe(true);
     } finally {
       await core.stop();
     }
@@ -370,7 +376,7 @@ describe('#95 installed S2 lane (native host composition)', () => {
       });
       const identity = ids.contractId.slice('contract-s2-'.length);
       const snapshotId = `snapshot-s2-${identity}`;
-      expect(seamCommand(core.runtime, {
+      const submit = seamCommand(core.runtime, {
         commandType: 'SUBMIT_CONTRACT',
         aggregateId: ids.contractId,
         correlation: { contractId: ids.contractId },
@@ -380,20 +386,26 @@ describe('#95 installed S2 lane (native host composition)', () => {
           requestedTarget: ids.targetId,
           budgetProfile: profileWith({ maxBytes: 67_108_864 }),
         }),
-      }).outcome).toBe('ACCEPTED');
-      expect(seamCommand(core.runtime, {
+      });
+      expect(submit.outcome).toBe('ACCEPTED');
+      const staged = seamCommand(core.runtime, {
         commandType: 'EXECUTE_S2_ACQUISITION',
         aggregateId: ids.contractId,
         expectedRevision: 1,
         correlation: { contractId: ids.contractId, snapshotId },
         asPeer: peer('BROWSER_EXTENSION'),
         payload: {
-          snapshotId, memberId: `member-s2-${identity}`, artifactId: `artifact:s2:${identity}`,
+          snapshotId,
+          memberId: `member-s2-${identity}`,
+          artifactId: `artifact:s2:${identity}`,
           authorizationContextRef: 'authctx/installed-s2-lane',
-          delivery, browserResponse: response, bytes: slabs.slice(0, 224),
+          delivery,
+          browserResponse: response,
+          bytes: slabs.slice(0, 224),
           chunk: { index: 0, count: Math.ceil(slabs.length / 224) },
         },
-      }).outcome).toBe('ACCEPTED');
+      });
+      expect(staged.outcome).toBe('ACCEPTED');
       const changed = Uint8Array.from(bytes);
       changed[0] = changed[0]! ^ 0xff;
       const lane = createInstalledS2Lane({
@@ -401,7 +413,8 @@ describe('#95 installed S2 lane (native host composition)', () => {
         core: { host: core.host, port: core.port, installId: 'install-001', userId: 'user-001' },
       });
       const again = await lane.handle({
-        kind: 'S2_ACQUIRE', requestId: 's2-mismatch-gesture',
+        kind: 'S2_ACQUIRE',
+        requestId: 's2-mismatch-gesture',
         payload: s2Acquire({ bytes: changed })['s2'] as Record<string, unknown>,
       });
       expect(again.kind).toBe('S2_REJECTED');
