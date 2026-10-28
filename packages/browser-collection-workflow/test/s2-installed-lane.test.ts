@@ -32,6 +32,7 @@ import type { CoreRuntime } from '@xdownload/core-runtime';
 import {
   createInstalledS2Lane,
   isS2LaneResponse,
+  selectInstalledS2CoreTransport,
   s2IdentityFor,
 } from '../src/s2-installed-lane.ts';
 
@@ -125,6 +126,45 @@ async function startedCore(): Promise<{
   const loopback = await bindLoopbackSeam(runtime);
   return { runtime, host: loopback.target.host, port: loopback.target.port, stop: loopback.stop };
 }
+
+describe('#178 S2 Core selection preserves one installed authority', () => {
+  const identity = { installId: 'install-001', userId: 'user-001' };
+  const pipeName = String.raw`\\\\.\\pipe\\xdownload-core-install-001`;
+
+  it('uses the OS-verified pipe for a pipe-only Core config', () => {
+    expect(selectInstalledS2CoreTransport({ ...identity, pipeName })).toEqual({
+      kind: 'WINDOWS_PIPE',
+      target: { host: '127.0.0.1', port: 0, pipeName },
+    });
+  });
+
+  it('never falls back to a second TCP Core in a mixed config', () => {
+    expect(
+      selectInstalledS2CoreTransport({
+        ...identity,
+        pipeName,
+        host: '127.0.0.1',
+        port: 19999,
+      }),
+    ).toEqual({
+      kind: 'WINDOWS_PIPE',
+      target: { host: '127.0.0.1', port: 0, pipeName },
+    });
+  });
+
+  it('keeps explicit legacy loopback-only S2 compatible', () => {
+    expect(selectInstalledS2CoreTransport({ ...identity, host: '127.0.0.1', port: 54321 })).toEqual({
+      kind: 'LOOPBACK',
+      target: { host: '127.0.0.1', port: 54321 },
+    });
+  });
+
+  it('rejects absent Core transport rather than inventing a local endpoint', () => {
+    expect(() => selectInstalledS2CoreTransport(identity)).toThrow(
+      'S2 Core requires a canonical Windows pipe or explicit loopback target',
+    );
+  });
+});
 
 describe('#95 installed S2 lane (native host composition)', () => {
   it('carries the journey to the one Core authority and returns the verbatim terminal projection', async () => {
