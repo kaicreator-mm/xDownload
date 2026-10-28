@@ -505,7 +505,10 @@ export function createInstalledS2Lane(config: InstalledS2LaneConfig): S2LaneHand
         // SUBMIT_CONTRACT(expectedRevision=0) would always reject it, leaving
         // earlier journaled slabs orphaned. This read does not grant authority;
         // the fresh user decision/capability above is still mandatory.
-        const slabCount = Math.max(1, Math.ceil(acquire.bytes.length / S2_SEAM_CHUNKS_PER_COMMAND));
+        const slabCount = Math.max(
+          1,
+          Math.ceil(acquire.bytes.length / S2_SEAM_CHUNKS_PER_COMMAND),
+        );
         const observed = await surface.readProjection(contractId);
         let currentRevision: number;
         if (observed.outcome === 'PROJECTION') {
@@ -573,13 +576,17 @@ export function createInstalledS2Lane(config: InstalledS2LaneConfig): S2LaneHand
           }
           currentRevision = 1;
         } else {
-          return laneFail(command.requestId, 'CORE_PROJECTION', observed.diagnostics ?? [
-            brokerDiagnostic(
-              'S2_LANE_REJECTED',
-              'projection',
-              'Core returned no trustworthy S2 aggregate state',
-            ),
-          ]);
+          return laneFail(
+            command.requestId,
+            'CORE_PROJECTION',
+            observed.diagnostics ?? [
+              brokerDiagnostic(
+                'S2_LANE_REJECTED',
+                'projection',
+                'Core returned no trustworthy S2 aggregate state',
+              ),
+            ],
+          );
         }
         // Redeliver ALL original slabs from the current authority revision,
         // including the persisted prefix. Core's S2ChunkStagingStore compares
