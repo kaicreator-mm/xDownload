@@ -280,10 +280,10 @@ describe('#95 installed S2 lane (native host composition)', () => {
       expect(second.terminal).toEqual(first.terminal);
       expect(second.contractId).toBe(first.contractId);
       expect(core.runtime.writer.reader.workItems()).toHaveLength(acceptedBefore);
-      expect(
-        core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId)
-          .lifecycleClass,
-      ).toBe('ACCEPTED');
+      const durableWork = core.runtime.writer.reader.workItems()[0]!;
+      expect(core.runtime.recovery.classify(durableWork.workItemId).lifecycleClass).toBe(
+        'ACCEPTED',
+      );
     } finally {
       await core.stop();
     }
@@ -352,10 +352,8 @@ describe('#95 installed S2 lane (native host composition)', () => {
       if (result.kind !== 'S2_RESULT') throw new Error(JSON.stringify(result));
       expect((result.terminal as Record<string, unknown>)['requestFulfillment']).toBe('COMPLETE');
       expect(core.runtime.writer.reader.workItems()).toHaveLength(1);
-      expect(
-        core.runtime.recovery.classify(core.runtime.writer.reader.workItems()[0]!.workItemId)
-          .bytesVerified,
-      ).toBe(true);
+      const durableWork = core.runtime.writer.reader.workItems()[0]!;
+      expect(core.runtime.recovery.classify(durableWork.workItemId).bytesVerified).toBe(true);
     } finally {
       await core.stop();
     }
