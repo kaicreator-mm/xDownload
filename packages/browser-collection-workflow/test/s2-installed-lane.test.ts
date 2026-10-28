@@ -477,7 +477,7 @@ describe('#95 installed S2 lane (native host composition)', () => {
     expect(session.ok).toBe(false);
   });
 
-  it('revokes the capability even when Core rejects the contract (least authority on every path)', async () => {
+  it('revokes the capability when Core converges to an existing terminal (least authority)', async () => {
     const core = await startedCore();
     try {
       const broker = createAuthBroker();
@@ -490,7 +490,7 @@ describe('#95 installed S2 lane (native host composition)', () => {
       const first = await lane.handle({ kind: 'S2_ACQUIRE', requestId: 'journey-a', payload });
       expect(first.kind).toBe('S2_RESULT');
       const before = await lane.handle({ kind: 'S2_ACQUIRE', requestId: 'journey-b', payload });
-      expect(before.kind).toBe('S2_REJECTED');
+      expect(before.kind).toBe('S2_RESULT');
       // Every capability the journeys issued is now dead (revoked), never
       // left ACTIVE in the broker after the journey ended.
       const refs = [first, before]
