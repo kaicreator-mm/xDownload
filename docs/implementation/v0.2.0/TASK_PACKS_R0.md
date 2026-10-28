@@ -166,33 +166,116 @@ These are durable **planning candidates** only, not issued implementation Claims
 - **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
 - **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
 
-### T13 — Independent exact-candidate product, Host, security and parity Validation
+### T13 — Core crash/restart, UNKNOWN, integrity and durable replay Validation
 
-- **Lane:** validation; **Depends on:** T09,T12; **Risk:** high; **Independent Review:** not-required.
-- **Allowed exclusive write set:** `docs/validation/v0.2.0/**; immutable evidence references only`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
-- **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
-- **Output/acceptance:** real clean Node24, Windows, browser/core CJs and qualified parity including evidence limits.
-- **Candidate Builder:** Independent Validators (not original Builder).
-- **Required real Validation/handoff:** independent source/host reviewers and actual CI results.
-- **Forbidden/negative:** No rewriting validation result or claiming missing human study PASS.
-- **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
-- **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
+- **Lane:** validation-core; **Depends on:** T09,T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/core/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Actual Node24/Windows source-bound K/Host, accepted file digest, fail-closed unknown/reconcile, no double grant; test commands and real EXIT.
+- **Executor:** Independent Core Validator; independent of relevant implementation Builder.
+- **Forbidden/negative:** No modification of implementation source or validated candidate.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
-### T14 — Candidate Freeze, Hidden, Version Closure, RQ and main integration
 
-- **Lane:** release; **Depends on:** T13; **Risk:** high; **Independent Review:** required when source/merge-sensitive.
-- **Allowed exclusive write set:** `docs/release/v0.2.0/**; release metadata only by authorized owner`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
-- **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
-- **Output/acceptance:** ADS candidate/hidden/closure/RQ; main merge only if explicit qualified READY and current exact candidate.
-- **Candidate Builder:** Independent Release Controller + Integration Owner.
-- **Required real Validation/handoff:** current version baseline, independent verdicts and owner authorization.
-- **Forbidden/negative:** No automatic v0.1 evidence transfer or early main merge.
-- **Failure handling:** report P0/P1/P2 and actual command/EXIT if run; if unproven use NOT_RUN/BLOCKED; no upstream scope expansion, no implied merge authorization.
-- **Status:** PLANNED; Canonical Issue # TBD; native blockers NOT_MATERIALIZED; no authorized source writer.
+### T14 — Browser/native Host auth and security Validation
+
+- **Lane:** validation-browser; **Depends on:** T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/browser/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Real Windows/Chromium trusted browser sessions, native Host confinement, secret/redaction/scope zero-execution negatives, file owner truth.
+- **Executor:** Independent Browser Security Validator; independent of relevant implementation Builder.
+- **Forbidden/negative:** No mocked browser sold as installed real proof.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
+
+
+### T15 — Product critical journeys and G0/G1 parity Validation
+
+- **Lane:** validation-product; **Depends on:** T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/product/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Installed user path for release-claimed S1–S6, product correctness/effort comparison where required, no false completion; current oracle/denominator.
+- **Executor:** Independent Product Validator; independent of relevant implementation Builder.
+- **Forbidden/negative:** No fabricated human measurements or unapproved value gate waivers.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
+
+
+### T16 — Packed SDK and Windows/platform qualification Validation
+
+- **Lane:** validation-platform; **Depends on:** T12; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/validation/v0.2.0/platform/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Clean packed v0.10.3 public SDK consumer with actual package bytes/hash, Node24 and claimed platform physical package smoke, reproducible exact candidate evidence.
+- **Executor:** Independent Platform Validator; independent of relevant implementation Builder.
+- **Forbidden/negative:** No inferred registry release from candidate manifest, no unrelated full platform matrix.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
+
+
+### T17 — Candidate Freeze exact visible gate reconciliation
+
+- **Lane:** candidate-freeze; **Depends on:** T13,T14,T15,T16; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/candidate/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** All required visible Validation PASS and current on exactly one version candidate, correct tree/ref, freeze identity and no unresolved P0/P1.
+- **Executor:** Candidate Freeze Controller; independent of relevant implementation Builder.
+- **Forbidden/negative:** No freeze from mixed SHAs or incomplete platform/corpus.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
+
+
+### T18 — Independent Hidden Validation on frozen candidate
+
+- **Lane:** hidden-validation; **Depends on:** T17; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/hidden-public-index/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Actual isolated hidden pack/environment/reviewer identity for frozen candidate, PASS/FAIL with privacy-preserving evidence pointers.
+- **Executor:** Independent Hidden Validator; independent of relevant implementation Builder.
+- **Forbidden/negative:** No private hidden pack content in public repo, no substitute public fixtures.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
+
+
+### T19 — Version closure and evidence reconciliation
+
+- **Lane:** version-closure; **Depends on:** T18; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/closure/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Pinned closure checklist, issue/PR and candidate evidence currentness, migration/SDK baseline audit and truthful blockers.
+- **Executor:** Version Closure Controller; independent of relevant implementation Builder.
+- **Forbidden/negative:** No closed Issue count treated as version release acceptance.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
+
+
+### T20 — Independent Release Qualification owner verdict
+
+- **Lane:** release-qualification; **Depends on:** T19; **Risk:** high; **Review:** not-required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/rq/**`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Real exact-SHA RQ READY/CONDITIONAL/BLOCKED/FAIL decision, explicit scope/limitations and main integration permission if READY.
+- **Executor:** Independent Release Controller; independent of relevant implementation Builder.
+- **Forbidden/negative:** No inferred qualification from task/CI/review results.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
+
+
+### T21 — Qualified mainline integration
+
+- **Lane:** main-integration; **Depends on:** T20; **Risk:** high; **Review:** required. Gate owner decisions and independent Validator roles remain distinct.
+- **Allowed exclusive evidence/write scope:** `docs/release/v0.2.0/integration/** (and protected repository merge authority only when allowed)`, version integration/candidate ref only when stage authority admits it.
+- **Inputs:** accepted exact version candidate and current preceding gates, same SHA where required. No historical v0.1 or PoC substitution.
+- **Output/acceptance and required physical evidence:** Only when T20 READY, exact version PR diff/base protection re-read, permitted merge and merged SHA/readback.
+- **Executor:** Repository Integration Controller; independent of relevant implementation Builder.
+- **Forbidden/negative:** No main merge before RQ, no new package tag inferred.
+- **Failure handling:** real commands/EXIT/NOT_RUN, P0/P1/P2 if review applies; BLOCKED/FAIL not washed into PASS, no unapproved scope changes.
+- **Status:** PLANNED; canonical Issue # TBD; native blocked_by NOT_MATERIALIZED; no authorized Claim.
 
 ## Source scaffold / Task DAG binding
 
-SF-01→T01, SF-02→T02, SF-03→T03, SF-04→T04, SF-05→T05, SF-06→T06, SF-07→T07, SF-08→T08, SF-09→T09, SF-10→T10, SF-11→T11, SF-12→T12; T13/T14 are validation and closure owners (no SF source anchor).
+SF-01→T01, SF-02→T02, SF-03→T03, SF-04→T04, SF-05→T05, SF-06→T06, SF-07→T07, SF-08→T08, SF-09→T09, SF-10→T10, SF-11→T11, SF-12→T12; T13–T16 are four independent validation owners; T17–T21 are distinct Candidate/Hidden/Closure/RQ/Integration controllers (no source Scaffold anchors).
 
 Binding currently means **proposed path ownership**; no accepted Scaffold Git-object/mode inventory, real Task Issue binding, native Issue Dependency, DF blob freeze or independently recomputed MI digest exists. An actually accepted source-first Scaffold must be materialized in a separate current, lawful source-only Claim; then the Task-side immutable pair record is created *after* both SF and DF identities are fixed, never self-hashed.
 
