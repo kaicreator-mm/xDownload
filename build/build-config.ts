@@ -89,6 +89,12 @@ export interface ArtifactSpec {
   readonly allowlist: readonly string[];
   /** True adds the node shebang + exec bit wiring for bin launchers. */
   readonly withShebang: boolean;
+  /**
+   * #179: additional bundles emitted into the same artifact outDir with the
+   * main bundle's exact build options (packaging/install write set only).
+   * Every extra file must also join the artifact allowlist.
+   */
+  readonly extraBundles?: readonly { readonly entryPoint: string; readonly outFile: string }[];
 }
 
 export const ARTIFACTS: readonly ArtifactSpec[] = [
@@ -135,10 +141,14 @@ export const ARTIFACTS: readonly ArtifactSpec[] = [
     platform: 'node',
     allowlist: [
       'xdownload-broker-host.js',
+      'xdownload-install-host.js',
       'broker-config.json',
       'com.xdownload.broker.template.json',
       'bin/*',
     ],
+    // #179: the explicit per-user Windows install binding entry (setup/
+    // uninstall/status) ships beside the broker it configures.
+    extraBundles: [{ entryPoint: 'build/install-host.ts', outFile: 'xdownload-install-host.js' }],
     withShebang: false,
   },
 ];

@@ -92,6 +92,23 @@ async function bundleArtifacts(distDir: string): Promise<void> {
       external: ['koffi', '@koromix/*'],
       ...(artifact.withShebang ? { banner: { js: SHEBANG } } : {}),
     });
+    // #179: additional same-artifact bundles (packaging/install write set)
+    // emitted with the identical build options as the main bundle.
+    for (const extra of artifact.extraBundles ?? []) {
+      await esbuild.build({
+        entryPoints: [path.join(REPO_ROOT, extra.entryPoint)],
+        outfile: path.join(distDir, artifact.outDir, extra.outFile),
+        bundle: true,
+        platform: artifact.platform,
+        format: 'esm',
+        target: artifact.platform === 'node' ? 'node24' : 'es2023',
+        sourcemap: false,
+        legalComments: 'none',
+        logLevel: 'warning',
+        external: ['koffi', '@koromix/*'],
+        ...(artifact.withShebang ? { banner: { js: SHEBANG } } : {}),
+      });
+    }
   }
 }
 
