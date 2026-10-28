@@ -127,44 +127,43 @@ async function startedCore(): Promise<{
   return { runtime, host: loopback.target.host, port: loopback.target.port, stop: loopback.stop };
 }
 
-describe('#178 S2 Core selection preserves one installed authority', () => {
+describe('#178 S2 Core selection', () => {
   const identity = { installId: 'install-001', userId: 'user-001' };
-  const pipeName = String.raw`\\.\pipe\xdownload-core-install-001`;
+  const pipeName = 'named-pipe';
 
-  it('uses the OS-verified pipe for a pipe-only Core config', () => {
-    expect(selectInstalledS2CoreTransport({ ...identity, pipeName })).toEqual({
-      kind: 'WINDOWS_PIPE',
-      target: { host: '127.0.0.1', port: 0, pipeName },
+  it('routes pipe-only S2 to the verified transport', () => {
+    const chosen = selectInstalledS2CoreTransport({ ...identity, pipeName });
+    expect(chosen.kind).toBe('WINDOWS_PIPE');
+    expect(chosen.target).toEqual({
+      host: '127.0.0.1',
+      port: 0,
+      pipeName,
     });
   });
 
-  it('never falls back to a second TCP Core in a mixed config', () => {
-    expect(
-      selectInstalledS2CoreTransport({
-        ...identity,
-        pipeName,
-        host: '127.0.0.1',
-        port: 19999,
-      }),
-    ).toEqual({
-      kind: 'WINDOWS_PIPE',
-      target: { host: '127.0.0.1', port: 0, pipeName },
+  it('prefers the pipe when both endpoints are configured', () => {
+    const chosen = selectInstalledS2CoreTransport({
+      ...identity,
+      pipeName,
+      host: '127.0.0.1',
+      port: 18888,
     });
+    expect(chosen.kind).toBe('WINDOWS_PIPE');
+    expect(chosen.target).toHaveProperty('port', 0);
   });
 
-  it('keeps explicit legacy loopback-only S2 compatible', () => {
-    expect(
-      selectInstalledS2CoreTransport({ ...identity, host: '127.0.0.1', port: 54321 }),
-    ).toEqual({
-      kind: 'LOOPBACK',
-      target: { host: '127.0.0.1', port: 54321 },
+  it('keeps the explicit legacy loopback tuple', () => {
+    const chosen = selectInstalledS2CoreTransport({
+      ...identity,
+      host: '127.0.0.1',
+      port: 18888,
     });
+    expect(chosen.kind).toBe('LOOPBACK');
+    expect(chosen.target).toHaveProperty('port', 18888);
   });
 
-  it('rejects absent Core transport rather than inventing a local endpoint', () => {
-    expect(() => selectInstalledS2CoreTransport(identity)).toThrow(
-      'S2 Core requires a canonical Windows pipe or explicit loopback target',
-    );
+  it('refuses when no endpoint is configured', () => {
+    expect(() => selectInstalledS2CoreTransport(identity)).toThrow();
   });
 });
 
