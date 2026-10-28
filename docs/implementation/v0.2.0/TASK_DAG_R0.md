@@ -25,23 +25,23 @@ flowchart LR
   T01 --> T03[03 Direct Host/C]
   T01 --> T04[04 S/Recipe]
   T01 --> T05[05 HLS Host/C]
-  T01 --> T07[07 CLI adapter]
-  T01 --> T08[08 Browser adapter]
-  T01 --> T09[09 Authority migration]
-  T01 --> T10[10 Validation fixtures]
-  T02 --> T11[11 Direct integration]
-  T03 --> T11
-  T09 --> T11
-  T11 --> T12[12 Other journeys integration]
-  T04 --> T12
-  T05 --> T12
-  T08 --> T12
-  T11 --> T13[13 Central BUILD and packaging]
+  T01 --> T06[07 CLI adapter]
+  T01 --> T07[08 Browser adapter]
+  T01 --> T08[09 Authority migration]
+  T01 --> T09[10 Validation fixtures]
+  T02 --> T10[11 Direct integration]
+  T03 --> T10
+  T08 --> T10
+  T10 --> T11[12 Other journeys integration]
+  T04 --> T11
+  T05 --> T11
+  T07 --> T11
+  T10 --> T12[13 Central BUILD and packaging]
+  T11 --> T12
+  T06 --> T12
+  T09 --> T13[14 Independent product and platform validation]
   T12 --> T13
-  T07 --> T13
-  T10 --> T14[14 Independent product and platform validation]
-  T13 --> T14
-  T14 --> T15[15 Candidate/Hidden/Closure/RQ]
+  T13 --> T14[15 Candidate/Hidden/Closure/RQ]
 ```
 
 ## Coherent concern → Task mapping
@@ -55,36 +55,36 @@ Each row is a **proposed Task Pack** (content in `TASK_PACKS_R0.md`); Issue numb
 | T03 | TBD | direct-host | T01 | YES | H | existing DirectHttpAdapter via trusted C/Host, budget and digest | Node24/Windows Host Builder | real request/permit/no-network negatives | required | JIT independent | TODO |
 | T04 | TBD | semantic | T01 | YES | M | existing discovery/recipe/selection as S, zero LLM path | domain/recipe Builder | finite scope and advisory negatives | recommended | JIT independent | TODO |
 | T05 | TBD | media-host | T01 | YES | H | HLS existing transport selected C, no new media stack | media/Host Builder | HLS existing fixtures and bounded auth | required | JIT independent | TODO |
-| T07 | TBD | cli | T01 | YES | M | thin CLI commands/query/status, no autonomous authority | TS CLI Builder | CLI reachability and status truth | recommended | JIT independent | TODO |
-| T08 | TBD | browser | T01 | YES | H | existing extension/native Host bridge to App façade | Windows/browser Builder | real browser/auth/permission tests | required | JIT independent | TODO |
-| T09 | TBD | migration | T01 | YES | H | unique owner old Core vs K, durable replay/recovery/rollback | concurrency/storage Builder | crash/UNKNOWN/tamper/dual writer negatives | required | JIT independent | TODO |
-| T10 | TBD | validation-harness | T01 | YES | M | independent corpus/fixture/oracle and parity baseline | Validator/CI Builder | clean fixtures, no fake success | recommended | JIT independent | TODO |
-| T11 | TBD | integration-direct | T02,T03,T09 | NO | H | S1 end-to-end K→C/Host→file→truth, single integration owner | senior integration Builder | actual bytes/terminal/cancel/restart | required | JIT integrated | TODO |
-| T12 | TBD | integration-other | T04,T05,T08,T11 | NO | H | S2–S6 required released-path adaptation and finite collections | senior integration Builder | installed journeys and regressions | required | JIT integrated | TODO |
-| T13 | TBD | build-packaging | T07,T11,T12 | NO | H | one manifest/lockfile/root BUILD owner, CLI/browser packaged join | Node24/Woodpecker/Windows Builder | clean packed SDK/Host and platform smoke | required | JIT integrated | TODO |
-| T14 | TBD | validation | T10,T13 | NO | H | independent exact-candidate Windows/core/browser/critical journeys | independent Validators | actual Node24/Windows; G0/G1 parity if applicable | not-required | exact candidate | TODO |
-| T15 | TBD | closure-release | T14 | NO | H | ADS Candidate Freeze → Hidden → Closure → RQ → authorized main integration | independent Release/Integration Controllers | ADS version gates, source/provenance | as required by release | exact candidate | TODO |
+| T06 | TBD | cli | T01 | YES | M | thin CLI commands/query/status, no autonomous authority | TS CLI Builder | CLI reachability and status truth | recommended | JIT independent | TODO |
+| T07 | TBD | browser | T01 | YES | H | existing extension/native Host bridge to App façade | Windows/browser Builder | real browser/auth/permission tests | required | JIT independent | TODO |
+| T08 | TBD | migration | T01 | YES | H | unique owner old Core vs K, durable replay/recovery/rollback | concurrency/storage Builder | crash/UNKNOWN/tamper/dual writer negatives | required | JIT independent | TODO |
+| T09 | TBD | validation-harness | T01 | YES | M | independent corpus/fixture/oracle and parity baseline | Validator/CI Builder | clean fixtures, no fake success | recommended | JIT independent | TODO |
+| T10 | TBD | integration-direct | T02,T03,T08 | NO | H | S1 end-to-end K→C/Host→file→truth, single integration owner | senior integration Builder | actual bytes/terminal/cancel/restart | required | JIT integrated | TODO |
+| T11 | TBD | integration-other | T04,T05,T07,T10 | NO | H | S2–S6 required released-path adaptation and finite collections | senior integration Builder | installed journeys and regressions | required | JIT integrated | TODO |
+| T12 | TBD | build-packaging | T06,T10,T11 | NO | H | one manifest/lockfile/root BUILD owner, CLI/browser packaged join | Node24/Woodpecker/Windows Builder | clean packed SDK/Host and platform smoke | required | JIT integrated | TODO |
+| T13 | TBD | validation | T09,T12 | NO | H | independent exact-candidate Windows/core/browser/critical journeys | independent Validators | actual Node24/Windows; G0/G1 parity if applicable | not-required | exact candidate | TODO |
+| T14 | TBD | closure-release | T13 | NO | H | ADS Candidate Freeze → Hidden → Closure → RQ → authorized main integration | independent Release/Integration Controllers | ADS version gates, source/provenance | as required by release | exact candidate | TODO |
 
-**No T06**: the earlier proposed extra “facade core” split was eliminated. T02 owns B policy, T09 owns durable migration, T11 owns central first-journey composition; an extra T06 would duplicate source and serialize unrelated work. Task numbering is intentionally stable and sparse, not an omitted required capability.
+**Fourteen coherent Tasks:** no extra overlapping facade Task was invented. The K/B policy, migration/recovery and integration concerns have distinct owners.
 
 ## Maximum safe parallelism
 
-After T01 genuinely merges and its contract is frozen, T02, T03, T04, T05, T07, T08, T09 and T10 have **eight distinct source ownership concerns**; up to 8 safe workfronts is the *graph-theoretical* width, not a guaranteed executor capacity or time saving. The essential joins are T11 for the direct path and T12 for non-direct. CLI can finish independently, and T10 fixtures are prepared without waiting for functional integration. T13 is the **single** root/package-lock/manifest/exports writer to avoid repeated merge conflicts.
+After T01 genuinely merges and its contract is frozen, T02, T03, T04, T05, T06, T07, T08 and T09 have **eight distinct source ownership concerns**; up to 8 safe workfronts is the *graph-theoretical* width, not a guaranteed executor capacity or time saving. The essential joins are T10 for the direct path and T11 for non-direct. CLI can finish independently, and T09 fixtures are prepared without waiting for functional integration. T12 is the **single** root/package-lock/manifest/exports writer to avoid repeated merge conflicts.
 
 | Lane | Exclusive planned write set | Can work with | Join |
 | --- | --- | --- | --- |
-| contract T01 | packages/download-domain-app/src/contracts/** and approved additive contract DTO | none until frozen interface | T02–T10 |
-| business T02 | packages/download-domain-app/src/business/** | T03/T04/T05/T07/T08/T09/T10 | T11 |
-| direct-host T03 | packages/download-domain-host/src/direct/** | T02/T04/T05/T07/T08/T09/T10 | T11 |
-| semantic T04 | packages/download-domain-app/src/semantic/** | other independent lanes | T12 |
-| media-host T05 | packages/download-domain-host/src/media/** | other independent lanes | T12 |
-| cli T07 | apps/cli/src/domain-app-*.ts (authorized exact file list at JIT) | other independent lanes | T13 |
-| browser T08 | apps/browser-extension/src/domain-app/** | other independent lanes | T12 |
-| migration T09 | packages/download-domain-app/src/migration/** | other independent lanes | T11 |
-| tests T10 | tests/domain-app/** | implementation lanes | T14 |
-| direct integration T11 | packages/download-domain-app/src/composition/** | T04/T05/T07/T08/T10 | T12, T13 |
-| other integration T12 | packages/download-domain-app/src/integrations/** | T07/T10 | T13 |
-| single-writer central T13 | package manifests, lockfile, build/** and public index | none on these paths | T14 |
+| contract T01 | packages/download-domain-app/src/contracts/** and approved additive contract DTO | none until frozen interface | T02–T09 |
+| business T02 | packages/download-domain-app/src/business/** | T03/T04/T05/T06/T07/T08/T09 | T10 |
+| direct-host T03 | packages/download-domain-host/src/direct/** | T02/T04/T05/T06/T07/T08/T09 | T10 |
+| semantic T04 | packages/download-domain-app/src/semantic/** | other independent lanes | T11 |
+| media-host T05 | packages/download-domain-host/src/media/** | other independent lanes | T11 |
+| cli T06 | apps/cli/src/domain-app-*.ts (authorized exact file list at JIT) | other independent lanes | T12 |
+| browser T07 | apps/browser-extension/src/domain-app/** | other independent lanes | T11 |
+| migration T08 | packages/download-domain-app/src/migration/** | other independent lanes | T10 |
+| tests T09 | tests/domain-app/** | implementation lanes | T13 |
+| direct integration T10 | packages/download-domain-app/src/composition/** | T04/T05/T06/T07/T09 | T11, T12 |
+| other integration T11 | packages/download-domain-app/src/integrations/** | T06/T09 | T12 |
+| single-writer central T12 | package manifests, lockfile, build/** and public index | none on these paths | T13 |
 
 Existing `packages/core-scheduler`, `packages/persistence-ledger`, `packages/direct-acquisition` and `packages/hls-vod-adapter` are **read-only** for this migration unless a separately reviewed explicit Task DAG amendment assigns narrow writes. Host performance and past security fixes must be reused.
 
@@ -92,15 +92,15 @@ Existing `packages/core-scheduler`, `packages/persistence-ledger`, `packages/dir
 
 | Product acceptance | Tasks / reason |
 | --- | --- |
-| P01 correct target and digest | T01/T03/T11/T14 |
-| P02 honest K state & UNKNOWN | T02/T09/T11/T14 |
-| P03 finite collection/selection | T04/T08/T12/T14 |
-| P04 restart/cancel/recovery | T09/T11/T14 |
-| P05 installed parity S1–S6 | T07/T08/T12/T13/T14 |
-| P06 deterministic without model | T02/T04/T10/T14 |
-| P07 least authority | T02/T03/T08/T09/T14 |
-| P08 measured performance/cost | T10 baseline/T14 comparison |
-| P09 SDK v0.10.3 exact package | T11/T13/T14 |
+| P01 correct target and digest | T01/T03/T10/T13 |
+| P02 honest K state & UNKNOWN | T02/T08/T10/T13 |
+| P03 finite collection/selection | T04/T07/T11/T13 |
+| P04 restart/cancel/recovery | T08/T10/T13 |
+| P05 installed parity S1–S6 | T06/T07/T11/T12/T13 |
+| P06 deterministic without model | T02/T04/T09/T13 |
+| P07 least authority | T02/T03/T07/T08/T13 |
+| P08 measured performance/cost | T09 baseline/T13 comparison |
+| P09 SDK v0.10.3 exact package | T10/T12/T13 |
 
 ## Alternative topology assessment
 
@@ -108,7 +108,7 @@ Existing `packages/core-scheduler`, `packages/persistence-ledger`, `packages/dir
 | --- | --- | --- | --- |
 | Old serial Contract→K→Host→S→UI→test | at most 1 | unnecessarily delays validation/CI/UI | REJECT |
 | Split every file/negative test as separate Issue | large apparent width, overlapping authority | excessive handoffs, review and integration | REJECT |
-| **Atomic contract + 8 independent lanes + two real joins + one packaging owner** | 8 after T01 | explicit T11/T12/T13 convergence, no competing ledger | SELECT candidate pending Review |
+| **Atomic contract + 8 independent lanes + two real joins + one packaging owner** | 8 after T01 | explicit T10/T11/T12 convergence, no competing ledger | SELECT candidate pending Review |
 | T01 followed by simultaneous B and integration before trusted C/Host seam | unsafe overlap | false permission/fixture integration | REJECT |
 
 ## Agent suitability and role discipline
