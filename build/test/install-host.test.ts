@@ -134,11 +134,12 @@ describe('#179 rendered install artifacts', () => {
     expect((start.match(/node "/g) ?? []).length).toBe(1); // exactly one Core process
   });
   it('keeps install state under the per-user writable root, outside dist', () => {
-    const paths = installPaths('H:\\home');
-    expect(paths.installDir.startsWith(path.join('H:', 'home', '.xdownload'))).toBe(true);
-    expect(paths.configPath).toBe(
-      path.join('H:', 'home', '.xdownload', 'install', 'broker-config.json'),
-    );
+    const home = path.join(tmpdir(), 'i179-home-fixture');
+    const paths = installPaths(home);
+    expect(paths.installDir).toBe(path.join(home, '.xdownload', 'install'));
+    expect(paths.configPath).toBe(path.join(paths.installDir, 'broker-config.json'));
+    expect(paths.launcherPath).toBe(path.join(paths.installDir, 'xdownload-broker-launch.cmd'));
+    expect(paths.coreDataRoot.includes('dist')).toBe(false);
   });
 });
 
