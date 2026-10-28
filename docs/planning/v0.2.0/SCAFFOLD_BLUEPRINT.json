@@ -1,0 +1,142 @@
+{
+  "schema": "xdownload.v02.scaffold-blueprint/1",
+  "authority": "DERIVED_NONAUTHORITATIVE - inspect SCAFFOLD_R0.md, L2_R0.md and future Task Issue before writing",
+  "status": "PLANNING_ONLY_NOT_SOURCE",
+  "ads": {
+    "version": "4.18.0",
+    "revision": "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+  },
+  "sdk": "DomainHarness v0.10.3 frozen ABI (exact candidate package proof pending)",
+  "baseline": {
+    "ref": "version/v0.1.0",
+    "observed_sha": "195355d03b847825ce5acf78c73e06f7386e11e2",
+    "final_v01_release_baseline": "UNKNOWN"
+  },
+  "reused_workspace": {
+    "root_package_json": "EXISTS",
+    "pnpm_workspace_yaml": "EXISTS",
+    "pnpm_lock_yaml": "EXISTS",
+    "apps_cli": "EXISTS",
+    "apps_browser_extension": "EXISTS",
+    "direct_acquisition": "EXISTS",
+    "hls_vod_adapter": "EXISTS"
+  },
+  "proposed_packages": [
+    {
+      "name": "@xdownload/download-domain-app",
+      "directory": "packages/download-domain-app",
+      "status": "NOT_CREATED"
+    },
+    {
+      "name": "@xdownload/download-domain-host",
+      "directory": "packages/download-domain-host",
+      "status": "NOT_CREATED"
+    }
+  ],
+  "anchors": [
+    {
+      "id": "SF-01",
+      "owner": "T01",
+      "path": "packages/download-domain-app/src/contracts/",
+      "concern": "domain DTO and K/C operation boundary",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-02",
+      "owner": "T02",
+      "path": "packages/download-domain-app/src/business/",
+      "concern": "K-governed B policy",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-03",
+      "owner": "T03",
+      "path": "packages/download-domain-host/src/direct/",
+      "concern": "DirectHttpAdapter C/Host bridge",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-04",
+      "owner": "T04",
+      "path": "packages/download-domain-app/src/semantic/",
+      "concern": "deterministic recipe/selection",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-05",
+      "owner": "T05",
+      "path": "packages/download-domain-host/src/media/",
+      "concern": "existing HLS C/Host bridge",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-06",
+      "owner": "T06",
+      "path": "apps/cli/src/domain-app-*.ts",
+      "concern": "CLI adapter exact file list deferred to JIT",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-07",
+      "owner": "T07",
+      "path": "apps/browser-extension/src/domain-app/",
+      "concern": "browser/native Host adapter",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-08",
+      "owner": "T08",
+      "path": "packages/download-domain-app/src/migration/",
+      "concern": "legacy Core/K lineage partition",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-09",
+      "owner": "T09",
+      "path": "tests/domain-app/",
+      "concern": "independent fixtures/oracles",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-10",
+      "owner": "T10",
+      "path": "packages/download-domain-app/src/composition/",
+      "concern": "single direct-flow composition",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-11",
+      "owner": "T11",
+      "path": "packages/download-domain-app/src/integrations/",
+      "concern": "non-direct journeys composition",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    },
+    {
+      "id": "SF-12",
+      "owner": "T12",
+      "path": "packages/download-domain-app/package.json",
+      "concern": "single-writer manifest/lock/exports/build root",
+      "exists_claim": "NOT_PROVEN",
+      "source_write": "FORBIDDEN_UNTIL_ADMITTED"
+    }
+  ],
+  "safeguard": {
+    "product_freeze": "NO",
+    "l2_freeze": "NO",
+    "scaffold_accepted": "NO",
+    "native_issue_dependencies": "NOT_MATERIALIZED",
+    "builder_claim": "NONE"
+  },
+  "generated_from": "docs/planning/v0.2.0/SCAFFOLD_R0.md"
+}
