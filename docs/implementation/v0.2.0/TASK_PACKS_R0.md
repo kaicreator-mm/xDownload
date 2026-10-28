@@ -26,8 +26,8 @@ These are durable **planning candidates** only, not issued implementation Claims
 
 - **Lane:** contracts; **Depends on:** NONE; **Risk:** high; **Independent Review:** required.
 - **Allowed exclusive write set:** `packages/download-domain-app/src/contracts/**; narrowly approved additive packages/domain-contracts/src/**`. Integration target when admitted: `version/v0.2.0`, Task branch created JIT, not now.
-- **Inputs:** qualified Product/L2 and accepted Task DAG, canonical T01 interface after its merger, with only the listed genuine predecessors; actual exact SHA/SDK chosen at legal Claim.
-- **Output/acceptance:** public SDK DTO compile; scope/authorization/secret rejection; no duplicate contract authority.
+- **Inputs:** qualified Product/L2, frozen DomainHarness v0.10.3 ABI documents, and accepted DAG; NO new package root or SDK install is assumed before T02. Exact SHA chosen at lawful JIT Claim.
+- **Output/acceptance:** additive pure xDownload domain DTO/field-validation source and negative tests using existing root TypeScript tooling or a documented external source-only contract harness; stable no-widening intent/Operation schema, no new package/module install or new K authority. **Real public v0.10.3 package resolution and clean SDK/BUILD proof is owned by T02**, not fabricated as a T01 acceptance.
 - **Candidate Builder:** Strong TypeScript contract Builder.
 - **Required real Validation/handoff:** exact accepted Product/L2 and SDK ABI pin, deterministic schema/negative proof.
 - **Forbidden/negative:** No runtime K authority, no package manifest/lockfile.
