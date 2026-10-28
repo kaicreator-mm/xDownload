@@ -1,6 +1,6 @@
 # xDownload v0.2.0 — Candidate Task Packs (ADS v4.18)
 
-STATUS=PLANNED_NOT_FROZEN
+STATUS=FROZEN_R1 (packs executable only via their own Task Issues + accepted JIT Claims; no claim is granted by this text)
 WORK_ITEM=#188
 PROJECT_PRODUCT=docs/planning/v0.2.0/PRODUCT_R0.md (NOT_FROZEN)
 PROJECT_L2=docs/architecture/v0.2.0/L2_R0.md (NOT_FROZEN)

@@ -1,13 +1,13 @@
-# xDownload v0.2.0 — capability-first Task DAG R0 (planning candidate, NOT FROZEN)
+# xDownload v0.2.0 — capability-first Task DAG R0 (FROZEN R1)
 
 ISSUE=#188
 STANDARD=ADS 4.18.0@2c395c55569fe2edf3f4135f12d3d069e526d0b7
-PRODUCT_R0=docs/planning/v0.2.0/PRODUCT_R0.md (NOT_FROZEN)
-L2_R0=docs/architecture/v0.2.0/L2_R0.md (NOT_FROZEN)
-SCAFFOLD=docs/planning/v0.2.0/SCAFFOLD_R0.md (SOURCE_HOLD)
-FUTURE_INTEGRATION=version/v0.2.0 (NOT_CREATED)
+PRODUCT_R0=docs/planning/v0.2.0/PRODUCT_R0.md (FROZEN R1)
+L2_R0=docs/architecture/v0.2.0/L2_R0.md (FROZEN R1)
+SCAFFOLD=docs/planning/v0.2.0/SCAFFOLD_R0.md (FROZEN R1, structure-only)
+FUTURE_INTEGRATION=version/v0.2.0 (created from the frozen planning state at freeze merge)
 SOURCE_BASE=version/v0.1.0@195355d03b847825ce5acf78c73e06f7386e11e2 (historical research anchor)
-LIVE_DAG=NATIVE_ISSUE_DEPENDENCIES_NOT_MATERIALIZED
+LIVE_DAG=MATERIALIZATION_AUTHORIZED (T01–T22 issues + native dependencies materialized from this frozen DAG; per-issue readiness stays state:planned until readback + JIT Claim)
 DISPATCH=NONE
 REVIEW_POLICY=selected per Task below
 STATUS=REVIEW_CANDIDATE_ONLY

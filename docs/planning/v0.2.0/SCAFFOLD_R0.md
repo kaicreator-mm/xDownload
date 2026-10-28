@@ -1,12 +1,12 @@
 # xDownload v0.2 — Source-first Scaffold (SF) specification / monorepo overlay R0
 
-STATUS=STRUCTURAL_PLAN_READY; SOURCE_SCAFFOLD_NOT_ACCEPTED
+STATUS=FROZEN_R1 (structure-only; FROZEN v0.2.0 R1 — receipt: docs/implementation/v0.2.0/FREEZE_RECEIPT_R1.md (freeze merge SHA recorded in #188 freeze receipt comment))
 OWNER=#188
-SOURCE_WRITE_AUTHORIZATION=NO
-PRODUCT_FREEZE=NO
-L2_FREEZE=NO
+SOURCE_WRITE_AUTHORIZATION=PER_TASK_ISSUE_FIRST (each Task's source authority comes only from its own Task Issue + native dependency readback + accepted JIT Claim)
+PRODUCT_FREEZE=YES (R1)
+L2_FREEZE=YES (R1)
 SDK=v0.10.3-only (frozen ABI; actual package candidate SHA/hash at first build)
-ISSUE_DEPENDENCIES=NOT_MATERIALIZED
+ISSUE_DEPENDENCIES=MATERIALIZATION_AUTHORIZED (materialized from the frozen DAG at freeze)
 
 ## What is already a real scaffold
 
