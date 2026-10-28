@@ -11,7 +11,7 @@ Using only actual selected public DomainHarness APIs, a download Domain App can 
 ## Required source identity and build
 
 - Node >=24 clean checkout, exact SDK source SHA, public packed package hashes, real BUILD selection of K/S/B/C IDs and module hashes.
-- v0.10.3 only after qualified public consumer; otherwise exact released v0.10.2 with documented feature delta or BLOCKED.
+- **SDK target is frozen DomainHarness v0.10.3 only. Development is allowed before final RQ/Tag.** Use exact `version/v0.10.3` candidate commit (initial observed SHA `7d571858bd6524ffd13a7985227183dbecb2924a`) with its actual public exports; build/pack the candidate SDK on Node24 and capture source/package-byte hashes. Clean-consumer qualification is **part of this PoC's acceptance**, not a pre-authoring gate. An SDK incompatibility is a concrete v0.10.3 gap/BLOCKED; do not downgrade to v0.10.2 or construct undocumented APIs. Once a v0.10.3 final release identity is available, re-pin and re-run compatibility/relevant negatives without retroactively altering preliminary evidence.
 - External BUILD/selected modules; runtime Microkernel load/send/query/subscribe; trusted Node Host configuration. No internal SDK shortcut.
 - xDownload existing direct-acquisition, domain contracts, local bounded HTTP fixture, temporary authorized output directory; no new downloader or network security stack.
 
