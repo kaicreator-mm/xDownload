@@ -14,8 +14,8 @@
  *     auth-lifecycle; exact origin/target/contract/snapshot/provenance tuple;
  *     only the opaque AuthorizationContextRef crosses)
  *   → single Core authority via the frozen canonical seam through the T017
- *     one-authority surface binding (BROWSER_EXTENSION peer, loopback
- *     transport only): SUBMIT_CONTRACT → EXECUTE_S2_ACQUISITION →
+ *     one-authority surface binding (BROWSER_EXTENSION peer, OS-verified
+ *     Windows pipe for installed mode; explicit legacy loopback if selected): SUBMIT_CONTRACT → EXECUTE_S2_ACQUISITION →
  *     READ_PROJECTION
  *   → capability revocation after the journey (least authority)
  *
@@ -37,7 +37,7 @@ import {
   type S2AcquireCommandShape,
   type S2LaneHandler,
 } from '@xdownload/browser-auth-broker';
-import { createLoopbackClientTransport } from '@xdownload/core-seam';
+import { createLoopbackClientTransport, createWindowsPipeClientTransport } from '@xdownload/core-seam';
 import type { SeamDiagnostic, SeamResponse } from '@xdownload/core-seam';
 import { bindSurfaceToCore, type BoundSurface } from '@xdownload/converged-runtime';
 import {
@@ -77,6 +77,29 @@ const DEFAULT_PROJECTION_WAIT_MS = 10_000;
 const PROJECTION_POLL_MS = 100;
 
 /**
+ * #100-P1: Choose ONE existing Core seam transport, never a separate Core
+ * authority. An installed Windows pipe takes precedence when present; a
+ * failed pipe cannot silently downgrade to the weaker loopback TCP path.
+ * The legacy TCP-only test/host tuple remains explicit and supported.
+ */
+export function selectInstalledS2CoreTransport(
+  core: InstalledS2LaneConfig['core'],
+):
+  | { readonly kind: 'WINDOWS_PIPE'; readonly target: { readonly host: string; readonly port: 0; readonly pipeName: string } }
+  | { readonly kind: 'LOOPBACK'; readonly target: { readonly host: string; readonly port: number } } {
+  if (core.pipeName !== undefined) {
+    return {
+      kind: 'WINDOWS_PIPE',
+      target: { host: '127.0.0.1', port: 0, pipeName: core.pipeName },
+    };
+  }
+  if (core.host === undefined || core.port === undefined) {
+    throw new Error('S2 Core requires a canonical Windows pipe or explicit loopback target');
+  }
+  return { kind: 'LOOPBACK', target: { host: core.host, port: core.port } };
+}
+
+/**
  * #95 R1/F04: seam-frame shaping of the delivered byte stream. The frozen
  * seam wire bounds (L2 §12: maxPayloadBytes 786,432, maxStringFieldLength
  * 4096) cap one command, so the delivered stream crosses as bounded chunk
@@ -89,12 +112,13 @@ const S2_SEAM_CHUNKS_PER_COMMAND = 224;
 
 export interface InstalledS2LaneConfig {
   readonly broker: AuthBroker;
-  /** The one Core authority seam target (loopback only). */
+  /** One Core authority: prefer the OS-verified Windows pipe when configured. */
   readonly core: {
-    readonly host: string;
-    readonly port: number;
     readonly installId: string;
     readonly userId: string;
+    readonly pipeName?: string;
+    readonly host?: string;
+    readonly port?: number;
   };
   /** Bounded wait for the authoritative terminal projection. */
   readonly projectionWaitMs?: number;
@@ -492,12 +516,16 @@ export function createInstalledS2Lane(config: InstalledS2LaneConfig): S2LaneHand
 
       let surface: BoundSurface | undefined;
       try {
+        const selectedCore = selectInstalledS2CoreTransport(config.core);
         surface = bindSurfaceToCore({
           surface: 'BROWSER_EXTENSION',
           installId: config.core.installId,
           userId: config.core.userId,
-          transport: createLoopbackClientTransport(),
-          target: { host: config.core.host, port: config.core.port },
+          transport:
+            selectedCore.kind === 'WINDOWS_PIPE'
+              ? createWindowsPipeClientTransport()
+              : createLoopbackClientTransport(),
+          target: selectedCore.target,
           makeRequestId: () => `s2-${command.requestId}-${String(nextLaneSequence())}`,
         });
         // A resumed S2 observation has the SAME Core contract identity after
