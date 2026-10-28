@@ -82,11 +82,19 @@ const PROJECTION_POLL_MS = 100;
  * failed pipe cannot silently downgrade to the weaker loopback TCP path.
  * The legacy TCP-only test/host tuple remains explicit and supported.
  */
+export type InstalledS2CoreSelection =
+  | {
+      readonly kind: 'WINDOWS_PIPE';
+      readonly target: { readonly host: string; readonly port: 0; readonly pipeName: string };
+    }
+  | {
+      readonly kind: 'LOOPBACK';
+      readonly target: { readonly host: string; readonly port: number };
+    };
+
 export function selectInstalledS2CoreTransport(
   core: InstalledS2LaneConfig['core'],
-):
-  | { readonly kind: 'WINDOWS_PIPE'; readonly target: { readonly host: string; readonly port: 0; readonly pipeName: string } }
-  | { readonly kind: 'LOOPBACK'; readonly target: { readonly host: string; readonly port: number } } {
+): InstalledS2CoreSelection {
   if (core.pipeName !== undefined) {
     return {
       kind: 'WINDOWS_PIPE',
