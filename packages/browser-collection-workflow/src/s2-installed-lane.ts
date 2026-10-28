@@ -500,21 +500,93 @@ export function createInstalledS2Lane(config: InstalledS2LaneConfig): S2LaneHand
           target: { host: config.core.host, port: config.core.port },
           makeRequestId: () => `s2-${command.requestId}-${String(nextLaneSequence())}`,
         });
-        const submitted = await surface.submitCanonicalCommand({
-          commandType: 'SUBMIT_CONTRACT',
-          aggregateId: contractId,
-          requestId: `s2-submit-${command.requestId}`.slice(0, 128),
-          expectedRevision: 0,
-          correlation: { contractId },
-          payload: s2ContractInput({ contractId, targetId }),
-        });
-        if (submitted.outcome !== 'ACCEPTED') {
-          return laneFail(command.requestId, 'CORE_SUBMIT', submitted.diagnostics ?? []);
+        // A resumed S2 observation has the SAME Core contract identity after
+        // host restart. Read the durable authority first: a second
+        // SUBMIT_CONTRACT(expectedRevision=0) would always reject it, leaving
+        // earlier journaled slabs orphaned. This read does not grant authority;
+        // the fresh user decision/capability above is still mandatory.
+        const slabCount = Math.ceil(acquire.bytes.length / S2_SEAM_CHUNKS_PER_COMMAND) || 1;
+        const observed = await surface.readProjection(contractId);
+        let currentRevision: number;
+        if (observed.outcome === 'PROJECTION') {
+          const view = observed.projection as Record<string, unknown>;
+          const previous = view['contract'] as Record<string, unknown> | undefined;
+          const scope = previous?.['requestedScope'] as Record<string, unknown> | undefined;
+          const lineage = view['lineage'] as Record<string, unknown> | undefined;
+          if (
+            previous?.['contractId'] !== contractId ||
+            previous['status'] !== 'CONFIRMED' ||
+            previous['intentType'] !== 'SINGLE_RESOURCE' ||
+            scope?.['kind'] !== 'single_resource' ||
+            scope['targetId'] !== targetId ||
+            lineage === undefined
+          ) {
+            return laneFail(command.requestId, 'CORE_PROJECTION', [
+              brokerDiagnostic(
+                'S2_LANE_REJECTED',
+                'projection.contract',
+                'existing Core contract does not match this exact S2 observation and target',
+              ),
+            ]);
+          }
+          if (lineage['status'] === 'TERMINAL' && view['terminal'] !== undefined) {
+            // Show the EXISTING Core terminal verbatim. No new accepted
+            // effect, network request, or budget charge can occur here.
+            return {
+              kind: 'S2_RESULT',
+              requestId: command.requestId,
+              contractId,
+              terminal: view['terminal'],
+              authorizationContextRef: ref,
+            } satisfies S2LaneResponse as BrokerResponse;
+          }
+          if (
+            lineage['status'] !== 'ACTIVE' ||
+            !Number.isSafeInteger(previous['revision']) ||
+            (previous['revision'] as number) < 1 ||
+            (previous['revision'] as number) >= 1 + slabCount
+          ) {
+            return laneFail(command.requestId, 'CORE_PROJECTION', [
+              brokerDiagnostic(
+                'S2_LANE_REJECTED',
+                'projection.contract.revision',
+                'existing S2 stream is cancelled, inconsistent, or not safely resumable',
+              ),
+            ]);
+          }
+          currentRevision = previous['revision'] as number;
+        } else if (
+          observed.outcome === 'REJECTED' &&
+          observed.diagnostics?.length === 1 &&
+          observed.diagnostics[0]?.code === 'AGGREGATE_NOT_FOUND'
+        ) {
+          const submitted = await surface.submitCanonicalCommand({
+            commandType: 'SUBMIT_CONTRACT',
+            aggregateId: contractId,
+            requestId: `s2-submit-${command.requestId}`.slice(0, 128),
+            expectedRevision: 0,
+            correlation: { contractId },
+            payload: s2ContractInput({ contractId, targetId }),
+          });
+          if (submitted.outcome !== 'ACCEPTED') {
+            return laneFail(command.requestId, 'CORE_SUBMIT', submitted.diagnostics ?? []);
+          }
+          currentRevision = 1;
+        } else {
+          const diagnostics = observed.diagnostics ?? [
+            brokerDiagnostic(
+              'S2_LANE_REJECTED',
+              'projection',
+              'Core returned no trustworthy S2 aggregate state',
+            ),
+          ];
+          return laneFail(command.requestId, 'CORE_PROJECTION', diagnostics);
         }
-        // F04: the delivered stream crosses the frozen seam frame bound as a
-        // bounded sequence of chunk commands (revision-ordered, journaled);
-        // Core starts the durable lifecycle on the completing chunk.
-        const slabCount = Math.max(1, Math.ceil(acquire.bytes.length / S2_SEAM_CHUNKS_PER_COMMAND));
+        // Redeliver ALL original slabs from the current authority revision,
+        // including the persisted prefix. Core's S2ChunkStagingStore compares
+        // each previously journaled slab byte-for-byte and refuses changed
+        // content/count; suffix-only replay would silently splice different
+        // streams. This requires no new wire API or untrusted progress cursor.
         for (let index = 0; index < slabCount; index += 1) {
           const slab = acquire.bytes.slice(
             index * S2_SEAM_CHUNKS_PER_COMMAND,
@@ -527,7 +599,7 @@ export function createInstalledS2Lane(config: InstalledS2LaneConfig): S2LaneHand
               0,
               128,
             ),
-            expectedRevision: 1 + index,
+            expectedRevision: currentRevision + index,
             correlation: { contractId, snapshotId },
             payload: {
               snapshotId,
