@@ -38,7 +38,9 @@ export type DiagnosticCode =
   | 'UNKNOWN_ENUM_VALUE'
   | 'UNKNOWN_FIELD'
   | 'UNKNOWN_SCHEMA_IDENTITY'
-  | 'UNSUPPORTED_SCHEMA_VERSION';
+  | 'UNSUPPORTED_SCHEMA_VERSION'
+  | 'OUTPUT_ROOT_ESCAPED'
+  | 'SCOPE_WIDENING_REFUSED';
 
 export interface ValidationDiagnostic {
   readonly code: DiagnosticCode;
