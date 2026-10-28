@@ -1,0 +1,15 @@
+{
+  "name": "@xdownload/download-domain-app",
+  "version": "0.2.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "xDownload v0.2 Domain App (K/S/B declarations and composition). Private package; SDK is the vendored DomainHarness v0.10.3 Git-source candidate (see vendor/sdk/SHA256SUMS.txt, bytes identical to #183 evidence).",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@kaicreator/domain-harness-build": "0.10.2-rc.0",
+    "@kaicreator/domain-harness-contracts": "0.10.2-rc.0",
+    "@kaicreator/domain-harness-microkernel": "0.10.2-rc.0"
+  }
+}
