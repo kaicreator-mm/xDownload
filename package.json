@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node build/package.ts",
     "smoke": "node build/smoke.ts",
-    "format:check": "prettier --write packages/browser-collection-workflow/test/s2-installed-lane.test.ts && node -e \"process.stdout.write('XD_FORMAT_BEGIN'+JSON.stringify(require('node:fs').readFileSync('packages/browser-collection-workflow/test/s2-installed-lane.test.ts','utf8'))+'XD_FORMAT_END')\" && exit 1",
+    "format:check": "prettier --check .",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",
