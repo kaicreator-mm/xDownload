@@ -129,7 +129,7 @@ async function startedCore(): Promise<{
 
 describe('#178 S2 Core selection preserves one installed authority', () => {
   const identity = { installId: 'install-001', userId: 'user-001' };
-  const pipeName = String.raw`\\\\.\\pipe\\xdownload-core-install-001`;
+  const pipeName = String.raw`\\.\pipe\xdownload-core-install-001`;
 
   it('uses the OS-verified pipe for a pipe-only Core config', () => {
     expect(selectInstalledS2CoreTransport({ ...identity, pipeName })).toEqual({
@@ -153,7 +153,9 @@ describe('#178 S2 Core selection preserves one installed authority', () => {
   });
 
   it('keeps explicit legacy loopback-only S2 compatible', () => {
-    expect(selectInstalledS2CoreTransport({ ...identity, host: '127.0.0.1', port: 54321 })).toEqual({
+    expect(
+      selectInstalledS2CoreTransport({ ...identity, host: '127.0.0.1', port: 54321 }),
+    ).toEqual({
       kind: 'LOOPBACK',
       target: { host: '127.0.0.1', port: 54321 },
     });
