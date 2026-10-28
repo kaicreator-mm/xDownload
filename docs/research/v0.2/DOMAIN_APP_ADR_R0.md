@@ -70,7 +70,7 @@ This diagram is *conceptual*: actual selected public BUILD/router/Host APIs and 
 - PoC may be authored/reviewed on separate research or experiment branches; its branch/source identity is NOT a v0.1 release candidate.
 - v0.2 Product/L2 and safe-parallel Task DAG are future **intake**. Only advance on independent exact-SHA PoC PASS and a new version-level adoption decision.
 - Adopt ADS 4.18.0 exact qualified SHA for the experiment independently of v0.1's immutable historical ADS 4.0 pin. Do not silently reinterpret historic events.
-- The candidate DomainHarness v0.10.3 is NOT a published SDK by assumption; fix public package and consumer hashes before any proof. Prefer v0.10.3 after qualified RQ, fall back to actual released v0.10.2 only with delta assessment.
+- **SDK selection policy (2026-10-29 owner clarification): DomainHarness v0.10.3 ONLY.** Product/Contract and L2 concrete ABI are already frozen and independently reviewed (PR #1407 / L2 Freeze). SDK v0.10.3's final Release Qualification is pending, but **does not block PoC authoring**. Use the exact current v0.10.3 candidate public exports now, initially observed at `7d571858bd6524ffd13a7985227183dbecb2924a`; compile and pack actual public packages from that fixed source identity. Obtain real Node24 clean-consumer proof as PoC acceptance. Do not silently fall back to v0.10.2, and do not claim candidate equals published SDK. On a public ABI/Host blocker, report a minimum sanitized v0.10.3 SDK gap and stop that experiment instead of inventing shims. Once v0.10.3 is released, re-pin to its final exact source/package identity and rerun relevant compatibility/negative evidence as a subsequent gate.
 
 ## Decision gate
 
