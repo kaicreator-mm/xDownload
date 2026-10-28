@@ -10,7 +10,7 @@ SOURCE_BASE=version/v0.1.0@195355d03b847825ce5acf78c73e06f7386e11e2 (historical 
 LIVE_DAG=MATERIALIZATION_AUTHORIZED (T01–T22 issues + native dependencies materialized from this frozen DAG; per-issue readiness stays state:planned until readback + JIT Claim)
 DISPATCH=NONE
 REVIEW_POLICY=selected per Task below
-STATUS=REVIEW_CANDIDATE_ONLY
+STATUS=FROZEN_R1 (receipt FREEZE_RECEIPT_R1.md)
 
 ## Authority / admission
 Product and L2 must first be independently reviewed and owner-frozen; critical L2 UNKNOWN U01/U02/U03 require #183 real executable evidence or lawful Architecture disposition. Freeze here is NOT authorized merely by presence of a DAG. The source-first Scaffold is a proposed structure only; no accepted immutable SF checkpoint exists, so v4.12 SF↔DF pairing is NOT_APPLICABLE until legal SF source acceptance.
