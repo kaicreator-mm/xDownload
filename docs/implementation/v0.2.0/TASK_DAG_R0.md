@@ -21,8 +21,8 @@ The repo already contains the v0.1 codebase. No new blank repo and no second tra
 
 ```mermaid
 flowchart LR
-  T01 --> T02[02 SDK / workspace bootstrap]
-  T01[01 Domain contract] --> T03[03 K/B policy]
+  T01[01 Domain contract] --> T02[02 SDK / workspace bootstrap]
+  T02 --> T03[03 K/B policy]
   T02 --> T04[04 Direct Host/C]
   T02 --> T05[05 S/Recipe]
   T02 --> T06[06 HLS Host/C]
