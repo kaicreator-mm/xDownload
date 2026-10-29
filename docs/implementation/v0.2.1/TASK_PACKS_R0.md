@@ -188,9 +188,8 @@ These are planning contracts, not executable Claims. They become eligible only a
 
 - **Depends on:** T21. **Risk:** critical. **Review:** independent gate.
 - **Exclusive write set:** `docs/release/v0.2.1/integration/**`.
-- **Acceptance:** protected merge only when the accepted RQ is READY and explicitly permits integration; no npm publication or additional release claim is inferred.
 - **Output:** base/diff re-read, qualified PR, merge result and exact main readback.
-- **Acceptance:** only accepted RQ READY with explicit integration permission can merge; no npm publication or additional release claim is inferred.
+- **Acceptance:** protected merge only when the accepted RQ is READY and explicitly permits integration; no npm publication or additional release claim is inferred.
 
 ## Failure handling and stop rules
 
