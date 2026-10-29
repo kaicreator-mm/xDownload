@@ -6,7 +6,7 @@ The repository follows the immutable ADS revision pinned in [`.dev-standard/VERS
 
 ## Current project and release state
 
-**Status checked: 2026-10-29.** Version-specific freeze records and release receipts are authoritative; lifecycle markers embedded in older candidate documents may describe the historical state when those exact bytes were reviewed.
+**Status checked: 2026-10-30.** Version-specific freeze records and release receipts are authoritative; lifecycle markers embedded in older candidate documents may describe the historical state when those exact bytes were reviewed.
 
 | Line | Authoritative status | What it means |
 |---|---|---|
@@ -18,7 +18,7 @@ The repository follows the immutable ADS revision pinned in [`.dev-standard/VERS
 
 v0.2.0 delivers the Domain App composition runtime, the two workspace packages, bounded-authorization surface components, and lineage authority partition. It explicitly does **not** claim the installed CLI surface, browser-extension v0.2 cutover, S4 HLS VOD as a release journey, installed baselines bound to a release SHA, or completed human G0/G1 sessions. See the [scope amendment](docs/planning/v0.2.0/PRODUCT_SCOPE_AMENDMENT_R1.md), [closure](docs/release/v0.2.0/closure/CLOSURE_R1.md), and [v0.2.1 deferral ledger](https://github.com/kaicreator-mm/xDownload/issues/242).
 
-DomainHarness v0.10.3 is consumed from the qualified Git source/build path. **Do not assume an npm publication or silently fall back to another SDK version.**
+DomainHarness v0.10.3 is consumed from the qualified Git source/build path: source commit `061376f4a023070f215f9feffad5c24d96d503cb`, tree `099cdc831aef63befd62aaede7e7a853d1be468f`. The selected SDK tarballs built from that tag still declare package-manifest version `0.10.2-rc.0`; xDownload's filenames and workspace overrides reflect those metadata values. v0.2.0 platform evidence records 4/4 SHA-256 matches against the #183 source-build receipts. Thus `v0.10.3` identifies the Git source tag, **not** an npm-published package version. No npm publication was authorized. Keep both identities explicit; never silently rename/repack or fall back to registry bytes.
 
 ## Product principles
 
