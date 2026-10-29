@@ -21,8 +21,10 @@ candidate evidences today:
 - CL-2 Two workspace packages (`@xdownload/download-domain-app`, `@xdownload/download-domain-host`)
   with public exports, clean-consumer install, single-resolution dependency graph, byte-identical
   v0.10.3 Git-source SDK pinning (T02/T13/T17).
-- CL-3 The bounded-authorization surface sources (CLI adapter T07, browser surface T08) as
-  ready-to-wire components with source-level fail-closed validation (T15 SOURCE_LEVEL=PASS).
+- CL-3 The bounded-authorization surface sources as ready-to-wire components: browser surface
+  (T08) with source-level fail-closed validation (T15 SOURCE_LEVEL=PASS); CLI adapter (T07)
+  behavior-proven with the known-failed CF-1 source scan explicitly carried (not claimed as
+  source-level clean in v0.2.0; fix deferred with the CLI surface to v0.2.1).
 - CL-4 Lineage authority partition (T09): old lineages stay v0.1-owned; new K lineages exclusively
   claimed; default = no migration.
 
@@ -35,6 +37,7 @@ candidate evidences today:
 | S4 (HLS VOD Basic) as a claimed release journey | T16 gap G5 (disposition: NOT CLAIMED in v0.2.0; engine path is exercised by the S3 media journey) | v0.2.1 (implement) or permanent drop (owner) |
 | Installed baselines bound to a release SHA | T16 G3 (stays NOT_PROVEN_DESCRIPTOR_ONLY — correct under component claims) | v0.2.1 |
 | Product G0/G1 human effort parity | T16 HUMAN_G0G1=NOT_RUN | v0.2.1 (requires human sessions; not producible by agents) |
+| Standing boundary (not a gap): SQLite cross-process CAS leg stays NOT_PROVEN per the recorded T13 no-native-driver decision; file-CAS durability is the proven boundary | T14/T17 NOT_PROVEN notes | unchanged |
 
 Nothing already disproven is claimed; nothing already claimed is weakened silently — the deferral
 ledger above is part of this amendment and must survive into v0.2.1 intake unchanged.
