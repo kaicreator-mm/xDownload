@@ -15,7 +15,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 ## Common execution contract
 
 - Target integration branch: `version/v0.2.1`, created only from the accepted freeze merge/base.
-- SDK: exact qualified DomainHarness v0.10.3 Git-source/build pin; never silently resolve a registry package or downgrade.
+- SDK source pin: DomainHarness tag commit `061376f4a023070f215f9feffad5c24d96d503cb`, tree `099cdc831aef63befd62aaede7e7a853d1be468f`. The selected four public SDK tarballs retain internal package version `0.10.2-rc.0`; verify their SHA-256 against `packages/download-domain-app/vendor/sdk/SHA256SUMS.txt` and the #183 source-build receipts. `v0.10.3` names the Git source tag, not an npm package version. No registry fallback, silent rename/re-pack or downgrade.
 - Use the existing pnpm monorepo and pinned Node/pnpm toolchain. No second repository/workspace or lockfile authority.
 - One local Core process owns runtime composition. Do not instantiate K separately in CLI, Electron, or Browser Native Host.
 - Old v0.1 lineages stay old-Core-owned; newly admitted v0.2 lineages route to K. An ambiguous/conflicting owner refuses before any external effect.
@@ -39,7 +39,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 - **Depends on:** T01, T03, T06. **Risk:** critical. **Review:** required.
 - **Exclusive write set:** `packages/core-runtime/**; packages/converged-runtime/**`.
 - **Output:** load the selected Domain App/K once in the existing Core process; route old lineages to old Core and new v0.2 lineages to K; preserve one authority per lineage; expose the route through the existing Core seam.
-- **Acceptance:** exact old-lineage regression, new K lineage positive path, owner-conflict refusal before network/file effect, restart/reopen preserves the owner, and no per-surface K instantiation.
+- **Acceptance:** exact old-lineage regression, new K lineage positive path, owner-conflict refusal before network/file effect, restart/reopen preserves the owner, no per-surface K instantiation, and SDK source/tarball identities remain byte-bound to the qualified baseline.
 - **Forbidden:** no new IPC transport, no second scheduler/ledger, no cross-process SQLite CAS claim, no rewriting old lineage history.
 
 ## T03 — Transfer reliability and safe files
