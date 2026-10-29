@@ -29,7 +29,7 @@ ADS pin: `kaicreator-mm/ai-development-standard@4.18.0` — revision `2c395c5556
 - Release Qualification: READY for claims CL-1–CL-4; main integration permitted under the stated conditions.
 - Main integration: [PR #247](https://github.com/kaicreator-mm/xDownload/pull/247), merge commit `c29af4a4b89123997d03d5566ebe09ba83855fb0`.
 - Items explicitly outside the v0.2.0 claims and tracked in [Issue #242](https://github.com/kaicreator-mm/xDownload/issues/242): installed CLI entry path/CF-1, browser-extension v0.2 cutover and installed Chromium proof, S4 HLS VOD as a claimed journey, release-SHA-bound installed baselines, and real human G0/G1 sessions.
-- DomainHarness v0.10.3 remains a Git-source/build consumption path; npm publication was not authorized.
+- DomainHarness source identity: tag commit `061376f4a023070f215f9feffad5c24d96d503cb`, tree `099cdc831aef63befd62aaede7e7a853d1be468f`. The four selected SDK tarballs built from this source still declare internal package-manifest version `0.10.2-rc.0`; xDownload's vendored filenames/workspace overrides reflect that metadata. `VALIDATION_PLATFORM_R1` records 4/4 SHA-256 matches to the #183 source-build receipts. `v0.10.3` means the Git source tag, not an npm package version; npm publication was not authorized.
 
 ## v0.2.1 planning
 
