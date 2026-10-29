@@ -1,0 +1,24 @@
+e1ed59556f8b447b5f559302a893738eeae1d272e3a30ac4545fedfb1da8a3e7 *dist/kernel-mechanism-v1.mjs
+dec042cacee70a8762b693f02b80ce14844b52bdf12969ff2250c7013c67c8bf *dist/standard-sdk-v1.mjs
+d9f9c33f08951aacebe1648fb44554ecacb70db6292f02367035d99ea1c112b5 *dist/workflow-router.mjs
+# xDownload v0.2 T03 — sealed K/S payload bytes (verbatim upstream copies).
+#
+# Provenance: kaicreator-mm/domain-harness @ v0.10.3, checkout commit
+# 061376f4a023070f215f9feffad5c24d96d503cb (tree 099cdc831aef63befd62aaede7e7a853d1be468f,
+# clean at copy time), domain-packages/{kernel/basic,standard/basic}.
+#
+# The three lines above are `sha256sum -c`-verifiable raw file hashes.
+#
+# Sealed module identity in the #183 PoC BUILD manifest (experiments/
+# domain-app-download/build/manifest.json, modules[].moduleSha256):
+#   kernel-primary  v08-kernel-mechanism@v0.10.0 = e1ed59556f8b447b5f559302a893738eeae1d272e3a30ac4545fedfb1da8a3e7
+#     (identical to the raw kernel-mechanism-v1.mjs hash above)
+#   standard-primary standard-sdk@v08.1.0.0      = 93aad26d2c3118548e2be3eefc0bcb9012e20bd6381077b58fbd1d2f59ce4606
+#     (the composed bundle: standard-sdk-v1.mjs + the vendored
+#      workflow-router.mjs body, spliced by the same producer template as the
+#      #183 PoC BUILD; composition.ts recomputes and enforces this value)
+#
+# Why dist/: these are immutable upstream distribution bytes consumed ONLY as
+# sealed text by the BUILD composition (never imported/executed directly); the
+# repo's eslint/prettier ignores already treat dist/ as non-source bytes, so
+# formatting/lint gates cannot demand a rewrite of sealed payloads.
