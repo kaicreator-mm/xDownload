@@ -1,0 +1,275 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mC:/xDev/kAiCreator/xDownload/xd-v02-t14-validator[39m
+
+ [32m✓[39m packages/domain-contracts/test/t007-result-projector.test.ts [2m([22m[2m36 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/oracles-c01-c34.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-oracles-c01-c34.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/oracles-t011.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s6-collection-authority.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s4-selected-hls-authority.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/projection-read-side.test.ts [2m([22m[2m37 tests[22m[2m)[22m[32m 69[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/discovery-bounds.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s3-selected-media-authority.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 76[2mms[22m[39m
+ [32m✓[39m apps/cli/test/oracles.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 285[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/integrity.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 160[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/manifest-binding.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/oracle-mappings.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 211[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s5-page-group-authority.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/win-ipc-fault-injection.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 1557[2mms[22m[39m
+     [33m[2m✓[22m[39m net.Socket construction failure unwinds only the libuv owner (no fd/handle close, no leak) [33m 643[2mms[22m[39m
+package: vendored native runtime koffi@3.3.3 (x64) into cli, core, native-host
+ [32m✓[39m packages/version-validation/test/gates.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/s1-direct.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 1606[2mms[22m[39m
+     [33m[2m✓[22m[39m a Core-internal drive fault is bounded-retried and surfaced in the health ledger, never swallowed (#101 R1/F03) [33m 317[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/transport-windows-pipe.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 2478[2mms[22m[39m
+     [33m[2m✓[22m[39m verifies the connecting user natively and serves framed commands (positive) [33m 596[2mms[22m[39m
+     [33m[2m✓[22m[39m serves a rapid burst of connections through both overlapped accept paths [33m 1567[2mms[22m[39m
+package: vendored native runtime koffi@3.3.3 (x64) into cli, core, native-host
+ [32m✓[39m packages/core-runtime/test/s1-witness.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 1710[2mms[22m[39m
+     [33m[2m✓[22m[39m restart re-derives the identical witness from durable truth (no re-download, no double charge) [33m 386[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/projection.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 749[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/transfer-and-media.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1110[2mms[22m[39m
+     [33m[2m✓[22m[39m executes a full S1 direct-byte acquisition without claiming S3 Media validation [33m 317[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s5-current-page.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 1692[2mms[22m[39m
+     [33m[2m✓[22m[39m produces the confirmed current-page flow with continuation_scope=NONE and excludes continuation-loaded members (C08) [33m 576[2mms[22m[39m
+     [33m[2m✓[22m[39m drives the composed flow from real gated observation records (observation-feed level) [33m 375[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps the confirmation workflow within material-item bounds with one selection claim set (C30) [33m 329[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s2-installed-lane.test.ts [2m([22m[2m17 tests[22m[2m)[22m[33m 1792[2mms[22m[39m
+     [33m[2m✓[22m[39m #176: a new user gesture converges to the SAME durable S2 terminal without duplicate work [33m 329[2mms[22m[39m
+     [33m[2m✓[22m[39m #176: resumes a journaled S2 chunk prefix through byte-identical Core staging [33m 310[2mms[22m[39m
+     [33m[2m✓[22m[39m R1/F04: a 1.5 MiB attachment crosses as bounded chunk commands and completes (the retired 512 KiB / single-frame bound is gone) [33m 315[2mms[22m[39m
+ [32m✓[39m build/test/real-path-s2.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1680[2mms[22m[39m
+     [33m[2m✓[22m[39m positive journey: cookie-authenticated bytes → NM → Core acceptance == oracle bytes [33m 434[2mms[22m[39m
+package: vendored native runtime koffi@3.3.3 (x64) into cli, core, native-host
+ [32m✓[39m build/test/packaging.test.ts [2m([22m[2m43 tests[22m[2m)[22m[33m 3082[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/core-authority.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 156[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/s2-delivered.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 2518[2mms[22m[39m
+     [33m[2m✓[22m[39m duplicate submission converges (idempotent) and restart replay re-derives the same terminal [33m 326[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/partial-truncated-unknown.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 2242[2mms[22m[39m
+     [33m[2m✓[22m[39m projects PARTIAL/PARTIAL/TRUNCATED when the global-safety cap stops a batch continuation (C02) [33m 486[2mms[22m[39m
+     [33m[2m✓[22m[39m treats a failed next page / missing control as failure, never natural end (C03) [33m 551[2mms[22m[39m
+     [33m[2m✓[22m[39m binds coverage to the requested page range and never implies parent completeness (C25) [33m 342[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/cross-surface-same-contract-status.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 325[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/oracles-parity.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/s3-selected-media-flow.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 2735[2mms[22m[39m
+     [33m[2m✓[22m[39m enforces the user byte constraint as a rejection without a DECISIVE basis [33m 340[2mms[22m[39m
+     [33m[2m✓[22m[39m fails closed when the registry changed since the candidate was confirmed (replay pin) [33m 1273[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/s1-cancel-cutoff.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 799[2mms[22m[39m
+     [33m[2m✓[22m[39m cancel during a hung stream aborts the socket and closes with a truthful USER_CANCELLED terminal [33m 333[2mms[22m[39m
+ [32m✓[39m apps/browser-extension/test/popup-s5-admission.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 643[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/broker-capability.test.ts [2m([22m[2m24 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s2-handoff.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 418[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/continuation-rules.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 330[2mms[22m[39m
+     [33m[2m✓[22m[39m retries exactly the original failed frozen members on the frozen identities with no replacement membership (C12) [33m 311[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/target-witness.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/hitl-parity.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 196[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/recipe-engine.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/win-ipc-native.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 801[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps the ACL DACL correct under GC stress with the TokenUser buffer rooted (P1-05 closure) [33m 674[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/negative-coverage.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 170[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/transition-legality.test.ts [2m([22m[2m37 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/continuation-successor.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/result-combinations.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/schema-migrations.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 504[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/ai-offline-fallback.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/s4-selected-hls-flow.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 3693[2mms[22m[39m
+     [33m[2m✓[22m[39m drives the durable preview + confirmed selection to an accepted COMPLETE terminal [33m 1508[2mms[22m[39m
+     [33m[2m✓[22m[39m never re-executes an already-terminal execution (durable truth only) [33m 1745[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s1-direct-command.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/budgets.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 511[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/ledger-lineage.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 514[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/status-explanation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 135[2mms[22m[39m
+ [32m✓[39m apps/cli/test/status-parity.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 117[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/process-restart.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 4021[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-lineage' [33m 785[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-stage' [33m 690[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-materialize' [33m 739[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-finalize' [33m 734[2mms[22m[39m
+     [33m[2m✓[22m[39m re-derives state from durable truth after a real process kill at 'after-accept-commit' [33m 691[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/oracles.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 40[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/selected-hls-admission.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/lifecycle-restart.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 94[2mms[22m[39m
+ [32m✓[39m apps/cli/test/hls-command.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 67[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/confirmation-workflow.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/resume-validators.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 145[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/g0-baseline-plan.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-validation-registry.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/s2-chunked-delivery.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 172[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/cancellation-cutoff.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 392[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/ffmpeg-ts.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 53[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s5-installed-execution.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 1389[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s6-installed-execution.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 1078[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/oracles-c01-c34.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/pinned-https-manifest.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s1-cancel-closure.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/auth-expiry.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 938[2mms[22m[39m
+     [33m[2m✓[22m[39m projects the exact C10 PARTIAL tuple: accessible subset acquired, inaccessible named, scope unchanged [33m 903[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/evidence.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/focused-core-integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 207[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/denominator-accounting.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/secret-redaction.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m apps/cli/test/media-command.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-coverage-accounting.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/assembly-validation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/single-mutation-path.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/redirects-locator.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 148[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/snapshot.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m build/test/install-host.test.ts [2m([22m[2m18 tests[22m[2m)[22m[33m 606[2mms[22m[39m
+     [33m[2m✓[22m[39m binds, refuses overwrite, and uninstalls cleanly (registry as found) [33m 422[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/immutable-scope.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 105[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/concurrent-ui-cli-convergence.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 214[2mms[22m[39m
+ [32m✓[39m apps/cli/test/download.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 294[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s6-explicit-collection.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 715[2mms[22m[39m
+     [33m[2m✓[22m[39m reaches VERIFIED_COMPLETE only through the declared natural-end relation with identity closure (C04) [33m 363[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/cancellation-cutoff.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 401[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/duplicate-command.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 241[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/journeys.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s3-closed-wire-admission.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m apps/cli/test/convergence.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 109[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/secret-sink-cycle.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/malicious-proposals.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/provenance-redirects.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 272[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/browser-triggered-identical-projection.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 178[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/idempotency-revision.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/retry-resume.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/verified-session.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/malicious-proposal-safety.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/identity-accounting.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m apps/cli/test/golden-output.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 112[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/lineage-idempotency.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/evidence-exact-subject.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s5-seam12-payload.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/budget-precedence.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s4-seam12-payload.test.ts [2m([22m[2m40 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m apps/cli/test/cancel-retry.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 141[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/cancel-cutoff-matrix.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/corpora-identity.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/selection-knowledge.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/journey-successor.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/pinned-public-https.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/budgets.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/budget-accounting.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/canonical-records.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/oracles-transfer.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 129[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/version-decode.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m packages/converged-runtime/test/no-surface-local-authority.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 228[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/core-disconnect.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 107[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/envelope-wire-compatibility.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/recovery-reconciliation.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 925[2mms[22m[39m
+     [33m[2m✓[22m[39m R02: a durable accepted DB state with deleted bytes never projects final success [33m 598[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/pinned-host-composition.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/digest-provenance.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 369[2mms[22m[39m
+ [32m✓[39m packages/browser-observation/test/sink-redaction.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/auth-prompts.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 100[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/topology.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/malformed-oversized-input.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 2186[2mms[22m[39m
+     [33m[2m✓[22m[39m an oversized-payload rejection names the bound and never echoes payload content [33m 1975[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/restart-inheritance.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 211[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/budgets-retry.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 3142[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/pinned-https-segment.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/peer-authorization.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/contract-scope.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/selection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 115[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/t007-ledger.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/proposal-schema.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/convergence.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 78[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/secret-sink.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/segment-plan-provenance.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m apps/cli/test/negatives.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 118[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/duplicate-clients.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/slices-ports.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m apps/desktop/test/batch-confirmation.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 91[2mms[22m[39m
+ [32m✓[39m apps/cli/test/non-interactive.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 181[2mms[22m[39m
+ [32m✓[39m apps/cli/test/acceptance-vs-result.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 155[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/s3-pinned-core-flow.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 119[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/native-host-session.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m packages/ai-proposal/test/model-offline-fallback.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s5-confirmed-core-flow.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 305[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/acquisition.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/transport-loopback.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 99[2mms[22m[39m
+ [32m✓[39m apps/cli/test/batch.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 138[2mms[22m[39m
+ [32m✓[39m packages/browser-observation/test/message-gate.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/s3-media-profiles.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/s4-closed-wire-admission.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 32[2mms[22m[39m
+ [31m❯[39m apps/cli/test/headless-authority.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 230[2mms[22m[39m
+     [32m✓[39m the full submit/observe/cancel flow runs with no Desktop UI and no Core lifecycle authority[32m 99[2mms[22m[39m
+[31m     [31m×[31m CLI source imports only Node built-ins and the seam/contract packages[39m[32m 22[2mms[22m[39m
+     [32m✓[39m the CLI never starts, stops or composes the Core as an authority prerequisite[32m 83[2mms[22m[39m
+     [32m✓[39m no code path bypasses seam authorization: a CLI surface is rejected where it is not admitted[32m 6[2mms[22m[39m
+     [32m✓[39m the CLI holds no state that can resurrect or rewrite terminal truth[32m 18[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/http-segment.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 116[2mms[22m[39m
+ [32m✓[39m packages/core-scheduler/test/suppression.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/domain-contracts/test/identity-locator.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m packages/discovery-recipe/test/slices-s5-s6.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/version-validation/test/harness-determinism.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 72[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/cancel-abort.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 340[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/pipeline-async.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/crash-windows.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 3599[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-submit' reopens with deterministic classification and exact budget truth [33m 755[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-dispatch-mid-external-effect' reopens with deterministic classification and exact budget truth [33m 327[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-effect-observed' reopens with deterministic classification and exact budget truth [33m 316[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-stage-bytes' reopens with deterministic classification and exact budget truth [33m 367[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-materialize' reopens with deterministic classification and exact budget truth [33m 417[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-finalize' reopens with deterministic classification and exact budget truth [33m 448[2mms[22m[39m
+     [33m[2m✓[22m[39m kill at 'after-accept-commit' reopens with deterministic classification and exact budget truth [33m 399[2mms[22m[39m
+     [33m[2m✓[22m[39m an interrupted lifecycle resumes to acceptance on the same lineage after restart [33m 538[2mms[22m[39m
+ [32m✓[39m build/test/core-host-winpipe.test.ts [2m([22m[2m6 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/manifest-admission.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m build/test/core-host-bind-before-runtime.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m packages/browser-observation/test/observation-handoff.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/s3-guarded-transport.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 63[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/selected-preflight.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/core-runtime/test/s1-drive-supervisor.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/acquire-async.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/direct-acquisition/test/public-media-source.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 22[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/public-uri-candidate.test.ts [2m([22m[2m35 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/provenance-redirect.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m build/test/core-host.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/s5-lane-session.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s5-installed-lane.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m packages/persistence-ledger/test/semantic-claims.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/public-ipv4-text-candidate.test.ts [2m([22m[2m61 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/broker-channel.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/native-frame.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/browser-auth-broker/test/allowed-origins.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/manifest-http.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 94[2mms[22m[39m
+ [32m✓[39m apps/browser-extension/test/s5-group-intent.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m packages/hls-vod-adapter/test/ffmpeg-ts-real.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 2748[2mms[22m[39m
+     [33m[2m✓[22m[39m accepts three independently decodable segments, rejects missing middle media [33m 2746[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/s5-confirmed-group.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m apps/cli/test/pipe-target.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m packages/toolchain-smoke/test/index.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/browser-collection-workflow/test/real-browser-flows.test.ts [2m([22m[2m4 tests[22m[2m | [22m[90m3 todo[39m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/windows-logon-ace.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/core-seam/test/sddl-local-admin-oracle.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 362[2mms[22m[39m
+     [33m[2m✓[22m[39m retrieves one full machine Administrator SID without trusting an arbitrary RID500 [33m 354[2mms[22m[39m
+ [32m✓[39m apps/browser-extension/test/service-worker-s2.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 5755[2mms[22m[39m
+     [33m[2m✓[22m[39m streams an unaligned trickle into aligned slabs with a correct final slab [33m 5455[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m apps/cli/test/headless-authority.test.ts[2m > [22mheadless operation[2m > [22mCLI source imports only Node built-ins and the seam/contract packages
+[31m[1mAssertionError[22m: forbidden import '@xdownload/download-domain-app/src/contracts/index.ts' in domain-app-commands.ts: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m apps/cli/test/headless-authority.test.ts:[2m62:86[22m[39m
+    [90m 60|[39m           specifier[33m.[39m[34mstartsWith[39m([32m'.'[39m) [33m||[39m
+    [90m 61|[39m           ALLOWED_IMPORT_PREFIXES.some((prefix) => specifier.startsWit…
+    [90m 62|[39m         expect(allowed, `forbidden import '${specifier}' in ${path.bas…
+    [90m   |[39m                                                                                      [31m^[39m
+    [90m 63|[39m       }
+    [90m 64|[39m     }
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m190 passed[39m[22m[90m (191)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m2042 passed[39m[22m[2m | [22m[33m1 skipped[39m[2m | [22m[90m3 todo[39m[90m (2047)[39m
+[2m   Start at [22m 14:01:50
+[2m   Duration [22m 15.86s[2m (transform 17.41s, setup 0ms, import 61.93s, tests 71.68s, environment 31ms)[22m
+

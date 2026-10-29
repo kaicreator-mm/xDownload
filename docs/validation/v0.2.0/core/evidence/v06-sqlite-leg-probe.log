@@ -1,0 +1,4 @@
+better-sqlite3 resolve: NOT resolvable (MODULE_NOT_FOUND)
+openSqliteCasStore fail-closed: code=HOST_STORE_DRIVER_UNAVAILABLE
+message=the physical SQLite CAS store requires better-sqlite3 (^12), which is not resolvable from this installation; add it to your dependencies to use openSqliteCasStore (Cannot find package 'better-sqlite3' imported from C:\xDev\kAiCreator\xDownload\xd-v02-t14-validator\node_modules\.pnpm\@kaicreator+domain-harness-_d5d54a347a927e24ec50cb81e71ed602\node_modules\@kaicreator\domain-harness-host-node\dist\
+OBSERVED_AS_EXPECTED: the physical SQLite CAS leg is unavailable and fails closed

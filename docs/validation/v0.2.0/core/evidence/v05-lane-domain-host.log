@@ -1,0 +1,38 @@
+(node:26532) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ T04 DirectAcquisitionBridge
+  ✔ positive: permitted acquire materializes digest-verified bytes and charges the single ledger (47.0087ms)
+  ✔ negative: no permit → typed refusal with zero network and zero file (counter proof) (3.2194ms)
+  ✔ negative: redirect outside the declared hosts refuses before touching the foreign host (9.9369ms)
+  ✔ positive: redirect inside the declared hosts completes (declared graph, not widened) (11.8703ms)
+  ✔ negative: digest mismatch → no file materializes (12.4376ms)
+  ✔ negative: artifact path escaping the output root refuses before any network (3.8804ms)
+  ✔ negative: targetRef given as a raw URL is refused with zero network (never parsed as a locator) (3.4722ms)
+  ✔ negative: unknown registry handle → typed refusal with zero network (2.8327ms)
+  ✔ cancellation: a fired AbortSignal stops the transfer; partial bytes never materialize (160.5529ms)
+  ✔ budget: exhausted transfer budget on the single port stops the transfer with zero network (3.9073ms)
+✔ T04 DirectAcquisitionBridge (261.1206ms)
+(node:8444) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ media acquisition bridge — permit/protocol/domain negatives (zero network, zero file)
+  ✔ refuses without a Kernel permit before any request or write (2.0859ms)
+  ✔ refuses a permit that does not bind the confirmed intent (0.4306ms)
+  ✔ refuses a non-HLS protocol declaration with zero requests (0.3251ms)
+  ✔ refuses a foreign allowedOperation with zero requests (0.2532ms)
+  ✔ refuses an out-of-scope manifest origin with zero requests (0.8872ms)
+✔ media acquisition bridge — permit/protocol/domain negatives (zero network, zero file) (11.5643ms)
+▶ media acquisition bridge — real bounded HLS execution through the existing engine
+  ✔ pulls playlist+segments over real loopback HTTP, accepts, materializes digest-backed evidence (46.3938ms)
+  ✔ terminates honestly when the transfer budget is exhausted before the first segment (5.407ms)
+  ✔ terminates honestly on member failure (missing segment) without materializing (8.8447ms)
+  ✔ classifies an unclosed (live) playlist as unsupported without transfer (4.4515ms)
+  ✔ refuses to materialize when assembled bytes miss the confirmed digest anchor (6.1368ms)
+✔ media acquisition bridge — real bounded HLS execution through the existing engine (72.0292ms)
+ℹ tests 20
+ℹ suites 3
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 519.367
