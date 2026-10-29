@@ -10,7 +10,7 @@ ADS pin: `kaicreator-mm/ai-development-standard@4.18.0` — revision `2c395c5556
 |---|---|---|
 | **v0.1.0** | Product, L2 and Task DAG are frozen; the 28-task DAG is historical immutable authority. Final release qualification/integration is not inferred complete; open gates remain under Issues #41 and #43–#47. | [Stage 1 Product Freeze](planning/STAGE1_PRODUCT_SCOPE_FREEZE.md) · [Stage 2 L2 Freeze](planning/STAGE2_ARCHITECTURE_FREEZE.md) · [Stage 2.4 DAG Freeze](planning/STAGE2_TASK_DAG_FREEZE.md) · [v0.1 DAG](implementation/v0.1.0/TASK_DAG.md) |
 | **v0.2.0** | Component/workspace-level release qualification READY and integrated into `main` at `c29af4a4b89123997d03d5566ebe09ba83855fb0`. This is not a complete installed end-user release. | [Product scope](planning/v0.2.0/PRODUCT_R0.md) · [L2](architecture/v0.2.0/L2_R0.md) · [DAG](implementation/v0.2.0/TASK_DAG_R0.md) · [scope amendment](planning/v0.2.0/PRODUCT_SCOPE_AMENDMENT_R1.md) · [closure](release/v0.2.0/closure/CLOSURE_R1.md) · [RQ](release/v0.2.0/rq/RELEASE_QUALIFICATION_R1.md) |
-| **v0.2.1** | Product/L2/DAG candidate planning under Issue #248. Not frozen; no source implementation Claim is granted. | [Product candidate](planning/v0.2.1/PRODUCT_R0.md) · [L2 candidate](../docs/architecture/v0.2.1/L2_R0.md) · [DAG candidate](implementation/v0.2.1/TASK_DAG_R0.md) · [Task Packs](implementation/v0.2.1/TASK_PACKS_R0.md) |
+| **v0.2.1** | Product/L2/DAG candidate planning under Issue #248. Not frozen; no source implementation Claim is granted. | [Product candidate](planning/v0.2.1/PRODUCT_R0.md) · [L2 candidate](architecture/v0.2.1/L2_R0.md) · [DAG candidate](implementation/v0.2.1/TASK_DAG_R0.md) · [Task Packs](implementation/v0.2.1/TASK_PACKS_R0.md) |
 
 ## Frozen v0.1.0 lifecycle authority
 
@@ -36,7 +36,7 @@ ADS pin: `kaicreator-mm/ai-development-standard@4.18.0` — revision `2c395c5556
 - Planning owner/intake: [Issue #248](https://github.com/kaicreator-mm/xDownload/issues/248)
 - Preserved deferral ledger: [Issue #242](https://github.com/kaicreator-mm/xDownload/issues/242)
 - Product candidate: [`planning/v0.2.1/PRODUCT_R0.md`](planning/v0.2.1/PRODUCT_R0.md)
-- L2 candidate: [`architecture/v0.2.1/L2_R0.md`](../docs/architecture/v0.2.1/L2_R0.md)
+- L2 candidate: [`architecture/v0.2.1/L2_R0.md`](architecture/v0.2.1/L2_R0.md)
 - DAG candidate: [`implementation/v0.2.1/TASK_DAG_R0.md`](implementation/v0.2.1/TASK_DAG_R0.md)
 - Task Pack candidate: [`implementation/v0.2.1/TASK_PACKS_R0.md`](implementation/v0.2.1/TASK_PACKS_R0.md)
 
