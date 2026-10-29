@@ -30,18 +30,20 @@ Correct target and scope
 
 The frozen Stage 1 Product semantics remain binding. This version candidate clarifies release acceptance; it does not authorize crawler behavior, broader scope, silent target changes, or weakening authorization.
 
-## 2. v0.2.0 deferrals carried forward
+## 2. v0.2.0 deferrals carried forward (verbatim frozen ledger)
 
-All items below remain release work, not silently accepted gaps:
+The following ledger is copied verbatim from [PRODUCT_SCOPE_AMENDMENT_R1 §2](../v0.2.0/PRODUCT_SCOPE_AMENDMENT_R1.md). It must survive unchanged into v0.2.1 intake.
 
-1. **Installed CLI path and CF-1** — wire the actual argv entrypoint to the v0.2 Domain App adapter; fix the known import-normalization/source-scan issue; test a clean packaged consumer.
-2. **Browser extension v0.2 cutover** — switch the existing extension's submission path to the v0.2 Host/Domain App trust path, package the correct host manifest/artifact, use explicit per-site permission, and revalidate in a real Chromium session.
-3. **S4 HLS VOD Basic** — implement and validate one supported, bounded HLS VOD user journey. If a real feasibility blocker makes this impossible without changing frozen Product semantics, stop and obtain an explicit Owner disposition; do not silently drop S4.
-4. **Installed baseline bound to release SHA** — record exact installer/package/source identities and verify the installed artifact corresponds to the candidate.
-5. **Human G0/G1 effort parity** — conduct attributable human sessions against a conventional baseline. Agent simulation is not acceptable evidence.
-6. **SQLite cross-process CAS boundary** — retain `NOT_PROVEN` unless a later approved design and real evidence closes it; do not imply cross-process CAS guarantees from file-CAS or same-process tests.
+| Deferred item | Evidence home | Deferred to |
+| --- | --- | --- |
+| Installed CLI user surface (argv wiring; CF-1 import normalization) | T16 gap G1; T14 carried finding | v0.2.1 |
+| Browser extension v0.2 cutover (submission-path switch in the existing v0.1 extension, v0.2 host manifest, packaged artifact; real Chromium session revalidation on the new trust path using the v0.1 harness) | T15 gaps 1–3; T16 G2/G4 | v0.2.1 |
+| S4 (HLS VOD Basic) as a claimed release journey | T16 gap G5 (disposition: NOT CLAIMED in v0.2.0; engine path is exercised by the S3 media journey) | v0.2.1 (implement) or permanent drop (owner) |
+| Installed baselines bound to a release SHA | T16 G3 (stays NOT_PROVEN_DESCRIPTOR_ONLY — correct under component claims) | v0.2.1 |
+| Product G0/G1 human effort parity | T16 HUMAN_G0G1=NOT_RUN | v0.2.1 (requires human sessions; not producible by agents) |
+| Standing boundary (not a gap): SQLite cross-process CAS leg stays NOT_PROVEN per the recorded T13 no-native-driver decision; file-CAS durability is the proven boundary | T14/T17 NOT_PROVEN notes | unchanged |
 
-Source ledger: [Issue #242](https://github.com/kaicreator-mm/xDownload/issues/242) and [v0.2.0 scope amendment](../v0.2.0/PRODUCT_SCOPE_AMENDMENT_R1.md).
+Nothing already disproven is claimed; nothing already claimed is weakened silently — the deferral ledger above is part of the v0.2.0 amendment and must survive into v0.2.1 intake unchanged.
 
 ## 3. User-facing capabilities added to the v0.2.1 target
 
