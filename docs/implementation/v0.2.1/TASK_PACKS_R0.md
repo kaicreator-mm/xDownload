@@ -55,7 +55,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 - **Depends on:** T01, T02. **Risk:** high. **Review:** required.
 - **Exclusive write set:** `apps/cli/**`.
 - **Output:** installed argv route through the existing Core seam to the v0.2 Domain App; stable JSON and exit codes; explicit human-readable mode/progress on stderr; actionable errors and local runtime/Host/destination diagnostics.
-- **Acceptance:** clean installed consumer; TTY and redirected output; JSON remains parseable; direct/status/wait/cancel/retry/batch; missing Host, permission denial, malformed input and timeout negatives.
+- **Acceptance:** clean installed consumer; TTY and redirected output; JSON remains parseable; direct/status/wait/cancel/retry/batch; missing Host, permission denial, malformed input and timeout negatives. Explicitly close CF-1: `apps/cli/src/main.ts` argv must reach the v0.2 `domain-app-commands`/`domain-app-facade` path and `submitConfirmedDownload`; `domain-app-commands.ts` imports `DOWNLOAD_OPERATIONS`/`DownloadOperationId` from the public package root `@xdownload/download-domain-app`, never the deep specifier `@xdownload/download-domain-app/src/contracts/index.ts`; the static headless-authority import-allowlist regression passes with only the exact public package root newly allowed. Record the exact regression test and EXIT.
 - **Forbidden:** no locally invented lifecycle truth, silent transport fallback or automatic Core start/stop outside the approved lifecycle contract.
 
 ## T05 — Browser extension v0.2 cutover
@@ -79,7 +79,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 - **Depends on:** T01, T02. **Risk:** critical. **Review:** required.
 - **Exclusive write set:** `apps/desktop-shell/package.json; apps/desktop-shell/src/main/**; apps/desktop-shell/src/preload/**; root package.json; pnpm-workspace.yaml; pnpm-lock.yaml`.
 - **Output:** minimal runnable Electron shell that uses the existing Core lifecycle/seam and existing desktop adapter semantics; exact Electron version pinned.
-- **Acceptance:** packaged-runtime version check; local assets only; renderer Node integration disabled, context isolation and sandbox enabled, restrictive CSP, narrow typed preload, validated IPC sender/payload, no arbitrary navigation/window or raw filesystem/shell authority.
+- **Acceptance before T08:** source-level IPC/security review and a minimal non-installed shell smoke; local assets only; renderer Node integration disabled, context isolation and sandbox enabled, restrictive CSP, narrow typed preload, validated IPC sender/payload, no arbitrary navigation/window or raw filesystem/shell authority. This is not the installed/package/Host smoke; T14/T16 owns that after T09.
 - **Forbidden:** no per-surface K/Core instance, generic IPC bridge, private queue store or floating dependencies.
 
 ## T08 — Desktop Download Manager UI
@@ -118,8 +118,8 @@ These are planning contracts, not executable Claims. They become eligible only a
 
 - **Depends on:** T02, T04, T09, T11. **Risk:** high. **Review:** independent required.
 - **Exclusive write set:** `docs/validation/v0.2.1/cli/**`.
-- **Output:** exact-SHA clean install evidence for direct download, status/wait/cancel/retry/batch, JSON/text, exit codes and diagnostics.
-- **Acceptance:** commands, environment, fixture, EXIT and artifact hashes recorded; no Builder-only evidence substitution.
+- **Output:** exact-SHA clean installed CLI evidence for direct download, status/wait/cancel/retry/batch, JSON/text, exit codes, diagnostics and explicit CF-1 closure.
+- **Acceptance:** record the exact CF-1 regression test/command, environment, fixture, EXIT=0 and installed artifact SHA; the installed argv path reaches the v0.2 submit journey and no deep internal SDK specifier remains. Record commands, environment, fixtures and artifact hashes for the full CLI matrix; no Builder-only evidence substitution.
 
 ## T13 — Browser/Host security validation
 
@@ -132,8 +132,8 @@ These are planning contracts, not executable Claims. They become eligible only a
 
 - **Depends on:** T02, T08, T09, T11. **Risk:** high. **Review:** independent required.
 - **Exclusive write set:** `docs/validation/v0.2.1/desktop/**`.
-- **Output:** installed desktop journey and renderer security evidence.
-- **Acceptance:** add URL, destination, progress/status, cancel, retry, restart recovery and reveal-file flow; packaged renderer isolation rechecked.
+- **Output:** real packaged Electron executable/IPC smoke with installed Core/Host seam, followed by installed desktop journey and renderer security evidence.
+- **Acceptance:** launch the real packaged executable against the installed Core/Host seam; verify IPC boundary and fail-closed Host/Core mismatch before the add URL, destination, progress/status, cancel, retry, restart recovery and reveal-file flow; packaged renderer isolation rechecked. T16 binds the installed package/installer hashes and supported platform.
 
 ## T15 — HLS journey validation
 
@@ -146,7 +146,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 
 - **Depends on:** T09, T12, T13, T14, T15. **Risk:** critical. **Review:** independent required.
 - **Exclusive write set:** `docs/validation/v0.2.1/platform/**`.
-- **Output:** installed baselines bound to exact release SHA and tested supported-platform matrix.
+- **Output:** installed baselines bound to exact release SHA, real package/Host smoke readback and tested supported-platform matrix.
 - **Acceptance:** clean install, upgrade from prior candidate, uninstall, Host registration, destination permissions and artifact hashes; untested platforms are not claimed.
 
 ## T17 — Human G0/G1 effort study
