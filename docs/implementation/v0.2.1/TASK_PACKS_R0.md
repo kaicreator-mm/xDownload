@@ -55,7 +55,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 - **Depends on:** T01, T02. **Risk:** high. **Review:** required.
 - **Exclusive write set:** `apps/cli/**`.
 - **Output:** installed argv route through the existing Core seam to the v0.2 Domain App; stable JSON and exit codes; explicit human-readable mode/progress on stderr; actionable errors and local runtime/Host/destination diagnostics.
-- **Acceptance:** clean installed consumer; TTY and redirected output; JSON remains parseable; direct/status/wait/cancel/retry/batch; missing Host, permission denial, malformed input and timeout negatives. Explicitly close CF-1: `apps/cli/src/main.ts` argv must reach the v0.2 `domain-app-commands`/`domain-app-facade` path and `submitConfirmedDownload`; `domain-app-commands.ts` imports `DOWNLOAD_OPERATIONS`/`DownloadOperationId` from the public package root `@xdownload/download-domain-app`, never the deep specifier `@xdownload/download-domain-app/src/contracts/index.ts`; the static headless-authority import-allowlist regression passes with only the exact public package root newly allowed. Record the exact regression test and EXIT.
+- **Acceptance:** clean installed consumer; TTY and redirected output; JSON remains parseable; direct/status/wait/cancel/retry/batch; missing Host, permission denial, malformed input and timeout negatives. Explicitly close CF-1: `apps/cli/src/main.ts` argv must reach the v0.2 `domain-app-commands`/`domain-app-facade` path and `submitConfirmedDownload`; `domain-app-commands.ts` imports `DOWNLOAD_OPERATIONS`/`DownloadOperationId` from the public package root `@xdownload/download-domain-app`, never the deep specifier `@xdownload/download-domain-app/src/contracts/index.ts`. In `apps/cli/test/headless-authority.test.ts`, permit this one dependency only by exact equality (`specifier === '@xdownload/download-domain-app'`), not by adding it to a `startsWith` prefix allowlist; the deep specifier must remain rejected. Run `pnpm exec vitest run apps/cli/test/headless-authority.test.ts` and require EXIT=0.
 - **Forbidden:** no locally invented lifecycle truth, silent transport fallback or automatic Core start/stop outside the approved lifecycle contract.
 
 ## T05 — Browser extension v0.2 cutover
@@ -118,8 +118,8 @@ These are planning contracts, not executable Claims. They become eligible only a
 
 - **Depends on:** T02, T04, T09, T11. **Risk:** high. **Review:** independent required.
 - **Exclusive write set:** `docs/validation/v0.2.1/cli/**`.
-- **Output:** exact-SHA clean installed CLI evidence for direct download, status/wait/cancel/retry/batch, JSON/text, exit codes, diagnostics and explicit CF-1 closure.
-- **Acceptance:** record the exact CF-1 regression test/command, environment, fixture, EXIT=0 and installed artifact SHA; the installed argv path reaches the v0.2 submit journey and no deep internal SDK specifier remains. Record commands, environment, fixtures and artifact hashes for the full CLI matrix; no Builder-only evidence substitution.
+- **Output:** exact-SHA clean installed CLI evidence for direct download, status/wait/cancel/retry/batch, JSON/text, exit codes, diagnostics and explicit CF-1 closure using `apps/cli/test/headless-authority.test.ts`.
+- **Acceptance:** record the exact CF-1 test path `apps/cli/test/headless-authority.test.ts`, command `pnpm exec vitest run apps/cli/test/headless-authority.test.ts`, environment, fixture, EXIT=0 and installed artifact SHA. The installed argv path reaches the v0.2 submit journey; the public package root is allowed by exact equality and no deep internal SDK specifier remains. Record commands, environment, fixtures and artifact hashes for the full CLI matrix; no Builder-only evidence substitution.
 
 ## T13 — Browser/Host security validation
 
