@@ -3,7 +3,7 @@ task_id: v021-T01
 repository: kaicreator-mm/xDownload
 version: 0.2.1
 base_sha: c29af4a4b89123997d03d5566ebe09ba83855fb0
-task_pack_ref: docs/implementation/v0.2.1/TASK_PACKS_R0.md@planning/v0.2.1-user-release@65e125c8e388cd911e332bdc5fbb6778295e777a#blob:c0cbed29ffa1a47cad5aed288aa262dd0dd549a8
+task_pack_ref: docs/implementation/v0.2.1/TASK_PACKS_R0.md@planning/v0.2.1-user-release@1cffd6445308ac78fa2f9e4489af579f0deb32ef#blob:c0cbed29ffa1a47cad5aed288aa262dd0dd549a8
 branch: task/v0.2.1-t01-canonical-contracts-core-seam
 parent_issue: "#250"
 agent_freedom: F1_BOUNDED_IMPLEMENTATION
@@ -25,6 +25,8 @@ material_paths:
   - docs/architecture/v0.2.1/L2_R0.md
   - docs/implementation/v0.2.1/TASK_DAG_R0.md
   - docs/implementation/v0.2.1/TASK_PACKS_R0.md
+  - docs/implementation/v0.2.1/FREEZE_RECEIPT_R1.md
+  - docs/implementation/v0.2.1/TASK_ISSUE_MATERIALIZATION_R2.md
   - packages/domain-contracts/**
   - packages/core-seam/**
   - packages/core-scheduler/**
