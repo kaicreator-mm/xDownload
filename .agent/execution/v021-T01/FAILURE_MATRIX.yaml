@@ -1,0 +1,59 @@
+schema: xdownload/execution-failure-matrix/v1
+task_id: v021-T01
+failures:
+  - id: F01
+    condition: implementation requires a file outside packages/domain-contracts/** or packages/core-seam/**
+    severity: P1
+    action: stop; do not widen the Task write set; request scoped amendment
+  - id: F02
+    condition: legacy envelope without route no longer decodes or changes meaning
+    severity: P1
+    action: reject implementation; restore compatibility before Review
+  - id: F03
+    condition: unknown total is coerced to zero or receives percentage/ETA
+    severity: P1
+    action: reject projection; preserve explicit UNKNOWN total
+  - id: F04
+    condition: progress/status is derived by a surface or inferred from elapsed time
+    severity: P1
+    action: remove surface authority; project only Core-owned facts
+  - id: F05
+    condition: ambiguous or conflicting lineage owner falls back to old-core/new-k
+    severity: P1
+    action: typed REFUSED; no owner write and no external effect
+  - id: F06
+    condition: unknown intent fields or widened scope reach journal/DomainApp.send/effect
+    severity: P1
+    action: reject before acceptance; reuse canonical no-widening decoder
+  - id: F07
+    condition: v0.2-only query is accepted without explicit v0.2 route
+    severity: P1
+    action: reject at envelope decoder before state read
+  - id: F08
+    condition: missing job projection provider fabricates empty job or falls back to legacy projection
+    severity: P1
+    action: typed unavailable refusal
+  - id: F09
+    condition: new projection duplicates TerminalResult or existing scheduler state semantics
+    severity: P2
+    action: reuse existing domain literals; remove duplicate status vocabulary
+  - id: F10
+    condition: package manifest, lockfile, runtime, scheduler, persistence, UI, Host or transfer code changes
+    severity: P1
+    action: revert out-of-scope changes; preserve frozen write set
+  - id: F11
+    condition: tests require network, real download, external effect, live Host or nondeterministic clock
+    severity: P1
+    action: replace with deterministic fixtures; if impossible, stop and report
+  - id: F12
+    condition: Node/pnpm versions differ from pinned project toolchain
+    severity: P1
+    action: do not claim task-check-green; rerun with Node 24.21.0 and pnpm 12.8.1
+  - id: F13
+    condition: source branch base differs from version/v0.2.1 current SHA or Task Pack/blob is stale
+    severity: P1
+    action: stop; re-read currentness and obtain a new JIT admission
+  - id: F14
+    condition: another active dispatch/claim exists for Issue #250 and role builder
+    severity: P1
+    action: reject duplicate; do not write source; resolve through the single admission writer
