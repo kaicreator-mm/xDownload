@@ -1,0 +1,257 @@
+(node:50236) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ P1 — permitted external effect: live permit, executed, terminal envelope, zero model
+  ✔ drives the whole permitted journey over real load+send (466.2909ms)
+✔ P1 — permitted external effect: live permit, executed, terminal envelope, zero model (467.7599ms)
+▶ N1 — route-less intent: typed refusal, zero dispatch, zero journal rows
+  ✔ refuses an unsealed intentType before any permit or capability run (118.1186ms)
+✔ N1 — route-less intent: typed refusal, zero dispatch, zero journal rows (118.3829ms)
+▶ N2 — effect fault: honest failed journal row, no fake success, no retry
+  ✔ journals the failure and never reports ok when the bridge throws (91.3003ms)
+  ✔ fails closed honestly when the trusted bridge pin is absent (T04 not integrated) (67.6624ms)
+✔ N2 — effect fault: honest failed journal row, no fake success, no retry (159.442ms)
+▶ N3 — accepted/running ACK under await:terminal is never a completion
+  ✔ settles the effect as failed and the T01 grammar proves accepted carries no outcome (56.4917ms)
+✔ N3 — accepted/running ACK under await:terminal is never a completion (56.6829ms)
+▶ G1 — guard: declaredBytes above the sealed profile bound never dispatches
+  ✔ routes an over-bound confirmed intent to the refused state with zero effect (50.9303ms)
+✔ G1 — guard: declaredBytes above the sealed profile bound never dispatches (51.1631ms)
+(node:55024) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ sealed K/S payload bytes
+  ✔ on-disk payload files still hash to the committed SHA256SUMS lines (5.5183ms)
+  ✔ seals kernel-primary and standard-primary to the exact #183 PoC manifest module hashes (216.2337ms)
+  ✔ seals a closed four-module app with no model provider surface (187.9854ms)
+  ✔ host-side pre-load verification refuses altered sealed module bytes (98.2402ms)
+✔ sealed K/S payload bytes (510.052ms)
+▶ sealed route uses the frozen T01 vocabulary
+  ✔ the acquisition route names operation acquisition.acquire from DOWNLOAD_OPERATIONS (48.3022ms)
+  ✔ the sealed B policy binds effect:acquire to the K→C external route with await terminal (1.8647ms)
+✔ sealed route uses the frozen T01 vocabulary (50.5029ms)
+▶ confirmDownloadRequest applies the T01 no-widening gate before send
+  ✔ seals a valid confirmed intent into a public confirmDownload request (1.4234ms)
+  ✔ refuses scope widening (unknown field) before any send (0.4477ms)
+  ✔ refuses a raw-locator targetRef (locator substitution) (1.4404ms)
+  ✔ refuses a declaredBytes above the T01 contract bound (0.6057ms)
+✔ confirmDownloadRequest applies the T01 no-widening gate before send (4.562ms)
+(node:51576) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ S — sealed direct composition identity
+  ✔ seals the T03 K/S bytes at their #183 PoC hashes with THIS lane as the capability (293.3973ms)
+✔ S — sealed direct composition identity (295.2358ms)
+▶ P1 — real journey: intent → K permit → T04 bridge → DirectHttpAdapter → digest-backed file
+  ✔ completes with real bytes, truthful terminal query/subscription and single-triple evidence (264.031ms)
+✔ P1 — real journey: intent → K permit → T04 bridge → DirectHttpAdapter → digest-backed file (264.6629ms)
+▶ P2 — exactly one K permit and no double journal
+  ✔ mints exactly one durable permit and one journal row; replay adds none (106.4246ms)
+✔ P2 — exactly one K permit and no double journal (106.6639ms)
+▶ N1 — duplicate messageId: idempotent, zero second effects
+  ✔ replays the settled occurrence without re-dispatching the effect (90.3973ms)
+✔ N1 — duplicate messageId: idempotent, zero second effects (90.7983ms)
+▶ N2 — mid-flight abort: truthful failure, no file, no auto-redownload
+  ✔ propagates the caller AbortSignal to the bridge and requires a new authorization (145.1697ms)
+✔ N2 — mid-flight abort: truthful failure, no file, no auto-redownload (145.5042ms)
+▶ N3 — store stop/reopen: journal survives, replay idempotent
+  ✔ reopens the same store file and replays the settled occurrence without new effects (156.5678ms)
+✔ N3 — store stop/reopen: journal survives, replay idempotent (156.8046ms)
+▶ N4 — digest mismatch: no file is materialized
+  ✔ fails the journey truthfully when served bytes break the confirmed anchor (91.9974ms)
+✔ N4 — digest mismatch: no file is materialized (92.1835ms)
+▶ N5 — T01 gate before send: refused intents create zero effects
+  ✔ refuses scope widening and raw-locator substitution before K admission (67.7605ms)
+✔ N5 — T01 gate before send: refused intents create zero effects (67.8753ms)
+(node:57328) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ validateConfirmedIntent — no-widening
+  ✔ accepts a canonical confirmed intent unchanged (2.7167ms)
+  ✔ refuses unknown fields (SCOPE_WIDENING_REFUSED) — the confirmed scope cannot grow (0.3417ms)
+  ✔ refuses missing required fields (0.2282ms)
+  ✔ refuses a raw URL as targetRef (opaque token only — L2 A02) (0.2929ms)
+  ✔ refuses malformed identifiers, digest anchors and size bounds (0.4098ms)
+✔ validateConfirmedIntent — no-widening (5.8403ms)
+▶ output root and artifact path containment
+  ✔ accepts an absolute root and refuses relative or traversing roots (0.282ms)
+  ✔ refuses artifact paths escaping the authorized root (0.6359ms)
+✔ output root and artifact path containment (1.2659ms)
+▶ route table binding
+  ✔ accepts a route table bound to sealed declarations (0.7167ms)
+  ✔ refuses a route to an undeclared capability (exact contract binding mismatch) (0.2992ms)
+  ✔ refuses operations outside the frozen vocabulary (0.4129ms)
+✔ route table binding (1.9149ms)
+▶ effect envelope grammar (L2 A05)
+  ✔ accepted/running phases carry no outcome (0.5094ms)
+  ✔ terminal ok/failed outcomes are exactly typed (0.1915ms)
+✔ effect envelope grammar (L2 A05) (0.9021ms)
+▶ materialized evidence validation
+  ✔ accepts bounded evidence inside the root (0.3658ms)
+  ✔ refuses bad digests and escaping artifact paths (0.1542ms)
+✔ materialized evidence validation (0.7486ms)
+(node:42672) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ S2 — unique deterministic attachment completes under K
+  ✔ selects the single full match, submits one confirmed intent, materializes digest-backed bytes (59.8732ms)
+✔ S2 — unique deterministic attachment completes under K (376.4869ms)
+▶ S2 — ambiguity routes to confirmation with zero effects
+  ✔ returns the T05 AMBIGUOUS_TIE plan (one MATERIAL_ITEM per tied member) and never submits (1.6461ms)
+  ✔ returns INSUFFICIENT_EVIDENCE (MANUAL_SELECTION_UI) when nothing matches (0.4699ms)
+✔ S2 — ambiguity routes to confirmation with zero effects (2.4098ms)
+▶ S2 — decided selection awaits ratification; a foreign confirmation refuses
+  ✔ stops at awaiting-confirmation (MATERIAL_ITEM plan) when no facts are given (0.4032ms)
+  ✔ refuses a confirmation naming a member the lane did not select (0.431ms)
+✔ S2 — decided selection awaits ratification; a foreign confirmation refuses (1.0858ms)
+▶ S2 — malformed declared inputs refuse with zero effects
+  ✔ refuses observations outside the declared finite scope (T05 MEMBERSHIP_DRIFT) (0.8304ms)
+  ✔ refuses a locator-shaped download fact before any send (T01/T08 discipline) (0.3906ms)
+✔ S2 — malformed declared inputs refuse with zero effects (1.527ms)
+(node:35740) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ S3 — sealed media composition identity
+  ✔ seals the T03 K/S bytes at their #183 PoC hashes with THIS lane as the media B/C (61.1699ms)
+✔ S3 — sealed media composition identity (304.6316ms)
+▶ S3 — real bounded HLS journey end-to-end under one K permit
+  ✔ pulls manifest→playlist→segments through the engine and materializes digest-backed evidence (79.0906ms)
+✔ S3 — real bounded HLS journey end-to-end under one K permit (79.4554ms)
+▶ S3 — no-widening and profile refusals before any effect
+  ✔ refuses a foreign allowedOperation pre-send with zero effects (0.5678ms)
+  ✔ refuses a foreign slice pre-send (the media journey admits S3 only) (0.3126ms)
+  ✔ refuses a widened intent through the T01 gate with zero effects (0.4232ms)
+  ✔ refuses an intent missing the sealed profile fields with zero effects (0.4829ms)
+✔ S3 — no-widening and profile refusals before any effect (2.2948ms)
+▶ S3 — admitted dispatches fail truthfully with zero network when unresolvable
+  ✔ fails at the trusted registry for an unknown targetRef before any request (13.9391ms)
+  ✔ fails at the sealed B profile bound when declaredBytes exceeds it (zero effects run) (7.1221ms)
+✔ S3 — admitted dispatches fail truthfully with zero network when unresolvable (21.3997ms)
+▶ S3 — the digest anchor holds behind the engine acceptance
+  ✔ refuses to materialize when assembled bytes miss the confirmed anchor (18.0394ms)
+✔ S3 — the digest anchor holds behind the engine acceptance (18.2358ms)
+(node:62912) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ S5 — deterministic matched set collected under K, member by member
+  ✔ collects exactly the full-match set after one batch confirmation covering it (75.549ms)
+  ✔ reports PARTIAL truthfully when one confirmed member fails, never a complete claim (63.1698ms)
+✔ S5 — deterministic matched set collected under K, member by member (426.2491ms)
+▶ S5 — confirmation discipline with zero effects
+  ✔ re-asks with the BATCH_GROUP plan when no confirmation facts are given (0.744ms)
+  ✔ refuses a batch naming a member outside the matched set (over-selection) (0.4622ms)
+  ✔ refuses a duplicate batch reference (one batch covers every member exactly once) (0.4257ms)
+  ✔ refuses delivery facts for an unconfirmed member (latent widening) (0.4138ms)
+  ✔ refuses when a confirmed member has no delivery facts (never silently dropped) (0.3374ms)
+  ✔ refuses the whole collection before any submission when one member intent is invalid (0.3931ms)
+✔ S5 — confirmation discipline with zero effects (3.2756ms)
+▶ S5 — zero decisive evidence re-asks with MANUAL_SELECTION_UI
+  ✔ returns INSUFFICIENT_EVIDENCE with zero effects when nothing matches (0.5394ms)
+✔ S5 — zero decisive evidence re-asks with MANUAL_SELECTION_UI (0.6773ms)
+(node:44252) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ S6 — the explicit declared set collected under K, canonical order
+  ✔ collects exactly the declared set after one full batch confirmation (129.0774ms)
+✔ S6 — the explicit declared set collected under K, canonical order (382.5713ms)
+▶ S6 — identity correspondence discipline with zero effects
+  ✔ re-asks with the BATCH_GROUP plan when no confirmation facts are given (0.6489ms)
+  ✔ refuses a batch naming a member outside the declared set (a confirmation can never add members) (0.3085ms)
+  ✔ re-asks with the full-set plan on a strict subset batch (never partial promotion) (0.3668ms)
+  ✔ refuses a duplicate batch reference (every member exactly once) (0.313ms)
+  ✔ refuses delivery facts for an undeclared member (latent widening) (0.3228ms)
+✔ S6 — identity correspondence discipline with zero effects (2.3616ms)
+▶ S6 — the declared scope grammar refuses with zero effects
+  ✔ refuses duplicate declared members (membership drift) (0.4255ms)
+  ✔ refuses an empty declared set (empty is not success) (0.3396ms)
+✔ S6 — the declared scope grammar refuses with zero effects (1.0273ms)
+▶ S6 — two-member explicit set uses per-member MATERIAL_ITEM asks
+  ✔ returns one MATERIAL_ITEM confirmation per declared member for a small set (0.3913ms)
+✔ S6 — two-member explicit set uses per-member MATERIAL_ITEM asks (0.5343ms)
+(node:8320) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ default partition — old lineages stay old-core, no migration
+  ✔ resolves unregistered lineages to the old-core default (new K must not write them) (2.769ms)
+  ✔ records a legacy lineage permanently and refuses the new-K claim on it (4.0553ms)
+  ✔ refuses partition inversion: a claimed new-K lineage can never be re-registered as legacy (10.2056ms)
+  ✔ legacy registration survives a restart and keeps refusing new-K claims (5.4679ms)
+✔ default partition — old lineages stay old-core, no migration (24.4706ms)
+▶ exclusive claim — one writer per new lineage
+  ✔ CAS-creates the first claim and converges idempotently for the same writer (2.3887ms)
+  ✔ refuses a second writer identity with WRITER_IDENTITY_CONFLICT (U02/N06 code) (3.4456ms)
+  ✔ refuses claims/releases with malformed input without durable effect (1.1494ms)
+✔ exclusive claim — one writer per new lineage (7.5885ms)
+▶ crash/restart — kill simulation by reopening the ledger file
+  ✔ claims stay owned and authority is still enforced after a process boundary (4.846ms)
+  ✔ fails closed on corrupt durable bytes (2.6276ms)
+  ✔ CAS conflict: a stale revision-0 save cannot overwrite durable state (4.8324ms)
+✔ crash/restart — kill simulation by reopening the ledger file (12.8938ms)
+▶ UNKNOWN reconciliation book — record only, never auto-clear/replay
+  ✔ records the UNKNOWN effect durably and keeps it pending across restarts (4.995ms)
+  ✔ resolution requires a new authorization and is explicit-only, exactly once (6.8631ms)
+✔ UNKNOWN reconciliation book — record only, never auto-clear/replay (12.3663ms)
+▶ rollback — new lineage release; old lineage immutable
+  ✔ releases a new-K lineage by its owner, preserving the released record/history (50.8468ms)
+  ✔ refuses a foreign release and an old-lineage release (15.9253ms)
+  ✔ re-claim after release requires a NEW authorization (stale grant refused) (9.6827ms)
+✔ rollback — new lineage release; old lineage immutable (107.2618ms)
+(node:23016) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ validateAdvisoryOpinion — an advisory can never carry authority
+  ✔ accepts a well-formed SUGGESTIVE opinion (1.395ms)
+  ✔ refuses every authority field name (23 names) with EVIDENCE_SCOPE_PROMOTION_FORBIDDEN (0.7878ms)
+  ✔ refuses any certainty other than the SUGGESTIVE ceiling as a promotion attempt (0.301ms)
+  ✔ refuses unknown fields (no-widening) and malformed identifiers (0.3766ms)
+✔ validateAdvisoryOpinion — an advisory can never carry authority (4.8041ms)
+▶ advisory → authority conversion is doubly refused
+  ✔ runtime: the T01 intent boundary refuses an advisory object outright (0.7085ms)
+  ✔ runtime: the T01 route-table boundary refuses an advisory mapped as an operation row (0.4814ms)
+  ✔ runtime: refuseAdvisoryAsAuthority blocks advisories at authority boundaries and passes authorities (0.3263ms)
+  ✔ compile-time: AdvisoryOpinion is not assignable to ConfirmedDownloadIntent (0.2314ms)
+✔ advisory → authority conversion is doubly refused (2.3363ms)
+▶ applyAdvisories — contestation only, never confirmation
+  ✔ an advisory on the unique match forces REQUIRES_CONFIRMATION (ADVISORY_CONTESTED) (3.2165ms)
+  ✔ an advisory on a non-selected member cannot change the selection (0.5665ms)
+  ✔ advisories outside the declared finite scope are refused (membership drift) (0.3968ms)
+✔ applyAdvisories — contestation only, never confirmation (4.5607ms)
+▶ runSemanticLaneWithAdvisories — bounded end-to-end advisory path
+  ✔ an invalid advisory (grant field) refuses the whole run — no partial outcome (0.8491ms)
+  ✔ a valid advisory can only add ambiguity; it can never resolve one (0.6705ms)
+✔ runSemanticLaneWithAdvisories — bounded end-to-end advisory path (1.7633ms)
+(node:29128) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ decodeFiniteMemberSet — finite declared membership
+  ✔ decodes into a canonically sorted, frozen member set (2.816ms)
+  ✔ is order-invariant: any submission order decodes to the identical value (0.7435ms)
+  ✔ refuses membership beyond the explicit finite bound (no silent truncation) (2.3302ms)
+  ✔ accepts exactly the bound (boundary is inclusive) (8.8217ms)
+  ✔ refuses duplicates, empty set, wrong basis, unknown fields and malformed ids (0.7057ms)
+  ✔ membership test is identity-set based (0.3718ms)
+✔ decodeFiniteMemberSet — finite declared membership (18.0695ms)
+▶ semantic lane determinism — same input, identical output
+  ✔ evaluation and selection are deeply equal across 25 fresh runs (4.5352ms)
+  ✔ observation submission order cannot change the outcome (fixed permutations) (0.9181ms)
+  ✔ the ranking is total and canonically ordered over the finite scope (0.4828ms)
+✔ semantic lane determinism — same input, identical output (6.4553ms)
+(node:62560) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ zero-LLM default path is complete
+  ✔ decodes and runs a raw request end-to-end to a selection with no provider anywhere (2.8301ms)
+  ✔ an ambiguous scope routes to confirmation through the same entry point (0.6349ms)
+  ✔ the lane request surface is exact-key: no advisory or provider field can ride in (0.3882ms)
+  ✔ the default entry takes pure data only — no callable can be injected into it (0.3651ms)
+✔ zero-LLM default path is complete (5.8031ms)
+▶ lane source purity — no model, network, wall-clock, randomness or environment reads
+  ✔ no lane implementation source contains a forbidden surface token (2.9451ms)
+✔ lane source purity — no model, network, wall-clock, randomness or environment reads (3.1887ms)
+(node:54832) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ selectTarget — unique evidence selects, everything else confirms
+  ✔ selects the single full match and carries a stable fingerprint (2.8282ms)
+  ✔ a two-way tie is ambiguous: REQUIRES_CONFIRMATION with one MATERIAL_ITEM per member (1.4649ms)
+  ✔ a tie above 3 members collapses into one BATCH_GROUP (C30: no per-item interrogation) (0.6193ms)
+  ✔ zero matches is insufficient evidence: REQUIRES_CONFIRMATION, never a closest-match guess (0.4134ms)
+  ✔ partial condition counts never rank a winner (traceability only) (0.5607ms)
+  ✔ every undecided outcome carries at least one confirmation request (never silent) (0.7329ms)
+  ✔ selection is deterministic under repeated evaluation (1.2232ms)
+✔ selectTarget — unique evidence selects, everything else confirms (9.9796ms)
+ℹ tests 121
+ℹ suites 51
+ℹ pass 121
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1870.2642

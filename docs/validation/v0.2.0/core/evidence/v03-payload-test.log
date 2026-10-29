@@ -1,0 +1,13 @@
+(node:32012) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ sealed K/S payload bytes
+  ✔ on-disk payload files still hash to the committed SHA256SUMS lines (3.3608ms)
+✔ sealed K/S payload bytes (4.2449ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 236.4014

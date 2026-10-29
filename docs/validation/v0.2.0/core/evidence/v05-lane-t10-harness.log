@@ -1,0 +1,76 @@
+tests/domain-app harness: 4 test file(s)
+  - C:\xDev\kAiCreator\xDownload\xd-v02-t14-validator\tests\domain-app\baseline-oracle.test.ts
+  - C:\xDev\kAiCreator\xDownload\xd-v02-t14-validator\tests\domain-app\fixtures.test.ts
+  - C:\xDev\kAiCreator\xDownload\xd-v02-t14-validator\tests\domain-app\recovery.test.ts
+  - C:\xDev\kAiCreator\xDownload\xd-v02-t14-validator\tests\domain-app\zero-network.test.ts
+node v24.21.0
+(node:59556) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ T10 S1–S6 baseline descriptors — honesty and live-registry binding
+  ✔ the baseline document decodes fail-closed: unknown fields are refused (0.8119ms)
+  ✔ every descriptor matches the canonical support-slice registry exactly (1.4879ms)
+  ✔ registry drift is detected, never silently absorbed (0.4643ms)
+  ✔ S1 is the only FULL_ORACLE slice; the others carry explicit honesty gaps (0.3914ms)
+  ✔ the installed-baseline binding stays NOT_PROVEN everywhere (no synthetic acceptance) (0.212ms)
+  ✔ T01 intent vocabulary facts are real: only S1/S3 slices exist as intent slices today (0.207ms)
+✔ T10 S1–S6 baseline descriptors — honesty and live-registry binding (10.3899ms)
+▶ T10 S1 FULL_ORACLE — executable direct journey
+  ✔ completes the frozen terminal vocabulary: real bytes, digest, evidence, projection (22.6948ms)
+  ✔ wrong-variant bytes fail target validation and project the honest failure vocabulary (3.7076ms)
+  ✔ a structurally valid fake COMPLETE for failed validation is refused by the frozen rules (0.3427ms)
+  ✔ sealing and adjudicating the intent is pure: zero requests while the origin is live (0.4984ms)
+  ✔ a partial restart artifact cannot be read as completed evidence (declared vs durable) (0.9595ms)
+✔ T10 S1 FULL_ORACLE — executable direct journey (28.6165ms)
+(node:19300) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ T10 deterministic factories
+  ✔ payload is a pure function of (size, seed) — same inputs, same bytes and digest (1.2217ms)
+  ✔ different seeds produce different bytes and digests (variant detection is real) (0.1825ms)
+  ✔ payloadPrefix is exactly the durable prefix of the full payload (restart truth) (0.2279ms)
+  ✔ confirmedIntent returns a decoded canonical intent bound to the payload digest (0.5978ms)
+  ✔ omitDigestAnchor builds the no-anchor basis; S3 is inside the frozen slice pair (0.2088ms)
+  ✔ the factory never mints a widened or malformed intent (fail closed) (0.316ms)
+✔ T10 deterministic factories (7.8333ms)
+▶ T10 bounded fixture scenarios
+  ✔ serveComplete delivers the exact registered bytes and records the request (18.9828ms)
+  ✔ serveTruncated delivers fewer bytes than declared, observed as an interrupted transfer (6.607ms)
+  ✔ serveNotFound answers 404 and is recorded (1.9987ms)
+  ✔ serveRedirect registers and is followed by the default client (3.8599ms)
+  ✔ serveStall never completes on its own; the client-side interruption keeps partial truth (103.0759ms)
+  ✔ unregistered paths fail closed with 404 (2.0391ms)
+✔ T10 bounded fixture scenarios (137.1974ms)
+(node:5992) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ T10 truncated transfer — honest partial truth, never fake completion
+  ✔ a declared-but-undelivered body yields observable partial bytes and a digest mismatch (11.5934ms)
+  ✔ the honest facts project UNSATISFIED/FAILED — and never COMPLETE (2.2667ms)
+  ✔ budget exhaustion is never reinterpreted as completion (C02/PRD-§15.4) (0.4415ms)
+✔ T10 truncated transfer — honest partial truth, never fake completion (20.241ms)
+▶ T10 stalled effect — pending envelopes never settle, fake terminals are refused
+  ✔ a stalled response delivers nothing and only ends by external interruption (109.6098ms)
+  ✔ accepted/running envelopes structurally carry no outcome and are not terminal (0.4069ms)
+  ✔ fake terminal envelopes are refused: no outcome, non-object outcome, untyped outcome.ok (0.1855ms)
+✔ T10 stalled effect — pending envelopes never settle, fake terminals are refused (110.4634ms)
+▶ T10 restart lineage — durable truth, cutoff discipline, explicit resume only
+  ✔ partial restart artifact: honest evidence names the interruption, not completion (1.0429ms)
+  ✔ unproven restart state projects NOT_PERFORMED/UNKNOWN — no silent optimism (0.2021ms)
+  ✔ the terminal store keeps frozen truth: late facts never rewrite it; only explicit resume reopens (0.3913ms)
+✔ T10 restart lineage — durable truth, cutoff discipline, explicit resume only (1.8656ms)
+(node:49764) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ T10 zero-network harness
+  ✔ a fresh audit over a live bounded origin records zero requests (1.0981ms)
+  ✔ pure contract operations make zero requests even with the origin up (1.4523ms)
+  ✔ a single real request is caught: the assertion fails carrying the recorded traffic (19.7236ms)
+  ✔ request counting is exact across clears (no stale traffic leaks between scenarios) (2.9905ms)
+  ✔ the audit spans multiple enrolled origins and names the violating one (5.4274ms)
+✔ T10 zero-network harness (36.1729ms)
+ℹ tests 37
+ℹ suites 8
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 444.629
+HARNESS_EXIT=0
