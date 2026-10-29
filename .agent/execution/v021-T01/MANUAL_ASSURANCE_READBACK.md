@@ -35,7 +35,10 @@ schema: xdownload/manual-assurance-readback/v1
 
 - Planning Product/L2/DAG review: PASS.
 - Native dependency readback: PASS.
-- Execution Pack: complete core inventory, subject to final readback.
+- Execution Pack: core inventory 6/6 present; optional MANUAL_ASSURANCE_READBACK present; exact branch/manifest readback completed below.
+- Execution Pack branch HEAD: 4650b7219dc99cae560989891d0a4173d8351b50.
+- MANIFEST blob: 350474325e835cdeb5fbd35910725103a3c3ebff.
+- Task Pack ref: planning/v0.2.1-user-release@1cffd6445308ac78fa2f9e4489af579f0deb32ef, blob c0cbed29ffa1a47cad5aed288aa262dd0dd549a8.
 - Source implementation: NOT_STARTED.
 - Node24 task validation: NOT_RUN.
 - CI: NO_RUN.
