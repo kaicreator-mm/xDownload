@@ -1,0 +1,100 @@
+schema: xdownload/execution-test-matrix/v1
+task_id: v021-T01
+required_environment:
+  node: "24.21.0"
+  pnpm: "12.8.1"
+  network_effects: forbidden
+  real_downloads: forbidden
+  host_effects: forbidden
+suites:
+  - id: D01
+    scope: JobProjection decoder
+    positive: valid job identity, owner, status, attempt and progress decode to the canonical frozen value
+    negative: missing identity/status or malformed owner rejects
+    oracle: deterministic value equality
+  - id: D02
+    scope: JobProjection decoder
+    positive: optional terminal/error fields are preserved exactly
+    negative: unknown fields and wrong field types reject
+    oracle: typed diagnostics; no unknown-field stripping
+  - id: D03
+    scope: AttemptProjection decoder
+    positive: stable attempt ID, ordinal/sequence and lifecycle facts decode
+    negative: duplicate/invalid identity, negative sequence, invalid time or unknown status rejects
+    oracle: deterministic value equality
+  - id: D04
+    scope: ProgressProjection decoder
+    positive: known total with actual transferred bytes decodes
+    negative: negative/unsafe totals, malformed transferred bytes, unknown total with numeric value, or fabricated percent on unknown total rejects
+    oracle: UNKNOWN is not zero; no percentage or ETA on UNKNOWN
+  - id: D05
+    scope: ErrorProjection decoder
+    positive: bounded typed code/message/category decode
+    negative: empty/oversized code, non-string message, unknown fields reject
+    oracle: error identity preserved; no inferred retryability
+  - id: D06
+    scope: LineageOwnerResolution decoder
+    positive: explicit old-core/new-k resolution decodes
+    negative: conflicting/ambiguous owner returns typed REFUSED; no fallback owner
+    oracle: stable LINEAGE_OWNER_AMBIGUOUS or conflict code
+  - id: S01
+    scope: legacy command/query wire
+    positive: historical v1.0-v1.2 command and READ_PROJECTION query without route decode unchanged
+    negative: unsupported major/schema remains rejected
+    oracle: existing golden fixtures unchanged
+  - id: S02
+    scope: v0.2 command route
+    positive: explicit route=v0.2 with existing canonical command decodes
+    negative: unknown route or malformed command rejects
+    oracle: exact v0.2 route preserved in decoded envelope
+  - id: S03
+    scope: v0.2 job query
+    positive: READ_JOB_PROJECTION with route=v0.2 decodes
+    negative: READ_JOB_PROJECTION without route rejects
+    oracle: query type and route are bound
+  - id: S04
+    scope: query boundary
+    positive: existing READ_PROJECTION still returns existing projection
+    negative: unknown query and v0.2-only query on legacy route reject
+    oracle: typed UNKNOWN_QUERY_TYPE or route refusal
+  - id: S05
+    scope: provider boundary
+    positive: installed provider returns canonical JobProjection
+    negative: missing provider returns typed unavailable; ambiguous owner returns typed refusal
+    oracle: no empty fabricated projection; no legacy fallback
+  - id: S06
+    scope: response boundary
+    positive: job response round-trips through encode/decode
+    negative: malformed/unknown jobProjection fields reject
+    oracle: canonical domain decoder reused
+  - id: S07
+    scope: cross-surface parity
+    positive: shared fixture yields identical canonical job/attempt/progress/error facts through domain and seam decoders
+    negative: surface-specific fixture mutation is rejected
+    oracle: structural equality against shared fixture
+  - id: N01
+    scope: no-widening guard
+    positive: existing confirmed intent stays unchanged
+    negative: unknown field, raw URL/path, widened scope and malformed target reject
+    oracle: existing SCOPE_WIDENING_REFUSED and LOCATOR_SUBSTITUTION_REJECTED tests remain green
+  - id: N02
+    scope: journal/effect safety
+    positive: valid v0.2 command reaches only the typed command port
+    negative: invalid v0.2 payload rejects before journal/command port/effect
+    oracle: journal revision and provider call count unchanged
+  - id: N03
+    scope: owner conflict
+    positive: exactly one authoritative owner returns RESOLVED
+    negative: both owner sources present or neither can be resolved returns typed REFUSED
+    oracle: no old/new dual writer or guessed fallback
+commands:
+  scoped: "pnpm exec vitest run packages/domain-contracts/test packages/core-seam/test"
+  legacy_intent: "node --test packages/download-domain-app/src/contracts/contract.test.ts"
+  legacy_owner: "node --test packages/download-domain-app/src/migration/lineage-ledger.test.ts"
+  full: "pnpm run ci:verify"
+pass_rule:
+  - every required suite exits 0
+  - skipped tests are not PASS
+  - test results bind to exact task branch HEAD, Node and pnpm versions
+  - independent Review inspects exact HEAD and diff against c29af4a4b89123997d03d5566ebe09ba83855fb0
+  - until a Windows Node 24 run or authorized runner returns exact results, task-check-green remains NOT_RUN
