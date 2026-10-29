@@ -69,7 +69,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 ## T06 — HLS VOD S4 K/Host integration
 
 - **Depends on:** T01. **Risk:** high. **Review:** required.
-- **Exclusive write set:** `packages/download-domain-app/src/integrations/s4-hls-vod.ts; packages/download-domain-app/src/integrations/index.ts; packages/download-domain-host/src/media/**; packages/hls-vod-adapter/**`.
+- **Exclusive write set:** `packages/download-domain-app/src/integrations/s4-hls-vod*; packages/download-domain-app/src/integrations/index.ts; packages/download-domain-host/src/media/**; packages/hls-vod-adapter/**`.
 - **Output:** an explicit bounded S4 HLS VOD journey through selected K/Host, reusing the existing HLS engine and transfer-budget contract.
 - **Acceptance:** controlled authorized HLS fixture, explicit variant/scope policy, real materialized output and applicable integrity checks; unsupported live/DRM/ambiguous cases refuse truthfully.
 - **Forbidden:** no new media engine, DRM/access bypass, implicit playlist crawl or S4 claim from unit tests alone.
