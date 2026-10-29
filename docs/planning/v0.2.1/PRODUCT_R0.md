@@ -45,6 +45,8 @@ The following ledger is copied verbatim from [PRODUCT_SCOPE_AMENDMENT_R1 §2](..
 
 Nothing already disproven is claimed; nothing already claimed is weakened silently — the deferral ledger above is part of the v0.2.0 amendment and must survive into v0.2.1 intake unchanged.
 
+Intake tracking and disposition history: [Issue #242](https://github.com/kaicreator-mm/xDownload/issues/242).
+
 ## 3. User-facing capabilities added to the v0.2.1 target
 
 ### 3.1 A usable desktop Download Manager
