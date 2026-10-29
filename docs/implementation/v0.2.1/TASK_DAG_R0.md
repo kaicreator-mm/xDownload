@@ -136,7 +136,7 @@ flowchart TD
 | T19 | hidden-validation | T18 | `docs/release/v0.2.1/hidden/**` | Critical / independent gate | Hidden corpus and adversarial validation; zero escaped release-blocking cases |
 | T20 | version-closure | T19 | `docs/release/v0.2.1/closure/**` | Critical / independent gate | Evidence currentness, deferral ledger, package/source lineage and truthful open items |
 | T21 | release-qualification | T20 | `docs/release/v0.2.1/rq/**` | Critical / independent gate | Exact-SHA READY/CONDITIONAL/BLOCKED/FAIL, exact claim set and integration permission |
-| T22 | main-integration | T21 | `docs/release/v0.2.1/integration/**` and protected merge only when authorized | Critical / independent gate | Re-read RQ conditions, PR diff/base, merge and exact main readback |
+| T22 | main-integration | T21 | `docs/release/v0.2.1/integration/**` | Critical / independent gate | Re-read RQ conditions, PR diff/base, merge and exact main readback; protected merge only when accepted RQ explicitly permits |
 
 ## 4. Parallelism and conflict controls
 
