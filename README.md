@@ -1,61 +1,56 @@
 # xDownload
 
-xDownload follows the immutable `kaicreator-mm/ai-development-standard` revision pinned in `.dev-standard/VERSION`.
+xDownload helps users acquire and organize explicitly requested, authorized resources with deterministic-first execution, bounded discovery, truthful results, and safe recovery. It is not a general crawler or an AI-first downloader.
 
-## Current ADS lifecycle state
+The repository follows the immutable ADS revision pinned in [`.dev-standard/VERSION`](.dev-standard/VERSION).
 
-```text
-Stage 0 Intake/Baseline: CHECKPOINTED
-Stage 1 Product/Scope: ACTIVE
-Formal L1 Product Evidence: COMPLETE
-Current PRD/Scope candidate: PRD v0.4.1
-Initial product release target: v0.1.0
-Product Freeze: NO
-Architecture Freeze: NO
-L2: NOT ELIGIBLE
-Task DAG: NOT STARTED
-Implementation: NOT STARTED
-```
+## Current project and release state
 
-The PRD document revision is separate from the product release target.
+**Status checked: 2026-10-29.** Version-specific freeze records and release receipts are authoritative; lifecycle markers embedded in older candidate documents may describe the historical state when those exact bytes were reviewed.
 
-## Current Stage 1 documents
+| Line | Authoritative status | What it means |
+|---|---|---|
+| v0.1.0 | Frozen Product, L2 and 28-task DAG; release gates remain independently tracked | The original product contract is frozen. Do not infer final release qualification from source files or old candidate markers. Open release work includes [#41](https://github.com/kaicreator-mm/xDownload/issues/41) and [#43–#47](https://github.com/kaicreator-mm/xDownload/issues/43). |
+| v0.2.0 | **Component/workspace-level release qualified and integrated** | [RQ](docs/release/v0.2.0/rq/RELEASE_QUALIFICATION_R1.md) was READY for claims CL-1–CL-4; [PR #247](https://github.com/kaicreator-mm/xDownload/pull/247) was integrated to `main` at `c29af4a4b89123997d03d5566ebe09ba83855fb0`. It is not a claim that all installed end-user surfaces are released. |
+| v0.2.1 | **Planning candidate; not frozen; implementation not authorized yet** | [Planning issue #248](https://github.com/kaicreator-mm/xDownload/issues/248) and the version-scoped candidate documents define the next stabilization and user-experience milestone. Independent exact-SHA review and a separate freeze/readback are still required. |
 
-- [Documentation index](docs/README.md)
-- [Formal L1 Product Evidence](docs/product/L1_PRODUCT_EVIDENCE.md)
-- [Current PRD v0.4.1 Review Candidate](docs/product/PRD-v0.4.1-review-candidate.md)
-- [v0.3 Fresh Independent Review](docs/reviews/2026-10-02-v0.3-fresh-independent-adversarial-review.md)
-- [v0.4 Claude Fresh Independent Review](docs/reviews/2026-10-02-v0.4-claude-fresh-independent-adversarial-review.md)
+### v0.2.0 scope boundaries
 
-## Current product thesis under review
+v0.2.0 delivers the Domain App composition runtime, the two workspace packages, bounded-authorization surface components, and lineage authority partition. It explicitly does **not** claim the installed CLI surface, browser-extension v0.2 cutover, S4 HLS VOD as a release journey, installed baselines bound to a release SHA, or completed human G0/G1 sessions. See the [scope amendment](docs/planning/v0.2.0/PRODUCT_SCOPE_AMENDMENT_R1.md), [closure](docs/release/v0.2.0/closure/CLOSURE_R1.md), and [v0.2.1 deferral ledger](https://github.com/kaicreator-mm/xDownload/issues/242).
 
-```text
-Reliable targeted resource acquisition
-+
-Explicit bounded collections
-+
-Human-assisted ambiguity resolution when necessary
-+
-Template-first deterministic execution
-+
-Independent validation
-+
-Bounded AI fallback
-```
+DomainHarness v0.10.3 is consumed from the qualified Git source/build path. **Do not assume an npm publication or silently fall back to another SDK version.**
 
-xDownload is not a general crawler and is not an AI-first downloader. Ordinary supported downloads must remain usable when the model is unavailable.
+## Product principles
 
-## Next ADS action
+- Correct acquisition and truthful status are more important than maximizing automation.
+- Deterministic/template execution is the default; ordinary supported downloads work without an LLM.
+- User-confirmed target, scope, membership, authorization and output intent are immutable for an accepted attempt.
+- Collections are finite and explicit; no arbitrary URL frontier or crawler-like expansion.
+- External effects require the selected authority and trusted Host; K does not carry high-volume file bytes.
+- Retries are bounded. UNKNOWN effects are reconciled, not blindly repeated.
+- Security, privacy, durability and measured user effort are release requirements, not post-release polish.
 
-Run a Fresh Independent Product/Scope Review against the exact current v0.4.1 subject. Only a PASS with no blocking Product findings may proceed to the Stage 1 Product/Scope Freeze checkpoint for `v0.1.0`. L2 starts only after that checkpoint.
+## Current development workspace
 
-## Development bootstrap (established by T001)
-
-The implementation workspace is a pnpm monorepo pinned to Node `24.21.0` and pnpm `12.8.1`:
+The implementation uses a pnpm monorepo with Node.js `24.21.0` and pnpm `12.8.1`.
 
 ```text
 pnpm install --frozen-lockfile
 pnpm ci:verify
 ```
 
-`pnpm ci:verify` aggregates `format:check`, `lint`, `typecheck` and `test:unit`. Exact toolchain identities, gate scope and known limitations: [T001 Toolchain Record](docs/implementation/v0.1.0/T001_TOOLCHAIN_RECORD.md).
+`pnpm ci:verify` aggregates formatting, lint, typecheck and unit tests. Passing workspace checks alone does not prove an installed product journey.
+
+## Source-of-truth documents
+
+- [Documentation and lifecycle index](docs/README.md)
+- [Frozen Product/Scope authority](docs/planning/STAGE1_PRODUCT_SCOPE_FREEZE.md)
+- [Frozen v0.1.0 L2 authority](docs/planning/STAGE2_ARCHITECTURE_FREEZE.md)
+- [Frozen v0.1.0 Task DAG authority](docs/planning/STAGE2_TASK_DAG_FREEZE.md)
+- [v0.2.0 component release closure](docs/release/v0.2.0/closure/CLOSURE_R1.md)
+- [v0.2.1 Product candidate](docs/planning/v0.2.1/PRODUCT_R0.md)
+- [v0.2.1 L2 candidate](docs/architecture/v0.2.1/L2_R0.md)
+- [v0.2.1 Task DAG candidate](docs/implementation/v0.2.1/TASK_DAG_R0.md)
+- [v0.2.1 Task Pack candidate](docs/implementation/v0.2.1/TASK_PACKS_R0.md)
+
+The v0.2.1 documents are planning candidates only. They do not authorize source writes, release claims, SDK publication, or main integration until the required review, freeze and JIT admission steps are complete.
