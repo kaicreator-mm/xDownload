@@ -29,7 +29,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 ## T01 — Canonical contracts and Core seam protocol
 
 - **Depends on:** none. **Risk:** critical. **Review:** required.
-- **Exclusive write set:** `packages/domain-contracts/src/**; packages/core-seam/src/**` plus tests owned by these packages.
+- **Exclusive write set:** `packages/domain-contracts/**; packages/core-seam/**`.
 - **Output:** stable job/attempt/progress/error projections; known-vs-unknown totals; explicit v0.2 command/query route; no-widening intent validation; typed refusal for ambiguous lineage owner.
 - **Acceptance:** deterministic schema tests, malformed/unknown-field negatives, old protocol compatibility, and cross-surface parity fixtures.
 - **Forbidden:** no runtime composition, scheduler, persistence, UI or transfer implementation.
@@ -37,7 +37,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 ## T02 — Single-Core Domain App integration
 
 - **Depends on:** T01, T03, T06. **Risk:** critical. **Review:** required.
-- **Exclusive write set:** `packages/core-runtime/src/**; packages/converged-runtime/src/**`.
+- **Exclusive write set:** `packages/core-runtime/**; packages/converged-runtime/**`.
 - **Output:** load the selected Domain App/K once in the existing Core process; route old lineages to old Core and new v0.2 lineages to K; preserve one authority per lineage; expose the route through the existing Core seam.
 - **Acceptance:** exact old-lineage regression, new K lineage positive path, owner-conflict refusal before network/file effect, restart/reopen preserves the owner, and no per-surface K instantiation.
 - **Forbidden:** no new IPC transport, no second scheduler/ledger, no cross-process SQLite CAS claim, no rewriting old lineage history.
@@ -85,7 +85,7 @@ These are planning contracts, not executable Claims. They become eligible only a
 ## T08 — Desktop Download Manager UI
 
 - **Depends on:** T01, T02, T03, T07. **Risk:** high. **Review:** required.
-- **Exclusive write set:** `apps/desktop-shell/src/renderer/**`.
+- **Exclusive write set:** `apps/desktop/src/**; apps/desktop-shell/src/renderer/**`.
 - **Output:** add URL and target/output preview; job list; truthful progress/status; cancel; eligible retry; understandable errors; destination selection; reveal completed file/folder.
 - **Acceptance:** accessible keyboard flow and empty/loading/error states; no fabricated total/ETA; renderer calls only allowlisted preload APIs; queue/result state comes from the Core projection.
 - **Forbidden:** no pause/resume control unless T03 proves it; no local status/retry truth.
