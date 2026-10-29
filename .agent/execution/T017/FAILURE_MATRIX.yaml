@@ -1,0 +1,144 @@
+task_id: T017
+base_sha: 5b86cd2ca3b5cc587f7bf42f4331716637081353
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T017 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T017 would require violating Frozen L2 ownership, authority or trust boundaries (including any need for model authority or surface-owned truth)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or any T012-T016 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: ai-authority-elevation
+    trigger: an accepted proposal, provider payload or model output is treated as scope, membership, validation, authorization or terminal-status authority, or reaches behavior without the deterministic machinery any human suggestion passes through
+    classification: AI_AUTHORITY_ELEVATION_REJECTED
+    required_action:
+      - reject the wiring path
+      - keep proposals suggestion-provenance data only, consumed through the unmodified discovery-recipe decode/confirmation machinery
+      - never special-case AI past any contract invariant
+    false_pass_forbidden: true
+
+  - id: model-required-regression
+    trigger: a composed path requires a provider for ordinary deterministic/template work, or AI unavailability changes deterministic outcomes/statuses
+    classification: MODEL_DEPENDENCY_REGRESSION_REJECTED
+    required_action:
+      - restore deterministic-only completeness (provider: undefined mode)
+      - resolve AI unavailability truthfully to MODEL_UNAVAILABLE + ASK_USER/ABORT
+      - never convert unavailability into empty or partial success
+    false_pass_forbidden: true
+
+  - id: provider-hang-unbounded
+    trigger: a provider invocation runs without the caller-side deadline/budget wrap, or a hung provider stalls the composed path beyond its bounded slice
+    classification: PROVIDER_DEADLINE_UNBOUNDED_REJECTED
+    required_action:
+      - bind every provider call to a caller-side deadline/cancellation charged to canonical budget domains (PRD §15 GlobalSafetyBudget)
+      - resolve expiry as typed MODEL_UNAVAILABLE/TIMEOUT + deterministic fallback
+      - never replenish or redefine any budget to absorb a hang
+    false_pass_forbidden: true
+
+  - id: surface-local-authority
+    trigger: a surface or glue module derives, patches or caches status/result/lifecycle/progress/budget truth locally, or renders a success boolean instead of the Core projection
+    classification: SURFACE_AUTHORITY_FORK_REJECTED
+    required_action:
+      - remove the local truth path
+      - render SeamResponse/PROJECTION verbatim from Core
+      - keep disconnect as an explicit degraded state with no fabricated status
+    false_pass_forbidden: true
+
+  - id: cross-surface-status-divergence
+    trigger: the same canonical contract/command yields different response classes, statuses or projections across surfaces, or concurrent clients observe divergent status for one lineage/effect identity
+    classification: CONVERGENCE_PARITY_FAILURE
+    required_action:
+      - keep concern Validation non-PASS
+      - localize the divergence to glue and repair within the write set
+      - never normalize by per-surface compensation logic
+    false_pass_forbidden: true
+
+  - id: scope-authorization-drift-ui-cli
+    trigger: UI and CLI admit different scopes, continuations, auth contexts or budgets for the same contract, or one surface admits what another rejects
+    classification: SCOPE_AUTHORIZATION_DRIFT_REJECTED
+    required_action:
+      - route all scope/continuation/auth decisions through the same seam commands on every surface
+      - require successor identity for expansion/refresh/auth-change everywhere
+      - keep AuthorizationContextRef opaque and refuse raw reusable secrets at every surface
+    false_pass_forbidden: true
+
+  - id: hitl-bypass
+    trigger: an AI-suggested candidate, or an ASK_USER fallback, proceeds without an explicit human decision, or a surface auto-resolves or collapses a confirmation plan
+    classification: HITL_BYPASS_REJECTED
+    required_action:
+      - route suggestions through the same explicit confirmation flow as any candidate
+      - keep ASK_USER as an explicit user decision; never auto-resolve in glue
+      - render canonical plans verbatim without per-item explosion of batch ambiguity
+    false_pass_forbidden: true
+
+  - id: consumed-package-modification
+    trigger: an integration problem is solved by editing the semantics, exports or invariants of packages/domain-contracts, core-seam, core-scheduler, persistence-ledger, direct-acquisition, hls-vod-adapter, browser-observation, browser-auth-broker, discovery-recipe, ai-proposal, core-runtime, browser-collection-workflow, version-validation or the T001 smoke packages
+    classification: CONSUMED_PACKAGE_SEMANTIC_MODIFICATION_REJECTED
+    required_action:
+      - revert the semantic modification
+      - solve within glue/wiring, or escalate as an API-gap blocker to the owning authority
+    false_pass_forbidden: true
+
+  - id: frozen-doc-mutation
+    trigger: docs/planning/, Frozen PRD/L2, TASK_DAG.md, TASK_PACKS.json or any frozen task pack is edited to ease integration
+    classification: FROZEN_DOC_MUTATION_REJECTED
+    required_action:
+      - revert the mutation
+      - route genuine semantic needs through the formal amendment paths
+    false_pass_forbidden: true
+
+  - id: raw-secret-or-unredacted-model-input
+    trigger: raw reusable credentials or unredacted observations/context cross a surface interaction boundary or the provider port boundary through the wired path
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - restore the redaction/containment boundary (RedactedModelInput; opaque AuthorizationContextRef)
+      - escalate if Frozen Product/L2 semantics cannot be satisfied without the leak
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/convergence test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: t018-scope-creep
+    trigger: packaging, bundling, installers, platform adapters or release work appears in the T017 candidate
+    classification: SCOPE_CREEP_REJECTED
+    required_action:
+      - remove the downstream-scope work (extension bundling and platform packaging belong to T018)
+      - keep the browser-extension surface consumer/verification only
+    false_pass_forbidden: true

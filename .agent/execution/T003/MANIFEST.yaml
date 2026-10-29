@@ -1,0 +1,67 @@
+pack_id: xdownload-v0.1.0-T003-c813d3a1f2af
+pack_state_at_generation: PACK_CURRENT
+task_id: T003
+repository: kaicreator-mm/xDownload
+version: v0.1.0
+parent_issue: "#22"
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+base_tree: c9f41e851e3224c27ab05ea9bdda7e754ebf41c9
+integration_branch: version/v0.1.0
+task_pack_ref: docs/implementation/v0.1.0/task-packs/T003_validation-harness-corpora.md@39c205ec8ee9ccd9b6f47eeca401ec1ee76c307e
+task_pack_blob: 39c205ec8ee9ccd9b6f47eeca401ec1ee76c307e
+task_dag_blob: 232e561c2b350a60085c6d13d6030b759295c7cf
+task_pack_index_blob: 586e765d7bf1777d7fadded9b0e78041acfd3666
+architecture_blob: 5f6865974a4f2dbe78062c26e66d6a24af43d4a7
+freeze_checkpoint: 40bc80abc16012a42cb396a1aa3b6a6752daf061
+freeze_checkpoint_tree: 2766b482c23c7c78a4b2b4e451277e91ded11097
+freeze_authority: Issue #18 comment 5966444666 (ADS_STAGE2_TASK_DAG_FREEZE_RESULT=FROZEN, EXECUTION_DAG_MATERIALIZATION_ELIGIBLE=YES)
+materialization_issue: "#19"
+materialization_terminal_comment: "5968293780"
+branch: task/v0.1.0-t003-validation-harness-corpora
+branch_created_from_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+agent_freedom: F1_BOUNDED_IMPLEMENTATION
+l3_requirement: required
+review_policy: required
+risk: high
+pinned_standard_revision: 94cad2b0487e8a552c66d6bcd1cba36b7779383d
+generated_by: chatgpt-web:t003-jit-prep
+generated_at: "2026-10-04T00:00:00Z"
+dependency_completion:
+  - T002@c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+validation_ownership: T003-concern-only; version-level visible Validation is owned by T020-T023 on the exact T019 candidate
+validation_scope:
+  - harness self-tests
+  - corpus identity/denominator checks
+  - baseline pre-registration enforcement
+core_artifacts:
+  - MANIFEST.yaml
+  - EXECUTION_CONTRACT.md
+  - TEST_MATRIX.yaml
+  - FAILURE_MATRIX.yaml
+  - IMPLEMENTATION_MAP.md
+  - REVIEW_CHECKLIST.md
+optional_artifacts:
+  - REFERENCE_PACK.md
+retention: full-provenance
+package_excluded: true
+owned_write_set:
+  - packages/version-validation/
+  - package.json (only narrowly necessary workspace wiring directly required by the validation package)
+  - pnpm-lock.yaml (only as forced by allowed dependency wiring)
+material_paths:
+  - .dev-standard/
+  - AGENTS.md
+  - docs/planning/
+  - docs/product/PRD-v0.4.2-review-candidate.md
+  - docs/architecture/L2_ARCHITECTURE_EVIDENCE.md
+  - docs/implementation/v0.1.0/TASK_DAG.md
+  - docs/implementation/v0.1.0/TASK_PACKS.json
+  - docs/implementation/v0.1.0/task-packs/T003_validation-harness-corpora.md
+  - packages/domain-contracts/
+  - package.json
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - tsconfig.json
+  - vitest.config.ts
+  - eslint.config.js
+  - packages/

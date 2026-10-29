@@ -1,0 +1,119 @@
+task_id: T014
+base_sha: f5ac137f94438a591fd6781c5b758be6c375233a
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T014 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T014 would require violating Frozen L2 ownership, authority or trust boundaries (e.g. surface-owned truth)
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T004/T007 completion identities are no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: surface-authority-leak
+    trigger: UI interaction state or code presents/persists authoritative contract, snapshot, budget, lifecycle or result truth, or derives status surface-side
+    classification: SURFACE_AUTHORITY_REJECTED
+    required_action:
+      - remove the competing authority; consume seam projections only
+      - rebuild the affected view from Core state
+      - never normalize a surface-derived status into a displayable result
+    false_pass_forbidden: true
+
+  - id: silent-scope-or-selection-change
+    trigger: confirmed scope or selection is edited, narrowed, enlarged, re-selected or refreshed in place without a Core-accepted successor transition
+    classification: SCOPE_MUTATION_REJECTED
+    required_action:
+      - reject the mutation path
+      - route any permitted change through explicit successor identity
+      - keep the original confirmed display immutable
+    false_pass_forbidden: true
+
+  - id: interaction-burden-violation
+    trigger: per-item confirmation is interrogated while one batch/manual selection surface resolves the same ambiguity, or material-item prompts exceed the bounded count
+    classification: INTERACTION_CONTRACT_VIOLATED
+    required_action:
+      - restore the confirmation priority (scope → batch/group → bounded material items → manual selection)
+      - keep confirmation-plan levels sourced from the Core-side workflow
+      - do not weaken the policy to ease implementation
+    false_pass_forbidden: true
+
+  - id: disconnect-misreport
+    trigger: Core is disconnected, a projection is stale/unparseable, yet the UI shows fabricated progress, status or completion
+    classification: SURFACE_DISCONNECT_MISREPORTED
+    required_action:
+      - present explicit degraded/disconnected state
+      - re-sync only from re-read projections on reconnect
+      - never fabricate or extrapolate authoritative state
+    false_pass_forbidden: false
+
+  - id: unproven-ux-claim
+    trigger: closeout relies on release UX claims (usability, completeness, platform support) instead of executable UI tests
+    classification: UI_CLAIM_NOT_PROVEN
+    required_action:
+      - keep concern Validation non-PASS
+      - replace claims with deterministic component/interaction coverage from TEST_MATRIX.yaml
+      - record any unexecuted coverage as NOT_EXECUTED, never PASS
+    false_pass_forbidden: true
+
+  - id: platform-overreach
+    trigger: implementation or evidence claims a desktop framework/OS/installer/updater support decision or release qualification
+    classification: PLATFORM_CLAIM_OVERREACH
+    required_action:
+      - remove the claim; framework/IPC/packaging remain replaceable per U9/ADR-012
+      - escalate a genuinely required platform decision through the Architecture Amendment path
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/UI test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder adds a UI framework/renderer/DOM-environment dependency without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep choice within F2 and Frozen Architecture
+    false_pass_forbidden: true
+
+  - id: raw-secret-in-ui-state
+    trigger: reusable cookie token password signed-URL secret or equivalent credential material is displayed or stored as ordinary UI state
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - remove secret material; keep authorization context opaque
+      - escalate if Frozen Product/L2 semantics cannot be satisfied without secret exposure
+    false_pass_forbidden: true

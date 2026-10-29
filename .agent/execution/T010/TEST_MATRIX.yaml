@@ -1,0 +1,87 @@
+task_id: T010
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: browser-observation-native-messaging-broker-scoped-authorization
+validation_owner: T010-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+required_suites:
+  - id: real-browser-native-host-tuple
+    must_prove:
+      - at least one applicable real browser/native-host tuple executes the positive observation + handoff + scoped-auth flow end to end
+      - the exact tested tuple (browser/version/OS/native-host runtime) is durably recorded and closed with
+      - no claim is made for any tuple not actually exercised (Firefox/Safari and Windows/macOS registration remain unproven)
+  - id: origin-binding-misuse
+    must_prove:
+      - auth capability issued for one origin fails closed when used against a different origin
+      - observation/handoff from an origin outside the binding is rejected before privilege
+      - origin mismatch never degrades to a warning or partial acceptance
+  - id: target-contract-snapshot-provenance-binding-misuse
+    must_prove:
+      - privileged auth use requires exact target, contract, snapshot and observation provenance match
+      - reuse of a capability across a different contract/snapshot identity fails closed
+      - a provenance-bound redirect/CDN transition can retain binding while an unrelated redirect substitution fails closed
+  - id: partition-context-misuse
+    must_prove:
+      - where browser state is partition-aware, capabilities discriminate partition context
+      - wrong-partition or partition-stripped reuse fails closed
+      - partition context is carried as binding context, never as authority to widen scope
+  - id: expiry-and-revocation
+    must_prove:
+      - expired capability yields truthful AUTH_REQUIRED/AUTH_FAILED behavior
+      - revoked capability is refused for later uses while recorded evidence history is not retroactively rewritten
+      - expiry/revocation never converts into silent scope/target widening or automatic re-issue
+  - id: allowed-origins-enforcement
+    must_prove:
+      - Native Messaging allowed_origins is configured as the platform-enforced boundary for the tested tuple
+      - a non-allow-listed extension origin cannot reach the native host
+      - rejection of Native Messaging never falls back to any unrestricted local IPC path
+  - id: secret-sink-containment
+    must_prove:
+      - raw reusable cookie/token/password/session/signed-URL material stays inside the browser/broker secret zone for the tested flow
+      - canonical state exposes only the opaque AuthorizationContextRef
+      - tested sinks (Core-durable, log, evidence, Recipe, model input) contain no raw secret sentinel material
+  - id: oversized-and-malformed-message-boundary
+    must_prove:
+      - oversized native/page messages are rejected by explicit size bounds before privilege
+      - malformed or unknown-authoritative-field messages fail closed with typed diagnostics
+      - the untrusted content-script boundary cannot invoke privileged native/auth actions without passing the gate
+  - id: observation-provenance-and-scope-non-rewrite
+    must_prove:
+      - observations carry tab/frame/origin/request provenance and remain evidence inputs, not direct authority
+      - AuthorizationContextRef/accessibility never redefines, enlarges or shrinks the confirmed requested_scope
+      - auth-limited outcomes keep the multidimensional result truthfulness required by Frozen Product §17
+
+counterexample_oracles:
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-inaccessible
+    t010_oracle: broker/auth path preserves the requested-scope reference set; accessibility under AuthorizationContextRef yields the PARTIAL/AUTH_REQUIRED accounting contractually, never a narrowed COMPLETE
+  - id: C21
+    scenario: shared-knowledge-independent-user-account
+    t010_oracle: no credential/private-data material propagates across the browser/broker/Recipe/model boundary; independent-account reuse fails closed
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t010_oracle: exact UNSATISFIED/BLOCKED/NOT_STARTED/UNKNOWN/AUTH_REQUIRED-or-AUTH_FAILED tuple is produced truthfully at the browser/auth seam, with no fallback acquisition
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t010_oracle: S2 provenance accepts the declared-CDN transition and validates the final target; an unrelated redirect is rejected/fails closed
+
+negative_decode_cases:
+  - wrong-origin-capability-use
+  - cross-contract-capability-reuse
+  - cross-snapshot-capability-reuse
+  - wrong-partition-capability-use
+  - partition-stripped-context
+  - expired-capability-use
+  - revoked-capability-use
+  - non-allow-listed-native-messaging-origin
+  - native-messaging-fallback-ipc-attempt
+  - oversized-native-message
+  - malformed-native-message
+  - unknown-authoritative-field-in-untrusted-message
+  - unprovenanced-observation-promoted-to-privilege
+  - raw-secret-field-in-canonical-or-logged-state
+
+completion_rule: >-
+  T010 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the applicable counterexample oracles, and required negative cases are executable and pass on at least
+  one real browser/native-host tuple whose exact identity is recorded. This JIT Prep creates no PASS evidence.

@@ -1,0 +1,25 @@
+{
+  "name": "@xdownload/download-domain-host",
+  "version": "0.2.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "xDownload v0.2 trusted Domain App Host (C/Host integration: direct/media adapters behind the selected Kernel permit gate). Runtime wiring lands in T04/T06/T13.",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    "./direct": "./src/direct/index.ts",
+    "./media": "./src/media/media-acquisition-bridge.ts",
+    "./media/permit": "./src/media/media-permit.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@kaicreator/domain-harness-host-node": "0.10.2-rc.0",
+    "@xdownload/direct-acquisition": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*",
+    "@xdownload/download-domain-app": "workspace:*",
+    "@xdownload/hls-vod-adapter": "workspace:*"
+  }
+}

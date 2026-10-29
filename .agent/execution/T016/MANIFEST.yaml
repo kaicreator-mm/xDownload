@@ -1,0 +1,86 @@
+pack_id: xdownload-v0.1.0-T016-4166b5184170
+pack_state_at_generation: PACK_CURRENT
+task_id: T016
+repository: kaicreator-mm/xDownload
+version: v0.1.0
+parent_issue: "#35"
+base_sha: 4166b51841709bd74cedf1dd89cfcf8f373c38a1
+base_tree: 365f1f29f43a095f8223cf3957c1a24baf2653d0
+integration_branch: version/v0.1.0
+task_pack_ref: docs/implementation/v0.1.0/task-packs/T016_browser-collection-integration.md@39e1e87c1126e3c7bf93d4e84d234fcc92cf0dc9
+task_pack_blob: 39e1e87c1126e3c7bf93d4e84d234fcc92cf0dc9
+task_dag_blob: 232e561c2b350a60085c6d13d6030b759295c7cf
+task_pack_index_blob: 586e765d7bf1777d7fadded9b0e78041acfd3666
+architecture_blob: 5f6865974a4f2dbe78062c26e66d6a24af43d4a7
+freeze_checkpoint: 40bc80abc16012a42cb396a1aa3b6a6752daf061
+materialization_issue: "#19"
+materialization_terminal_comment: "5968293780"
+branch: task/v0.1.0-t016-browser-collection-integration
+branch_created_from_sha: 4166b51841709bd74cedf1dd89cfcf8f373c38a1
+agent_freedom: F1_BOUNDED_IMPLEMENTATION
+l3_requirement: required
+review_policy: review:required
+risk: risk:critical
+pinned_standard_revision: 94cad2b0487e8a552c66d6bcd1cba36b7779383d
+generated_by: zcode:t016-jit-prep
+generated_at: "2026-10-04T21:42:29Z"
+dependency_completion:
+  - T010#29@f5ac137f94438a591fd6781c5b758be6c375233a
+  - T011#30@35d322c4a9897ebd1f4ae2cb5fc1d267af68d3ec
+  - T015#34@4166b51841709bd74cedf1dd89cfcf8f373c38a1
+dependency_completion_note: >-
+  All three frozen blocked-by dependencies are CLOSED with merge commits on
+  version/v0.1.0: T010 (#29, PR #54, browser observation/Native Messaging
+  broker/scoped authorization) merged as f5ac137f; T011 (#30, PR #61, recipe
+  engine/bounded collection semantics) merged as 35d322c4; T015 (#34, PR #73,
+  authoritative Core runtime) merged as 4166b5184170, which is itself the
+  observed integration base. T017 (surface/AI convergence) depends on T016
+  downstream and is NOT a dependency of it.
+owned_scope: >-
+  S2/S5/S6 workflow integration: the cross-boundary browser observation →
+  scoped-authorization broker → authoritative Core handoff, bounded
+  Recipe/discovery/collection workflow orchestration, and focused end-to-end
+  fixture/real-browser flows proving explicit attachment, provenance-bound
+  redirects, current-page continuation_scope=NONE, explicit
+  continuation/successor snapshots, finite/natural-end collections, auth
+  expiry and inaccessible members, and truthful partial/truncated/unknown
+  results — composed ON TOP of the already-merged T015 core-runtime as-is.
+write_set: >-
+  Minimal new integration package(s)/composition modules under the existing
+  packages/* workspace seam plus narrowly necessary root workspace wiring and
+  package-local focused integration tests (vitest packages/*/test/**/*.test.ts
+  seam) and bounded real-browser fixtures. Upstream package sources
+  (packages/domain-contracts, packages/core-seam, packages/core-scheduler,
+  packages/persistence-ledger, packages/direct-acquisition,
+  packages/hls-vod-adapter, packages/browser-observation,
+  packages/browser-auth-broker, packages/discovery-recipe,
+  packages/core-runtime, packages/version-validation, packages/ai-proposal)
+  and existing apps/* are consumed as-is; semantic modification of consumed
+  packages and any apps/* product work (T017 scope) is forbidden.
+core_artifacts:
+  - MANIFEST.yaml
+  - EXECUTION_CONTRACT.md
+  - TEST_MATRIX.yaml
+  - FAILURE_MATRIX.yaml
+  - IMPLEMENTATION_MAP.md
+  - REVIEW_CHECKLIST.md
+optional_artifacts:
+  - REFERENCE_PACK.md
+retention: full-provenance
+package_excluded: true
+material_paths:
+  - .dev-standard/
+  - AGENTS.md
+  - docs/planning/
+  - docs/product/PRD-v0.4.2-review-candidate.md
+  - docs/architecture/L2_ARCHITECTURE_EVIDENCE.md
+  - docs/implementation/v0.1.0/TASK_DAG.md
+  - docs/implementation/v0.1.0/TASK_PACKS.json
+  - docs/implementation/v0.1.0/task-packs/T016_browser-collection-integration.md
+  - package.json
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - tsconfig.json
+  - vitest.config.ts
+  - eslint.config.js
+  - packages/

@@ -1,0 +1,138 @@
+task_id: T001
+base_sha: 40bc80abc16012a42cb396a1aa3b6a6752daf061
+validation_ownership: T001_CONCERN_LEVEL_ONLY
+review_required: true
+notes:
+  - This matrix defines future Builder/Validator checks; JIT prep does not execute or claim them.
+  - Exact toolchain versions selected by the Builder must be recorded in candidate evidence.
+  - Any unavailable CI/host condition remains NOT_RUN or BLOCKED, never PASS.
+tests:
+  - id: T001-TM-01
+    concern: clean_checkout_bootstrap
+    setup: fresh clone or clean worktree at exact candidate SHA with no node_modules and no package-manager cache dependency
+    command: pnpm install --frozen-lockfile
+    expected:
+      - exit_code_0
+      - committed_lockfile_not_modified
+      - workspace_dependencies_resolve_from_lockfile
+    evidence:
+      - git_rev_parse_HEAD
+      - node_version
+      - pnpm_version
+      - git_status_porcelain
+
+  - id: T001-TM-02
+    concern: deterministic_dependency_resolution
+    setup: exact candidate SHA; committed lockfile present
+    command: pnpm install --frozen-lockfile
+    expected:
+      - second_clean_install_succeeds_without_lockfile_rewrite
+      - missing_or_inconsistent_lockfile_fails_closed
+    evidence:
+      - install_log
+      - lockfile_digest_before_after
+
+  - id: T001-TM-03
+    concern: format_check
+    command: pnpm format:check
+    expected:
+      - exit_code_0_on_conformant_tree
+      - command_is_read_only
+      - formatting_violation_returns_nonzero
+    evidence:
+      - command_output
+      - git_status_porcelain_after_check
+
+  - id: T001-TM-04
+    concern: lint
+    command: pnpm lint
+    expected:
+      - exit_code_0_on_conformant_tree
+      - injected_or_fixture_lint_violation_is_detectable
+    evidence:
+      - command_output
+
+  - id: T001-TM-05
+    concern: typecheck
+    command: pnpm typecheck
+    expected:
+      - exit_code_0_on_conformant_tree
+      - no_emit_or_other_documented_read_only_type_gate
+      - type_error_returns_nonzero
+    evidence:
+      - command_output
+      - git_status_porcelain_after_check
+
+  - id: T001-TM-06
+    concern: unit_smoke
+    command: pnpm test:unit
+    expected:
+      - exit_code_0
+      - at_least_one_deterministic_workspace_or_toolchain_smoke_test_executes
+      - smoke_test_does_not_claim_product_behavior
+    evidence:
+      - test_runner_version
+      - test_summary
+
+  - id: T001-TM-07
+    concern: aggregate_local_gate
+    command: pnpm ci:verify
+    expected:
+      - runs_format_lint_typecheck_unit_smoke
+      - exits_nonzero_if_any_subgate_fails
+      - does_not_hide_or_downgrade_failures
+    evidence:
+      - aggregate_log
+      - subgate_results
+
+  - id: T001-TM-08
+    concern: ci_exact_candidate
+    setup: GitHub Actions run triggered for exact T001 candidate commit
+    command: workflow_defined_ci_entrypoint_running_pnpm_ci_verify
+    expected:
+      - checkout_HEAD_equals_workflow_candidate_SHA
+      - pinned_runtime_and_package_manager_are_reported
+      - frozen_lockfile_install_runs
+      - pnpm_ci_verify_runs
+      - workflow_conclusion_success_only_if_all_required_steps_succeed
+    evidence:
+      - workflow_run_url_or_id
+      - candidate_SHA
+      - checkout_SHA
+      - runner_tuple
+      - node_version
+      - pnpm_version
+      - workflow_conclusion
+
+  - id: T001-TM-09
+    concern: ci_cache_independence
+    setup: cache miss or caching disabled for one run when practicable
+    command: workflow_defined_ci_entrypoint
+    expected:
+      - clean_dependency_install_succeeds_without_preexisting_cache
+      - cache_miss_does_not_change_gate_semantics
+    evidence:
+      - cache_hit_miss_status
+      - workflow_conclusion
+
+  - id: T001-TM-10
+    concern: unsupported_environment_truth
+    setup: any local or CI tuple not supported by selected toolchain
+    command: documented_required_gate_or_bootstrap_command
+    expected:
+      - deterministic_nonzero_or_explicit_BLOCKED_NOT_RUN
+      - no_false_PASS
+      - exact_environment_tuple_recorded
+    evidence:
+      - os_arch_runtime_tuple
+      - failing_command
+      - error_output
+
+  - id: T001-TM-11
+    concern: execution_pack_package_exclusion
+    setup: any package/build artifact introduced by T001 or later packaging seam if already present
+    command: documented_package_or_file_inventory_check
+    expected:
+      - .agent/execution_not_in_shipped_artifact
+    evidence:
+      - artifact_file_listing_or_deferred_owner_note

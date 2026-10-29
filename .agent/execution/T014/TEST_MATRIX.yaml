@@ -1,0 +1,132 @@
+task_id: T014
+base_sha: f5ac137f94438a591fd6781c5b758be6c375233a
+scope: desktop-ui-thin-presentation-adapter
+validation_owner: T014-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+# Validation-scope sourcing: Issue #33 contract — "Component/interaction tests for
+# immutable scope, batch confirmation, selection, status explanation and Core authority"
+# plus Frozen Task Pack acceptance — "Interaction/component tests for immutable confirmed
+# scope, batch selection, auth/action prompts, cancellation/retry routing, partial/unknown
+# result explanation and Core-disconnect behavior."
+
+required_suites:
+  - id: immutable-confirmed-scope
+    must_prove:
+      - confirmed requested_scope, continuation scope and coverage target render immutable and cannot be edited through UI interaction state
+      - load-more/refresh/continue/expansion interactions route successor-identity commands; the original confirmed display never mutates in place
+      - budget or authorization-context changes never alter the displayed requested scope
+  - id: batch-confirmation
+    must_prove:
+      - one scope-level confirmation and/or one batch/group confirmation resolves shared ambiguity; per-item prompts appear only for at most MAX_MATERIAL_ITEM_CONFIRMATIONS material items
+      - a 50-candidate-style selection renders as one batch/manual surface with no per-item interrogation burden
+      - confirmation UI states that confirmation proves selection only and never implies target quality/membership truth
+  - id: selection
+    must_prove:
+      - AUTO/ASSISTED/MANUAL_SELECTION modes render exactly the confirmation plan levels produced by the Core-side workflow without re-deriving them
+      - manual selection operates on the Core-provided candidate set and submits an idempotent Core command
+      - a prior/partial selection is never presented as reusable membership authority without distinct validated provenance
+      - simple single-resource tasks are not forced through collection preview
+  - id: status-explanation
+    must_prove:
+      - multi-dimensional terminal results render all six dimensions from the projection; no single success boolean is displayed
+      - PARTIAL/UNKNOWN/TRUNCATED/UNSATISFIED states and stop reasons render truthfully; unsupported/out-of-scope is visible rather than silently approximated
+      - accepted/failed/quality claims mirror Core projections; UI-suggestion provenance is never displayed as independent verified truth
+      - confirmation never causes failed/incomplete required validation to display as complete
+  - id: core-authority
+    must_prove:
+      - cancellation and retry route as Core control transitions; displayed outcomes come from resulting projections with no surface-local precedence
+      - retry surfaces operate on the original failed member identities only
+      - duplicate/repeated submits converge through seam idempotency and never create divergent UI-local outcomes
+  - id: core-disconnect-behavior
+    must_prove:
+      - seam unavailability presents an explicit degraded/disconnected state with no fabricated progress/status/completion
+      - reconnect/re-entry restores the UI from Core projections without UI-local durable truth
+  - id: auth-action-prompts
+    must_prove:
+      - auth-required/blocked/action-required Core statuses surface as user prompts with the underlying partial truth shown
+      - the UI collects no raw reusable secrets into ordinary state; authorization context stays opaque
+
+applicable_counterexample_oracles:
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t014_oracle: UI renders PARTIAL/PARTIAL/TRUNCATED truthfully; never presents COMPLETE from cap exhaustion
+  - id: C05
+    scenario: user-selects-five-before-confirmation-all-five-succeed
+    t014_oracle: batch selection of five with all succeeding renders the exact COMPLETE tuple scoped to the selected set only
+  - id: C08
+    scenario: page-range-1-3-with-iframe-loadmore-detail-no-continuation
+    t014_oracle: confirmed range 1-3 renders continuation NONE; a later load-more interaction routes a successor command
+  - id: C09
+    scenario: original-vs-thumbnail-main-video-vs-ad
+    t014_oracle: target/quality is presented exactly as Core claims state; the UI never upgrades thumbnail-to-original or ad-to-main on its own
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-known-inaccessible
+    t014_oracle: renders the exact PARTIAL/RESOLVED/COMPLETE/VERIFIED_COMPLETE/AUTH_REQUIRED tuple with requested scope still shown as 18
+  - id: C11
+    scenario: collection-changes-after-preview
+    t014_oracle: changed-collection prompt routes the successor flow; in-place refresh/re-selection of the confirmed snapshot is impossible
+  - id: C12
+    scenario: retry-failed-items
+    t014_oracle: retry surfaces the original failed identities only; no UI path offers replacement/new members
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t014_oracle: UI concurrent with another surface converges on the same Core transitions; duplicate submit renders the idempotent result
+  - id: C14
+    scenario: discovered-targets-succeed-enumeration-unfinished
+    t014_oracle: renders Selection COMPLETE while Request shows PARTIAL-or-UNKNOWN and Coverage is never displayed as VERIFIED_COMPLETE
+  - id: C15
+    scenario: unsupported-dash-separate-av-needs-mux
+    t014_oracle: unsupported/out-of-scope renders visibly; no false success projection
+  - id: C16
+    scenario: simple-task-forced-through-unnecessary-preview
+    t014_oracle: direct single-resource intent completes without collection preview screens
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t014_oracle: renders TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED with the discovered subset truthfully shown
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t014_oracle: renders the UNSATISFIED/BLOCKED/NOT_STARTED tuple with an auth prompt, not a generic error or success
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t014_oracle: confirmation UI presents selection-only proof; quality claims render as independently unverified
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t014_oracle: truncated/track-missing candidates never render as SelectionAcquisition COMPLETE regardless of user confirmation
+  - id: C30
+    scenario: fifty-item-confirmations-vs-batch-selection
+    t014_oracle: one batch/manual surface resolves the ambiguity; per-item burden is absent
+  - id: C31
+    scenario: prior-12-of-18-selection-reused-on-different-page
+    t014_oracle: prior selection is not offered as reusable authority without distinct validated provenance
+  - id: C34
+    scenario: ui-suggestion-used-as-ground-truth
+    t014_oracle: UI-suggestion provenance never renders as independent verified truth for the same claim
+
+non_applicable_oracles_note: >-
+  C01/C03/C04/C06/C07/C17/C18/C19/C20/C21/C22/C25/C28/C29/C32/C33 are Core/domain-level
+  oracles owned by T002/T006/T007/T008/T011. T014 consumes their projected outcomes and
+  must not re-prove or re-derive them surface-side.
+
+negative_coverage:
+  - ui-interaction-state-presented-as-authoritative-truth
+  - confirmed-scope-edited-locally-without-successor
+  - silent-selection-change-or-re-selection
+  - per-item-interrogation-despite-batch-resolvable
+  - ui-derived-status-or-completion
+  - stale-or-unparseable-projection-rendered-as-live
+  - fabricated-status-while-core-disconnected
+  - local-cancel-acceptance-or-surface-local-precedence
+  - expansion-offered-as-in-place-refresh
+  - prior-selection-presented-as-reusable-authority
+  - suggestion-rendered-as-verified-truth
+  - success-boolean-collapse-in-result-display
+  - raw-secret-captured-into-ui-state
+  - simple-task-forced-through-collection-preview
+
+completion_rule: >-
+  T014 concern Validation may PASS only on an exact implementation candidate where all
+  required suites, the applicable presentation-level oracle mappings, and required
+  negative coverage are executable and pass with UI tests (not release UX claims).
+  Version-level visible Validation is owned by T020-T023 on the exact T019 candidate.
+  This JIT Prep creates no PASS evidence.

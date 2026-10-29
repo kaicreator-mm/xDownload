@@ -1,0 +1,53 @@
+pack_id: xdownload-v0.1.0-T006-c813d3a1f2af
+pack_state_at_generation: PACK_CURRENT
+task_id: T006
+repository: kaicreator-mm/xDownload
+version: v0.1.0
+parent_issue: "#25"
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+base_tree: c9f41e851e3224c27ab05ea9bdda7e754ebf41c9
+integration_branch: version/v0.1.0
+freeze_checkpoint: 40bc80abc16012a42cb396a1aa3b6a6752daf061
+task_pack_ref: docs/implementation/v0.1.0/task-packs/T006_scheduler-budget-cancellation.md@4d60ae15afbc993a8b37ae0d6d7bfc850fffc36d
+task_pack_blob: 4d60ae15afbc993a8b37ae0d6d7bfc850fffc36d
+task_dag_blob: 232e561c2b350a60085c6d13d6030b759295c7cf
+task_pack_index_blob: 586e765d7bf1777d7fadded9b0e78041acfd3666
+architecture_blob: 5f6865974a4f2dbe78062c26e66d6a24af43d4a7
+materialization_issue: "#19"
+materialization_terminal_comment: "5968293780"
+branch: task/v0.1.0-t006-scheduler-budget-cancellation
+branch_created_from_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+agent_freedom: F1_BOUNDED_IMPLEMENTATION
+l3_requirement: required
+pinned_standard_revision: 94cad2b0487e8a552c66d6bcd1cba36b7779383d
+generated_by: claude-code:t006-jit-prep
+generated_at: "2026-10-04T01:22:05Z"
+dependency_completion:
+  - T002@c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+core_artifacts:
+  - MANIFEST.yaml
+  - EXECUTION_CONTRACT.md
+  - TEST_MATRIX.yaml
+  - FAILURE_MATRIX.yaml
+  - IMPLEMENTATION_MAP.md
+  - REVIEW_CHECKLIST.md
+optional_artifacts:
+  - REFERENCE_PACK.md
+retention: full-provenance
+package_excluded: true
+material_paths:
+  - .dev-standard/
+  - AGENTS.md
+  - docs/planning/
+  - docs/product/PRD-v0.4.2-review-candidate.md
+  - docs/architecture/L2_ARCHITECTURE_EVIDENCE.md
+  - docs/implementation/v0.1.0/TASK_DAG.md
+  - docs/implementation/v0.1.0/TASK_PACKS.json
+  - docs/implementation/v0.1.0/task-packs/T006_scheduler-budget-cancellation.md
+  - package.json
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - tsconfig.json
+  - vitest.config.ts
+  - eslint.config.js
+  - packages/

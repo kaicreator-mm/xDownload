@@ -1,0 +1,85 @@
+task_id: T009
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: hls-vod-media-adapter
+validation_owner: T009-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+required_suites:
+  - id: manifest-rendition-binding-validation
+    must_prove:
+      - master playlist and selected media playlist/rendition are parsed and validated before any segment request
+      - selection binds an explicit manifest/rendition identity to the frozen logical target
+      - rendition identity is immutable after binding; substitution requires successor identity, never silent update
+      - malformed, duplicate-identity or unsupported-version playlist input fails closed
+  - id: segment-media-validation
+    must_prove:
+      - segment enumeration descends only from the bound media playlist provenance
+      - assembled final media passes applicable format/media validation through the assembly/probe boundary before acceptance
+      - segment-count or byte-total equality alone never establishes media validity or completeness
+      - missing, unreachable, truncated or failed segment forbids acceptance of the final artifact
+  - id: missing-segment
+    must_prove:
+      - a missing/failed segment produces a truthful typed failure on the same effect lineage, not partial acceptance
+      - retry of failed segments operates only on the frozen binding/segment plan and inherits remaining budget
+      - no normalization of a failed segment set into a completed/valid media claim
+  - id: unsupported-topology
+    must_prove:
+      - encrypted/keyed segments, DRM markers, unsupported track/mux topology and required post-processing are detected and rejected before generic transfer is attempted
+      - rejection surfaces as truthful UNSUPPORTED/FAILED in the canonical result vocabulary without silent degradation
+      - unsupported topology never falls back to an opaque byte path that would pretend HLS correctness
+  - id: provenance
+    must_prove:
+      - every segment/CDN/signed locator is provenance-bound to the selected manifest/resource and the frozen logical target
+      - a traceable manifest-to-CDN locator transition preserves logical target identity
+      - an unrelated locator substitution cannot silently replace the logical target or the rendition binding
+  - id: budget-accounting
+    must_prove:
+      - manifest/segment requests count against TransferBudget through canonical budget semantics
+      - DiscoveryBudget exhaustion does not block transfer of an already-frozen HLS target while TransferBudget and GlobalSafetyBudget remain
+      - budget exhaustion stops work truthfully without redefining requested scope; retry/restart inherits remaining budget rather than implying replenishment
+
+counterexample_oracles:
+  - id: C09
+    scenario: original-vs-thumbnail-main-video-vs-ad
+    t009_oracle: media/format validity alone cannot satisfy Target/Quality claims without typed evidence; rendition binding cannot silently substitute advertised-vs-actual media identity
+  - id: C15
+    scenario: unsupported-dash-separate-av-needs-mux
+    t009_oracle: separate A/V/mux/post-processing topology outside basic S4 must yield truthful UNSUPPORTED/FAILED; no false complete/success projection and no unauthorized mux promise
+  - id: C18
+    scenario: same-bytes-two-chapters-or-same-name-different-content
+    t009_oracle: byte/segment identity does not collapse logical target/rendition identity; mapping from segments to bound target is preserved and proven
+  - id: C22
+    scenario: insufficient-evidence
+    t009_oracle: when assembly/probe or media validation cannot produce evidence, result remains INSUFFICIENT_EVIDENCE-or-UNKNOWN; no post-hoc conversion to success
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t009_oracle: downstream selection/confirmation proves selection only; the adapter's manifest/media validation must still independently prove rendition/media claims
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t009_oracle: confirmation cannot waive validation; a truncated assembly or missing required track forbids acceptance and forbids selection-acquisition-style COMPLETE claims from the adapter
+  - id: C28
+    scenario: discovery-budget-exhausted-hls-target-needs-segments
+    t009_oracle: transfer of the frozen HLS target continues only while TransferBudget and GlobalSafetyBudget remain; segment requests debit TransferBudget, never DiscoveryBudget
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t009_oracle: provenance-bound manifest-to-CDN/segment locator transition preserves the logical target; unrelated locator redirection is rejected/fails closed
+
+negative_decode_cases:
+  - malformed-manifest-required-field
+  - unknown-playlist-tag-or-enum-value
+  - unsupported-playlist-version
+  - duplicate-segment-identity-with-conflicting-semantics
+  - segment-count-equal-identity-set-different
+  - rendition-substitution-after-binding-without-successor-identity
+  - locator-not-descending-from-manifest-provenance
+  - budget-used-as-scope
+  - discovery-budget-spent-as-transfer-budget
+  - accepted-claim-with-failed-or-missing-required-segment-media-validation
+  - unsupported-encryption-processed-as-plain-transfer
+  - raw-secret-or-key-material-in-adapter-state
+  - invalid-terminal-result-combination-projected-by-adapter
+
+completion_rule: >-
+  T009 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the applicable C-oracle mappings, and required negative cases are executable and pass on deterministic
+  local fixtures. This JIT Prep creates no PASS evidence.

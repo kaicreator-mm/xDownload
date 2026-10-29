@@ -1,0 +1,84 @@
+task_id: T012
+base_sha: f5ac137f94438a591fd6781c5b758be6c375233a
+scope: bounded-ai-proposal-adapter
+validation_owner: T012-concern-validation
+status: specification-only-not-run-by-jit-prep
+# validation_scope sourcing (exact, three-way identical):
+#   Issue #31 body: "Validation scope: Schema/policy rejection, secret redaction, model-offline fallback and malicious proposal tests."
+#   TASK_PACKS.json T012.validation_scope: same sentence.
+#   Frozen Task Pack acceptance line (verbatim @ 40bc80abc16012a42cb396a1aa3b6a6752daf061): "Malicious/oversized/invalid proposal rejection, secret sentinel tests, provider outage/timeouts, deterministic fallback, same policy with/without model and no hidden authority elevation."
+
+required_suites:
+  - id: schema-policy-rejection
+    must_prove:
+      - every acceptable proposal payload decodes as a RecipeDefinition through the unmodified @xdownload/discovery-recipe decodeRecipeDefinition
+      - malformed/missing required fields, unknown fields and unknown authority-changing fields reject deterministically
+      - unsupported or incompatible proposal schema versions fail closed
+      - oversized proposals exceed the declared bounded limit and reject before policy evaluation
+      - policy accept/reject is deterministic: same proposal + same gap + same contract context always yields the same decision
+  - id: secret-redaction
+    must_prove:
+      - model input is built only from redacted bounded knowledge gaps/observations and capability facts
+      - keys in RAW_SECRET_FIELD_NAMES are redacted at any nesting depth (key-based containment)
+      - registered sentinel-bearing values are replaced wholesale, including when smuggled into non-secret-named fields (value-based containment; secret sentinel tests)
+      - no provider request path can serialize raw secret material; proposal content and provider responses are audited for sentinel leakage before any durable use
+      - proposals embedding secrets/signed URLs as durable reusable rules reject
+  - id: model-offline-fallback
+    must_prove:
+      - provider outage, timeout and malformed/unusable responses degrade truthfully to the deterministic/template path or ASK_USER/ABORT fallback
+      - degraded runs surface typed unavailability/unknown and never mark partial or failed work complete
+      - model unavailability never widens behavior, invents members or rewrites scope (Task Pack: model unreliability must degrade truthfully, not widen behavior)
+      - deterministic fallback requires no model round-trip and works with the provider absent
+  - id: malicious-proposal-rejection
+    must_prove:
+      - proposals attempting requested_scope/continuation mutation or expansion beyond the confirmed contract reject
+      - proposals injecting navigation/authorization grants, cookie/token export, shell/JS execution, filesystem access, host scanning or recursive arbitrary navigation reject (capability vocabulary violations included)
+      - proposals attempting validation/coverage self-certification or evidence-independence elevation reject
+      - hidden authority elevation via unknown fields or payload tricks fails closed
+      - every rejection names the violated policy/oracle and never normalizes an invalid proposal into a legal one
+  - id: parity-with-and-without-model
+    must_prove:
+      - the same deterministic Core policy evaluates proposals with the model present or absent (C19 parity)
+      - model-suggestion provenance is at best SUGGESTIVE and DISCOVERY_DERIVED; it can never be typed as independent validation truth (C34)
+      - deterministic/template-supported ordinary tasks complete without any model dependency (PRD §5.1 Minimum Necessary Intelligence)
+
+applicable_c_oracles:
+  - id: C06
+    scenario: first-1000-pages-under-domain-all-pdfs
+    t012_oracle: no acceptable proposal may encode unrestricted frontier/crawl scope; any such payload is rejected by policy regardless of model endorsement
+  - id: C19
+    scenario: ai-vs-non-ai-comparison
+    t012_oracle: identical Tools/Auth/Budget/Context and one deterministic policy with and without model; model presence creates no authority special-case
+  - id: C20
+    scenario: local-recipe-replay-on-changed-page-session-layout
+    t012_oracle: proposal-sourced Recipe references cannot overwrite current contract scope/target identity; current deterministic validation evidence is still required
+  - id: C21
+    scenario: shared-knowledge-independent-user-account
+    t012_oracle: proposal payloads and model inputs carry no credentials/identity secrets; sentinel leakage fails closed
+  - id: C22
+    scenario: insufficient-evidence
+    t012_oracle: model-derived gaps with too little evidence stay INSUFFICIENT_EVIDENCE-or-UNKNOWN; no post-hoc conversion to success
+  - id: C34
+    scenario: ui-suggestion-used-as-ground-truth
+    t012_oracle: model proposal provenance cannot be typed as independent truth for the same claim; independence stays DISCOVERY_DERIVED with a SUGGESTIVE ceiling
+
+negative_decode_cases:
+  - oversized-proposal-payload
+  - malformed-required-field
+  - unknown-authoritative-enum-value
+  - unsupported-proposal-schema-version
+  - unknown-authority-changing-field
+  - scope-expanding-field
+  - navigation-or-auth-grant-field
+  - shell-or-js-execution-field
+  - validation-self-certification-field
+  - raw-secret-field-in-proposal-payload
+  - sentinel-bearing-value-in-non-secret-named-model-input-field
+  - embedded-signed-url-as-durable-reusable-rule
+  - non-deterministic-or-imperative-fallback-kind
+  - capability-outside-finite-vocabulary
+
+completion_rule: >-
+  T012 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the applicable C-oracle mappings, and required negative cases are executable and pass. This JIT Prep
+  creates no PASS evidence.

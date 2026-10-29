@@ -1,0 +1,155 @@
+task_id: T005
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T005 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T005 would require violating Frozen L2 ownership, authority or trust boundaries, or would require claiming exactly-once/host-power-loss durability
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T002 completion identity is no longer the current base
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: incompatible-schema-version
+    trigger: reopening a ledger/DB declaring an unsupported or semantically incompatible schema version
+    classification: PERSISTENCE_SCHEMA_REJECTED
+    required_action:
+      - fail closed with typed version incompatibility
+      - preserve the original database/artifact state for diagnostics where safe
+      - never coerce into current semantics without an explicit supported migration
+    false_pass_forbidden: true
+
+  - id: unsafe-migration
+    trigger: a migration loses authoritative rows/identities, mutates historical identity, or the designed backward path does not behave as documented
+    classification: MIGRATION_SAFETY_VIOLATION
+    required_action:
+      - stop migration path; classify against the as-designed migration contract
+      - repair only via an explicit tested migration; never by ad-hoc in-place mutation
+    false_pass_forbidden: true
+
+  - id: db-only-final-success
+    trigger: accepted DB state alone is projected/claimed as final success while validated bytes are missing/unmaterialized/digest-mismatched
+    classification: DB_ONLY_SUCCESS_FORBIDDEN
+    required_action:
+      - reject the projection path in code and tests
+      - recovery must report the filesystem/materialization truth instead
+    false_pass_forbidden: true
+
+  - id: acceptance-after-cancel
+    trigger: any path creates a new accepted artifact for a lineage whose durable USER_CANCELLED precedes durable acceptance, or exposes post-cancel staged bytes as accepted
+    classification: CANCELLATION_CUTOFF_VIOLATION
+    required_action:
+      - block automatic acceptance from durable facts (ADR-013 / L2 Invariant 20)
+      - keep bytes unaccepted/quarantined-or-cleanup-eligible; only explicit retry/resume may reopen the lineage
+    false_pass_forbidden: true
+
+  - id: retroactive-revocation
+    trigger: cancellation revokes an identity whose acceptance was durably committed first
+    classification: CANCELLATION_CUTOFF_VIOLATION
+    required_action:
+      - preserve the accepted identity
+      - allow only bounded reconciliation of materialization/finalization truth
+    false_pass_forbidden: true
+
+  - id: duplicate-accepted-effect
+    trigger: restart/retry/duplicate clients create a second accepted effect/artifact or a second lineage for one frozen lineage
+    classification: DUPLICATE_EFFECT_REJECTED
+    required_action:
+      - enforce idempotent acceptance keyed on durable lineage/effect identity
+      - converge duplicates to one accepted artifact; never blindly replay
+    false_pass_forbidden: true
+
+  - id: budget-ledger-corruption
+    trigger: restart/retry replenishes, double-consumes or loses budget facts
+    classification: BUDGET_LEDGER_VIOLATION
+    required_action:
+      - keep reservation/consumption transactional with lifecycle transitions
+      - recovery reconciles remaining budgets from durable facts only
+    false_pass_forbidden: true
+
+  - id: digest-binding-missing
+    trigger: acceptance or success without digest/provenance binding, or corrupt/mismatched bytes treated as success
+    classification: PROVENANCE_BINDING_REJECTED
+    required_action:
+      - require digest/provenance validation before acceptance
+      - classify corrupt/missing truthfully; never normalize into success
+    false_pass_forbidden: true
+
+  - id: multiple-writers
+    trigger: a second writable path bypasses the single authoritative lifecycle writer
+    classification: AUTHORITATIVE_WRITER_VIOLATION
+    required_action:
+      - collapse to one Core-owned writer path
+      - surfaces/adapters remain readers/submitters only
+    false_pass_forbidden: true
+
+  - id: durability-overclaim
+    trigger: code, schema, docs or tests claim exactly-once execution, host-power-loss durability, or a tuple beyond the actually exercised process-death/reopen host OS
+    classification: FORBIDDEN_DURABILITY_CLAIM
+    required_action:
+      - remove the overclaim; bound claims to the tested tuple
+      - record the exercised host OS tuple with evidence
+    false_pass_forbidden: true
+
+  - id: raw-secret-in-store
+    trigger: reusable cookie/token/password/signed-URL secret material is persisted as ordinary ledger/state
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - store only opaque authorization context references
+      - escalate if Frozen semantics cannot be satisfied without secret persistence
+    false_pass_forbidden: true
+
+  - id: scope-creep-server-expansion
+    trigger: PostgreSQL/server backend, scheduler control semantics (T006), transfer/media adapters or surface implementations are added under T005
+    classification: T005_SCOPE_VIOLATION
+    required_action:
+      - remove out-of-concern code
+      - route genuine need through the owning task/Architecture Amendment
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/persistence/recovery test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder adds a SQLite/filesystem driver dependency without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep choice within F1 and Frozen Architecture (no server expansion)
+    false_pass_forbidden: true

@@ -1,0 +1,13 @@
+{
+  "name": "@xdownload/hls-vod-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ffmpeg-ts": "./src/ffmpeg-ts.ts"
+  },
+  "dependencies": {
+    "@xdownload/domain-contracts": "workspace:*"
+  }
+}

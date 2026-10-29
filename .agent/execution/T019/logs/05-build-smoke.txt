@@ -1,0 +1,5 @@
+smoke host: win32-x64 node 24.21.0
+evidence: C:\xDev\kAiCreator\xDownload\i38-t019\build\evidence\windows-cli-core-clean-install.json (overall PASS)
+evidence: C:\xDev\kAiCreator\xDownload\i38-t019\build\evidence\windows-native-host-smoke.json (overall PASS)
+evidence: C:\xDev\kAiCreator\xDownload\i38-t019\build\evidence\build-reproducibility.json (overall PASS)
+smoke run complete

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>xDownload S2</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        width: 380px;
+        margin: 8px;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 4px 0 8px;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: 220px;
+        overflow-y: auto;
+      }
+      li {
+        margin: 6px 0;
+        padding: 6px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+      }
+      .link {
+        word-break: break-all;
+        margin-bottom: 4px;
+      }
+      .label {
+        color: #555;
+      }
+      input[type='text'] {
+        width: 100%;
+        box-sizing: border-box;
+        margin: 3px 0;
+        font-family: monospace;
+        font-size: 11px;
+      }
+      button {
+        padding: 3px 10px;
+      }
+      .state {
+        margin: 8px 0 0;
+        padding: 6px;
+        border-radius: 6px;
+        white-space: pre-wrap;
+      }
+      .state.RUNNING {
+        background: #eef;
+      }
+      .state.COMPLETE {
+        background: #efe;
+      }
+      .state.PARTIAL {
+        background: #ffd;
+      }
+      .state.FAILED {
+        background: #fee;
+      }
+      .state.UNKNOWN {
+        background: #f2f2f2;
+      }
+      .error {
+        color: #b00;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>xDownload — explicit current-page attachment (S2)</h1>
+    <p class="label">
+      Your explicit selection on this page is the target anchor Core validates against (PRD §28
+      S2/§31 CJ-02). If the page published a SHA-256 you may enter it to strengthen verification —
+      it is never required.
+    </p>
+    <ul id="attachments"></ul>
+    <section id="s5-group" hidden>
+      <p class="label">
+        S5 current-page batch: request the Core-frozen member snapshot, pick the batch subset,
+        confirm it, and Core itself downloads every member with truthful per-member and aggregate
+        terminal states (S2 byte delivery is never used for the batch).
+      </p>
+      <button id="s5-preview" type="button">Preview selected page members</button>
+      <button id="s5-prepare" type="button">Request S5 group admission</button>
+      <div id="s5-preview-result" class="state UNKNOWN" aria-live="polite"></div>
+      <div id="s5-batch" hidden>
+        <p class="label">
+          Core-frozen members (verbatim Core identities; uncheck any member you do not want).
+        </p>
+        <ul id="s5-frozen"></ul>
+        <button id="s5-confirm" type="button">Confirm selected batch members</button>
+        <button id="s5-execute" type="button" disabled>Download confirmed batch</button>
+        <div id="s5-batch-result" class="state UNKNOWN" aria-live="polite"></div>
+      </div>
+    </section>
+    <section id="s6-collection" hidden>
+      <p class="label">
+        S6 explicit playlist/gallery: name the collection, confirm the exact finite page range, let
+        Core freeze the admission, walk only the declared pages, and confirm the members for the
+        Core batch download. Core itself downloads every confirmed member and renders a truthful
+        coverage terminal (the declared range is the only navigation bound; budget exhaustion is
+        never called a complete collection).
+      </p>
+      <label class="label"
+        >Collection identity (e.g. playlist/my-list)
+        <input id="s6-identity" type="text" placeholder="playlist/my-list" />
+      </label>
+      <label class="label"
+        >Kind
+        <select id="s6-kind">
+          <option value="playlist">playlist</option>
+          <option value="gallery">gallery</option>
+        </select>
+      </label>
+      <label class="label"
+        >Page range (1-based, inclusive; from ≤ to)
+        <input id="s6-from" type="text" value="1" />
+        <input id="s6-to" type="text" value="1" />
+      </label>
+      <button id="s6-prepare" type="button">Prepare S6 collection admission</button>
+      <div id="s6-prepare-result" class="state UNKNOWN" aria-live="polite"></div>
+      <div id="s6-walk" hidden>
+        <p class="label">
+          Core-frozen page members (verbatim Core identities; uncheck any member you do not want).
+        </p>
+        <ul id="s6-members"></ul>
+        <button id="s6-next-page" type="button">Admit &amp; walk next declared page</button>
+        <button id="s6-confirm" type="button">Confirm selected collection members</button>
+        <button id="s6-execute" type="button" disabled>Download confirmed collection</button>
+        <div id="s6-batch-result" class="state UNKNOWN" aria-live="polite"></div>
+      </div>
+    </section>
+    <div id="state" class="state UNKNOWN">Scanning the current page…</div>
+    <script src="popup.js"></script>
+  </body>
+</html>

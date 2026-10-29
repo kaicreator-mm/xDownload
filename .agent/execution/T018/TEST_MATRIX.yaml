@@ -1,0 +1,89 @@
+task_id: T018
+base_sha: 888ce342b1d170ab4a217e0fff418cd8b0a0a712
+scope: packaging-and-platform-integration
+validation_owner: T018-concern-validation
+status: specification-only-not-run-by-jit-prep
+validation_scope_source: >-
+  Issue #37 body (frozen materialization of T018): "Production build/package
+  smoke, clean install/launch/native-host registration and package-content
+  audit." plus the Frozen Task Pack acceptance line: "Production package/build
+  smoke on each candidate tuple, clean install/launch/Core reachability/
+  native-host registration where applicable, package-content audit and
+  explicit support/NOT_PROVEN matrix." Mirrored one-to-one into
+  required_suites below; concern-level only — version-level visible Validation
+  remains owned by T020-T023 on the exact T019 candidate, and platform
+  qualification is T023's; no packaging claim implies platform qualification.
+
+required_suites:
+  - id: production-build-package-smoke
+    must_prove:
+      - each claimed tuple's package builds from a clean lockfile install (pnpm install --frozen-lockfile) with the toolchain versions pinned and recorded per artifact
+      - the build emits exactly the manifest-referenced layout where a manifest exists (apps/browser-extension/manifest.json references background.service-worker.js; missing referenced output fails the build instead of shipping)
+      - built CLI artifact executes a real command (submit/status against a running Core via the seam) — Core reachability is proven from the packaged artifact, not from workspace sources
+      - desktop artifact launches and drives the seam through whatever shell is actually wired and built; if no concrete shell is installed by T018, the desktop tuple is recorded NOT_PROVEN and no installer/launcher claim is made
+      - extension package loads in the actually selected browser with the service worker active and the core-consumer path operational
+      - rebuild determinism is checked where the toolchain permits; any nondeterminism is recorded rather than hidden
+  - id: clean-install-launch
+    must_prove:
+      - the package installs and launches in a clean environment with no workspace, node_modules or pnpm store residue and no dev-only dependency
+      - a missing runtime/prerequisite fails with a typed, actionable error instead of silent misbehavior (node:sqlite availability bounds the shipped runtime)
+      - CLI launch does not depend on Desktop UI lifetime and Desktop launch does not depend on CLI (L2 §6.9 surface independence)
+      - packaged surfaces degrade honestly when Core is unreachable (typed transport/connectivity behavior preserved from the sources)
+  - id: native-host-registration
+    must_prove:
+      - native host registers on the selected platform tuple(s) via that platform's real registration mechanism and the extension↔native handshake succeeds on the selected browser/platform
+      - Native Messaging allowed_origins remains the platform-enforced boundary; no registration path bypasses or widens it with unrestricted fallback IPC (Frozen L2 invariant 14)
+      - unregistered or failed registration degrades honestly — authorization is unavailable, never silently simulated
+      - registration on any NOT-selected platform is not performed and not claimed; unselected platforms appear only in the support/NOT_PROVEN matrix
+  - id: package-content-audit
+    must_prove:
+      - shipped packages contain no .agent/execution material, no docs/planning or Frozen PRD/L2/Task-DAG/Task-Pack files, no T001 toolchain-smoke packages, no test fixtures and no dev-only tooling
+      - the shipped dependency/file closure matches the declared production needs per artifact; every included file is accounted for by a content rule
+      - no raw reusable credential material (tokens, cookies, API keys, provider keys) enters any package or package config
+      - package identity (name, version, source revision, toolchain versions, content hash) is emitted per artifact and is durable evidence
+
+counterexample_oracles:
+  - id: C21
+    scenario: shared-knowledge-independent-user-account
+    t018_oracle: package content/config carries no credential or private-data material; dev auth fixtures and provider keys are excluded and the audit fails closed on their presence
+  - id: C22
+    scenario: insufficient-evidence
+    t018_oracle: unexecuted platform/install/registration checks stay NOT_PROVEN or BLOCKED in the support matrix; packaging evidence can never be converted into a support PASS
+  - id: C33
+    scenario: phase-b-opened-then-protocol-or-baseline-changed
+    t018_oracle: package identity binds the exact source revision and pinned toolchain; a changed baseline/toolchain cannot silently claim the same package identity
+  - id: C34
+    scenario: ui-suggestion-used-as-ground-truth
+    t018_oracle: platform/shell support strings in package metadata stay claim-typed; metadata cannot present an unvalidated platform claim as proven support
+  - id: C19
+    scenario: ai-vs-non-ai-comparison
+    t018_oracle: shipped configuration preserves the AI optional/experimental state and provider-deadline facts truthfully; packaging cannot flip AI into a silently enabled or unbounded component
+
+  # Remaining Product counterexamples C01-C18, C20, C23-C32 are domain/runtime
+  # semantics owned by T002-T017 concern Validation and by version-level
+  # Validation (T020-T023); T018 neither re-proves nor weakens them. They are
+  # inherited as fixed behavior of the consumed packages and must not be
+  # altered by packaging wiring.
+
+negative_coverage:
+  - agent-execution-material-in-package
+  - frozen-docs-in-package
+  - toolchain-smoke-package-in-package
+  - test-fixture-or-dev-dependency-in-production-closure
+  - credential-material-in-package-or-config
+  - manifest-references-output-build-does-not-emit
+  - clean-install-succeeds-via-workspace-residue
+  - missing-runtime-silent-success
+  - native-host-fallback-bypassing-allowed-origins
+  - unselected-platform-registration-claim
+  - updater-or-signing-claim-without-configured-validated-mechanism
+  - unqualified-platform-support-string-in-package-metadata
+  - package-identity-hash-mismatch-or-unrecorded
+
+completion_rule: >-
+  T018 concern Validation may PASS only on an exact implementation candidate
+  where all required suites, the applicable C-oracle mappings, and the negative
+  coverage above are executable and pass on real Build Host(s) for each claimed
+  tuple, and every unclaimed tuple is explicitly NOT_PROVEN or BLOCKED in the
+  support/NOT_PROVEN matrix. A platform blocker is BLOCKED, never an invented
+  PASS. This JIT Prep creates no PASS evidence.

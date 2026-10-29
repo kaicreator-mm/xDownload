@@ -1,0 +1,37 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90mC:/xDev/kAiCreator/xDownload/xd-v02-t14-validator[39m
+
+ [31m❯[39m apps/cli/test/headless-authority.test.ts [2m([22m[2m5 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 50[2mms[22m[39m
+     [32m✓[39m the full submit/observe/cancel flow runs with no Desktop UI and no Core lifecycle authority[32m 30[2mms[22m[39m
+[31m     [31m×[31m CLI source imports only Node built-ins and the seam/contract packages[39m[32m 8[2mms[22m[39m
+     [32m✓[39m the CLI never starts, stops or composes the Core as an authority prerequisite[32m 3[2mms[22m[39m
+     [32m✓[39m no code path bypasses seam authorization: a CLI surface is rejected where it is not admitted[32m 3[2mms[22m[39m
+     [32m✓[39m the CLI holds no state that can resurrect or rewrite terminal truth[32m 6[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m apps/cli/test/headless-authority.test.ts[2m > [22mheadless operation[2m > [22mCLI source imports only Node built-ins and the seam/contract packages
+[31m[1mAssertionError[22m: forbidden import '@xdownload/download-domain-app/src/contracts/index.ts' in domain-app-commands.ts: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m apps/cli/test/headless-authority.test.ts:[2m62:86[22m[39m
+    [90m 60|[39m           specifier[33m.[39m[34mstartsWith[39m([32m'.'[39m) [33m||[39m
+    [90m 61|[39m           ALLOWED_IMPORT_PREFIXES.some((prefix) => specifier.startsWit…
+    [90m 62|[39m         expect(allowed, `forbidden import '${specifier}' in ${path.bas…
+    [90m   |[39m                                                                                      [31m^[39m
+    [90m 63|[39m       }
+    [90m 64|[39m     }
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m4 passed[39m[22m[90m (5)[39m
+[2m   Start at [22m 14:04:01
+[2m   Duration [22m 591ms[2m (transform 324ms, setup 0ms, import 395ms, tests 50ms, environment 0ms)[22m
+

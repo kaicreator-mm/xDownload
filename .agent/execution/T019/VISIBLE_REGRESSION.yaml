@@ -1,0 +1,1131 @@
+# T019 full visible regression convergence evidence — executed on the exact candidate
+schema: xdownload/t019-visible-regression-v1
+task: T019
+issue: "#38"
+candidate:
+  commit_sha: "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4"
+  tree_sha: "90b478be23c2fe45fd38227c06884c9e5e1b1125"
+executed_at: "2026-10-05T17:43:05.122Z"
+environment: "node 24.21.0 (fnm), pnpm 12.8.1, Windows Git Bash win32 x64 (osRelease 10.0.26200)"
+
+result: ALL_VISIBLE_SUITES_GREEN
+
+steps:
+  - id: clean-bootstrap
+    command: "pnpm install --frozen-lockfile"
+    result: PASS
+    duration_seconds: 3.9
+    detail: fresh workspace bootstrap, no node_modules present beforehand, lockfile unchanged (frozen), pnpm store hardlinks
+    log: .agent/execution/T019/logs/01-install.txt
+  - id: configured-ci
+    command: "pnpm ci:verify"
+    result: PASS
+    chain: "format:check PASS -> lint PASS -> typecheck PASS -> test:unit PASS (127 files)"
+    log: .agent/execution/T019/logs/02-ci-verify.txt
+  - id: structured-unit-run
+    command: "pnpm exec vitest run --reporter=json --outputFile=.agent/execution/T019/logs/03-vitest-results.json"
+    result: PASS
+    detail: independent full-suite execution for machine-readable per-suite evidence; same candidate, same tree
+    log: .agent/execution/T019/logs/03-vitest-results.json
+  - id: production-package-build
+    command: "node build/package.ts"
+    result: PASS
+    detail: dist emitted for cli/core/extension/native-host; package-content audit PASS (no .agent/execution material shipped)
+    log: .agent/execution/T019/logs/04-build-package.txt
+  - id: package-smoke
+    command: "node build/smoke.ts"
+    result: PASS
+    detail: rebuild-byte-identity PASS for all artifacts; refreshed build/evidence/*.json all overall=PASS
+    log: .agent/execution/T019/logs/05-build-smoke.txt
+  - id: gate-status-board
+    command: "node --experimental-strip-types .agent/execution/T019/run-gate-board.ts"
+    result: RECORDED
+    detail: T003 gateStatusBoard() recorded verbatim; all 8 gates NOT_RUN (honest; product measurement belongs to T020-T023)
+    log: .agent/execution/T019/gate-board.json
+
+totals:
+  suites: 127
+  tests_total: 1293
+  tests_passed: 1290
+  tests_failed: 0
+  tests_todo: 3
+  tests_skipped: 0
+  wall_duration_seconds_test_unit_within_ci_verify: 21.9
+  sum_of_per_suite_durations_ms_structured_run: 43855
+  any_red_suite: false
+  waiver: none-required
+
+s1_s6_harness_availability:
+  proven_by: packages/version-validation suites executing green inside the full run
+  suites:
+    - packages/version-validation/test/corpora-identity.test.ts
+    - packages/version-validation/test/denominator-accounting.test.ts
+    - packages/version-validation/test/evidence-exact-subject.test.ts
+    - packages/version-validation/test/g0-baseline-plan.test.ts
+    - packages/version-validation/test/gates.test.ts
+    - packages/version-validation/test/harness-determinism.test.ts
+    - packages/version-validation/test/journeys.test.ts
+    - packages/version-validation/test/oracles-c01-c34.test.ts
+  version_validation_totals: { suites: 8, tests: 155, passed: 155, failed: 0 }
+
+build_evidence_refreshed:
+  - file: "build/evidence/build-reproducibility.json"
+    suite: "build-reproducibility"
+    overall: "PASS"
+  - file: "build/evidence/windows-cli-core-clean-install.json"
+    suite: "windows-cli-core-clean-install"
+    overall: "PASS"
+  - file: "build/evidence/windows-native-host-smoke.json"
+    suite: "windows-native-host-smoke"
+    overall: "PASS"
+
+per_package_summary:
+  - group: "apps/cli"
+    suites: 10
+    tests: 60
+    passed: 60
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 2954
+  - group: "apps/desktop"
+    suites: 10
+    tests: 89
+    passed: 89
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 2860
+  - group: "build/test"
+    suites: 2
+    tests: 44
+    passed: 44
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 818
+  - group: "packages/ai-proposal"
+    suites: 5
+    tests: 41
+    passed: 41
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 82
+  - group: "packages/browser-auth-broker"
+    suites: 8
+    tests: 80
+    passed: 80
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 88
+  - group: "packages/browser-collection-workflow"
+    suites: 10
+    tests: 44
+    passed: 41
+    failed: 0
+    todo: 3
+    skipped: 0
+    duration_ms: 11034
+  - group: "packages/browser-observation"
+    suites: 3
+    tests: 31
+    passed: 31
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 31
+  - group: "packages/converged-runtime"
+    suites: 7
+    tests: 31
+    passed: 31
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 1938
+  - group: "packages/core-runtime"
+    suites: 7
+    tests: 32
+    passed: 32
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 9958
+  - group: "packages/core-scheduler"
+    suites: 8
+    tests: 83
+    passed: 83
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 151
+  - group: "packages/core-seam"
+    suites: 8
+    tests: 82
+    passed: 82
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 3575
+  - group: "packages/direct-acquisition"
+    suites: 5
+    tests: 41
+    passed: 41
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 619
+  - group: "packages/discovery-recipe"
+    suites: 7
+    tests: 113
+    passed: 113
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 152
+  - group: "packages/domain-contracts"
+    suites: 14
+    tests: 231
+    passed: 231
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 283
+  - group: "packages/hls-vod-adapter"
+    suites: 7
+    tests: 80
+    passed: 80
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 142
+  - group: "packages/persistence-ledger"
+    suites: 7
+    tests: 51
+    passed: 51
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 8913
+  - group: "packages/toolchain-smoke"
+    suites: 1
+    tests: 5
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 3
+  - group: "packages/version-validation"
+    suites: 8
+    tests: 155
+    passed: 155
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 253
+
+per_suite_results:
+  - suite: "apps/cli/test/acceptance-vs-result.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 706
+  - suite: "apps/cli/test/batch.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 116
+  - suite: "apps/cli/test/cancel-retry.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 166
+  - suite: "apps/cli/test/convergence.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 94
+  - suite: "apps/cli/test/golden-output.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 617
+  - suite: "apps/cli/test/headless-authority.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 84
+  - suite: "apps/cli/test/negatives.test.ts"
+    status: "passed"
+    passed: 2
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 53
+  - suite: "apps/cli/test/non-interactive.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 590
+  - suite: "apps/cli/test/oracles.test.ts"
+    status: "passed"
+    passed: 14
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 399
+  - suite: "apps/cli/test/status-parity.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 129
+  - suite: "apps/desktop/test/auth-prompts.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 107
+  - suite: "apps/desktop/test/batch-confirmation.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 77
+  - suite: "apps/desktop/test/convergence.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 119
+  - suite: "apps/desktop/test/core-authority.test.ts"
+    status: "passed"
+    passed: 15
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 619
+  - suite: "apps/desktop/test/core-disconnect.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 88
+  - suite: "apps/desktop/test/immutable-scope.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 105
+  - suite: "apps/desktop/test/negative-coverage.test.ts"
+    status: "passed"
+    passed: 15
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 732
+  - suite: "apps/desktop/test/oracle-mappings.test.ts"
+    status: "passed"
+    passed: 19
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 689
+  - suite: "apps/desktop/test/selection.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 95
+  - suite: "apps/desktop/test/status-explanation.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 229
+  - suite: "build/test/core-host.test.ts"
+    status: "passed"
+    passed: 11
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 62
+  - suite: "build/test/packaging.test.ts"
+    status: "passed"
+    passed: 33
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 756
+  - suite: "packages/ai-proposal/test/malicious-proposals.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 14
+  - suite: "packages/ai-proposal/test/model-offline-fallback.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 14
+  - suite: "packages/ai-proposal/test/oracles-parity.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 20
+  - suite: "packages/ai-proposal/test/proposal-schema.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 14
+  - suite: "packages/ai-proposal/test/secret-redaction.test.ts"
+    status: "passed"
+    passed: 12
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 20
+  - suite: "packages/browser-auth-broker/test/allowed-origins.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 7
+  - suite: "packages/browser-auth-broker/test/broker-capability.test.ts"
+    status: "passed"
+    passed: 24
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 24
+  - suite: "packages/browser-auth-broker/test/broker-channel.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 7
+  - suite: "packages/browser-auth-broker/test/native-frame.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 5
+  - suite: "packages/browser-auth-broker/test/native-host-session.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 11
+  - suite: "packages/browser-auth-broker/test/provenance-redirect.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 4
+  - suite: "packages/browser-auth-broker/test/secret-sink-cycle.test.ts"
+    status: "passed"
+    passed: 15
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 18
+  - suite: "packages/browser-auth-broker/test/secret-sink.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 12
+  - suite: "packages/browser-collection-workflow/test/auth-expiry.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 2299
+  - suite: "packages/browser-collection-workflow/test/continuation-rules.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 452
+  - suite: "packages/browser-collection-workflow/test/partial-truncated-unknown.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 3166
+  - suite: "packages/browser-collection-workflow/test/provenance-redirects.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 601
+  - suite: "packages/browser-collection-workflow/test/real-browser-flows.test.ts"
+    status: "passed"
+    passed: 1
+    failed: 0
+    todo: 3
+    skipped: 0
+    duration_ms: 1
+  - suite: "packages/browser-collection-workflow/test/restart-inheritance.test.ts"
+    status: "passed"
+    passed: 1
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 331
+  - suite: "packages/browser-collection-workflow/test/s2-handoff.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 723
+  - suite: "packages/browser-collection-workflow/test/s5-current-page.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 2080
+  - suite: "packages/browser-collection-workflow/test/s6-explicit-collection.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 1374
+  - suite: "packages/browser-collection-workflow/test/selection-knowledge.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 7
+  - suite: "packages/browser-observation/test/message-gate.test.ts"
+    status: "passed"
+    passed: 12
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 10
+  - suite: "packages/browser-observation/test/observation-handoff.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 9
+  - suite: "packages/browser-observation/test/sink-redaction.test.ts"
+    status: "passed"
+    passed: 12
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 12
+  - suite: "packages/converged-runtime/test/ai-offline-fallback.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 30
+  - suite: "packages/converged-runtime/test/browser-triggered-identical-projection.test.ts"
+    status: "passed"
+    passed: 1
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 691
+  - suite: "packages/converged-runtime/test/concurrent-ui-cli-convergence.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 234
+  - suite: "packages/converged-runtime/test/cross-surface-same-contract-status.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 442
+  - suite: "packages/converged-runtime/test/hitl-parity.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 357
+  - suite: "packages/converged-runtime/test/malicious-proposal-safety.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 22
+  - suite: "packages/converged-runtime/test/no-surface-local-authority.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 162
+  - suite: "packages/core-runtime/test/budgets.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 701
+  - suite: "packages/core-runtime/test/cancellation-cutoff.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 615
+  - suite: "packages/core-runtime/test/duplicate-command.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 311
+  - suite: "packages/core-runtime/test/focused-core-integration.test.ts"
+    status: "passed"
+    passed: 3
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 281
+  - suite: "packages/core-runtime/test/process-restart.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 6260
+  - suite: "packages/core-runtime/test/projection.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 628
+  - suite: "packages/core-runtime/test/transfer-and-media.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 1162
+  - suite: "packages/core-scheduler/test/budget-precedence.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 15
+  - suite: "packages/core-scheduler/test/cancel-cutoff-matrix.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 14
+  - suite: "packages/core-scheduler/test/duplicate-clients.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 16
+  - suite: "packages/core-scheduler/test/lineage-idempotency.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 18
+  - suite: "packages/core-scheduler/test/retry-resume.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 17
+  - suite: "packages/core-scheduler/test/single-mutation-path.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 19
+  - suite: "packages/core-scheduler/test/suppression.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 15
+  - suite: "packages/core-scheduler/test/transition-legality.test.ts"
+    status: "passed"
+    passed: 37
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 37
+  - suite: "packages/core-seam/test/envelope-wire-compatibility.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 20
+  - suite: "packages/core-seam/test/idempotency-revision.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 19
+  - suite: "packages/core-seam/test/lifecycle-restart.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 88
+  - suite: "packages/core-seam/test/malformed-oversized-input.test.ts"
+    status: "passed"
+    passed: 12
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 3260
+  - suite: "packages/core-seam/test/oracles.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 29
+  - suite: "packages/core-seam/test/peer-authorization.test.ts"
+    status: "passed"
+    passed: 11
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 18
+  - suite: "packages/core-seam/test/projection-read-side.test.ts"
+    status: "passed"
+    passed: 17
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 41
+  - suite: "packages/core-seam/test/transport-loopback.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 100
+  - suite: "packages/direct-acquisition/test/budgets-retry.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 115
+  - suite: "packages/direct-acquisition/test/integrity.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 156
+  - suite: "packages/direct-acquisition/test/oracles-transfer.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 94
+  - suite: "packages/direct-acquisition/test/redirects-locator.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 146
+  - suite: "packages/direct-acquisition/test/resume-validators.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 108
+  - suite: "packages/discovery-recipe/test/confirmation-workflow.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 17
+  - suite: "packages/discovery-recipe/test/continuation-successor.test.ts"
+    status: "passed"
+    passed: 10
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 21
+  - suite: "packages/discovery-recipe/test/discovery-bounds.test.ts"
+    status: "passed"
+    passed: 23
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 34
+  - suite: "packages/discovery-recipe/test/identity-accounting.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 9
+  - suite: "packages/discovery-recipe/test/oracles-t011.test.ts"
+    status: "passed"
+    passed: 26
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 36
+  - suite: "packages/discovery-recipe/test/recipe-engine.test.ts"
+    status: "passed"
+    passed: 26
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 24
+  - suite: "packages/discovery-recipe/test/slices-s5-s6.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 11
+  - suite: "packages/domain-contracts/test/budgets.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 12
+  - suite: "packages/domain-contracts/test/contract-scope.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 17
+  - suite: "packages/domain-contracts/test/evidence.test.ts"
+    status: "passed"
+    passed: 14
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 12
+  - suite: "packages/domain-contracts/test/identity-locator.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 8
+  - suite: "packages/domain-contracts/test/oracles-c01-c34.test.ts"
+    status: "passed"
+    passed: 34
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 33
+  - suite: "packages/domain-contracts/test/result-combinations.test.ts"
+    status: "passed"
+    passed: 20
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 14
+  - suite: "packages/domain-contracts/test/slices-ports.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 18
+  - suite: "packages/domain-contracts/test/snapshot.test.ts"
+    status: "passed"
+    passed: 12
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 19
+  - suite: "packages/domain-contracts/test/t007-coverage-accounting.test.ts"
+    status: "passed"
+    passed: 11
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 15
+  - suite: "packages/domain-contracts/test/t007-ledger.test.ts"
+    status: "passed"
+    passed: 11
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 15
+  - suite: "packages/domain-contracts/test/t007-oracles-c01-c34.test.ts"
+    status: "passed"
+    passed: 34
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 42
+  - suite: "packages/domain-contracts/test/t007-result-projector.test.ts"
+    status: "passed"
+    passed: 33
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 37
+  - suite: "packages/domain-contracts/test/t007-validation-registry.test.ts"
+    status: "passed"
+    passed: 14
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 17
+  - suite: "packages/domain-contracts/test/version-decode.test.ts"
+    status: "passed"
+    passed: 16
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 24
+  - suite: "packages/hls-vod-adapter/test/acquisition.test.ts"
+    status: "passed"
+    passed: 7
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 19
+  - suite: "packages/hls-vod-adapter/test/assembly-validation.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 26
+  - suite: "packages/hls-vod-adapter/test/budget-accounting.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 18
+  - suite: "packages/hls-vod-adapter/test/canonical-records.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 27
+  - suite: "packages/hls-vod-adapter/test/manifest-binding.test.ts"
+    status: "passed"
+    passed: 29
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 23
+  - suite: "packages/hls-vod-adapter/test/segment-plan-provenance.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 14
+  - suite: "packages/hls-vod-adapter/test/topology.test.ts"
+    status: "passed"
+    passed: 11
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 15
+  - suite: "packages/persistence-ledger/test/cancellation-cutoff.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 562
+  - suite: "packages/persistence-ledger/test/crash-windows.test.ts"
+    status: "passed"
+    passed: 9
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 5932
+  - suite: "packages/persistence-ledger/test/digest-provenance.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 348
+  - suite: "packages/persistence-ledger/test/ledger-lineage.test.ts"
+    status: "passed"
+    passed: 8
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 604
+  - suite: "packages/persistence-ledger/test/recovery-reconciliation.test.ts"
+    status: "passed"
+    passed: 6
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 662
+  - suite: "packages/persistence-ledger/test/schema-migrations.test.ts"
+    status: "passed"
+    passed: 13
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 791
+  - suite: "packages/persistence-ledger/test/semantic-claims.test.ts"
+    status: "passed"
+    passed: 4
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 14
+  - suite: "packages/toolchain-smoke/test/index.test.ts"
+    status: "passed"
+    passed: 5
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 3
+  - suite: "packages/version-validation/test/corpora-identity.test.ts"
+    status: "passed"
+    passed: 15
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 33
+  - suite: "packages/version-validation/test/denominator-accounting.test.ts"
+    status: "passed"
+    passed: 19
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 15
+  - suite: "packages/version-validation/test/evidence-exact-subject.test.ts"
+    status: "passed"
+    passed: 13
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 13
+  - suite: "packages/version-validation/test/g0-baseline-plan.test.ts"
+    status: "passed"
+    passed: 29
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 25
+  - suite: "packages/version-validation/test/gates.test.ts"
+    status: "passed"
+    passed: 28
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 17
+  - suite: "packages/version-validation/test/harness-determinism.test.ts"
+    status: "passed"
+    passed: 13
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 53
+  - suite: "packages/version-validation/test/journeys.test.ts"
+    status: "passed"
+    passed: 17
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 22
+  - suite: "packages/version-validation/test/oracles-c01-c34.test.ts"
+    status: "passed"
+    passed: 21
+    failed: 0
+    todo: 0
+    skipped: 0
+    duration_ms: 75
+
+supporting_logs:
+  - .agent/execution/T019/logs/01-install.txt
+  - .agent/execution/T019/logs/02-ci-verify.txt
+  - .agent/execution/T019/logs/03-vitest-run.txt
+  - .agent/execution/T019/logs/03-vitest-results.json
+  - .agent/execution/T019/logs/04-build-package.txt
+  - .agent/execution/T019/logs/05-build-smoke.txt
+  - .agent/execution/T019/gate-board.json
+
+honesty_notes:
+  - every suite result above comes from a real execution on commit 1bf4da6964e3 (tree 90b478be23c2)
+  - no tests/corpora/oracles/baselines were modified before or after gate/board observation
+  - any unexecuted suite would have been recorded NOT_EXECUTED; none occurred

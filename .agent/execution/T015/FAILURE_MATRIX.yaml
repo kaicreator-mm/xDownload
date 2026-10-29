@@ -1,0 +1,124 @@
+task_id: T015
+base_sha: 4d40a2a1c389f6de4f3ce916c113fe4055f5e197
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T015 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T015 would require violating Frozen L2 ownership, authority or trust boundaries
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code, glue or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or any T004-T009 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: consumed-package-semantic-drift
+    trigger: composition seems to require editing a consumed upstream package's semantics, exports or invariants (domain-contracts, core-seam, core-scheduler, persistence-ledger, direct-acquisition, hls-vod-adapter, or T003/T010/T011 packages)
+    classification: CONSUMED_API_GAP
+    required_action:
+      - stop; treat as architecture contradiction or API-gap escalation to the owning task/amendment
+      - compose around the gap via ports only where Frozen semantics are preserved
+      - never patch upstream semantics locally to make integration pass
+    false_pass_forbidden: true
+
+  - id: double-authority
+    trigger: glue creates a second writer path, parallel mutable store, private budget ledger, surface-local projection, or glue-decided terminal/acceptance/cancellation outcome
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - remove the competing authority; route all durable state through AuthoritativeLedgerWriter and all control through CoreScheduler/cutoff semantics
+      - project terminal truth only via domain-contracts result-projector
+    false_pass_forbidden: true
+
+  - id: forbidden-lane-leak
+    trigger: T015 candidate implements T016 browser/broker/Recipe collection workflow, S2/S5/S6 orchestration, real-browser fixtures, Desktop/CLI/AI surfaces, or packaging/platform behavior
+    classification: SCOPE_CREEP_REJECTED
+    required_action:
+      - remove the leaked lane; keep T015 to Core composition + focused integration
+      - record any proved-needed port surface as evidence for the owning task, not as local implementation
+    false_pass_forbidden: true
+
+  - id: frozen-doc-mutation
+    trigger: implementation or test convenience edits docs/planning/, Frozen PRD/L2, TASK_DAG.md, TASK_PACKS.json or any frozen task pack
+    classification: FREEZE_VIOLATION
+    required_action:
+      - revert the mutation
+      - route semantic needs through the formal amendment paths
+    false_pass_forbidden: true
+
+  - id: restart-replenishment-or-drift
+    trigger: restart/reopen treats process death as budget replenishment, re-enumeration, snapshot mutation, or a successor-identity event
+    classification: RESTART_SEMANTICS_REJECTED
+    required_action:
+      - re-derive state only from durable truth; inherit remaining budgets on the same frozen lineage
+      - successor identity only via the T002 successor contract/snapshot rules
+    false_pass_forbidden: true
+
+  - id: cancellation-precedence-violation
+    trigger: glue imposes surface-local cancel/accept precedence or reopens acceptance outside ADR-013 cutoff semantics
+    classification: CONTROL_PRECEDENCE_REJECTED
+    required_action:
+      - route all cancellation through CoreScheduler/acceptanceCutoff semantics
+      - reconciliation never changes control state or reopens acceptance
+    false_pass_forbidden: true
+
+  - id: false-artifact-acceptance
+    trigger: DB-only acceptance is treated as success when artifact bytes are missing/corrupt, or validation failure is normalized into acceptance
+    classification: FALSE_ACCEPTANCE_REJECTED
+    required_action:
+      - gate acceptance on AcceptanceValidation fed by the adapters' validate chains
+      - route divergence to RecoveryService classification with truthful recovery class
+    false_pass_forbidden: true
+
+  - id: incomplete-oracle-mapping
+    trigger: any required TEST_MATRIX suite, applicable C-oracle mapping or negative coverage lacks executable runtime-level coverage
+    classification: T015_VALIDATION_INCOMPLETE
+    required_action:
+      - keep concern Validation non-PASS
+      - add bounded integration coverage only
+      - do not implement downstream lane behavior to close the gap
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/integration test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder introduces a new runtime dependency without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep choice within F1 and Frozen Architecture
+    false_pass_forbidden: true

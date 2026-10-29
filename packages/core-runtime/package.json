@@ -1,0 +1,17 @@
+{
+  "name": "@xdownload/core-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xdownload/core-scheduler": "workspace:*",
+    "@xdownload/core-seam": "workspace:*",
+    "@xdownload/direct-acquisition": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*",
+    "@xdownload/hls-vod-adapter": "workspace:*",
+    "@xdownload/persistence-ledger": "workspace:*"
+  }
+}

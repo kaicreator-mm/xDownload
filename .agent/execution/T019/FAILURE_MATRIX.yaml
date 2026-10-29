@@ -1,0 +1,125 @@
+task_id: T019
+base_sha: 6e512e6e5397eae14bb1a4aa7d0722d517641b88
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T019 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T019 convergence would require violating Frozen L2 ownership, authority or trust boundaries
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or a T003/T017/T018 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift; a candidate prepared on a stale base is invalid
+    false_pass_forbidden: true
+
+  - id: red-visible-suite
+    trigger: any visible regression suite (root gate, packages/*/test, version-validation harness suite, build/smoke) is red on the exact candidate
+    classification: CANDIDATE_REGRESSION_FAIL
+    required_action:
+      - record the candidate as FAILED for version-level validation binding — no waiver, no skip, no tolerance
+      - repair only via a separately authorized bounded defect fix with its own review
+      - any repair creates a NEW exact candidate requiring the full visible regression run again
+    false_pass_forbidden: true
+
+  - id: post-evidence-baseline-mutation
+    trigger: tests, corpora, oracles or baselines are changed after product-gate results were seen
+    classification: REGRESSION_HONESTY_VIOLATED
+    required_action:
+      - invalidate the affected run/candidate per PRD C33
+      - restore baselines and rerun on a new exact candidate
+      - never fold the mutation into the recorded candidate
+    false_pass_forbidden: true
+
+  - id: unreviewed-high-blast-fix
+    trigger: a high-blast repair is folded into the candidate without its own separate authorization and review
+    classification: UNAUTHORIZED_CANDIDATE_MUTATION
+    required_action:
+      - reject the fold; the candidate identity stays bound to reviewed state only
+      - route the fix through its own authorized repair/review path
+    false_pass_forbidden: true
+
+  - id: false-gate-pass
+    trigger: a G0/G1 (or other) gate is recorded PASS from unexecuted, insufficient, or manually promoted evidence
+    classification: FALSE_VALIDATION_CLAIM
+    required_action:
+      - record the gate exactly as evaluateGate/gateStatusBoard emitted it
+      - NOT_RUN/INSUFFICIENT_EVIDENCE stays as-is; product-gate measurement belongs to T020-T023
+      - never report an unexecuted required gate as PASS
+    false_pass_forbidden: true
+
+  - id: candidate-identity-unproven
+    trigger: candidate manifest lacks commit SHA, tree SHA, ancestry proof, or records a branch name alone; or identity was recorded before the full run actually executed on that commit
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - complete the full visible regression on the exact commit first
+      - record identity only from observed SHA/tree with base ancestry
+      - keep the candidate non-binding until identity is exact and immutable
+    false_pass_forbidden: true
+
+  - id: candidate-immutability-breach
+    trigger: code/config changes after the candidate identity was recorded without successor preparation
+    classification: CANDIDATE_INVALIDATED
+    required_action:
+      - mark the recorded candidate invalid for T020-T023 binding
+      - run successor preparation/validation on the new exact state
+    false_pass_forbidden: true
+
+  - id: authority-gate-encroachment
+    trigger: T019 claims or performs Candidate Freeze, Hidden Validation, Version Closure, Release Qualification or version-level visible Validation PASS
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - retract the claim; those gates are owned by T024/T025/T026/T027 and T020-T023 respectively
+      - keep T019 outputs to concern-level convergence + candidate identity only
+    false_pass_forbidden: true
+
+  - id: consumed-package-mutation
+    trigger: any of the 16 packages/*, apps sources or frozen docs are semantically modified to make regression green
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - revert the semantic mutation
+      - converge via authorized bounded repairs only
+    false_pass_forbidden: true
+
+  - id: build-evidence-stale-or-leaking
+    trigger: build/evidence/*.json does not bind the exact candidate revision, or .agent/execution material entered a shipped package
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - re-run the T018 build/audit pipeline on the exact candidate
+      - package exclusion audit must pass before candidate recording
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/build/smoke cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true

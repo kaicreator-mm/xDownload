@@ -1,0 +1,68 @@
+{
+  "schema": "xdownload/t019-candidate-identity-v1",
+  "task": "T019",
+  "issue": "#38",
+  "recordedAt": "2026-10-05T17:43:05.059Z",
+  "candidate": {
+    "commitSha": "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4",
+    "treeSha": "90b478be23c2fe45fd38227c06884c9e5e1b1125",
+    "branch": "task/v0.1.0-t019-candidate-preparation",
+    "immutable": true
+  },
+  "ancestry": {
+    "baseSha": "6e512e6e5397eae14bb1a4aa7d0722d517641b88",
+    "baseTreeSha": "daa0853ddb6b61dbc781c9df111fe8a69f765eda",
+    "baseIsVersionBranchHeadAtClaim": true,
+    "liveVersionV010ShaAtClaim": "6e512e6e5397eae14bb1a4aa7d0722d517641b88"
+  },
+  "buildIdentityManifests": [
+    {
+      "artifact": "cli",
+      "contentVersion": "0.0.0",
+      "sourceRevision": {
+        "sha": "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4",
+        "dirty": true
+      },
+      "contentHash": "be65bbd90220424cf6cef2d21c17c2df7f108ed987267e760f3abdf5c338072c",
+      "fileCount": 3,
+      "toolchain": "node@24.21.0 pnpm@unavailable esbuild@0.25.12"
+    },
+    {
+      "artifact": "core",
+      "contentVersion": "0.0.0",
+      "sourceRevision": {
+        "sha": "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4",
+        "dirty": true
+      },
+      "contentHash": "18cba665a52c5bc44f3ade3257f7cadd0cd85cbb0738d6b6ebf7e64a1a0fe472",
+      "fileCount": 1,
+      "toolchain": "node@24.21.0 pnpm@unavailable esbuild@0.25.12"
+    },
+    {
+      "artifact": "extension",
+      "contentVersion": "0.0.0",
+      "sourceRevision": {
+        "sha": "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4",
+        "dirty": true
+      },
+      "contentHash": "5d2cfd8a3608ac55dc3bfdf80d17abc4e15d1b4cc59de58a898df3904ce553a6",
+      "fileCount": 2,
+      "toolchain": "node@24.21.0 pnpm@unavailable esbuild@0.25.12"
+    },
+    {
+      "artifact": "native-host",
+      "contentVersion": "0.0.0",
+      "sourceRevision": {
+        "sha": "1bf4da6964e3b0ea6ba06510e8d9fdaaefe33aa4",
+        "dirty": true
+      },
+      "contentHash": "f58819bafe8b7001f86cbc340b773b1c2b90327e7ad40ea4657d13a66e7b86a3",
+      "fileCount": 5,
+      "toolchain": "node@24.21.0 pnpm@unavailable esbuild@0.25.12"
+    }
+  ],
+  "evidenceBinding": {
+    "regressionEvidence": ".agent/execution/T019/VISIBLE_REGRESSION.yaml",
+    "gateStatus": ".agent/execution/T019/GATE_STATUS.yaml"
+  }
+}

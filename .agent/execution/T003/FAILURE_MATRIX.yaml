@@ -1,0 +1,138 @@
+task_id: T003
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T003 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T003 would require violating Frozen L2 ownership, authority or trust boundaries
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T002 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: oracle-ambiguity
+    trigger: PRD §35 oracle behavior or canonical binding is ambiguous and cannot be encoded without guessing
+    classification: ORACLE_AMBIGUITY_ROUTES_UPWARD
+    required_action:
+      - do not guess semantics
+      - record the ambiguity with exact PRD section references
+      - route upward per Task Pack Merge/routing before continuing the affected oracle
+    false_pass_forbidden: true
+
+  - id: post-hoc-baseline-selection
+    trigger: baseline identity, selection criteria, comparison set or aggregation rule is chosen or changed after Phase B/confirmation data is visible
+    classification: BASELINE_PROTOCOL_VIOLATION
+    required_action:
+      - reject the operation fail-closed (PRD §32.2 step 7, §33 Baseline rule R03)
+      - represent the affected confirmation run as invalid requiring a new independent run (C33)
+      - never mutate the frozen G0BaselinePlan in place
+    false_pass_forbidden: true
+
+  - id: pre-registration-mutation
+    trigger: frozen corpus task-case identity, pre-registered journey expectation or oracle record is mutated after registration
+    classification: PRE_REGISTRATION_IMMUTABILITY_VIOLATION
+    required_action:
+      - detect and reject the mutation
+      - require a new identity/successor record where change is legitimately authorized
+      - never silently rewrite registered expectations
+    false_pass_forbidden: true
+
+  - id: self-generated-truth
+    trigger: harness, oracle or evidence record types UI/discovery/model output as independent truth for the same claim, or truth source is missing/pre-registered-nowhere
+    classification: TRUTH_SOURCE_REJECTED
+    required_action:
+      - reject the record (PRD §22, §32.1 truth-source rule, C34)
+      - require pre-registered/independent truth source
+      - keep affected Validation non-PASS until corrected
+    false_pass_forbidden: true
+
+  - id: denominator-rule-violation
+    trigger: accounting counts UNKNOWN as success, silently drops abandonment, excludes cancellation without pre-recorded reason, or counts repeated runs as independent samples
+    classification: DENOMINATOR_ACCOUNTING_REJECTED
+    required_action:
+      - reject the computation (PRD §32.1)
+      - recompute with exact denominator rules
+      - report out-of-scope and INSUFFICIENT_EVIDENCE classes separately
+    false_pass_forbidden: true
+
+  - id: evidence-subject-drift
+    trigger: evidence record merges/approximates claim subjects or omits required PRD §20 claim fields
+    classification: EVIDENCE_SUBJECT_BINDING_REJECTED
+    required_action:
+      - reject the record
+      - require exact claim_type/claim_subject/provenance/independence/scope/certainty fields
+    false_pass_forbidden: true
+
+  - id: gate-pass-claim
+    trigger: any T003 artifact claims a real G0/G1/C01-C34 PASS, FAIL or completion verdict on behalf of the version
+    classification: GATE_CLAIM_FORBIDDEN
+    required_action:
+      - retract the claim
+      - keep all gate results NOT_RUN on the T003 candidate (Task Pack Acceptance)
+      - real gate execution belongs to T019-candidate Validation owned by T020-T023
+    false_pass_forbidden: true
+
+  - id: oracle-load-failure
+    trigger: C01-C34 oracle corpus is incomplete, references unknown identities/statuses, or fails to load on the exact candidate
+    classification: ORACLE_CORPUS_INVALID
+    required_action:
+      - keep T003 concern Validation non-PASS
+      - repair the corpus/loader within T003 boundary only
+      - do not weaken oracle expectations to force a load
+    false_pass_forbidden: true
+
+  - id: nondeterministic-harness
+    trigger: harness/controlled fixture produces different results across identical repeated runs or requires live-network truth
+    classification: HARNESS_DETERMINISM_FAILURE
+    required_action:
+      - stop using the harness output as evidence
+      - repair to offline-deterministic behavior
+      - never paper over with retries or tolerance fudging
+    false_pass_forbidden: true
+
+  - id: production-feature-leak
+    trigger: T003 changes product feature behavior (Desktop/Browser/CLI/persistence/transfer/media/scheduler/AI) under cover of validation infrastructure
+    classification: SCOPE_BOUNDARY_VIOLATION
+    required_action:
+      - revert the product change
+      - keep T003 inside version validation infrastructure only
+      - task-local tests remain owned by each implementation task
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/harness self-test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from harness failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true

@@ -1,0 +1,19 @@
+(node:32796) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ T14 V2/U — UNKNOWN book is append-only with explicit resolve only
+  ✔ U1 — records persist across reopen; nothing auto-clears or auto-replays (5.4705ms)
+  ✔ U2 — explicit resolution only: new authorization, stamped once, kept forever (1.4031ms)
+  ✔ U3 — the resolution survives a restart; the book and history stay append-only (0.379ms)
+✔ T14 V2/U — UNKNOWN book is append-only with explicit resolve only (7.9627ms)
+▶ T14 V2/A — mid-flight abort settles as an honest non-completion
+  ✔ A1 — caller abort: failed/aborted, no file, no success journal, exactly one attempt (172.3767ms)
+  ✔ A2 — a NEW authorized submission under a fresh identity completes (explicit, not auto) (19.1876ms)
+✔ T14 V2/A — mid-flight abort settles as an honest non-completion (191.8865ms)
+ℹ tests 5
+ℹ suites 2
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 479.8951

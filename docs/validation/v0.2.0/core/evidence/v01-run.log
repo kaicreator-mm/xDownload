@@ -1,0 +1,16 @@
+(node:43736) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ T14 V1 — crash/restart durable replay over the real composition
+  ✔ P — one real K journey completes with real bytes and a verifiable digest (160.9276ms)
+  ✔ R1 — a SECOND PROCESS re-opens the durable store and observes the same journal/permit (268.5775ms)
+  ✔ R2 — reopen over the SAME store file: journal survives, replay is idempotent with zero new effects (59.1435ms)
+  ✔ R3 — FileCasDocStore reopen is the exact public path (direct store-level check) (0.4513ms)
+✔ T14 V1 — crash/restart durable replay over the real composition (489.9649ms)
+ℹ tests 4
+ℹ suites 1
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 793.9856

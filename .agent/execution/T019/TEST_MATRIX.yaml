@@ -1,0 +1,74 @@
+task_id: T019
+base_sha: 6e512e6e5397eae14bb1a4aa7d0722d517641b88
+scope: version-candidate-preparation-and-visible-regression-convergence
+validation_owner: T019-concern-validation
+status: specification-only-not-run-by-jit-prep
+validation_scope_source: >-
+  Issue #38 body (frozen materialization of T019): "Clean bootstrap, configured
+  CI, full unit/contract/integration, S1-S6 harness discovery, package smoke
+  and currentness." plus the Frozen Task Pack acceptance line: "Clean
+  bootstrap; CI; full unit/contract/integration discovery; S1-S6 harness
+  available; production package builds; all implementation PRs merged; exact
+  candidate SHA/tree recorded and thereafter immutable for T020-T023."
+  Mirrored one-to-one into required_suites below; concern-level only —
+  version-level visible Validation is owned by T020-T023 on the exact T019
+  candidate, Candidate Freeze is T024's, Hidden Validation is T025's, and no
+  gate PASS may be claimed beyond what the version-validation harness actually
+  proves on this candidate.
+
+required_suites:
+  - id: clean-bootstrap
+    must_prove:
+      - a clean-state `pnpm install --frozen-lockfile` succeeds on the exact candidate with the pinned toolchain (Node 24.21.0, pnpm 12.8.1) and no lockfile drift
+      - the toolchain versions used are recorded with the candidate evidence
+  - id: configured-ci
+    must_prove:
+      - `pnpm ci:verify` (format:check && lint && typecheck && test:unit) passes on the exact candidate
+      - each root gate result is recorded per exact command on the exact candidate commit
+  - id: full-workspace-unit-suite
+    must_prove:
+      - `pnpm test:unit` executes the full visible regression denominator — every `packages/*/test` suite across all 16 packages, including the 8 version-validation harness suites (corpora-identity, denominator-accounting, evidence-exact-subject, g0-baseline-plan, gates, harness-determinism, journeys, oracles-c01-c34)
+      - every suite result is enumerated with its identity; ALL suites green, and any red suite is a candidate FAIL with no waiver, no skip-to-green and no post-hoc test/baseline mutation
+      - S1-S6 harness discovery/availability is proven by the version-validation suites actually executing (corpora S1-S6, oracles C01-C34, journeys, gates present and passing)
+  - id: production-package-build-and-smoke
+    must_prove:
+      - `node build/package.ts` builds the production packages from the exact candidate sources
+      - `node build/smoke.ts` smoke-proves the built artifacts and refreshes `build/evidence/*.json` with package identity binding the exact candidate revision
+      - shipped artifacts contain no `.agent/execution` material (T018 audit rule continues to hold on the candidate)
+  - id: g0-g1-gate-status-evaluation
+    must_prove:
+      - the version-validation gate instrumentation (`GATE_DEFINITIONS` G0/G1a-G1d, `evaluateGate`, `gateStatusBoard`) is executed on the exact candidate and its status board is recorded as emitted
+      - any gate recorded PASS is backed by real captured evidence evaluated through `evaluateGate` under the frozen `G0BaselinePlan` rules (PRD §32.2 pre-registration); no manual promotion of `NOT_RUN`/`INSUFFICIENT_EVIDENCE` to PASS
+      - gates whose product measurement belongs to T020-T023 real-host Validation are recorded truthfully as `NOT_RUN`/`INSUFFICIENT_EVIDENCE` at this stage — sparseness is honest, fabrication is forbidden
+      - G1d (RECOMMENDED_NON_BLOCKING for v0.1.0) and G2-G4 recorded statuses are carried through without silent reinterpretation of applicability
+  - id: candidate-identity-checks
+    must_prove:
+      - one exact candidate identity is recorded: commit SHA AND tree SHA, producing branch, and base ancestry proving descent from `6e512e6e5397eae14bb1a4aa7d0722d517641b88`
+      - all implementation PRs (T003-T018) are merged into `version/v0.1.0` at the candidate; no implementation PR is pending/open against the converged state
+      - `version/v0.1.0` currentness is proven: the candidate binds the manifest base or an explicitly re-validated successor base
+      - the recorded candidate identity is thereafter immutable for T020-T023; any post-recording code/config change invalidates it and requires successor preparation
+      - the candidate manifest records the explicit non-claims: no hidden validation (T025), no Candidate Freeze (T024), no version closure/release qualification (T026/T027), no version-level Validation PASS (T020-T023)
+
+negative_coverage:
+  - red-visible-suite-waived-or-skipped
+  - suite-result-claimed-without-execution-on-exact-candidate
+  - tests-or-baselines-mutated-after-gate-results-visible
+  - unreviewed-high-blast-fix-folded-into-candidate
+  - unexecuted-or-insufficient-evidence-gate-recorded-as-pass
+  - baseline-plan-selected-after-confirmation-data-visible
+  - candidate-identity-recorded-without-tree-sha-or-ancestry-proof
+  - version-base-advanced-mid-preparation-without-revalidation
+  - implementation-pr-pending-while-convergence-claimed
+  - hidden-validation-or-freeze-or-release-claim-made-by-t019
+  - agent-execution-material-entering-shipped-package
+  - consumed-package-semantically-modified-to-make-regression-green
+  - stale-build-evidence-reused-from-another-revision
+
+completion_rule: >-
+  T019 concern Validation may PASS only on one exact candidate where all
+  required suites above actually executed on that exact candidate commit, all
+  visible suites are green (any red = FAIL, no waiver), the G0/G1 gate status
+  board is recorded exactly as the version-validation harness evaluated it, and
+  the immutable candidate identity (SHA/tree) is durably recorded for
+  T020-T023. An unexecuted or partially executed suite is NOT_EXECUTED, never
+  PASS. This JIT Prep creates no PASS evidence.

@@ -1,0 +1,247 @@
+{
+  "schema": "xdownload/v0.2.0/t10-slice-baseline",
+  "baselineId": "v0.2.0-slices-s1-s6",
+  "baselineVersion": 1,
+  "frozenPack": "docs/implementation/v0.2.0/TASK_PACKS_R0.md @ version/v0.2.0@20b995289d390c92a682f5c371fa672f390b06be (T10)",
+  "canonicalVocabularySource": "@xdownload/domain-contracts support-slice registry S1-S6 (frozen PRD §28) + T01 download-domain-app contracts",
+  "installedBaselineStatus": "DESCRIPTOR_ONLY_PENDING_INSTALLED_RELEASE",
+  "honestyNote": "This file is a released-slice DESCRIPTOR baseline. The required real validation handoff — an actual installed baseline tied to the release SHA — belongs to the version Validation lanes (T13 packaging, T16 product journeys) and is NOT_PROVEN here by design. No fake G0/G1 and no synthetic acceptance is claimed by this harness.",
+  "slices": [
+    {
+      "sliceId": "S1",
+      "title": "Direct HTTP/HTTPS File",
+      "surfaceClass": "DIRECT_TRANSFER",
+      "defaultContinuation": { "kind": "NONE" },
+      "requiredValidationLayers": ["target", "transfer", "format"],
+      "scopePrimitive": "single_resource",
+      "coverageDimension": {
+        "expectation": "NOT_APPLICABLE",
+        "basis": "direct single-resource results only admit NOT_APPLICABLE coverage (PRD-§18.8)"
+      },
+      "intentVocabulary": {
+        "t01IntentSlice": "S1",
+        "t01OperationVocabulary": ["acquisition.acquire", "media.acquire"]
+      },
+      "budgetSemantics": {
+        "forbiddenAsComplete": [
+          "TRANSFER_BUDGET_EXHAUSTED",
+          "DISCOVERY_BUDGET_EXHAUSTED",
+          "GLOBAL_SAFETY_LIMIT"
+        ],
+        "note": "budget exhaustion is never user-scope completion; TRANSFER_BUDGET_EXHAUSTED forbids acquisition completion claims (PRD-§15.4/C02)"
+      },
+      "terminalVocabulary": {
+        "requestFulfillment": "COMPLETE",
+        "targetResolution": "RESOLVED",
+        "selectionAcquisition": "COMPLETE",
+        "coverage": "NOT_APPLICABLE",
+        "stopReason": "NONE",
+        "validationSummary": { "status": "ALL_PASSED", "passedCount": 1, "failedCount": 0 }
+      },
+      "honestFailureVocabulary": {
+        "requestFulfillment": ["UNSATISFIED", "PARTIAL", "UNKNOWN"],
+        "selectionAcquisition": ["FAILED", "PARTIAL", "CANCELLED"],
+        "stopReason": [
+          "VALIDATION_FAILED",
+          "TRANSFER_BUDGET_EXHAUSTED",
+          "USER_CANCELLED",
+          "AUTH_FAILED",
+          "TARGET_CHANGED"
+        ]
+      },
+      "oracle": {
+        "level": "FULL_ORACLE",
+        "harness": "tests/domain-app/baseline-oracle.test.ts",
+        "assertions": [
+          "intent-contract",
+          "route-binding",
+          "byte-digest-transfer",
+          "materialized-evidence",
+          "terminal-projection",
+          "zero-network-negative",
+          "truncated-honest-failure"
+        ]
+      },
+      "installedBaseline": {
+        "status": "NOT_PROVEN_DESCRIPTOR_ONLY",
+        "owner": "T16 validation-product",
+        "requiredValidation": "actual installed baseline tied to release SHA before final version Validation"
+      }
+    },
+    {
+      "sliceId": "S2",
+      "title": "Browser Download Handoff / Explicit Current-page Attachment",
+      "surfaceClass": "BROWSER_MEDIATED",
+      "defaultContinuation": { "kind": "NONE" },
+      "requiredValidationLayers": ["target", "transfer", "format"],
+      "scopePrimitive": "single_resource",
+      "coverageDimension": {
+        "expectation": "NOT_APPLICABLE_DESCRIPTOR",
+        "basis": "single-resource journey; executable coverage binding arrives with the T12 composition"
+      },
+      "intentVocabulary": {
+        "t01IntentSlice": null,
+        "t01OperationVocabulary": []
+      },
+      "budgetSemantics": {
+        "forbiddenAsComplete": [
+          "TRANSFER_BUDGET_EXHAUSTED",
+          "DISCOVERY_BUDGET_EXHAUSTED",
+          "GLOBAL_SAFETY_LIMIT"
+        ],
+        "note": "same budget honesty as every slice; collection semantics not applicable to the single handoff target"
+      },
+      "oracle": {
+        "level": "DESCRIPTOR_REGISTRY_MATCH",
+        "harness": "tests/domain-app/baseline-oracle.test.ts",
+        "assertions": ["registry-identity", "vocabulary-consistency"],
+        "gap": "browser handoff journey needs the T08 adapter and T12 composition; physical validation belongs to T15 validation-browser"
+      },
+      "installedBaseline": {
+        "status": "NOT_PROVEN_DESCRIPTOR_ONLY",
+        "owner": "T15 validation-browser",
+        "requiredValidation": "real Windows/Chromium trusted browser session proof before final version Validation"
+      }
+    },
+    {
+      "sliceId": "S3",
+      "title": "Direct Media File",
+      "surfaceClass": "DIRECT_TRANSFER",
+      "defaultContinuation": { "kind": "NONE" },
+      "requiredValidationLayers": ["target", "transfer", "format", "media"],
+      "scopePrimitive": "single_resource",
+      "coverageDimension": {
+        "expectation": "NOT_APPLICABLE_DESCRIPTOR",
+        "basis": "direct single-resource journey; NOT_APPLICABLE coverage expected once composed"
+      },
+      "intentVocabulary": {
+        "t01IntentSlice": "S3",
+        "t01OperationVocabulary": ["acquisition.acquire", "media.acquire"]
+      },
+      "budgetSemantics": {
+        "forbiddenAsComplete": [
+          "TRANSFER_BUDGET_EXHAUSTED",
+          "DISCOVERY_BUDGET_EXHAUSTED",
+          "GLOBAL_SAFETY_LIMIT"
+        ],
+        "note": "media layer adds the fourth required validation; budget exhaustion still never completes"
+      },
+      "oracle": {
+        "level": "DESCRIPTOR_REGISTRY_MATCH",
+        "harness": "tests/domain-app/baseline-oracle.test.ts",
+        "assertions": ["registry-identity", "vocabulary-consistency"],
+        "gap": "media acquire journey needs the T04/T12 media composition; the T01 intent vocabulary already admits slice S3"
+      },
+      "installedBaseline": {
+        "status": "NOT_PROVEN_DESCRIPTOR_ONLY",
+        "owner": "T16 validation-product",
+        "requiredValidation": "installed direct media journey with real bytes before final version Validation"
+      }
+    },
+    {
+      "sliceId": "S4",
+      "title": "HLS VOD Basic",
+      "surfaceClass": "BROWSER_MEDIATED",
+      "defaultContinuation": { "kind": "NONE" },
+      "requiredValidationLayers": ["target", "transfer", "format", "media"],
+      "scopePrimitive": "single_resource",
+      "coverageDimension": {
+        "expectation": "NOT_APPLICABLE_DESCRIPTOR",
+        "basis": "single media program journey; executable coverage binding arrives with the T06/T12 composition"
+      },
+      "intentVocabulary": {
+        "t01IntentSlice": null,
+        "t01OperationVocabulary": []
+      },
+      "budgetSemantics": {
+        "forbiddenAsComplete": [
+          "TRANSFER_BUDGET_EXHAUSTED",
+          "DISCOVERY_BUDGET_EXHAUSTED",
+          "GLOBAL_SAFETY_LIMIT"
+        ],
+        "note": "segmented transfer consumes the same budget domains; exhaustion is never program completion"
+      },
+      "oracle": {
+        "level": "DESCRIPTOR_REGISTRY_MATCH",
+        "harness": "tests/domain-app/baseline-oracle.test.ts",
+        "assertions": ["registry-identity", "vocabulary-consistency"],
+        "gap": "HLS VOD journey needs the T06 adapter and T12 composition; physical validation belongs to T16"
+      },
+      "installedBaseline": {
+        "status": "NOT_PROVEN_DESCRIPTOR_ONLY",
+        "owner": "T16 validation-product",
+        "requiredValidation": "installed HLS VOD journey with real media bytes before final version Validation"
+      }
+    },
+    {
+      "sliceId": "S5",
+      "title": "Current-page Resource Collection",
+      "surfaceClass": "COLLECTION",
+      "defaultContinuation": { "kind": "NONE" },
+      "requiredValidationLayers": ["membership", "target", "transfer", "format", "coverage"],
+      "scopePrimitive": "current_page",
+      "coverageDimension": {
+        "expectation": "REQUESTED_SCOPE_ACCOUNTING_DESCRIPTOR",
+        "basis": "requested-scope CoverageAccounting bound to the CoverageTarget is mandatory (PRD-§17); VERIFIED_COMPLETE requires independent identity/closure evidence (PRD-§19)"
+      },
+      "intentVocabulary": {
+        "t01IntentSlice": null,
+        "t01OperationVocabulary": []
+      },
+      "budgetSemantics": {
+        "forbiddenAsComplete": [
+          "TRANSFER_BUDGET_EXHAUSTED",
+          "DISCOVERY_BUDGET_EXHAUSTED",
+          "GLOBAL_SAFETY_LIMIT"
+        ],
+        "note": "count equality, page limits and timeouts are never coverage closure (PRD-§19); truncation stays TRUNCATED/UNKNOWN"
+      },
+      "oracle": {
+        "level": "DESCRIPTOR_REGISTRY_MATCH",
+        "harness": "tests/domain-app/baseline-oracle.test.ts",
+        "assertions": ["registry-identity", "vocabulary-consistency"],
+        "gap": "collection journey needs the T05 browser-collection workflow and T12 composition; physical validation belongs to T15/T16"
+      },
+      "installedBaseline": {
+        "status": "NOT_PROVEN_DESCRIPTOR_ONLY",
+        "owner": "T16 validation-product",
+        "requiredValidation": "installed current-page collection journey with coverage accounting before final version Validation"
+      }
+    },
+    {
+      "sliceId": "S6",
+      "title": "Explicit Playlist / Gallery Collection",
+      "surfaceClass": "COLLECTION",
+      "defaultContinuation": { "kind": "NONE" },
+      "requiredValidationLayers": ["membership", "target", "transfer", "coverage"],
+      "scopePrimitive": "explicit_member_set",
+      "coverageDimension": {
+        "expectation": "REQUESTED_SCOPE_ACCOUNTING_DESCRIPTOR",
+        "basis": "explicit member set is a bounded scope; completion still requires identity correspondence, never count equality (PRD-§11/§19)"
+      },
+      "intentVocabulary": {
+        "t01IntentSlice": null,
+        "t01OperationVocabulary": []
+      },
+      "budgetSemantics": {
+        "forbiddenAsComplete": [
+          "TRANSFER_BUDGET_EXHAUSTED",
+          "DISCOVERY_BUDGET_EXHAUSTED",
+          "GLOBAL_SAFETY_LIMIT"
+        ],
+        "note": "bounded explicit sets complete only when every requested member is durably accepted and validated"
+      },
+      "oracle": {
+        "level": "DESCRIPTOR_REGISTRY_MATCH",
+        "harness": "tests/domain-app/baseline-oracle.test.ts",
+        "assertions": ["registry-identity", "vocabulary-consistency"],
+        "gap": "playlist/gallery journey needs the T05/T08 adapters and T12 composition; physical validation belongs to T15/T16"
+      },
+      "installedBaseline": {
+        "status": "NOT_PROVEN_DESCRIPTOR_ONLY",
+        "owner": "T16 validation-product",
+        "requiredValidation": "installed explicit playlist/gallery journey with coverage accounting before final version Validation"
+      }
+    }
+  ]
+}

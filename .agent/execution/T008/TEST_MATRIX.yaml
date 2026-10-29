@@ -1,0 +1,98 @@
+task_id: T008
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: direct-http-file-acquisition-resume-retry-integrity
+validation_owner: T008-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+# Sourced verbatim from Issue #27 Validation scope (frozen TASK_PACKS.json T008 entry):
+# "Controlled HTTP tests for redirects, validator changes, safe restart, truncation,
+#  retries, budgets and wrong-target/integrity failure."
+# Elaborated by the Frozen Task Pack acceptance list: strong/no validators,
+# range support/change, truncation, retry, redirects, signed-locator refresh,
+# budget consumption, wrong target and corruption.
+
+required_suites:
+  - id: strong-and-no-validators
+    must_prove:
+      - strong validator (ETag/Last-Modified) present enables validated resume via If-Range
+      - no usable validator forbids append and forces safe restart from zero
+      - unsupported/ambiguous representation identity fails closed rather than guessing
+  - id: validator-change-and-range-support
+    must_prove:
+      - server range support is honored when declared and safe
+      - validator change between attempts is detected and never appended across
+      - range-aware resume consumes remaining transfer budget, not a fresh one
+  - id: safe-restart
+    must_prove:
+      - when representation identity cannot be proven the transfer restarts instead of appending uncertain bytes
+      - restart stays in the same logical target/effect lineage with stable identity
+      - restart does not imply budget replenishment or scope change
+  - id: truncation
+    must_prove:
+      - truncated byte streams are detected (length/range/completeness mismatch)
+      - truncated results cannot be projected as accepted/COMPLETE
+      - truncation is reflected truthfully in canonical result/evidence vocabulary
+  - id: retries
+    must_prove:
+      - retry operates only on the same frozen logical target/effect lineage
+      - retry consumes remaining TransferBudget/GlobalSafetyBudget per PRD 15.2-15.4 precedence
+      - retry cannot create new/replacement membership or target identity (C12)
+  - id: redirects-and-signed-locator-refresh
+    must_prove:
+      - provenance-bound redirect/CDN hop serving the frozen target retains logical target identity
+      - signed-locator expiry refresh re-binds to the same logical target with provenance
+      - unrelated redirect/target substitution fails closed (C29)
+      - redirects never enlarge requested scope
+  - id: budget-consumption
+    must_prove:
+      - transfer requests and downloaded bytes count against TransferBudget
+      - retry transfer requests count against TransferBudget without replenishment
+      - GlobalSafetyBudget hard ceiling takes highest precedence and can stop work without redefining scope
+      - budget is consumed through the authoritative canonical seam, never a private adapter ledger
+  - id: wrong-target-and-integrity
+    must_prove:
+      - bytes not matching the frozen target identity fail Target Validation and are not accepted
+      - corruption/digest mismatch fails closed with truthful typed evidence
+      - transfer/format/media validation layers (PRD 22, as applicable to S1/S3) gate acceptance; confirmation cannot waive them (C27)
+      - login/error HTML masquerading as target content is rejected by Format Validation
+
+counterexample_oracles:
+  - id: C09
+    scenario: original-vs-thumbnail-main-video-vs-ad
+    t008_oracle: technically valid transferred bytes do not satisfy the Target/Quality claim without typed independent target evidence; wrong-variant acquisition fails Target Validation
+  - id: C12
+    scenario: retry-failed-items
+    t008_oracle: retry domain is the original failed target/effect identities only; no replacement or new targets may enter through retry
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t008_oracle: restart/repair inherits remaining budgets and stable effect lineage; no budget replenishment and no duplicate allocation semantics at the adapter seam
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t008_oracle: truncated transfer or missing required S3 track cannot be COMPLETE; user confirmation does not waive transfer/media validation
+  - id: C28
+    scenario: discovery-budget-exhausted-hls-target-needs-segments
+    t008_oracle: budget domains stay distinct at the adapter seam — exhausted DiscoveryBudget does not block a frozen target while TransferBudget and GlobalSafetyBudget remain; transfer requests count TransferBudget
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t008_oracle: provenance-bound redirect to the declared CDN preserves logical target and validates the final bytes; unrelated redirect is rejected/fails closed
+
+negative_cases:
+  - append-across-validator-change
+  - append-with-no-strong-validator
+  - resume-past-truncated-origin-length
+  - redirect-treated-as-target-substitution
+  - redirect-scope-expansion-beyond-frozen-target
+  - signed-locator-refresh-without-rebinding
+  - truncated-bytes-projected-complete
+  - corrupt-bytes-projected-complete
+  - wrong-target-bytes-projected-resolved
+  - retry-beyond-exhausted-transfer-budget
+  - retry-creating-replacement-target
+  - private-budget-ledger-bypass
+  - format-invalid-html-accepted-as-target
+  - single-boolean-success-replacing-multidimensional-result
+
+completion_rule: >-
+  T008 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the applicable C-oracle set, and the negative cases are executable on controlled localhost protocol
+  fixtures and pass. This JIT Prep creates no PASS evidence.

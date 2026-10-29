@@ -1,0 +1,21 @@
+{
+  "name": "@xdownload/converged-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xdownload/ai-proposal": "workspace:*",
+    "@xdownload/core-seam": "workspace:*",
+    "@xdownload/discovery-recipe": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@xdownload/browser-auth-broker": "workspace:*",
+    "@xdownload/browser-collection-workflow": "workspace:*",
+    "@xdownload/core-runtime": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*"
+  }
+}

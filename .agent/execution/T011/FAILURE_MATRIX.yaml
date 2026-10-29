@@ -1,0 +1,145 @@
+task_id: T011
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+status: specification-only-not-run-by-jit-prep
+
+failures:
+  - id: task-pack-defect
+    trigger: Frozen T011 Task Pack is incomplete or contradicts higher Product/Task-DAG authority
+    classification: TASK_PACK_DEFECT
+    required_action:
+      - stop affected implementation path
+      - publish durable evidence to the owning authority
+      - do not redesign Product/Task scope locally
+    false_pass_forbidden: true
+
+  - id: architecture-contradiction
+    trigger: satisfying T011 would require violating Frozen L2 ownership, authority or trust boundaries, including any need for a non-declarative capability, crawler API or discovery self-certification
+    classification: ARCHITECTURE_CONTRADICTION
+    required_action:
+      - stop affected implementation path
+      - route through ADS Architecture Amendment/new-material-UNKNOWN process
+      - do not weaken invariants in code or tests
+    false_pass_forbidden: true
+
+  - id: execution-pack-invalid
+    trigger: wrong task/base/branch/task-pack/ADS pin, missing or duplicate core artifact, or pack contradicts higher authority
+    classification: EXECUTION_PACK_INVALID
+    required_action:
+      - stop before implementation
+      - regenerate or repair pack through an authorized JIT-prep action
+    false_pass_forbidden: true
+
+  - id: dependency-or-base-drift
+    trigger: version/v0.1.0 no longer equals manifest base or T002 completion identity is no longer current
+    classification: PACK_STALE_MATERIAL_OR_REBIND_REQUIRED
+    required_action:
+      - re-read integration delta and dependency identities
+      - classify under EXECUTION_PACK_STANDARD fail-closed rules
+      - never silently rewrite base_sha
+      - regenerate on material or unknown drift
+    false_pass_forbidden: true
+
+  - id: t002-contract-rewrite
+    trigger: T011 implementation modifies packages/domain-contracts semantics, rewrites T002-owned canonical vocabulary, or forks a competing gateway/authority
+    classification: OWNERSHIP_BOUNDARY_REJECTED
+    required_action:
+      - revert the rewrite
+      - express the need as escalation (TASK_PACK_DEFECT or ARCHITECTURE_CONTRADICTION) through the owning authority
+      - consume DomainGateway/canonical values as-is
+    false_pass_forbidden: true
+
+  - id: frontier-creation
+    trigger: discovery, recipe capability or continuation logic creates or follows an arbitrary URL frontier, recursive link space, general site frontier or continuous recrawl (including via user declaration)
+    classification: CRAWLER_BOUNDARY_REJECTED
+    required_action:
+      - reject at collection admission before any discovery action
+      - keep rejection deterministic and evidenced
+      - never approximate the frontier with pagination or budget constructs
+    false_pass_forbidden: true
+
+  - id: budget-as-scope
+    trigger: continuation, membership or scope width is inferred, sized or extended from DiscoveryBudget/TransferBudget/GlobalSafetyBudget values
+    classification: BUDGET_AS_SCOPE_REJECTED
+    required_action:
+      - reject the continuation/scope decision
+      - require explicit user-confirmed continuation scope from the PRD 10 grammar
+      - budget exhaustion must surface as truthful PARTIAL/TRUNCATED stop semantics, never as natural end
+    false_pass_forbidden: true
+
+  - id: snapshot-mutation
+    trigger: confirmed snapshot membership drifts, candidates silently replace members, retry adds/replaces members, or post-confirmation continuation expands without successor identity
+    classification: SNAPSHOT_DRIFT_REJECTED
+    required_action:
+      - retain original snapshot identity
+      - route expansion/re-enumeration through successor contract + successor snapshot
+      - never silently replace members
+    false_pass_forbidden: true
+
+  - id: false-natural-end-or-completeness
+    trigger: natural end or VERIFIED_COMPLETE is claimed from failed next page, missing control, pagination loop, count equality, page/batch limit, timeout or budget exhaustion
+    classification: COMPLETENESS_FABRICATION_REJECTED
+    required_action:
+      - report truthful UNKNOWN-or-TRUNCATED coverage with exact stop reason
+      - require independent identity/membership closure evidence for any complete claim
+    false_pass_forbidden: true
+
+  - id: capability-escape
+    trigger: recipe declares or the interpreter executes a capability outside the finite typed vocabulary (shell, unrestricted JS, filesystem write/export, cookie/token export, host scan, recursive navigation)
+    classification: CAPABILITY_BOUNDARY_REJECTED
+    required_action:
+      - fail closed on decode/plan
+      - record typed rejection evidence
+      - never extend the vocabulary locally; capability extension is a controlled ADR path
+    false_pass_forbidden: true
+
+  - id: confirmation-as-evidence
+    trigger: user confirmation is treated as target-quality/membership/validation truth, or discovery/recipe suggestion is typed as independent validation oracle for the same claim
+    classification: EVIDENCE_INDEPENDENCE_REJECTED
+    required_action:
+      - type confirmation as selection claim only
+      - keep discovery-derived evidence DISCOVERY_DERIVED; require INDEPENDENT provenance or correctly-scoped claims for material truth
+      - route to the evidence/result authorities (T007) rather than relaxing locally
+    false_pass_forbidden: true
+
+  - id: secret-or-locator-leak-into-recipe
+    trigger: recipe/knowledge data embeds credentials, signed URLs as durable reusable rules, or user identity secrets
+    classification: AUTHORITY_BOUNDARY_REJECTED
+    required_action:
+      - reject/redesign within opaque AuthorizationContextRef/opaque-locator boundaries
+      - escalate if Frozen Product/L2 semantics cannot be satisfied without secret persistence
+    false_pass_forbidden: true
+
+  - id: scope-invention
+    trigger: scope primitive, continuation form or page-numbering semantics outside the PRD 10 grammar is accepted at admission (e.g. iframe/detail pages counted as collection pages, load-more silently numbered)
+    classification: DOMAIN_INVARIANT_REJECTED
+    required_action:
+      - reject deterministically with typed diagnostics
+      - admit only the frozen grammar and declared bounds
+    false_pass_forbidden: true
+
+  - id: incomplete-oracle-mapping
+    trigger: any issue-scoped validation fixture (continuation NONE, declared bounds, successor snapshots, loops, frontier rejection) or applicable C01-C34 collection oracle lacks executable coverage
+    classification: T011_VALIDATION_INCOMPLETE
+    required_action:
+      - keep concern Validation non-PASS
+      - add bounded fixture/test only
+      - do not implement downstream product behavior to close the gap
+    false_pass_forbidden: true
+
+  - id: test-tooling-failure
+    trigger: install/typecheck/lint/unit/fixture test cannot execute, crashes, times out, or has unavailable required tooling
+    classification: VALIDATION_NOT_EXECUTED
+    required_action:
+      - record exact command/environment/failure
+      - distinguish infrastructure/tooling failure from product failure
+      - never report PASS from an unexecuted or partial gate
+    false_pass_forbidden: true
+
+  - id: new-dependency-license-unknown
+    trigger: Builder proposes a runtime dependency without exact version and license/provenance verification
+    classification: EXECUTION_EVIDENCE_INCOMPLETE
+    required_action:
+      - do not treat dependency choice as accepted
+      - record exact package/version/license and primary source before merge candidate qualification
+      - keep choice within F1 and Frozen Architecture
+    false_pass_forbidden: true

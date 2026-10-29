@@ -1,0 +1,13 @@
+(node:62964) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ sealed K/S payload bytes
+  ✔ host-side pre-load verification refuses altered sealed module bytes (78.1975ms)
+✔ sealed K/S payload bytes (79.1759ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 307.4617

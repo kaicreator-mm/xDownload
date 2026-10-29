@@ -1,0 +1,191 @@
+task_id: T003
+base_sha: c813d3a1f2afea7bd3f99de1d01321904f5fbdd5
+scope: validation-harness-corpora-gate-instrumentation
+validation_owner: T003-concern-validation
+status: specification-only-not-run-by-jit-prep
+
+required_suites:
+  - id: harness-self-tests
+    must_prove:
+      - every shipped harness executes deterministically and offline on the exact candidate
+      - harness outputs are stable across repeated runs for identical inputs
+      - harness failure modes fail closed with typed diagnostics instead of silent partial results
+      - no harness output is represented as Product gate truth
+  - id: corpus-identity
+    must_prove:
+      - Natural/Collection/Hard/Holdout corpora (PRD §33) load with stable corpus and task-case identities
+      - S1-S6 tagging of corpus cases matches the PRD §28 support-slice registry
+      - mutating corpus content under a reused identity is detected and rejected
+      - controlled fixtures/fixture servers are deterministic; no live-network truth is required
+  - id: denominator-accounting
+    must_prove:
+      - sample unit is one end-to-end Acquisition task, not each downloaded file (PRD §32.1)
+      - out-of-scope tasks are excluded from the primary success denominator but reported separately
+      - UNKNOWN is not success and remains in denominator unless independent truth itself is unavailable (INSUFFICIENT_EVIDENCE)
+      - abandonment caused by xDownload friction/failure is counted as non-success
+      - external/unrelated cancellation is excluded only with a pre-recorded reason
+      - repeated runs of the same unchanged task are not counted as independent sample units
+      - classification error of scope membership counts against scope/UX correctness
+  - id: baseline-pre-registration-enforcement
+    must_prove:
+      - G0BaselinePlan requires all PRD §32.2 fields before freeze (plan id, candidate registry, applicability, selection rule, comparison sets, baseline identity, aggregation rule, tie-break, frozen_at)
+      - a frozen plan is immutable; mutation attempts are detected and rejected
+      - non-deterministic or post-exposure baseline selection is rejected (PRD §32.2 steps 1-4, §33 Baseline rule R03)
+      - fixed comparison sets require a pre-registered aggregation rule
+      - baseline identity/config change after Phase B exposure is representable only as run invalidation requiring a new independent run (C33)
+      - no API exists to add favorable baselines or rewrite selection criteria after exposure
+  - id: evidence-exact-subject-binding
+    must_prove:
+      - captured evidence records carry claim_type, claim_subject, source identity/provenance, independence_from_discovery, scope and certainty class (PRD §20)
+      - discovery/UI-suggestion provenance cannot be typed as independent truth for the same claim (PRD §22, C34)
+      - user confirmation records prove only the shown/asked claim and cannot waive Transfer/Format/Media validation (PRD §21, C26/C27)
+      - evidence formatting is deterministic and subject-exact (no merged/approximated subjects)
+  - id: c01-c34-oracle-loading
+    must_prove:
+      - the C01-C34 oracle corpus loads completely: all 34 records parse, each with a known C-identity
+      - each oracle binds expected product behavior/status tuples to the canonical result vocabulary from @xdownload/domain-contracts
+      - each oracle carries pre-registered expectation metadata (target, scope, expected stop, truth source) per PRD §35 preamble
+      - records referencing unknown C-identities, unknown canonical statuses, or self-generated truth sources fail closed
+      - oracle execution against a product candidate is not part of this task and remains NOT_RUN
+  - id: critical-journey-harness
+    must_prove:
+      - CJ-01 through CJ-09 (PRD §31) each have a harness definition with pre-registered expectations
+      - journey definitions reference corpus task-case identities and required support slices without implementing product behavior
+      - journey definitions cannot silently add scope/continuation beyond the frozen contract semantics (e.g. CJ-04 continuation_scope=NONE rule, CJ-05 declared-natural-end truthfulness)
+  - id: gate-instrumentation
+    must_prove:
+      - G0 and G1a-G1d (PRD §32) have metric definitions (correct completion, active user time, manual actions, recovery effort, false-success rate) and PASS-rule evaluators consuming recorded evidence
+      - evaluators return FAIL/INSUFFICIENT_EVIDENCE rather than PASS when required confirmation evidence is missing
+      - all gate results on the exact T003 candidate remain NOT_RUN; no PASS/FAIL claim for real gates is produced here
+
+counterexample_oracles:
+  # T003 owns the harness/oracle infrastructure for PRD §35 C01-C34:
+  # each entry must exist as a loadable oracle record with pre-registered
+  # expectations bound to canonical identities/results; execution stays NOT_RUN.
+  - id: C01
+    scenario: duplicate-replaces-missing-member-count-equal
+    t003_oracle: oracle record registered expecting identity-correspondence rule and no VERIFIED_COMPLETE from count equality
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t003_oracle: oracle record pre-registers exact PARTIAL/PARTIAL/TRUNCATED expectation from cap exhaustion
+  - id: C03
+    scenario: next-page-fails-missing-control-or-loop
+    t003_oracle: oracle record pre-registers not-natural-end expectation with UNKNOWN/TRUNCATED coverage and truthful stop reason
+  - id: C04
+    scenario: finite-collection-valid-natural-end
+    t003_oracle: oracle record pre-registers VERIFIED_COMPLETE only with independent identity/membership closure evidence
+  - id: C05
+    scenario: user-selects-five-before-confirmation-all-five-succeed
+    t003_oracle: oracle record pre-registers exact COMPLETE/RESOLVED/COMPLETE/VERIFIED_COMPLETE/USER_SELECTION_COMPLETE tuple scoped to selected scope
+  - id: C06
+    scenario: first-1000-pages-under-domain-all-pdfs
+    t003_oracle: oracle record pre-registers collection-admission rejection of arbitrary frontier
+  - id: C07
+    scenario: member-needs-detail-page-or-cdn
+    t003_oracle: oracle record pre-registers traceable detail/CDN path with retained provenance
+  - id: C08
+    scenario: page-range-1-3-iframe-loadmore-no-continuation
+    t003_oracle: oracle record pre-registers pages-1-3-only scope, USER_SCOPE_REACHED stop, and successor-identity requirement for later load-more
+  - id: C09
+    scenario: original-vs-thumbnail-main-video-vs-ad
+    t003_oracle: oracle record pre-registers no-semantic-PASS without typed independent Target/Quality evidence
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-inaccessible
+    t003_oracle: oracle record pre-registers §17.2 tuple with 16/18 accounting and requested scope unchanged at 18
+  - id: C11
+    scenario: collection-changes-after-preview
+    t003_oracle: oracle record pre-registers snapshot drift rejection and successor-snapshot refresh
+  - id: C12
+    scenario: retry-failed-items
+    t003_oracle: oracle record pre-registers retry domain restricted to original failed member identities
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t003_oracle: oracle record pre-registers inherited remaining budgets and duplicate-allocation rejection
+  - id: C14
+    scenario: discovered-targets-succeed-enumeration-unfinished
+    t003_oracle: oracle record pre-registers selection-COMPLETE with Request PARTIAL/UNKNOWN and non-VERIFIED_COMPLETE coverage
+  - id: C15
+    scenario: unsupported-dash-separate-av-needs-mux
+    t003_oracle: oracle record pre-registers UNSUPPORTED/FAILED expectation without video-only success
+  - id: C16
+    scenario: simple-task-forced-through-unnecessary-preview
+    t003_oracle: oracle record pre-registers avoidable-interaction product-value failure expectation
+  - id: C17
+    scenario: batch-succeeds-pagination-untested
+    t003_oracle: oracle record pre-registers G1a-only credit; G1b remains unproven
+  - id: C18
+    scenario: same-bytes-two-chapters-or-same-name-different-content
+    t003_oracle: oracle record pre-registers member/source mapping preservation without semantic collapse
+  - id: C19
+    scenario: ai-vs-non-ai-comparison
+    t003_oracle: oracle record pre-registers same Tools/Auth/Budget/Context and independent truth requirement
+  - id: C20
+    scenario: local-recipe-replay-on-changed-page-session-layout
+    t003_oracle: oracle record pre-registers scope/correctness revalidation with cache/output control
+  - id: C21
+    scenario: shared-knowledge-independent-user-account
+    t003_oracle: oracle record pre-registers non-release-gate status, no credential/private-data leakage, fail-closed
+  - id: C22
+    scenario: insufficient-evidence
+    t003_oracle: oracle record pre-registers INSUFFICIENT_EVIDENCE with no post-hoc threshold conversion
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t003_oracle: oracle record pre-registers exact PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED tuple
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t003_oracle: oracle record pre-registers exact UNSATISFIED/BLOCKED/NOT_STARTED/UNKNOWN/AUTH_REQUIRED-or-AUTH_FAILED tuple
+  - id: C25
+    scenario: parent-ten-pages-user-requests-1-3-all-succeed
+    t003_oracle: oracle record pre-registers CoverageTarget pages-1-3 with no whole-parent completeness claim
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t003_oracle: oracle record pre-registers selection-only proof; QUALITY claim stays unverified
+  - id: C27
+    scenario: confirmed-candidate-transfer-truncated-or-track-missing
+    t003_oracle: oracle record pre-registers confirmation-cannot-waive-validation; SelectionAcquisition not COMPLETE
+  - id: C28
+    scenario: discovery-budget-exhausted-hls-target-needs-segments
+    t003_oracle: oracle record pre-registers separate budget-domain continuation rule for frozen HLS target
+  - id: C29
+    scenario: current-page-attachment-redirects-to-declared-cdn
+    t003_oracle: oracle record pre-registers provenance-bound CDN acceptance and unrelated-redirect rejection
+  - id: C30
+    scenario: fifty-item-confirmations-vs-batch-selection
+    t003_oracle: oracle record pre-registers batch/manual selection requirement with per-item burden counted against G0/G1c
+  - id: C31
+    scenario: prior-12-of-18-selection-reused-on-different-page
+    t003_oracle: oracle record pre-registers task-selection non-reusability without cross-task validation/promotion
+  - id: C32
+    scenario: gate-set-includes-failure-abandonment-unknown-out-of-scope
+    t003_oracle: oracle record pre-registers exact common-denominator rule application across non-success classes
+  - id: C33
+    scenario: phase-b-opened-then-protocol-or-baseline-changed
+    t003_oracle: oracle record pre-registers prior-run invalidation and new-independent-run requirement
+  - id: C34
+    scenario: ui-suggestion-used-as-ground-truth
+    t003_oracle: oracle record pre-registers invalid truth source; truth must be pre-registered/independent
+
+negative_harness_cases:
+  - corrupted-corpus-record
+  - corpus-identity-reuse-with-changed-content
+  - unknown-c-identity-in-oracle-corpus
+  - oracle-bound-to-unknown-canonical-status
+  - g0-plan-missing-required-field
+  - g0-plan-non-deterministic-selection-rule
+  - g0-plan-mutation-after-freeze
+  - baseline-added-after-phase-b-exposure
+  - aggregation-rule-chosen-after-exposure
+  - unknown-counted-as-success-in-denominator
+  - abandonment-silently-dropped
+  - external-cancellation-excluded-without-prerecorded-reason
+  - repeated-run-counted-as-independent-sample
+  - discovery-provenance-typed-as-independent-truth
+  - confirmation-record-waiving-transfer-format-media-validation
+  - gate-evaluator-passing-on-missing-evidence
+  - controlled-fixture-nondeterminism
+
+completion_rule: >-
+  T003 concern Validation may PASS only on an exact implementation candidate where all required suites,
+  the C01-C34 oracle-corpus loading with canonical-bound expectations, negative harness cases, and
+  baseline pre-registration enforcement are executable and pass, with every gate result remaining NOT_RUN.
+  This JIT Prep creates no PASS evidence.

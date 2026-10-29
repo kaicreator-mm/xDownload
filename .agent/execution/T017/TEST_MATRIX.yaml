@@ -1,0 +1,125 @@
+task_id: T017
+base_sha: 5b86cd2ca3b5cc587f7bf42f4331716637081353
+scope: surface-and-ai-convergence-integration
+validation_owner: T017-concern-validation
+status: specification-only-not-run-by-jit-prep
+validation_scope_source: >-
+  Issue #36 body (frozen materialization of T017): "Cross-surface
+  same-contract/status, concurrent UI/CLI, AI-offline fallback, HITL parity
+  and no surface-local authority." plus the Frozen Task Pack acceptance line:
+  "Same contract produces compatible UI/CLI status; concurrent clients
+  converge; browser-triggered actions project identically; AI outage/malicious
+  proposal fails safely; HITL choices remain explicit." Mirrored one-to-one
+  into required_suites below; concern-level only — version-level visible
+  Validation remains owned by T020-T023 on the exact T019 candidate.
+
+required_suites:
+  - id: cross-surface-same-contract-status
+    must_prove:
+      - the same canonical contract/command driven through SurfaceKind CLI and SurfaceKind DESKTOP_UI clients yields the same SeamResponse class (ACCEPTED/REJECTED/PROJECTION) and the same six-dimension terminal projection
+      - surfaces render Core projections verbatim; no surface-local status derivation, patching or success-boolean collapse exists in the glue
+      - REJECTED diagnostics project verbatim and identically across surfaces
+      - scope/continuation/authorization semantics are identical whether driven from UI or CLI (no drift; expansion routes successor-identity commands through the same seam on every surface)
+  - id: concurrent-ui-cli-convergence
+    must_prove:
+      - concurrent UI + CLI clients against one Core instance converge on one status per lineage/effect identity
+      - idempotent requestId replay across surfaces does not double-allocate; duplicate allocation is rejected by canonical identity (C13)
+      - interleaved control transitions (cancel/retry/resume) from different surfaces surface only as Core projections with no divergent or surface-invented status
+      - per-frame peer authorization holds: a surface cannot inherit an earlier peer's admission
+  - id: browser-triggered-identical-projection
+    must_prove:
+      - a browser-triggered flow (T016 S2 attachment → scoped capability → authoritative Core acquisition) projects identically to every observing surface
+      - the extension lane contributes evidence and intent only; it never owns transfer lifecycle, progress authority or terminal truth through the composed path
+      - browser-triggered outcomes render through the same T007 projection as any other surface's view of the same lineage
+  - id: ai-offline-fallback
+    must_prove:
+      - with the provider omitted (deterministic-only mode), unreachable, outage, TIMEOUT, MALFORMED_RESPONSE, or hung-past-deadline, the composed path resolves truthfully to MODEL_UNAVAILABLE + deterministic fallback (ASK_USER/ABORT) — never silent success, never invented members
+      - deterministic/template-supported tasks produce identical results and statuses with and without the provider (model-independence; C16)
+      - the caller-side provider deadline/budget wrap (T012 P2 waiver constraint; PRD §15 GlobalSafetyBudget model cost/calls + global active elapsed time) bounds a hung provider to its slice and resolves to typed unavailability without replenishing or redefining any budget
+      - accepted proposals carry suggestion provenance and are consumed only as human-suggestion-equivalent Recipes through the unmodified discovery-recipe decode/confirmation machinery (C19)
+  - id: malicious-proposal-safety
+    must_prove:
+      - hostile proposal payloads (unknown/unsupported envelope version, oversized envelope, unknown authority-bearing fields, credential/secret-bearing content, gap-ref or contract-ref mismatch, scope/membership-expanding Recipe) fail safely through the deterministic policy as typed rejections or unavailability
+      - no malicious or malformed proposal reaches behavior, scope, membership, authorization or terminal status through the composed path
+      - redaction/containment holds at the integration boundary: no raw secrets or unredacted observations cross to the provider port via the wired path
+  - id: hitl-parity
+    must_prove:
+      - confirmation plans from planConfirmationWorkflow render verbatim and route answers as idempotent Core commands from every surface; no surface collapses batch ambiguity into per-item prompts (C30)
+      - AI-suggested candidates enter the same explicit human confirmation flow as any other candidate; no AI path bypasses confirmation
+      - ASK_USER fallbacks surface as explicit user decisions and are never auto-resolved by any surface or by the glue
+      - HITL choices remain explicit and attributable only through Core records; confirmation proves selection only, never quality/validation claims (C05, C26)
+  - id: no-surface-local-authority
+    must_prove:
+      - no surface or glue module owns lifecycle, progress, budget, membership, coverage or terminal truth; canonical vocabulary comes only from domain-contracts via the seam
+      - Core-disconnect is an explicit degraded state on every surface with no fabricated status/progress
+      - authorization context stays an opaque reference at every surface; raw reusable secrets are refused at every interaction boundary
+
+counterexample_oracles:
+  - id: C02
+    scenario: requested-150-safety-cap-stops-100
+    t017_oracle: every surface renders the same truthful PARTIAL/TRUNCATED tuple from the Core projection; no surface upgrades it to COMPLETE
+  - id: C05
+    scenario: user-selects-five-before-confirmation-all-five-succeed
+    t017_oracle: the exact COMPLETE tuple for the selected requested scope renders identically from UI and CLI for the same contract
+  - id: C08
+    scenario: page-range-1-3-with-iframe-loadmore-detail-no-continuation
+    t017_oracle: continuation-loaded members are excluded identically regardless of driving surface; later load-more routes successor identity through the seam on every surface
+  - id: C10
+    scenario: whole-collection-18-auth-acquires-16-two-known-inaccessible
+    t017_oracle: the exact PARTIAL/AUTH_REQUIRED tuple renders verbatim and identically on all surfaces; no surface absorbs inaccessible members into success
+  - id: C11
+    scenario: collection-changes-after-preview
+    t017_oracle: refresh after change routes a successor-snapshot command through the seam from any surface; no surface mutates the original display/state in place
+  - id: C13
+    scenario: restart-repair-ui-cli-concurrency
+    t017_oracle: concurrent UI/CLI restart/repair inherits remaining budget via canonical identities; duplicate allocation is rejected and identically projected
+  - id: C16
+    scenario: simple-task-forced-through-unnecessary-preview
+    t017_oracle: a deterministic direct task completes identically with the provider configured and omitted; no composed path forces model/preview machinery on simple tasks
+  - id: C19
+    scenario: ai-vs-non-ai-comparison
+    t017_oracle: AI-suggested and human-suggested Recipes pass the exact same deterministic machinery; Tools/Auth/Budget/Context identity and independent truth are preserved; no AI authority special-case in the glue
+  - id: C20
+    scenario: local-recipe-replay-on-changed-page-session-layout
+    t017_oracle: an accepted proposal binds to the exact expectedGapRef/expectedContractRef and cannot replay stale recipe knowledge onto a changed current contract through the wired path
+  - id: C23
+    scenario: whole-collection-page3-undiscovered-due-discovery-budget
+    t017_oracle: the exact PARTIAL/PARTIAL/COMPLETE/TRUNCATED/DISCOVERY_BUDGET_EXHAUSTED tuple projects identically on every surface
+  - id: C24
+    scenario: auth-failure-yields-no-targets
+    t017_oracle: the exact UNSATISFIED/BLOCKED/AUTH_REQUIRED-or-AUTH_FAILED tuple projects identically on every surface; no surface-local retry fabricates targets
+  - id: C26
+    scenario: user-confirms-system-labeled-original-without-enough-information
+    t017_oracle: confirmation (including of an AI-suggested candidate) proves selection only; QUALITY remains independently unverified and renders identically across surfaces
+  - id: C30
+    scenario: fifty-item-confirmations-vs-batch-selection
+    t017_oracle: the canonical batch selection claim set routes identically from any surface; no surface explodes a batch ambiguity into per-item prompts
+  - id: C31
+    scenario: prior-12-of-18-selection-reused-on-different-page
+    t017_oracle: task-local selection identity cannot be replayed across contracts through any surface without distinct validated provenance; all surfaces reject identically
+  - id: C34
+    scenario: ui-suggestion-used-as-ground-truth
+    t017_oracle: an AI/UI suggestion's provenance stays suggestion-typed through the composed path and can never be rendered or recorded as independent truth on any surface
+
+negative_coverage:
+  - surface-local-status-derivation-attempt
+  - provider-hang-past-caller-deadline
+  - provider-exception-mapped-to-silent-skip
+  - ai-outage-degrades-deterministic-outcome
+  - proposal-envelope-unknown-schema-version
+  - proposal-envelope-oversized
+  - proposal-gap-ref-contract-ref-mismatch
+  - proposal-payload-scope-or-membership-expansion
+  - proposal-payload-credential-bearing
+  - ai-suggestion-bypassing-confirmation
+  - ask-user-fallback-auto-resolved-by-glue
+  - cross-surface-duplicate-allocation
+  - peer-identity-reuse-across-frames
+  - raw-secret-at-surface-interaction-boundary
+  - model-input-boundary-receives-unredacted-context
+
+completion_rule: >-
+  T017 concern Validation may PASS only on an exact implementation candidate
+  where all required suites, the applicable C-oracle mappings, and the
+  negative coverage above are executable and pass on the composed path.
+  This JIT Prep creates no PASS evidence.
