@@ -150,6 +150,6 @@ flowchart TD
 
 ## 5. Freeze blockers / scope discipline
 
-Before freezing, the independent reviewer must verify: Product/L2 exact SHA and Owner authority; the single-process lineage router and no-dual-writer rule; Electron security assumptions; all 22 nodes and edges; acyclicity; non-overlapping write sets; exact supported platform matrix; explicit human G0/G1 ownership; S4 not silently dropped; and the v0.10.3 Git-source SDK pin.
+Before freezing, the independent reviewer must verify: Product/L2 exact SHA and Owner authority; the single-process lineage router and no-dual-writer rule; Electron security assumptions; all 22 nodes and edges; acyclicity; non-overlapping write sets; exact supported platform matrix; explicit human G0/G1 ownership; S4 not silently dropped; and SDK provenance. The SDK gate must bind source tag commit `061376f4a023070f215f9feffad5c24d96d503cb` / tree `099cdc831aef63befd62aaede7e7a853d1be468f`, disclose that the four tarballs retain internal package version `0.10.2-rc.0`, and verify 4/4 SHA-256 against the #183 source-build receipts. Do not infer npm publication or silently rename/repack.
 
 No Task Issues have been materialized from this candidate yet. Once Product/L2/DAG review and explicit freeze are accepted, create canonical Task Issues and native dependencies, then JIT claims. This document alone authorizes no source implementation.
