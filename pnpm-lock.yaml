@@ -406,16 +406,30 @@ importers:
       '@kaicreator/domain-harness-microkernel':
         specifier: file:vendor/sdk/kaicreator-domain-harness-microkernel-0.10.2-rc.0.tgz
         version: file:packages/download-domain-app/vendor/sdk/kaicreator-domain-harness-microkernel-0.10.2-rc.0.tgz
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
+      '@xdownload/download-domain-host':
+        specifier: workspace:*
+        version: link:../download-domain-host
 
   packages/download-domain-host:
     dependencies:
       '@kaicreator/domain-harness-host-node':
         specifier: file:../download-domain-app/vendor/sdk/kaicreator-domain-harness-host-node-0.10.2-rc.0.tgz
         version: file:packages/download-domain-app/vendor/sdk/kaicreator-domain-harness-host-node-0.10.2-rc.0.tgz
-    devDependencies:
+      '@xdownload/direct-acquisition':
+        specifier: workspace:*
+        version: link:../direct-acquisition
+      '@xdownload/domain-contracts':
+        specifier: workspace:*
+        version: link:../domain-contracts
       '@xdownload/download-domain-app':
         specifier: workspace:*
         version: link:../download-domain-app
+      '@xdownload/hls-vod-adapter':
+        specifier: workspace:*
+        version: link:../hls-vod-adapter
 
   packages/hls-vod-adapter:
     dependencies:

@@ -168,3 +168,29 @@ optional-peer link; the unit gates were re-baselined green after the add.
 Bundles contain first-party workspace code and Node built-ins only — no
 third-party runtime dependency ships, so no third-party license text is
 required inside artifacts.
+
+## v0.2.0 domain packages (T13) — packaging boundary
+
+The pipeline above is the v0.1.0 terminal-product bundler: `ARTIFACTS` are
+shipped bundles (`cli`, `core`, `extension`, `native-host`) whose contents
+the fail-closed dist audit admits, and whose matrix tuples must cite
+`BUILT_AND_SMOKED` evidence. The v0.2.0 freeze delivers its new packages —
+`@xdownload/download-domain-app` and `@xdownload/download-domain-host` — as
+WORKSPACE packages, not as dist artifacts, and T13 deliberately adds no
+`ARTIFACTS` entry for them:
+
+- no frozen v0.2 lane owns a terminal-product packaging claim for the domain
+  app/host (installed-path validation belongs to T15/T16), so a new artifact
+  would mint an unowned support-matrix claim the audit would then demand
+  evidence for;
+- the packages are raw-TS source artifacts consumed through the workspace
+  and TS toolchains (the same class as the vendored SDK tarballs), so their
+  deliverable form is `pnpm pack` + clean-install/bundler consumption, not a
+  bundled `dist/` tree.
+
+The v0.2 packaging audit surface therefore lives in
+`packages/download-domain-app/README.md` ("Packaging evidence"): sealed
+SDK/payload hash re-verification, `pnpm pack` content checks against the
+declared `exports`, a clean install (no duplicate package root) and a real
+sealed-composition smoke over the installed bytes. Everything else in this
+directory is unchanged by T13.

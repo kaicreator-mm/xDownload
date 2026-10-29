@@ -7,10 +7,19 @@
   "engines": {
     "node": ">=24"
   },
-  "dependencies": {
-    "@kaicreator/domain-harness-host-node": "0.10.2-rc.0"
+  "exports": {
+    "./direct": "./src/direct/index.ts",
+    "./media": "./src/media/media-acquisition-bridge.ts",
+    "./media/permit": "./src/media/media-permit.ts"
   },
-  "devDependencies": {
-    "@xdownload/download-domain-app": "workspace:*"
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@kaicreator/domain-harness-host-node": "0.10.2-rc.0",
+    "@xdownload/direct-acquisition": "workspace:*",
+    "@xdownload/domain-contracts": "workspace:*",
+    "@xdownload/download-domain-app": "workspace:*",
+    "@xdownload/hls-vod-adapter": "workspace:*"
   }
 }
