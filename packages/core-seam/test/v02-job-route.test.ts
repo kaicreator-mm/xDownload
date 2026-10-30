@@ -156,7 +156,9 @@ describe('v0.2 Core seam route', () => {
     const missing = decodeSeamResponse(response());
     expect(missing.ok).toBe(false);
     if (!missing.ok) {
-      expect(missing.diagnostics.some((item) => item.code === 'MALFORMED_REQUIRED_FIELD')).toBe(true);
+      expect(
+        missing.diagnostics.some((item) => item.code === 'MALFORMED_REQUIRED_FIELD'),
+      ).toBe(true);
     }
 
     const unknownField = decodeSeamResponse(
