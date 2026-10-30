@@ -13,10 +13,11 @@
  * correlation (contract/snapshot/effect lineage references, issue time).
  */
 
-import { parseSemVer } from '@xdownload/domain-contracts';
+import { decodeDownloadJobProjection, parseSemVer } from '@xdownload/domain-contracts';
 import {
   seamDiagnostic,
   seamFail,
+  seamFromDomainFailure,
   seamOk,
   type SeamDiagnostic,
   type SeamResult,
@@ -866,6 +867,14 @@ export function decodeSeamResponse(value: unknown): SeamResult<SeamResponse> {
   if (outcome !== 'ACCEPTED' && outcome !== 'REJECTED' && outcome !== 'PROJECTION') {
     return seamFail([seamDiagnostic('ENVELOPE_MALFORMED', 'outcome', 'unknown response outcome')]);
   }
+  let projection: unknown = value['projection'];
+  if (route === 'v0.2' && outcome === 'PROJECTION') {
+    const decodedProjection = decodeDownloadJobProjection(value['projection']);
+    if (!decodedProjection.ok) {
+      return seamFromDomainFailure(decodedProjection);
+    }
+    projection = decodedProjection.value;
+  }
   return seamOk({
     schemaIdentity: schemaIdentity.value,
     kind: 'response',
@@ -875,7 +884,7 @@ export function decodeSeamResponse(value: unknown): SeamResult<SeamResponse> {
     acceptance: decodeAcceptance(value['acceptance']),
     currentRevision:
       typeof value['currentRevision'] === 'number' ? value['currentRevision'] : undefined,
-    projection: value['projection'],
+    projection,
     challenge: decodeS3SelectionChallenge(value['challenge']),
     s4PrivateChallenge: decodeS4PrivateChallenge(value['s4PrivateChallenge']),
     s5PrivateChallenge: decodeS5PrivateChallenge(value['s5PrivateChallenge']),

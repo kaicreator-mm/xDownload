@@ -127,6 +127,76 @@ describe('v0.2 Core seam route', () => {
     expect(decodedResponse.value.projection).toEqual(v02JobProjectionFixture);
   });
 
+  it('canonical-decodes v0.2 job projection responses at the client boundary', () => {
+    const response = {
+      schemaIdentity: currentSeamSchemaIdentity(),
+      kind: 'response',
+      route: 'v0.2',
+      inReplyTo: requestId(),
+      outcome: 'PROJECTION',
+      projection: v02JobProjectionFixture,
+    };
+    const decoded = decodeSeamResponse(response);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) return;
+    expect(decoded.value.projection).toEqual(v02JobProjectionFixture);
+    expect(Object.isFrozen(decoded.value.projection)).toBe(true);
+  });
+
+  it('rejects missing, unknown-field and semantically invalid v0.2 response projections', () => {
+    const response = (projection?: unknown) => ({
+      schemaIdentity: currentSeamSchemaIdentity(),
+      kind: 'response',
+      route: 'v0.2',
+      inReplyTo: requestId(),
+      outcome: 'PROJECTION',
+      ...(projection === undefined ? {} : { projection }),
+    });
+
+    const missing = decodeSeamResponse(response());
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) {
+      expect(missing.diagnostics.some((item) => item.code === 'MALFORMED_REQUIRED_FIELD')).toBe(true);
+    }
+
+    const unknownField = decodeSeamResponse(
+      response({ ...v02JobProjectionFixture, surfaceOnlyStatus: 'DONE' }),
+    );
+    expect(unknownField.ok).toBe(false);
+    if (!unknownField.ok) {
+      expect(unknownField.diagnostics.some((item) => item.code === 'UNKNOWN_FIELD')).toBe(true);
+    }
+
+    const invalidProgress = decodeSeamResponse(
+      response({
+        ...v02JobProjectionFixture,
+        progress: { transferredBytes: 101, totalBytes: { kind: 'KNOWN', bytes: 100 } },
+      }),
+    );
+    expect(invalidProgress.ok).toBe(false);
+    if (!invalidProgress.ok) {
+      expect(
+        invalidProgress.diagnostics.some((item) => item.code === 'INVALID_RESULT_COMBINATION'),
+      ).toBe(true);
+    }
+  });
+
+  it('preserves legacy projection responses without the explicit v0.2 route', () => {
+    const legacyProjection = { legacyStatus: 'RUNNING', providerExtension: true };
+    const decoded = decodeSeamResponse({
+      schemaIdentity: { schema: 'xdownload.core-seam', version: '1.2.0' },
+      kind: 'response',
+      inReplyTo: requestId(),
+      outcome: 'PROJECTION',
+      projection: legacyProjection,
+    });
+    expect(decoded.ok).toBe(true);
+    if (decoded.ok) {
+      expect(decoded.value.route).toBeUndefined();
+      expect(decoded.value.projection).toEqual(legacyProjection);
+    }
+  });
+
   it('fails closed when the v0.2 projection provider is absent or unavailable', () => {
     const noProvider = makeServer().handleFrame(JSON.stringify(rawV02Query()));
     expect(noProvider.outcome).toBe('REJECTED');
