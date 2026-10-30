@@ -186,6 +186,7 @@ describe('v0.2 Core seam route', () => {
 
   it('does not resolve an invalid v0.2 projection through the public seam client', async () => {
     let onFrame: ((frame: string) => void) | undefined;
+    let malformedResponseDelivered = false;
     const transport = {
       async connect() {
         return {
@@ -197,7 +198,10 @@ describe('v0.2 Core seam route', () => {
           },
           send(frame: string) {
             const request = JSON.parse(frame) as { requestId: string };
-            onFrame?.(
+            if (onFrame === undefined) {
+              throw new Error('client response handler was not registered before send');
+            }
+            onFrame(
               JSON.stringify({
                 schemaIdentity: currentSeamSchemaIdentity(),
                 kind: 'response',
@@ -207,6 +211,7 @@ describe('v0.2 Core seam route', () => {
                 projection: { ...v02JobProjectionFixture, surfaceOnlyStatus: 'DONE' },
               }),
             );
+            malformedResponseDelivered = true;
           },
           async close() {
             // No external resource is allocated by the fake transport.
@@ -226,6 +231,7 @@ describe('v0.2 Core seam route', () => {
       const pending = client.submitQuery(rawV02Query() as never);
       await vi.advanceTimersByTimeAsync(5_000);
       await expect(pending).rejects.toThrow(/timed out/);
+      expect(malformedResponseDelivered).toBe(true);
       await client.close();
     } finally {
       vi.useRealTimers();
