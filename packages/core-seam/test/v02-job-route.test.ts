@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createCoreSeamServer,
   currentSeamSchemaIdentity,
+  createSeamClient,
   decodeSeamEnvelope,
   decodeSeamResponse,
   EXPECTED_PEER,
@@ -180,6 +181,54 @@ describe('v0.2 Core seam route', () => {
       expect(
         invalidProgress.diagnostics.some((item) => item.code === 'INVALID_RESULT_COMBINATION'),
       ).toBe(true);
+    }
+  });
+
+  it('does not resolve an invalid v0.2 projection through the public seam client', async () => {
+    let onFrame: ((frame: string) => void) | undefined;
+    const transport = {
+      async connect() {
+        return {
+          onFrame(handler: (frame: string) => void) {
+            onFrame = handler;
+          },
+          onEnded() {
+            // This deterministic fake transport remains connected for the test.
+          },
+          send(frame: string) {
+            const request = JSON.parse(frame) as { requestId: string };
+            onFrame?.(
+              JSON.stringify({
+                schemaIdentity: currentSeamSchemaIdentity(),
+                kind: 'response',
+                route: 'v0.2',
+                inReplyTo: request.requestId,
+                outcome: 'PROJECTION',
+                projection: { ...v02JobProjectionFixture, surfaceOnlyStatus: 'DONE' },
+              }),
+            );
+          },
+          async close() {
+            // No external resource is allocated by the fake transport.
+          },
+        };
+      },
+    };
+
+    vi.useFakeTimers();
+    try {
+      const client = createSeamClient({
+        transport: transport as never,
+        target: { host: '127.0.0.1', port: 1 },
+        peer: peer(),
+        maxReconnectAttempts: 0,
+      });
+      const pending = client.submitQuery(rawV02Query() as never);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(pending).rejects.toThrow(/timed out/);
+      await client.close();
+    } finally {
+      vi.useRealTimers();
     }
   });
 
