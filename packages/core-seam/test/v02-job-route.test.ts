@@ -178,9 +178,11 @@ describe('v0.2 Core seam route', () => {
     );
     expect(invalidProgress.ok).toBe(false);
     if (!invalidProgress.ok) {
-      expect(invalidProgress.diagnostics.some((item) => item.code === 'INVALID_RESULT_COMBINATION')).toBe(
-        true,
-      );
+      expect(
+        invalidProgress.diagnostics.some(
+          (item) => item.code === 'INVALID_RESULT_COMBINATION',
+        ),
+      ).toBe(true);
     }
   });
 
