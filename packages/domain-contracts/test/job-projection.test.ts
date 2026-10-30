@@ -205,6 +205,10 @@ describe('v0.2.1 canonical download projections', () => {
       oldCore: 'UNREGISTERED',
       newK: 'ABSENT',
     });
+    const newKOwner = resolveLineageOwner({
+      oldCore: 'UNREGISTERED',
+      newK: 'OWNED',
+    });
     expect(ambiguous.ok && ambiguous.value).toEqual({
       status: 'REFUSED',
       reason: 'LINEAGE_OWNER_AMBIGUOUS',
@@ -216,6 +220,10 @@ describe('v0.2.1 canonical download projections', () => {
     expect(defaultOwner.ok && defaultOwner.value).toEqual({
       status: 'RESOLVED',
       owner: 'old-core',
+    });
+    expect(newKOwner.ok && newKOwner.value).toEqual({
+      status: 'RESOLVED',
+      owner: 'new-k',
     });
     expect(
       decodeLineageOwnerResolution({
