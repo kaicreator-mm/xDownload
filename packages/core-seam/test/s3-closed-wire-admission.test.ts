@@ -45,8 +45,8 @@ function frame(commandType: string, payload: unknown, version = '1.2.0') {
 }
 
 describe('#150 adopted S3 1.2 two-command syntax, no installed S3 authority', () => {
-  it('accepts only the closed 1.2 S3 syntax and advertises Core seam 1.2.0', () => {
-    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.2.0');
+  it('accepts only the closed 1.2 S3 syntax and advertises Core seam 1.3.0', () => {
+    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.3.0');
     expect(COMMAND_TYPES).not.toContain('CONFIRM_S3_CANDIDATE');
     expect(COMMAND_TYPES).not.toContain('EXECUTE_S3_SELECTED_MEDIA');
     for (const [commandType, payload] of [

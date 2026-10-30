@@ -26,3 +26,4 @@ export * from './coverage-accounting.ts';
 export * from './result-projector.ts';
 export * from './slices.ts';
 export * from './ports.ts';
+export * from './job-projection.ts';

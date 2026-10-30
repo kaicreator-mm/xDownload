@@ -103,7 +103,7 @@ describe('wire-contract-compatibility: L2 §6.3 command transaction facts at the
     });
     const decoded = decodeSeamEnvelope(raw);
     expect(decoded.ok).toBe(true);
-    if (!decoded.ok || decoded.value.kind !== 'command') {
+    if (!decoded.ok || decoded.value.kind !== 'command' || 'route' in decoded.value) {
       return;
     }
     // command/idempotency identity
