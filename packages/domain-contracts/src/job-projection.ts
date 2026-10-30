@@ -220,6 +220,16 @@ export function decodeDownloadProgressProjection(
   if (!totalShape.ok) return totalShape;
   const bytes = safeNonNegativeInteger(totalParsed.value['bytes'], path + '.totalBytes.bytes');
   if (!bytes.ok) return bytes;
+  if (transferredBytes.value > bytes.value) {
+    return fail([
+      diagnostic(
+        'INVALID_RESULT_COMBINATION',
+        path,
+        'transferred bytes cannot exceed a known total; use UNKNOWN when the total is not authoritative',
+        'progress.totalBytes >= progress.transferredBytes when totalBytes.kind is KNOWN',
+      ),
+    ]);
+  }
 
   return ok(
     deepFreeze({

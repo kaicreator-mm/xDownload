@@ -81,6 +81,35 @@ describe('v0.2.1 canonical download projections', () => {
     );
   });
 
+  it('rejects transferred bytes beyond a known total but permits unknown totals', () => {
+    expect(
+      decodeDownloadProgressProjection({
+        transferredBytes: 100,
+        totalBytes: { kind: 'KNOWN', bytes: 100 },
+      }).ok,
+    ).toBe(true);
+    expectCode(
+      decodeDownloadProgressProjection({
+        transferredBytes: 101,
+        totalBytes: { kind: 'KNOWN', bytes: 100 },
+      }),
+      'INVALID_RESULT_COMBINATION',
+    );
+    expectCode(
+      decodeDownloadProgressProjection({
+        transferredBytes: 1,
+        totalBytes: { kind: 'KNOWN', bytes: 0 },
+      }),
+      'INVALID_RESULT_COMBINATION',
+    );
+    expect(
+      decodeDownloadProgressProjection({
+        transferredBytes: 101,
+        totalBytes: { kind: 'UNKNOWN' },
+      }).ok,
+    ).toBe(true);
+  });
+
   it('decodes bounded typed errors and rejects unknown fields', () => {
     expect(
       decodeDownloadErrorProjection({
