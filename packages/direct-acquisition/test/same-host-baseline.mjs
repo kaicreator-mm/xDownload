@@ -40,9 +40,9 @@ async function main() {
       const startedAt = performance.now();
       const result = await adapter.acquire(
         directRequest(baseUri, '/same-host-baseline.bin', body, {
-          effectId: `xd-t03-${label}-${run}`,
-          contractId: `xd-t03-${label}-${run}`,
-          targetId: `xd-t03-target-${run}`,
+          effectId: `effect-t03-${label}-${run}`,
+          contractId: `contract-t03-${label}-${run}`,
+          targetId: `target-t03-${label}-${run}`,
           expectedTotalBytes: PAYLOAD_BYTES,
         }),
       );
