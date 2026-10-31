@@ -90,7 +90,9 @@ function stableRecord(
     const snapshot: Record<string, unknown> = Object.create(null);
     for (const key of Reflect.ownKeys(descriptors)) {
       if (typeof key !== 'string') {
-        return fail([diagnostic('SCOPE_WIDENING_REFUSED', path, 'symbol fields are not permitted')]);
+        return fail([
+          diagnostic('SCOPE_WIDENING_REFUSED', path, 'symbol fields are not permitted'),
+        ]);
       }
       const descriptor = descriptors[key];
       if (

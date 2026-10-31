@@ -153,14 +153,24 @@ async function createRealHlsFixture(root: string): Promise<{
     segmentPattern,
     mediaPath,
   ], { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true });
-  assert.equal(generated.error, undefined, `ffmpeg must be available for the real S4 fixture: ${generated.error?.message ?? ''}`);
+  assert.equal(
+    generated.error,
+    undefined,
+    `ffmpeg must be available for the real S4 fixture: ${generated.error?.message ?? ''}`,
+  );
   assert.equal(generated.status, 0, `ffmpeg fixture generation failed: ${generated.stderr}`);
   const mediaPlaylist = await readFile(mediaPath, 'utf8');
   const segmentNames = mediaPlaylist
     .split(/\r?\n/u)
     .filter((line) => line.length > 0 && !line.startsWith('#'));
-  assert.ok(segmentNames.length >= 2, 'real S4 fixture must contain at least two independently probed TS segments');
-  assert.ok(segmentNames.every((name) => basename(name) === name), 'fixture playlist segment names must be basenames');
+  assert.ok(
+    segmentNames.length >= 2,
+    'real S4 fixture must contain at least two independently probed TS segments',
+  );
+  assert.ok(
+    segmentNames.every((name) => basename(name) === name),
+    'fixture playlist segment names must be basenames',
+  );
   const segments = await Promise.all(segmentNames.map((name) => readFile(join(fixtureDir, name))));
   return { fixtureDir, mediaPlaylist, segmentNames, segments };
 }
@@ -186,7 +196,9 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     }
   });
 
-  it('routes a valid S4 intent through K to the trusted Host pin and refuses an unknown target before media effects', async () => {
+  it(
+    'routes a valid S4 intent through K to the trusted Host pin and refuses an unknown target before media effects',
+    async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-runtime-'));
     try {
       const outputRoot = resolve(join(root, 'output'));
@@ -213,7 +225,9 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     }
   });
 
-  it('re-reads an explicit selected variant, probes real H264/AAC TS segments, and materializes digest-backed output through K/Host', async () => {
+  it(
+    're-reads an explicit selected variant, probes real H264/AAC TS segments, and materializes digest-backed output through K/Host',
+    async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-positive-'));
     let runtime: Awaited<ReturnType<typeof assembleS4HlsRuntime>> | undefined;
     let server: Server | undefined;
@@ -230,19 +244,28 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
         hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
         if (pathname === '/master.m3u8') {
           const body = masterPlaylist();
-          response.writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl', 'content-length': String(Buffer.byteLength(body)) });
+          response.writeHead(200, {
+            'content-type': 'application/vnd.apple.mpegurl',
+            'content-length': String(Buffer.byteLength(body)),
+          });
           response.end(body);
           return;
         }
         if (pathname === '/media.m3u8') {
-          response.writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl', 'content-length': String(Buffer.byteLength(fixture.mediaPlaylist)) });
+          response.writeHead(200, {
+            'content-type': 'application/vnd.apple.mpegurl',
+            'content-length': String(Buffer.byteLength(fixture.mediaPlaylist)),
+          });
           response.end(fixture.mediaPlaylist);
           return;
         }
         const name = pathname.slice(1);
         if (fixture.segmentNames.includes(name)) {
           void readFile(join(fixture.fixtureDir, name)).then((bytes) => {
-            response.writeHead(200, { 'content-type': 'video/mp2t', 'content-length': String(bytes.length) });
+            response.writeHead(200, {
+              'content-type': 'video/mp2t',
+              'content-length': String(bytes.length),
+            });
             response.end(bytes);
           }).catch(() => {
             response.writeHead(404);
@@ -259,7 +282,9 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
         serverInstance.listen(0, '127.0.0.1', resolveListen);
       });
       const address = serverInstance.address();
-      if (address === null || typeof address === 'string') throw new Error('S4 fixture server did not bind a TCP port');
+      if (address === null || typeof address === 'string') {
+        throw new Error('S4 fixture server did not bind a TCP port');
+      }
       const origin = `http://127.0.0.1:${String(address.port)}`;
       const manifestUri = origin + '/master.m3u8';
       const renditionUri = origin + '/media.m3u8';
@@ -304,11 +329,15 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
         width: 160,
         height: 90,
       };
-      const selection = (intent.selection as Record<string, unknown>);
+      const selection = intent.selection as Record<string, unknown>;
       selection.displayedTupleDigest = s4HlsSelectionTupleDigest(tuple);
 
       const result = await submitConfirmedS4HlsVod(runtime, intent);
-      assert.equal(result.status, 'completed', result.message ?? result.code ?? 'S4 journey did not complete');
+      assert.equal(
+        result.status,
+        'completed',
+        result.message ?? result.code ?? 'S4 journey did not complete',
+      );
       if (result.status !== 'completed') throw new Error('expected completed S4 journey');
       assert.ok(result.evidence);
       assert.equal(result.evidence.fileSha256, digestAnchor);

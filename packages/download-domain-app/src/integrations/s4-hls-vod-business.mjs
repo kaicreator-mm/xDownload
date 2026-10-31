@@ -106,7 +106,9 @@ export function getPolicy() {
         resource: { key: 'media', operation: 'media.acquire' },
         external: { permitTtlMs: 60_000, await: 'terminal' },
         handler: async ({ input, effectId, resources }) => {
-          if (resources === undefined) throw new Error('S4 HLS requires the Host media resource port');
+          if (resources === undefined) {
+            throw new Error('S4 HLS requires the Host media resource port');
+          }
           return resources.call('media', 'media.acquire', { ...input, effectId });
         },
       },
