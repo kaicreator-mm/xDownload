@@ -70,14 +70,21 @@ const SELECTION_KEYS = [
   'expiresAt',
 ] as const;
 
-function stableRecord(value: unknown, path: string): DomainValidationResult<Record<string, unknown>> {
+function stableRecord(
+  value: unknown,
+  path: string,
+): DomainValidationResult<Record<string, unknown>> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', path, path + ' must be a plain data object')]);
+    return fail([
+      diagnostic('MALFORMED_REQUIRED_FIELD', path, path + ' must be a plain data object'),
+    ]);
   }
   try {
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) {
-      return fail([diagnostic('MALFORMED_REQUIRED_FIELD', path, path + ' must be a plain data object')]);
+      return fail([
+        diagnostic('MALFORMED_REQUIRED_FIELD', path, path + ' must be a plain data object'),
+      ]);
     }
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const snapshot: Record<string, unknown> = Object.create(null);
@@ -86,26 +93,46 @@ function stableRecord(value: unknown, path: string): DomainValidationResult<Reco
         return fail([diagnostic('SCOPE_WIDENING_REFUSED', path, 'symbol fields are not permitted')]);
       }
       const descriptor = descriptors[key];
-      if (descriptor === undefined || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
-        return fail([diagnostic('MALFORMED_REQUIRED_FIELD', path + '.' + key, 'accessor/non-enumerable fields are refused')]);
+      if (
+        descriptor === undefined ||
+        !descriptor.enumerable ||
+        !Object.hasOwn(descriptor, 'value')
+      ) {
+        return fail([
+          diagnostic(
+            'MALFORMED_REQUIRED_FIELD',
+            path + '.' + key,
+            'accessor/non-enumerable fields are refused',
+          ),
+        ]);
       }
       snapshot[key] = descriptor.value;
     }
     return ok(snapshot);
   } catch {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', path, 'hostile or revoked object is refused')]);
+    return fail([
+      diagnostic('MALFORMED_REQUIRED_FIELD', path, 'hostile or revoked object is refused'),
+    ]);
   }
 }
 
-function exactKeys(record: Record<string, unknown>, keys: readonly string[], path: string): DomainValidationResult<void> {
+function exactKeys(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+  path: string,
+): DomainValidationResult<void> {
   const allowed = new Set<string>(keys);
   const unknown = Object.keys(record).find((key) => !allowed.has(key));
   if (unknown !== undefined) {
-    return fail([diagnostic('SCOPE_WIDENING_REFUSED', path + '.' + unknown, 'unknown field is refused')]);
+    return fail([
+      diagnostic('SCOPE_WIDENING_REFUSED', path + '.' + unknown, 'unknown field is refused'),
+    ]);
   }
   const missing = keys.find((key) => key !== 'digestAnchor' && !Object.hasOwn(record, key));
   if (missing !== undefined) {
-    return fail([diagnostic('MISSING_REQUIRED_FIELD', path + '.' + missing, 'required field is missing')]);
+    return fail([
+      diagnostic('MISSING_REQUIRED_FIELD', path + '.' + missing, 'required field is missing'),
+    ]);
   }
   return ok(undefined);
 }
@@ -163,7 +190,9 @@ export function s4HlsSelectionTupleDigest(input: {
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
-export function validateConfirmedS4HlsIntent(input: unknown): DomainValidationResult<ConfirmedS4HlsIntent> {
+export function validateConfirmedS4HlsIntent(
+  input: unknown,
+): DomainValidationResult<ConfirmedS4HlsIntent> {
   const stable = stableRecord(input, 'intent');
   if (!stable.ok) return stable;
   const record = stable.value;
@@ -172,11 +201,23 @@ export function validateConfirmedS4HlsIntent(input: unknown): DomainValidationRe
 
   for (const field of ['requestId', 'lineageId', 'contractId', 'targetRef'] as const) {
     if (!boundedId(record[field])) {
-      return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.' + field, 'expected a bounded opaque identifier')]);
+      return fail([
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'intent.' + field,
+          'expected a bounded opaque identifier',
+        ),
+      ]);
     }
   }
   if (record.allowedOperation !== S4_HLS_MEDIA_OPERATION) {
-    return fail([diagnostic('CONTRACT_BINDING_MISMATCH', 'intent.allowedOperation', 'S4 HLS requires media.acquire')]);
+    return fail([
+      diagnostic(
+        'CONTRACT_BINDING_MISMATCH',
+        'intent.allowedOperation',
+        'S4 HLS requires media.acquire',
+      ),
+    ]);
   }
   const root = validateOutputRoot(record.outputRootScope);
   if (!root.ok) return root;
@@ -188,7 +229,13 @@ export function validateConfirmedS4HlsIntent(input: unknown): DomainValidationRe
   if (!selectionKeys.ok) return selectionKeys;
   for (const field of ['confirmedSelectionId', 'previewId', 'snapshotId', 'memberId'] as const) {
     if (!boundedId(selection[field])) {
-      return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.selection.' + field, 'expected a bounded selection identifier')]);
+      return fail([
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'intent.selection.' + field,
+          'expected a bounded selection identifier',
+        ),
+      ]);
     }
   }
   if (
@@ -200,15 +247,33 @@ export function validateConfirmedS4HlsIntent(input: unknown): DomainValidationRe
     typeof selection.displayedTupleDigest !== 'string' ||
     !SHA256_PATTERN.test(selection.displayedTupleDigest)
   ) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.selection', 'S4 selection/profile/URI/digest is malformed')]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'intent.selection',
+        'S4 selection/profile/URI/digest is malformed',
+      ),
+    ]);
   }
   if (typeof selection.confirmedAt !== 'string' || typeof selection.expiresAt !== 'string') {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.selection.confirmedAt', 'confirmation timestamps must be ISO strings')]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'intent.selection.confirmedAt',
+        'confirmation timestamps must be ISO strings',
+      ),
+    ]);
   }
   const confirmedAt = Date.parse(selection.confirmedAt);
   const expiresAt = Date.parse(selection.expiresAt);
   if (!Number.isFinite(confirmedAt) || !Number.isFinite(expiresAt) || expiresAt <= confirmedAt) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.selection.expiresAt', 'selection confirmation window is invalid')]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'intent.selection.expiresAt',
+        'selection confirmation window is invalid',
+      ),
+    ]);
   }
 
   const callerStable = stableRecord(record.caller, 'intent.caller');
@@ -224,10 +289,21 @@ export function validateConfirmedS4HlsIntent(input: unknown): DomainValidationRe
     caller.sessionRef.length < 1 ||
     caller.sessionRef.length > 256
   ) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.caller', 'caller identity is malformed')]);
+    return fail([
+      diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.caller', 'caller identity is malformed'),
+    ]);
   }
-  if (record.digestAnchor !== undefined && (typeof record.digestAnchor !== 'string' || !SHA256_PATTERN.test(record.digestAnchor))) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'intent.digestAnchor', 'digestAnchor must be lowercase SHA-256')]);
+  if (
+    record.digestAnchor !== undefined &&
+    (typeof record.digestAnchor !== 'string' || !SHA256_PATTERN.test(record.digestAnchor))
+  ) {
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'intent.digestAnchor',
+        'digestAnchor must be lowercase SHA-256',
+      ),
+    ]);
   }
 
   return ok(Object.freeze({
@@ -250,7 +326,10 @@ export function validateConfirmedS4HlsIntent(input: unknown): DomainValidationRe
       confirmedAt: selection.confirmedAt as string,
       expiresAt: selection.expiresAt as string,
     }),
-    caller: Object.freeze({ actor: caller.actor as string, sessionRef: caller.sessionRef as string }),
+    caller: Object.freeze({
+      actor: caller.actor as string,
+      sessionRef: caller.sessionRef as string,
+    }),
     ...(record.digestAnchor === undefined ? {} : { digestAnchor: record.digestAnchor as string }),
   }));
 }
