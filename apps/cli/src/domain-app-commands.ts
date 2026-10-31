@@ -23,10 +23,7 @@
 
 import { randomUUID } from 'node:crypto';
 
-import {
-  DOWNLOAD_OPERATIONS,
-  type DownloadOperationId,
-} from '@xdownload/download-domain-app/src/contracts/index.ts';
+import { DOWNLOAD_OPERATIONS, type DownloadOperationId } from '@xdownload/download-domain-app';
 
 import { CLI_ID_PATTERN, CliInputError } from './args.ts';
 import {

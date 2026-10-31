@@ -59,8 +59,33 @@ export interface WaitOptions {
   readonly pollMs: number;
 }
 
+/**
+ * The explicit v0.2 Domain App route input (T04). The route is strictly
+ * opt-in: `--route v0.2` is the only admission and it is never inferred —
+ * without the flag every command keeps the legacy v1 seam grammar. The
+ * v0.2 commands map onto the frozen Domain App public facade through
+ * `domain-app-commands.ts`; the confirmed intent payload passes through
+ * unchanged and is re-validated authoritatively by the Core.
+ */
+export interface DomainAppRouteInput {
+  readonly kind: 'domain-app';
+  readonly route: 'v0.2';
+  readonly command: 'submit' | 'status' | 'wait' | 'cancel' | 'batch';
+  readonly target: TargetOptions;
+  /** submit/batch payload source (the confirmed download intent JSON/JSONL). */
+  readonly source: PayloadSource | null;
+  /** status/wait/cancel lineage identity (`--lineage`). */
+  readonly lineage: string | null;
+  /** Optional bounded cancel reason (`--reason`). */
+  readonly reason: string | undefined;
+  /** Bounded wait for status/wait terminal polling. */
+  readonly wait: WaitOptions | null;
+  readonly requestId: string | undefined;
+}
+
 export type ParsedInput =
   | { readonly kind: 'help' }
+  | DomainAppRouteInput
   | {
       readonly kind: 'submit';
       readonly target: TargetOptions;
@@ -219,6 +244,27 @@ Command options:
 Output: exactly one machine-readable JSON document on stdout (PRD §27 field
 set for status; stable exit codes; diagnostics projected verbatim). Human
 notes go to stderr. Submit acceptance is never final task success.
+
+v0.2 Domain App route (explicit, T04):
+  --route v0.2       Route the command through the existing Core seam to the
+                     v0.2 Domain App (one admitted K composition per Core).
+                     The route is never inferred: without --route every
+                     command keeps the legacy v1 grammar above.
+  submit             --file/--stdin carries ONE confirmed download intent
+                     JSON document (requestId, lineageId, targetRef,
+                     outputRootScope, allowedOperation, slice, caller; the
+                     Core re-validates it authoritatively — the CLI invents
+                     no intent fields).
+  status             --lineage <id> reads the v0.2 job projection.
+  wait               --lineage <id> --timeout-ms <n> --poll-ms <n> polls the
+                     v0.2 job projection until a terminal status (bounded;
+                     no timeout invents a status).
+  cancel             --lineage <id> [--reason <text>] sends the bounded
+                     download.cancel intent; the Core owns admission.
+  batch              --file/--stdin JSONL of confirmed intents, per-item
+                     results, worst-severity exit.
+  download/media/hls/confirm/retry are NOT admitted on --route v0.2 and
+  fail closed with a typed USAGE error.
 `;
 
 type ArgValues = Record<string, string | boolean | undefined>;
@@ -247,6 +293,9 @@ const OPTIONS = {
   profile: { type: 'string' },
   manifest: { type: 'string' },
   rendition: { type: 'string' },
+  route: { type: 'string' },
+  lineage: { type: 'string' },
+  reason: { type: 'string' },
 } as const;
 
 function str(values: ArgValues, name: string): string | undefined {
@@ -623,6 +672,96 @@ function manifestUriError(reason: string): CliInputError {
 }
 
 /**
+ * Parse one explicit `--route v0.2` invocation into the typed Domain App
+ * route input. The admitted command vocabulary is closed (submit/status/
+ * wait/cancel/batch); every other command fails closed with a typed USAGE
+ * error instead of being silently degraded onto the v0.2 route.
+ */
+function parseDomainAppRoute(
+  command: string,
+  route: string,
+  values: ArgValues,
+  target: TargetOptions,
+): DomainAppRouteInput {
+  if (route !== 'v0.2') {
+    fail(`--route must be 'v0.2' (the only admitted Domain App route)`);
+  }
+  const lineage = (): string => parseIdentifier(str(values, 'lineage'), 'lineage', 'lineageId');
+  switch (command) {
+    case 'submit':
+      return {
+        kind: 'domain-app',
+        route: 'v0.2',
+        command: 'submit',
+        target,
+        source: parsePayloadSource(values),
+        lineage: null,
+        reason: undefined,
+        wait: null,
+        requestId: parseRequestId(values),
+      };
+    case 'status':
+      return {
+        kind: 'domain-app',
+        route: 'v0.2',
+        command: 'status',
+        target,
+        source: null,
+        lineage: lineage(),
+        reason: undefined,
+        wait: null,
+        requestId: undefined,
+      };
+    case 'wait':
+      return {
+        kind: 'domain-app',
+        route: 'v0.2',
+        command: 'wait',
+        target,
+        source: null,
+        lineage: lineage(),
+        reason: undefined,
+        wait: parseWaitWithDefault(values),
+        requestId: undefined,
+      };
+    case 'cancel':
+      return {
+        kind: 'domain-app',
+        route: 'v0.2',
+        command: 'cancel',
+        target,
+        source: null,
+        lineage: lineage(),
+        reason: str(values, 'reason'),
+        wait: null,
+        requestId: parseRequestId(values),
+      };
+    case 'batch':
+      return {
+        kind: 'domain-app',
+        route: 'v0.2',
+        command: 'batch',
+        target,
+        source: parsePayloadSource(values),
+        lineage: null,
+        reason: undefined,
+        wait: null,
+        requestId: parseRequestId(values),
+      };
+    case 'download':
+    case 'media':
+    case 'hls':
+    case 'confirm':
+    case 'retry':
+      return fail(
+        `'${command}' is not admitted on --route v0.2; run it on the legacy route (omit --route)`,
+      );
+    default:
+      return fail(`unknown command '${String(command)}'; run 'xdownload help'`);
+  }
+}
+
+/**
  * Parse process argv (without the node/script prefix) into a typed input
  * value. Unknown commands/flags and malformed values raise typed
  * `CliInputError`s before any envelope is built.
@@ -646,6 +785,10 @@ export function parseArgv(argv: readonly string[]): ParsedInput {
   }
   const target = parseTarget(values);
   const contractId = (): string => requireString(str(values, 'contract'), 'contract');
+  const route = str(values, 'route');
+  if (route !== undefined) {
+    return parseDomainAppRoute(command, route, values, target);
+  }
   switch (command) {
     case 'submit':
       return {
