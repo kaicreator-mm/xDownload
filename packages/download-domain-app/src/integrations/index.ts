@@ -86,3 +86,25 @@ export {
   type SliceMemberDeliveryFacts,
   type SliceMemberOutcome,
 } from './slice-journey-shared.ts';
+
+export {
+  APP_ID_S4_HLS_VOD,
+  BUILD_ID_S4_HLS_VOD,
+  S4_HLS_BRIDGE_PIN,
+  S4_HLS_ROUTE,
+  assembleS4HlsRuntime,
+  sealS4HlsComposition,
+  submitConfirmedS4HlsVod,
+  type S4HlsJourneyResult,
+  type S4HlsPinCounters,
+  type S4HlsRuntime,
+  type S4HlsRuntimeOptions,
+} from './s4-hls-vod.ts';
+export {
+  S4_HLS_MEDIA_OPERATION,
+  S4_HLS_MEDIA_PROFILE,
+  s4HlsSelectionTupleDigest,
+  validateConfirmedS4HlsIntent,
+  type ConfirmedS4HlsIntent,
+  type S4ConfirmedSelection,
+} from './s4-hls-vod-contract.ts';

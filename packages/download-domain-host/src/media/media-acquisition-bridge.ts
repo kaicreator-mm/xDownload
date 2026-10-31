@@ -26,8 +26,9 @@
  * (PRD §15.2/§15.4, C28). Budget/member exhaustion terminates honestly — a
  * failed terminal envelope, never a partial success.
  */
-import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { link, mkdir, unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   bindLocator,
   deepFreeze,
@@ -38,13 +39,18 @@ import {
   normalizeEffectEnvelope,
   validateConfirmedIntent,
   validateMaterializedEvidence,
-  type ConfirmedDownloadIntent,
   type EffectEnvelope,
   type MaterializedEvidence,
 } from '../../../download-domain-app/src/contracts/index.ts';
 import { bindRenditionToTarget } from '../../../hls-vod-adapter/src/bind.ts';
 import { createTransferLedger } from '../../../hls-vod-adapter/src/budget.ts';
-import { createSyntheticMediaAssemblyPort } from '../../../hls-vod-adapter/src/assemble.ts';
+import { createSyntheticMediaAssemblyPort, type MediaAssemblyPort } from '../../../hls-vod-adapter/src/assemble.ts';
+import { createFfmpegTsMediaAssemblyPort } from '../../../hls-vod-adapter/src/ffmpeg-ts.ts';
+import {
+  s4HlsSelectionTupleDigest,
+  validateConfirmedS4HlsIntent,
+  type S4ConfirmedSelection,
+} from '../../../download-domain-app/src/integrations/s4-hls-vod-contract.ts';
 import {
   createAuthorizedHttpSegmentFetcher,
   type AsyncSegmentFetcherPort,
@@ -78,28 +84,44 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const HARD_MAX_TIMEOUT_MS = 30_000;
 const ARTIFACT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-/** One confirmed media acquisition request at the Host boundary. */
-export interface MediaAcquisitionBridgeRequest {
-  /** Confirmed download intent (validated no-widening; operation must be media.acquire). */
-  readonly intent: unknown;
-  /** Explicit protocol declaration; only 'HLS' is executed. */
+interface MediaAcquisitionTransportRequest {
   readonly protocol: string;
-  /** Trusted-Host-resolved manifest locator for the intent's opaque targetRef. */
   readonly manifestUri: string;
-  /** Exact rendition URI declared by the master playlist; defaults to the first variant. */
-  readonly selectedRenditionUri?: string;
-  /** Bounded artifact file name inside the authorized root (no separators). */
   readonly artifactFileName?: string;
-  /** Kernel permit (validated fail-closed; missing/invalid refuses with zero effects). */
   readonly permit: unknown;
-  /**
-   * Fixture-only loopback HTTP exception forwarded to the engine ports.
-   * Production callers MUST leave this false (engine default).
-   */
   readonly fixtureLoopbackHttp?: boolean;
   readonly manifestMaxBytes?: number;
   readonly segmentMaxBytes?: number;
   readonly timeoutMs?: number;
+}
+
+/** One legacy S3 media acquisition request at the Host boundary. */
+export interface MediaAcquisitionBridgeRequest extends MediaAcquisitionTransportRequest {
+  readonly intent: unknown;
+  /** Explicit trusted rendition URI; missing selection is refused, never defaults to variant zero. */
+  readonly selectedRenditionUri?: string;
+}
+
+/** S4 selected-HLS request: the explicit selection is inside the closed S4 intent, not a slice field. */
+export interface S4HlsVodBridgeRequest extends MediaAcquisitionTransportRequest {
+  readonly intent: unknown;
+}
+
+interface MediaIntentContext {
+  readonly requestId: string;
+  readonly lineageId: string;
+  readonly contractId?: string;
+  readonly targetRef: string;
+  readonly outputRootScope: string;
+  readonly allowedOperation: string;
+  readonly digestAnchor?: string;
+}
+
+interface HlsExecutionOptions {
+  readonly selectedRenditionUri?: string;
+  readonly selection?: S4ConfirmedSelection;
+  readonly assemblyPort: MediaAssemblyPort;
+  readonly artifactExtension: 'bin' | 'ts';
 }
 
 /** Observable effect counters returned with every bridge result. */
@@ -253,8 +275,74 @@ function boundedCount(
  * non-HLS protocol declaration, foreign operation or out-of-scope origin
  * refuse with zero network requests and zero filesystem writes.
  */
+/**
+ * Legacy S3 media adapter. The target registry must provide an explicit
+ * rendition URI; there is no implicit first-variant selection.
+ */
 export async function acquireMediaViaHls(
   request: MediaAcquisitionBridgeRequest,
+): Promise<MediaAcquisitionBridgeResult> {
+  const intentCheck = validateConfirmedIntent(request.intent);
+  if (!intentCheck.ok) {
+    const counters = emptyCounters();
+    return refuseResult(counters, 'MEDIA_INTENT_MALFORMED',
+      `confirmed intent rejected by the no-widening contract: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`);
+  }
+  return executeMediaHls(request, intentCheck.value, {
+    selectedRenditionUri: request.selectedRenditionUri,
+    assemblyPort: createSyntheticMediaAssemblyPort(),
+    artifactExtension: 'bin',
+  });
+}
+
+/**
+ * S4 selected-HLS adapter. It requires a fresh, exact tuple match and uses
+ * the real FFmpeg/ffprobe media oracle; missing host tools produce
+ * INSUFFICIENT_EVIDENCE and never a successful artifact.
+ */
+export async function acquireSelectedHlsVod(
+  request: S4HlsVodBridgeRequest,
+): Promise<MediaAcquisitionBridgeResult> {
+  const intentCheck = validateConfirmedS4HlsIntent(request.intent);
+  if (!intentCheck.ok) {
+    const counters = emptyCounters();
+    return refuseResult(counters, 'S4_INTENT_INVALID',
+      `S4 confirmed selection refused: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`);
+  }
+  const intent = intentCheck.value;
+  if (Date.parse(intent.selection.expiresAt) <= Date.now()) {
+    const counters = emptyCounters();
+    return refuseResult(counters, 'S4_SELECTION_EXPIRED', 'the confirmed S4 selection has expired');
+  }
+  if (intent.selection.manifestUri !== request.manifestUri) {
+    const counters = emptyCounters();
+    return refuseResult(counters, 'S4_SELECTION_TARGET_MISMATCH', 'selection manifest does not match the trusted Host target');
+  }
+  return executeMediaHls(request, intent, {
+    selectedRenditionUri: intent.selection.renditionUri,
+    selection: intent.selection,
+    assemblyPort: createFfmpegTsMediaAssemblyPort(),
+    artifactExtension: 'ts',
+  });
+}
+
+function emptyCounters(): MutableCounters {
+  return {
+    manifestRequests: 0,
+    mediaPlaylistRequests: 0,
+    segmentRequests: 0,
+    fileWrites: 0,
+    permitRefusals: 0,
+    protocolRefusals: 0,
+    operationRefusals: 0,
+    domainRefusals: 0,
+  };
+}
+
+async function executeMediaHls(
+  request: MediaAcquisitionTransportRequest,
+  intent: MediaIntentContext,
+  execution: HlsExecutionOptions,
 ): Promise<MediaAcquisitionBridgeResult> {
   const counters: MutableCounters = {
     manifestRequests: 0,
@@ -269,17 +357,6 @@ export async function acquireMediaViaHls(
   const refuse = (code: string, message: string): MediaAcquisitionBridgeResult =>
     refuseResult(counters, code, message);
 
-  // ---- Gate chain: every refusal below precedes ANY network/filesystem effect.
-  const intentCheck = validateConfirmedIntent(request.intent);
-  if (!intentCheck.ok) {
-    return refuse(
-      'MEDIA_INTENT_MALFORMED',
-      `confirmed intent rejected by the no-widening contract: ${intentCheck.diagnostics
-        .map((entry) => entry.code)
-        .join(',')}`,
-    );
-  }
-  const intent: ConfirmedDownloadIntent = intentCheck.value;
   if (intent.allowedOperation !== MEDIA_ACQUIRE_OPERATION) {
     counters.operationRefusals += 1;
     return refuse(
@@ -396,18 +473,52 @@ export async function acquireMediaViaHls(
   if (!master.ok) {
     return preEngineSummary('MEDIA_MANIFEST_MALFORMED', 'master playlist failed bounded decoding');
   }
-  const selected =
-    request.selectedRenditionUri === undefined
-      ? master.value.variants[0]
-      : master.value.variants.find((variant) => variant.uri === request.selectedRenditionUri);
-  if (selected === undefined) {
+  const selectedUri = execution.selectedRenditionUri;
+  if (selectedUri === undefined) {
+    return preEngineSummary(
+      'MEDIA_RENDITION_REQUIRED',
+      'an explicit rendition selection is required; implicit first-variant fallback is forbidden',
+    );
+  }
+  const variants = master.value.variants.filter((variant) => variant.uri === selectedUri);
+  if (variants.length !== 1) {
     return preEngineSummary(
       'MEDIA_RENDITION_UNRESOLVED',
       'selected rendition does not correspond to exactly one declared master variant',
     );
   }
+  const selected = variants[0]!;
+  if (execution.selection !== undefined) {
+    const selection = execution.selection;
+    const expectedDigest = s4HlsSelectionTupleDigest({
+      contractId: intent.contractId!,
+      snapshotId: selection.snapshotId,
+      memberId: selection.memberId,
+      previewId: selection.previewId,
+      renditionKey: selection.renditionKey,
+      renditionUri: selection.renditionUri,
+      manifestUri: selection.manifestUri,
+      mediaProfileId: selection.mediaProfileId,
+      bandwidth: selected.bandwidth,
+      ...(selected.resolution === undefined ? {} : {
+        width: selected.resolution.width,
+        height: selected.resolution.height,
+      }),
+    });
+    if (
+      selection.manifestUri !== request.manifestUri ||
+      selection.renditionUri !== selected.uri ||
+      selection.renditionKey !== `rend-${String(selected.index)}` ||
+      selection.displayedTupleDigest !== expectedDigest
+    ) {
+      return preEngineSummary(
+        'S4_SELECTION_STALE_OR_MISMATCHED',
+        'the confirmed rendition tuple no longer matches the freshly fetched master manifest',
+      );
+    }
+  }
   const targetId = makeLogicalTargetId(intent.targetRef);
-  const contractId = makeContractId(`contract-${intent.requestId}`);
+  const contractId = makeContractId(intent.contractId ?? `contract-${intent.requestId}`);
   if (!targetId.ok || !contractId.ok) {
     return preEngineSummary('MEDIA_BINDING_REJECTED', 'canonical identity binding refused');
   }
@@ -458,7 +569,7 @@ export async function acquireMediaViaHls(
     mediaPlaylistLocator: binding.value.renditionLocator,
     ledger,
     fetcher: countedFetcher,
-    assemblyPort: createSyntheticMediaAssemblyPort(),
+    assemblyPort: execution.assemblyPort,
     recordedAt: new Date().toISOString(),
   });
   if (!pipeline.ok) {
@@ -475,7 +586,7 @@ export async function acquireMediaViaHls(
     outcome.run !== undefined &&
     outcome.chain?.accepted === true
   ) {
-    return await materializeCompleted(intent, outcome.run, summary, externalRef, counters, request);
+    return await materializeCompleted(intent, outcome.run, summary, externalRef, counters, request, execution.artifactExtension);
   }
   if (outcome.kind === 'BUDGET_STOPPED' && outcome.run !== undefined) {
     const stop = outcome.run.stop;
@@ -509,7 +620,7 @@ export async function acquireMediaViaHls(
 }
 
 function summaryOf(
-  intent: ConfirmedDownloadIntent,
+  intent: MediaIntentContext,
   shape: Pick<MediaAcquisitionSummary, 'outcomeKind'>,
   engine?: HlsVodPipelineOutcome,
 ): MediaAcquisitionSummary {
@@ -538,12 +649,13 @@ function summaryOf(
  * counter records only a write that actually happened.
  */
 async function materializeCompleted(
-  intent: ConfirmedDownloadIntent,
+  intent: MediaIntentContext,
   run: AcquisitionRun,
   summary: MediaAcquisitionSummary,
   externalRef: string,
   counters: MutableCounters,
-  request: MediaAcquisitionBridgeRequest,
+  request: MediaAcquisitionTransportRequest,
+  artifactExtension: 'bin' | 'ts',
 ): Promise<MediaAcquisitionBridgeResult> {
   const ordered = [...run.transferred].sort(
     (left, right) => left.entry.position - right.entry.position,
@@ -579,7 +691,7 @@ async function materializeCompleted(
       counters,
     );
   }
-  const fileName = request.artifactFileName ?? `${intent.requestId}.bin`;
+  const fileName = request.artifactFileName ?? `${intent.requestId}.${artifactExtension}`;
   if (!ARTIFACT_NAME_PATTERN.test(fileName)) {
     return failAdmitted(
       externalRef,
@@ -589,7 +701,7 @@ async function materializeCompleted(
       counters,
     );
   }
-  const artifactPath = `${intent.outputRootScope.replace(/[\\/]+$/, '')}/${fileName}`;
+  const artifactPath = join(intent.outputRootScope, fileName);
   const evidence = validateMaterializedEvidence(
     { fileSha256, bytesWritten: total, artifactPath, stopReason: 'COMPLETED' },
     intent.outputRootScope,
@@ -603,14 +715,26 @@ async function materializeCompleted(
       counters,
     );
   }
+  const partialPath = join(intent.outputRootScope, '.' + fileName + '.' + randomUUID() + '.partial');
+  let partialCreated = false;
+  let finalCreated = false;
   try {
     await mkdir(intent.outputRootScope, { recursive: true });
-    await writeFile(artifactPath, assembled);
+    await writeFile(partialPath, assembled, { flag: 'wx', mode: 0o600 });
+    partialCreated = true;
+    // Hard-link publication is atomic and fails if the destination already
+    // exists; unlike rename on POSIX it cannot silently replace a prior file.
+    await link(partialPath, artifactPath);
+    finalCreated = true;
+    await unlink(partialPath);
+    partialCreated = false;
   } catch (error) {
+    if (partialCreated) await unlink(partialPath).catch(() => undefined);
+    if (finalCreated) await unlink(artifactPath).catch(() => undefined);
     return failAdmitted(
       externalRef,
       'MEDIA_MATERIALIZATION_FAILED',
-      `artifact write failed inside the authorized root: ${error instanceof Error ? error.message : 'unknown error'}`,
+      `atomic artifact publication failed inside the authorized root: ${error instanceof Error ? error.message : 'unknown error'}`,
       summary,
       counters,
     );
