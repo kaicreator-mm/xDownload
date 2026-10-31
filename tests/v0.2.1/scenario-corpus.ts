@@ -59,7 +59,7 @@ export const V021_SCENARIO_CORPUS: readonly V021ScenarioCase[] = [
     required: true,
     classifications: ['REAL_TEMP_FILESYSTEM'],
     evidencePaths: ['packages/download-domain-host/src/direct/direct-acquisition-bridge.test.ts'],
-    expectedTruth: 'invalid path is refused before materialization and output stays under the authorized root',
+    expectedTruth: 'invalid paths are refused and output remains under the authorized root',
     installedGate: 'SEPARATE_GATE_REQUIRED',
   },
   {
@@ -67,7 +67,7 @@ export const V021_SCENARIO_CORPUS: readonly V021ScenarioCase[] = [
     required: true,
     classifications: ['INJECTED_FAILURE_FAKE'],
     evidencePaths: ['tests/v0.2.1/controlled-fixtures.test.ts'],
-    expectedTruth: 'injected write/rename failure leaves no accepted artifact; real OS failure remains NOT_PROVEN',
+    expectedTruth: 'injected publication failures leave no accepted artifact; real OS failure remains NOT_PROVEN',
     installedGate: 'NOT_PROVEN',
   },
   {
@@ -105,7 +105,7 @@ export const V021_SCENARIO_CORPUS: readonly V021ScenarioCase[] = [
       'packages/browser-observation/test/sink-redaction.test.ts',
       'packages/ai-proposal/test/secret-redaction.test.ts',
     ],
-    expectedTruth: 'raw secret keys and sentinel-bearing values do not cross durable/model/log sinks',
+    expectedTruth: 'raw secrets and sentinel values do not cross durable/model/log sinks',
     installedGate: 'NOT_PROVEN',
   },
 ] as const;

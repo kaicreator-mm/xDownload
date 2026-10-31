@@ -13,7 +13,8 @@ import {
   decodeDownloadProgressProjection,
   resolveLineageOwner,
 } from '@xdownload/domain-contracts';
-import { ControlledHttpFixture } from '../../packages/direct-acquisition/test/helpers/fixture-server.ts';
+import { ControlledHttpFixture } from
+  '../../packages/direct-acquisition/test/helpers/fixture-server.ts';
 import { payload } from '../../packages/direct-acquisition/test/helpers/fixtures.ts';
 import { startControlledHlsFixture, type ControlledHlsFixture } from './controlled-hls-fixture.ts';
 import { V021_SCENARIO_CORPUS } from './scenario-corpus.ts';
@@ -102,7 +103,7 @@ describe('real controlled HLS VOD fixture', () => {
 });
 
 describe('real temporary filesystem fixture', () => {
-  it('writes a partial file, atomically renames it and verifies bytes/digest from disk', async () => {
+  it('writes and verifies an atomically published artifact from disk', async () => {
     const bytes = payload(4096);
     await withTemporaryArtifactRoot(async (root) => {
       const artifact = await materializeFixtureAtomically(root, 'fixture.bin', bytes);
@@ -122,7 +123,7 @@ describe('real temporary filesystem fixture', () => {
     });
   });
 
-  it('never overwrites an existing final artifact, including on filesystems where rename would replace it', async () => {
+  it('does not overwrite an existing final artifact', async () => {
     await withTemporaryArtifactRoot(async (root) => {
       const existing = payload(16, 7);
       const finalPath = join(root, 'existing.bin');
@@ -138,7 +139,7 @@ describe('real temporary filesystem fixture', () => {
     });
   });
 
-  it('labels injected permission and disk-full failures as FAKE and leaves no artifact', async () => {
+  it('labels injected permission and disk-full failures as FAKE', async () => {
     await withTemporaryArtifactRoot(async (root) => {
       for (const failure of ['PERMISSION_DENIED', 'DISK_FULL'] as const) {
         const filename = failure.toLowerCase() + '.bin';

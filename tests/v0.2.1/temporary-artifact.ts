@@ -30,7 +30,12 @@ export async function materializeFixtureAtomically(
   bytes: Uint8Array,
   options: { readonly injectedFailure?: 'PERMISSION_DENIED' | 'DISK_FULL' } = {},
 ): Promise<FixtureArtifact> {
-  if (filename.length === 0 || basename(filename) !== filename || filename === '.' || filename === '..') {
+  if (
+    filename.length === 0 ||
+    basename(filename) !== filename ||
+    filename === '.' ||
+    filename === '..'
+  ) {
     throw new Error('fixture filename must be one basename');
   }
   const absoluteRoot = resolve(root);
