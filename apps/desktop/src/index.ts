@@ -15,4 +15,5 @@ export * from './display.ts';
 export * from './payloads.ts';
 export * from './projection-decode.ts';
 export * from './view-model.ts';
+export * from './manager-documents.ts';
 export * from './adapter.ts';

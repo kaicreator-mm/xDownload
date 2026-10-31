@@ -53,6 +53,125 @@ export function decodeUnitPayload(payload: unknown): DecodeResult<undefined> {
   return { ok: true, value: undefined };
 }
 
+// ---------------------------------------------- T08 download-manager payloads
+
+/** Opaque lineage/contract identity grammar (mirrors the domain id rule). */
+export const MANAGER_LINEAGE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/u;
+
+/** Upper bound for one user-supplied download URL (mirrors the UI rule). */
+export const MANAGER_MAX_URL_LENGTH = 2048;
+
+/** Upper bound for one user-chosen destination directory string. */
+export const MANAGER_MAX_DESTINATION_LENGTH = 1024;
+
+/** Exact payload of `managerPreviewAdd`. */
+export interface PreviewAddPayload {
+  readonly url: string;
+  readonly destination?: string;
+}
+
+/** Exact payload of the lineage-addressed methods (cancel/retry/reveal). */
+export interface LineageRefPayload {
+  readonly lineageId: string;
+}
+
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function boundedCleanString(value: unknown, max: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= max &&
+    !hasControlCharacter(value)
+  );
+}
+
+/**
+ * Exact-shape decode of the `managerPreviewAdd` payload: exactly
+ * `{ url, destination? }`; the URL must be a bounded http(s) URL and the
+ * optional destination a bounded clean string. Anything else is refused.
+ */
+export function decodePreviewAddPayload(payload: unknown): DecodeResult<PreviewAddPayload> {
+  if (!isPlainObject(payload)) {
+    return { ok: false, code: 'PAYLOAD_REJECTED', detail: 'payload must be a JSON object' };
+  }
+  const unknownKeys = Object.keys(payload).filter((key) => key !== 'url' && key !== 'destination');
+  if (unknownKeys.length > 0) {
+    return {
+      ok: false,
+      code: 'PAYLOAD_REJECTED',
+      detail: `unknown payload field(s): ${unknownKeys.join(', ')}`,
+    };
+  }
+  const url = payload['url'];
+  if (!boundedCleanString(url, MANAGER_MAX_URL_LENGTH)) {
+    return {
+      ok: false,
+      code: 'PAYLOAD_REJECTED',
+      detail: `url must be a non-empty string of at most ${MANAGER_MAX_URL_LENGTH} characters without control characters`,
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, code: 'PAYLOAD_REJECTED', detail: 'url is not a valid URL' };
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { ok: false, code: 'PAYLOAD_REJECTED', detail: 'only http(s) URLs are admissible' };
+  }
+  const destination = payload['destination'];
+  if (
+    destination !== undefined &&
+    !boundedCleanString(destination, MANAGER_MAX_DESTINATION_LENGTH)
+  ) {
+    return {
+      ok: false,
+      code: 'PAYLOAD_REJECTED',
+      detail: 'destination must be a bounded string without control characters',
+    };
+  }
+  return {
+    ok: true,
+    value: destination === undefined ? { url } : { url, destination: destination as string },
+  };
+}
+
+/**
+ * Exact-shape decode of the lineage-addressed payloads: exactly
+ * `{ lineageId }` with an opaque bounded identity (never a URL or path).
+ */
+export function decodeLineageRefPayload(payload: unknown): DecodeResult<LineageRefPayload> {
+  if (!isPlainObject(payload)) {
+    return { ok: false, code: 'PAYLOAD_REJECTED', detail: 'payload must be a JSON object' };
+  }
+  const unknownKeys = Object.keys(payload).filter((key) => key !== 'lineageId');
+  if (unknownKeys.length > 0) {
+    return {
+      ok: false,
+      code: 'PAYLOAD_REJECTED',
+      detail: `unknown payload field(s): ${unknownKeys.join(', ')}`,
+    };
+  }
+  const lineageId = payload['lineageId'];
+  if (typeof lineageId !== 'string' || !MANAGER_LINEAGE_ID_PATTERN.test(lineageId)) {
+    return {
+      ok: false,
+      code: 'PAYLOAD_REJECTED',
+      detail: 'lineageId must be an opaque bounded identity',
+    };
+  }
+  return { ok: true, value: { lineageId } };
+}
+
 /** The `core` block of the installed broker-config.json (exact shape). */
 export interface InstallCoreBinding {
   readonly installId: string;

@@ -1,0 +1,123 @@
+/* T08 download manager — local stylesheet only (CSP style-src 'self'). */
+
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+}
+
+body {
+  margin: 0 auto;
+  max-width: 60rem;
+  padding: 0.75rem;
+}
+
+h1 {
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0.75rem 0 0.35rem;
+}
+
+h3 {
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+label {
+  display: block;
+  margin: 0.35rem 0 0.15rem;
+}
+
+input[type='url'] {
+  box-sizing: border-box;
+  display: block;
+  padding: 0.3rem;
+  width: 100%;
+}
+
+button {
+  cursor: pointer;
+  margin: 0.35rem 0.35rem 0.35rem 0;
+  padding: 0.3rem 0.7rem;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+#destination-label {
+  color: inherit;
+  display: inline-block;
+  margin-left: 0.35rem;
+  opacity: 0.75;
+}
+
+#notice[data-kind='error'] {
+  color: #b00020;
+  font-weight: 600;
+}
+
+#notice[data-kind='info'] {
+  color: inherit;
+}
+
+#notice:empty {
+  display: none;
+}
+
+#preview {
+  border: 2px solid currentColor;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+}
+
+#preview-url,
+#preview-destination {
+  font-family: ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+#jobs-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+#jobs-table caption {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  padding-bottom: 0.25rem;
+  text-align: left;
+}
+
+#jobs-table th,
+#jobs-table td {
+  border: 1px solid currentColor;
+  padding: 0.3rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+#jobs-table th {
+  white-space: nowrap;
+}
+
+#jobs-table td:last-child {
+  white-space: nowrap;
+}
+
+#empty-state {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none;
+    transition: none;
+  }
+}

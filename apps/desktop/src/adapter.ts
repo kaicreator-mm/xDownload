@@ -247,6 +247,63 @@ export class DesktopUiAdapter {
   }
 
   /**
+   * The verified Core projection of the current aggregate, verbatim, or null
+   * when none is held (never a synthesized view). Read-only presentation
+   * fact for shell surfaces that render structured job rows (T08).
+   */
+  currentProjectionView(): SeamProjectionView | null {
+    const record = this.requireConfirmedRecord();
+    return record?.projection ?? null;
+  }
+
+  /**
+   * Discard the pending draft intent (presentation-only interaction state —
+   * no command was routed, so nothing is rolled back on the Core side).
+   */
+  discardDraft(): InteractionOutcome {
+    this.beginInteraction();
+    this.draft = null;
+    return this.outcome([]);
+  }
+
+  /** True while a draft intent is pending (the preview step is open). */
+  hasDraftIntent(): boolean {
+    return this.draft !== null;
+  }
+
+  /**
+   * The pending draft rendered as a structured view (the non-authoritative
+   * add preview): the minted draft contract id plus the Core-produced
+   * confirmation plan, verbatim. Null when no draft is pending.
+   */
+  currentDraftView(): {
+    readonly contractId: string;
+    readonly automationMode: string;
+    readonly targetRef: string;
+    readonly requests: readonly {
+      readonly level: string;
+      readonly description: string;
+      readonly proves: string;
+    }[];
+  } | null {
+    const draft = this.draft;
+    if (draft === null) {
+      return null;
+    }
+    const planView = confirmationPlanView(draft.plan);
+    return {
+      contractId: draft.contractId,
+      automationMode: planView.automationMode,
+      targetRef: draft.intent.targetRef,
+      requests: planView.requests.map((request) => ({
+        level: request.request.level,
+        description: describeRequest(request.request),
+        proves: request.proofNote.proves,
+      })),
+    };
+  }
+
+  /**
    * Presentation-only task switcher: shows another aggregate this surface
    * knows. It never changes Core state and never mutates any aggregate
    * record (the confirmed displays of all aggregates stay frozen).

@@ -118,13 +118,42 @@ describe('app-level navigation/window guards (main entry)', () => {
 describe('narrow typed preload (the only renderer bridge)', () => {
   const preloadSource = readSource('src/preload/preload.ts');
 
+  /** The frozen T08 bridge surface — the exact set, pinned here. */
+  const ALLOWLISTED_METHODS = [
+    'status',
+    'managerRefresh',
+    'managerPreviewAdd',
+    'managerConfirmAdd',
+    'managerDiscardPreview',
+    'managerCancelJob',
+    'managerRetryJob',
+    'managerChooseDestination',
+    'managerRevealJob',
+  ] as const;
+
   it('exposes exactly one frozen bridge under the contract key', () => {
     expect(preloadSource).toContain('contextBridge.exposeInMainWorld(SHELL_BRIDGE_KEY');
     expect(preloadSource).toContain('Object.freeze(bridge)');
   });
 
-  it('names only the allowlisted channel and never a dynamic one', () => {
-    expect(preloadSource).toContain('ipcRenderer.invoke(SHELL_IPC_CHANNELS.status)');
+  it('exposes exactly the allowlisted method set (no more, no fewer)', () => {
+    const declared = [...preloadSource.matchAll(/^\s{2}(\w+):\s*\(/gm)].map(
+      (match) => match[1] ?? '',
+    );
+    expect(declared.sort()).toEqual([...ALLOWLISTED_METHODS].sort());
+    for (const method of ALLOWLISTED_METHODS) {
+      expect(preloadSource).toContain(`SHELL_IPC_CHANNELS.${method}`);
+    }
+  });
+
+  it('the channel allowlist has exactly one channel per bridge method', () => {
+    const contractSource = readSource('src/main/shell-contract.ts');
+    for (const method of ALLOWLISTED_METHODS) {
+      expect(contractSource).toContain(`  ${method}: 'xdownload:`);
+    }
+  });
+
+  it('names only the allowlisted channels and never a dynamic one', () => {
     expect(preloadSource).not.toMatch(/ipcRenderer\.(on|once|send|sendSync|sendToHost)\s*\(/);
     expect(preloadSource).not.toMatch(/invoke\s*\(\s*[^S]/);
   });
@@ -146,10 +175,19 @@ describe('narrow typed preload (the only renderer bridge)', () => {
 
 describe('validated IPC sender/payload (closed channel registry)', () => {
   const ipcSource = readSource('src/main/ipc.ts');
+  const contractSource = readSource('src/main/shell-contract.ts');
 
-  it('registers handlers only from the contract allowlist (one site)', () => {
+  it('registers handlers from one site only (the registration loop is THE allowlist)', () => {
     expect(ipcSource.match(/ipcMain\.handle\s*\(/g)?.length).toBe(1);
-    expect(ipcSource).toContain('ipcMain.handle(SHELL_IPC_CHANNELS.status');
+    expect(ipcSource).toContain('const registry = new Map(entries)');
+    // Every channel constant is named exactly once as a registry entry key.
+    const channelKeys = [...contractSource.matchAll(/(\w+): 'xdownload:[\w-]+'/g)].map(
+      (match) => match[1] ?? '',
+    );
+    expect(channelKeys.length).toBe(9);
+    for (const key of channelKeys) {
+      expect(ipcSource.split(`SHELL_IPC_CHANNELS.${key}`).length - 1).toBe(1);
+    }
   });
 
   it('gates every call on the shell window main frame sender', () => {
@@ -158,13 +196,22 @@ describe('validated IPC sender/payload (closed channel registry)', () => {
     expect(ipcSource).toContain('frame === contents.mainFrame');
   });
 
-  it('gates every call on the exact-shape payload decoder', () => {
-    expect(ipcSource).toContain('decodeUnitPayload(payload)');
+  it('gates every call on the exact-shape payload decoder of its entry', () => {
+    expect(ipcSource).toContain('channelEntry.decode(payload)');
+    expect(ipcSource).toContain('entry(decodeUnitPayload');
+    expect(ipcSource).toContain('entry(decodePreviewAddPayload');
+    expect(ipcSource).toContain('entry(decodeLineageRefPayload');
   });
 
   it('answers failures with typed refusal documents, never raw errors', () => {
     expect(ipcSource).toContain("code: 'SHELL_IPC_REFUSED'");
-    expect(ipcSource).not.toMatch(/throw\s/);
+    // No throw STATEMENT may cross the bridge (comments may discuss it).
+    expect(ipcSource).not.toMatch(/(^|\n)\s*throw\b/);
+  });
+
+  it('removes every allowlisted handler on teardown', () => {
+    expect(ipcSource).toContain('for (const channel of Object.values(SHELL_IPC_CHANNELS))');
+    expect(ipcSource).toContain('ipcMain.removeHandler(channel)');
   });
 });
 
@@ -201,6 +248,98 @@ describe('local assets only (renderer content)', () => {
     }
     expect(rendererJs).not.toMatch(/(^|[^.\w])require\s*\(/);
     expect(rendererJs).not.toMatch(/(^|\n)\s*import\s/);
+  });
+});
+
+describe('T08 download-manager renderer (the served page)', () => {
+  const html = readSource('src/renderer/index.html');
+  const rendererSources = sourceFilesUnder('src/renderer').filter((file) => file.endsWith('.ts'));
+  const rendererSourceText = rendererSources.map((file) => readFileSync(file, 'utf8'));
+
+  it('serves the same restrictive CSP meta (default-src none)', () => {
+    const csp = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html)?.[1] ?? '';
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("style-src 'self'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).toContain("form-action 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+  });
+
+  it('references only local scripts/styles and no inline handlers', () => {
+    expect(html).toContain('<script src="renderer.js"></script>');
+    expect(html).toContain('<link rel="stylesheet" href="styles.css" />');
+    expect(html).not.toMatch(/\son[a-z]+\s*=\s*["']/i);
+    expect(html).not.toMatch(/src=["']https?:\/\//);
+    expect(html).not.toMatch(/href=["']https?:\/\//);
+  });
+
+  it('the renderer sources have no network, evaluation or HTML-injection authority', () => {
+    expect(rendererSourceText.join('\n')).toContain('textContent');
+    for (const forbidden of [
+      'innerHTML',
+      'document.write',
+      'insertAdjacentHTML',
+      'fetch(',
+      'XMLHttpRequest',
+      'WebSocket',
+      'eval(',
+      'import(',
+      "from 'electron'",
+      "require('electron')",
+      'child_process',
+    ]) {
+      for (const source of rendererSourceText) {
+        expect(source).not.toContain(forbidden);
+      }
+    }
+    for (const source of rendererSourceText) {
+      expect(source).not.toMatch(/(^|[^.\w])require\s*\(/);
+    }
+  });
+
+  it('reaches the host ONLY through the typed contextBridge key', () => {
+    const joined = rendererSourceText.join('\n');
+    expect(joined).toContain('window.xdownloadShell');
+    for (const source of rendererSourceText) {
+      expect(source).not.toMatch(/window\.(?!xdownloadShell)\w+\s*=/);
+    }
+  });
+
+  it('keeps the accessible keyboard flow and the three first-class states', () => {
+    expect(html).toContain('Escape');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('id="loading"');
+    expect(html).toContain('id="empty-state"');
+    expect(html).toContain('id="bridge-missing"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('<th scope="col">');
+  });
+});
+
+describe('T08 main-process authorities (destination dialog and reveal)', () => {
+  const mainSource = readSource('src/main/main.ts');
+  const managerSource = readSource('src/main/manager.ts');
+
+  it('keeps the directory picker and the reveal authority in the main process', () => {
+    expect(mainSource).toContain('dialog.showOpenDialog');
+    expect(mainSource).toContain('shell.showItemInFolder');
+    // The renderer receives documents only — no fs/shell API crosses the bridge.
+    const contractSource = readSource('src/main/shell-contract.ts');
+    expect(contractSource).not.toContain('showItemInFolder');
+    expect(contractSource).not.toContain('showOpenDialog');
+  });
+
+  it('gates reveal on a FRESH Core projection proving COMPLETE', () => {
+    expect(managerSource).toContain("view.terminal.requestFulfillment !== 'COMPLETE'");
+    expect(managerSource).toContain('await adapter.attachAggregate(job.lineageId)');
+    expect(managerSource).toContain('the Core projection does not show this job as completed');
+  });
+
+  it('records destination as session presentation state, never a Core payload field', () => {
+    expect(managerSource).toContain('presentation');
+    expect(managerSource).toContain('state, not truth');
   });
 });
 

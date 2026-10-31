@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      T08 download manager — a packaged LOCAL asset only (frozen L2 §4).
+      The CSP is restrictive by construction: nothing may load, fetch, embed
+      or submit. Renderer->main communication happens exclusively through the
+      typed contextBridge preload API, which no CSP directive governs.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <title>xDownload</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <h1>xDownload</h1>
+    <p id="bridge-missing" hidden>
+      shell bridge unavailable (fail closed: no renderer authority exists)
+    </p>
+    <p id="loading">loading…</p>
+    <div id="app" hidden>
+      <p id="connection-line" aria-live="polite">Core connection: unknown</p>
+
+      <form id="add-form">
+        <h2>Add download</h2>
+        <label for="url">Download URL (http/https)</label>
+        <input id="url" name="url" type="url" autocomplete="off" spellcheck="false" required />
+        <button id="choose-destination" type="button">Choose destination folder…</button>
+        <span id="destination-label">no destination folder chosen</span>
+        <button id="add-submit" type="submit">Preview download</button>
+      </form>
+
+      <p id="notice" role="status" aria-live="polite"></p>
+
+      <section id="preview" role="dialog" aria-modal="true" aria-labelledby="preview-title" hidden>
+        <h2 id="preview-title">Confirm download</h2>
+        <p>Target: <span id="preview-url"></span></p>
+        <p>Destination: <span id="preview-destination"></span></p>
+        <h3>Confirmation required by the Core-produced plan</h3>
+        <ul id="preview-requests"></ul>
+        <button id="preview-confirm" type="button">Confirm and add</button>
+        <button id="preview-discard" type="button">Discard (Escape)</button>
+      </section>
+
+      <section aria-labelledby="jobs-title">
+        <h2 id="jobs-title">Downloads</h2>
+        <p id="empty-state" hidden>no downloads yet — add a URL above to begin</p>
+        <table id="jobs-table" hidden>
+          <caption>
+            Download jobs (status and progress are the Core's projection, re-read live)
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Lineage</th>
+              <th scope="col">Status</th>
+              <th scope="col">Progress</th>
+              <th scope="col">Destination</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-body"></tbody>
+        </table>
+      </section>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

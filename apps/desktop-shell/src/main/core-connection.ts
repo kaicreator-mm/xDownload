@@ -110,6 +110,20 @@ export class CoreConnection {
     };
   }
 
+  /**
+   * The composed adapter, or undefined when the shell has no Core connection
+   * (fail-closed states). The T08 manager resolves it on every call — it
+   * never caches an adapter reference across close().
+   */
+  adapterOrNull(): DesktopUiAdapter | undefined {
+    return this.adapter;
+  }
+
+  /** The shell-level connection word (the adapter's own state when present). */
+  connectionState(): ShellCoreConnection {
+    return this.connection;
+  }
+
   /** Release the seam client (idempotent for the unconfigured state). */
   async close(): Promise<void> {
     if (this.adapter !== undefined) {
