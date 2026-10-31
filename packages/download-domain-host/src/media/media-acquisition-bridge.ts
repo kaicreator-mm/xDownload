@@ -44,7 +44,10 @@ import {
 } from '../../../download-domain-app/src/contracts/index.ts';
 import { bindRenditionToTarget } from '../../../hls-vod-adapter/src/bind.ts';
 import { createTransferLedger } from '../../../hls-vod-adapter/src/budget.ts';
-import { createSyntheticMediaAssemblyPort, type MediaAssemblyPort } from '../../../hls-vod-adapter/src/assemble.ts';
+import {
+  createSyntheticMediaAssemblyPort,
+  type MediaAssemblyPort,
+} from '../../../hls-vod-adapter/src/assemble.ts';
 import { createFfmpegTsMediaAssemblyPort } from '../../../hls-vod-adapter/src/ffmpeg-ts.ts';
 import {
   s4HlsSelectionTupleDigest,
@@ -285,8 +288,11 @@ export async function acquireMediaViaHls(
   const intentCheck = validateConfirmedIntent(request.intent);
   if (!intentCheck.ok) {
     const counters = emptyCounters();
-    return refuseResult(counters, 'MEDIA_INTENT_MALFORMED',
-      `confirmed intent rejected by the no-widening contract: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`);
+    return refuseResult(
+      counters,
+      'MEDIA_INTENT_MALFORMED',
+      `confirmed intent rejected by the no-widening contract: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`,
+    );
   }
   return executeMediaHls(request, intentCheck.value, {
     selectedRenditionUri: request.selectedRenditionUri,
@@ -306,8 +312,11 @@ export async function acquireSelectedHlsVod(
   const intentCheck = validateConfirmedS4HlsIntent(request.intent);
   if (!intentCheck.ok) {
     const counters = emptyCounters();
-    return refuseResult(counters, 'S4_INTENT_INVALID',
-      `S4 confirmed selection refused: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`);
+    return refuseResult(
+      counters,
+      'S4_INTENT_INVALID',
+      `S4 confirmed selection refused: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`,
+    );
   }
   const intent = intentCheck.value;
   if (Date.parse(intent.selection.expiresAt) <= Date.now()) {
@@ -316,7 +325,11 @@ export async function acquireSelectedHlsVod(
   }
   if (intent.selection.manifestUri !== request.manifestUri) {
     const counters = emptyCounters();
-    return refuseResult(counters, 'S4_SELECTION_TARGET_MISMATCH', 'selection manifest does not match the trusted Host target');
+    return refuseResult(
+      counters,
+      'S4_SELECTION_TARGET_MISMATCH',
+      'selection manifest does not match the trusted Host target',
+    );
   }
   return executeMediaHls(request, intent, {
     selectedRenditionUri: intent.selection.renditionUri,
@@ -586,7 +599,15 @@ async function executeMediaHls(
     outcome.run !== undefined &&
     outcome.chain?.accepted === true
   ) {
-    return await materializeCompleted(intent, outcome.run, summary, externalRef, counters, request, execution.artifactExtension);
+    return await materializeCompleted(
+      intent,
+      outcome.run,
+      summary,
+      externalRef,
+      counters,
+      request,
+      execution.artifactExtension,
+    );
   }
   if (outcome.kind === 'BUDGET_STOPPED' && outcome.run !== undefined) {
     const stop = outcome.run.stop;
@@ -715,7 +736,10 @@ async function materializeCompleted(
       counters,
     );
   }
-  const partialPath = join(intent.outputRootScope, '.' + fileName + '.' + randomUUID() + '.partial');
+  const partialPath = join(
+    intent.outputRootScope,
+    '.' + fileName + '.' + randomUUID() + '.partial',
+  );
   let partialCreated = false;
   let finalCreated = false;
   try {
