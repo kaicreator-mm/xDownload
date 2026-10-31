@@ -37,15 +37,14 @@ async function main() {
         transferProfile({ maxBytes: PAYLOAD_BYTES * 2 }),
       );
       const adapter = new DirectHttpAdapter(ledger);
+      const request = directRequest(baseUri, '/same-host-baseline.bin', body, {
+        effectId: `effect-t03-${label}-${run}`,
+        contractId: `contract-t03-${label}-${run}`,
+        targetId: `target-t03-${label}-${run}`,
+        expectedTotalBytes: PAYLOAD_BYTES,
+      });
       const startedAt = performance.now();
-      const result = await adapter.acquire(
-        directRequest(baseUri, '/same-host-baseline.bin', body, {
-          effectId: `effect-t03-${label}-${run}`,
-          contractId: `contract-t03-${label}-${run}`,
-          targetId: `target-t03-${label}-${run}`,
-          expectedTotalBytes: PAYLOAD_BYTES,
-        }),
-      );
+      const result = await adapter.acquire(request);
       const elapsedMs = performance.now() - startedAt;
       if (!result.ok) {
         const codes = result.diagnostics.map((entry) => entry.code).join(',');
@@ -66,6 +65,9 @@ async function main() {
     await fixture.stop();
   }
 
+  if (fixture.requests.length !== WARMUP_RUNS + MEASURED_RUNS) {
+    throw new Error('same-host baseline did not observe exactly one HTTP request per run');
+  }
   const medianMs = median(samplesMs);
   const medianMiBPerSecond = PAYLOAD_BYTES / (medianMs / 1_000) / (1024 * 1024);
   const record = {
