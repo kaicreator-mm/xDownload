@@ -347,6 +347,9 @@ importers:
 
   packages/core-runtime:
     dependencies:
+      '@kaicreator/domain-harness-microkernel':
+        specifier: file:../download-domain-app/vendor/sdk/kaicreator-domain-harness-microkernel-0.10.2-rc.0.tgz
+        version: file:packages/download-domain-app/vendor/sdk/kaicreator-domain-harness-microkernel-0.10.2-rc.0.tgz
       '@xdownload/core-scheduler':
         specifier: workspace:*
         version: link:../core-scheduler
@@ -359,6 +362,12 @@ importers:
       '@xdownload/domain-contracts':
         specifier: workspace:*
         version: link:../domain-contracts
+      '@xdownload/download-domain-app':
+        specifier: workspace:*
+        version: link:../download-domain-app
+      '@xdownload/download-domain-host':
+        specifier: workspace:*
+        version: link:../download-domain-host
       '@xdownload/hls-vod-adapter':
         specifier: workspace:*
         version: link:../hls-vod-adapter

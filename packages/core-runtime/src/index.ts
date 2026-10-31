@@ -16,7 +16,9 @@ export {
   durableLayout,
   DurableStoreCorruptError,
   FileBackedControlFactLog,
+  FileBackedDomainAppRouteLog,
   FileBackedSeamJournal,
+  type DomainAppRouteFact,
   type DurableLayout,
 } from './durable-stores.ts';
 export {
@@ -30,6 +32,17 @@ export {
   type S1DriveHealthEntry,
   type S1DriveSupervisor,
 } from './runtime.ts';
+export {
+  CoreDomainAppRouteError,
+  composeDomainAppRoute,
+  jobProjectionFor,
+  oldCoreJobProjectionFor,
+  readJobProjection,
+  wrapSeamWithDomainAppRoute,
+  type CoreDomainAppOptions,
+  type CoreDomainAppRoute,
+  type DomainAppRouteAttempt,
+} from './domain-app-route.ts';
 export {
   CoreRuntimeBudgetBridge,
   schedulerHlsTransferLedger,

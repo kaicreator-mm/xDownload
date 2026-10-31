@@ -62,9 +62,20 @@ describe('T017 no-surface-local-authority', () => {
       makeRequestId: () => nextRequestId(),
     });
     // Structural: the binder's API surface is exactly the seam vocabulary —
-    // no status setter, no budget writer, no lifecycle owner, no cache.
+    // no status setter, no budget writer, no lifecycle owner, no cache. The
+    // T02 additions (submitDomainAppIntent / readJobProjection) are the
+    // explicit v0.2 seam route: still verbatim seam submit/read only.
     expect(Object.keys(surface).sort()).toEqual(
-      ['client', 'peer', 'readProjection', 'close', 'submitCanonicalCommand', 'surface'].sort(),
+      [
+        'client',
+        'peer',
+        'readProjection',
+        'readJobProjection',
+        'close',
+        'submitCanonicalCommand',
+        'submitDomainAppIntent',
+        'surface',
+      ].sort(),
     );
     // The command vocabulary is the closed v1 seam set: an invented
     // per-surface command discriminant is not even representable in the

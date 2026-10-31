@@ -31,10 +31,12 @@ import {
   createCoreSeamServer,
   type CoreSeamServer,
   type ExpectedPeerScope,
+  type JobProjectionProvider,
   type SeamJournal,
   type S5ExecutionIntentInput,
   type S6ExecutionIntentInput,
   type SeamResult,
+  type V02IntentDecoder,
 } from '@xdownload/core-seam';
 import { CoreScheduler, serializeFacts } from '@xdownload/core-scheduler';
 import {
@@ -78,11 +80,30 @@ import {
   type S1DriveSupervisor,
 } from './s1-drive-supervisor.ts';
 import { createS1TransferAbortHub, type S1TransferAbortHub } from './s1-transfer-abort.ts';
+import {
+  composeDomainAppRoute,
+  readJobProjection,
+  wrapSeamWithDomainAppRoute,
+  type CoreDomainAppOptions,
+  type CoreDomainAppRoute,
+} from './domain-app-route.ts';
+import { validateConfirmedS4HlsIntent } from '../../download-domain-app/src/integrations/s4-hls-vod-contract.ts';
 
 export { durableLayout, DurableStoreCorruptError, FileBackedControlFactLog, FileBackedSeamJournal };
 export type { DurableLayout };
 export { createS1DriveSupervisor, createS1TransferAbortHub };
 export type { S1DriveHealthEntry, S1DriveSupervisor, S1TransferAbortHub };
+export {
+  CoreDomainAppRouteError,
+  composeDomainAppRoute,
+  jobProjectionFor,
+  oldCoreJobProjectionFor,
+  readJobProjection,
+  wrapSeamWithDomainAppRoute,
+  type CoreDomainAppOptions,
+  type CoreDomainAppRoute,
+  type DomainAppRouteAttempt,
+} from './domain-app-route.ts';
 
 /** Options for composing/reopening one authoritative Core Runtime. */
 export interface CoreRuntimeOptions {
@@ -127,6 +148,15 @@ export interface CoreRuntimeOptions {
   readonly s6Collection?: (
     runtime: CoreRuntime,
   ) => (input: S6ExecutionIntentInput) => Promise<SeamResult<void>>;
+  /**
+   * T02: the single-K Domain App composition (absent → legacy-only runtime,
+   * byte-identical to pre-T02 behavior). When present, the ONE Core-owned
+   * K is loaded once in this process and the explicit v0.2 route is exposed
+   * through this same seam: old lineages keep flowing through the old Core
+   * verbatim, new v0.2 lineages route to the K, and conflicting lineage
+   * ownership is refused before any network/file effect.
+   */
+  readonly domainApp?: CoreDomainAppOptions;
 }
 
 /** The composed authoritative Core Runtime (one instance per install). */
@@ -157,6 +187,12 @@ export interface CoreRuntime {
    * registered and continues to reconcile (restart or future re-drive).
    */
   readonly s1DriveHealth: () => readonly S1DriveHealthEntry[];
+  /**
+   * T02: the one-K Domain App route facade; undefined for legacy-only
+   * compositions. The K itself is never exposed — surfaces reach it only
+   * through the v0.2 route on this runtime's seam.
+   */
+  readonly domainApp: CoreDomainAppRoute | undefined;
 }
 
 export class CoreRuntimeCompositionError extends Error {
@@ -195,6 +231,10 @@ function bindSeam(
     runtime: CoreRuntime,
   ) => (input: S6ExecutionIntentInput) => Promise<SeamResult<void>>,
   s6RuntimeHolder?: { current?: CoreRuntime },
+  routeHooks?: {
+    readonly v02IntentDecoder: V02IntentDecoder;
+    readonly jobProjectionProvider: JobProjectionProvider;
+  },
 ): CoreSeamServer {
   // #95 R1/F04: chunked delivered streams stage inside the composition so
   // journal replay during seam construction rebuilds staged truth through
@@ -230,6 +270,17 @@ function bindSeam(
   const result = createCoreSeamServer({
     expectedPeer,
     journal,
+    // T02: the single-K v0.2 route hooks — the seam keeps its own T01
+    // pipeline (bounds/decode/peer auth/intent validation/binding); the
+    // composition installs the Domain App's exact-key validator and the
+    // Core-owned job projection provider. Absent (legacy compositions) →
+    // both stay uninstalled and the v0.2 route keeps failing closed.
+    ...(routeHooks === undefined
+      ? {}
+      : {
+          v02IntentDecoder: routeHooks.v02IntentDecoder,
+          jobProjectionProvider: routeHooks.jobProjectionProvider,
+        }),
     // #150: install the private S3 selected-media authority behind the
     // OS-verified session gate — the Core-owned supported-media profile
     // registry (closed, digest-pinned) plus the post-commit execution driver
@@ -704,31 +755,69 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const factLog = FileBackedControlFactLog.createFresh(layout.factLogPath);
   const journal = FileBackedSeamJournal.createFresh(layout.journalPath);
   const { writer, store, recovery } = composePersistence(layout);
+  // Composition-hygiene fail-close: any later step throwing (route
+  // composition, seam replay, reconcile) must not leak the authoritative
+  // writer handle or its process-wide single-writer registration.
+  try {
+    return composeFreshRuntime(options, layout, factLog, journal, { writer, store, recovery });
+  } catch (error) {
+    writer.close();
+    throw error;
+  }
+}
+
+function composeFreshRuntime(
+  options: CoreRuntimeOptions,
+  layout: DurableLayout,
+  factLog: FileBackedControlFactLog,
+  journal: FileBackedSeamJournal,
+  persistence: {
+    writer: AuthoritativeLedgerWriter;
+    store: FilesystemArtifactStore;
+    recovery: RecoveryService;
+  },
+): CoreRuntime {
+  const { writer, store, recovery } = persistence;
   const scheduler = new CoreScheduler(factLog);
   const terminalStore = createTerminalResultStore();
   const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const transferAbort = createS1TransferAbortHub();
+  // T02: the single-K route composes BEFORE the seam so the v0.2 hooks
+  // install with the seam's own construction (the route's job projection
+  // provider reads the inner seam through a holder populated right after).
+  const innerSeamHolder: { current?: CoreSeamServer } = {};
+  const route =
+    options.domainApp === undefined
+      ? undefined
+      : composeDomainAppRoute(options.domainApp, layout, true, innerSeamHolder);
   const s5RuntimeHolder: { current?: CoreRuntime } = {};
   const s6RuntimeHolder: { current?: CoreRuntime } = {};
+  const flowRuntime = { scheduler, writer, store, recovery, terminalStore };
+  const innerSeam = bindSeam(
+    options.expectedPeer,
+    journal,
+    flowRuntime,
+    supervisor,
+    transferAbort,
+    options.s4Hls,
+    options.s5Collection,
+    s5RuntimeHolder,
+    options.s6Collection,
+    s6RuntimeHolder,
+    route === undefined
+      ? undefined
+      : {
+          v02IntentDecoder: validateConfirmedS4HlsIntent,
+          jobProjectionProvider: {
+            read: (lineageId: string) => readJobProjection(route.state, innerSeamHolder, lineageId),
+          },
+        },
+  );
+  if (route !== undefined) {
+    innerSeamHolder.current = innerSeam;
+  }
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(
-      options.expectedPeer,
-      journal,
-      {
-        scheduler,
-        writer,
-        store,
-        recovery,
-        terminalStore,
-      },
-      supervisor,
-      transferAbort,
-      options.s4Hls,
-      options.s5Collection,
-      s5RuntimeHolder,
-      options.s6Collection,
-      s6RuntimeHolder,
-    ),
+    seam: route === undefined ? innerSeam : wrapSeamWithDomainAppRoute(innerSeam, route.state),
     scheduler,
     writer,
     store,
@@ -738,6 +827,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze([]),
     s1DriveHealth: supervisor.health,
+    domainApp: route?.facade,
   });
   s5RuntimeHolder.current = runtime;
   s6RuntimeHolder.current = runtime;
@@ -778,6 +868,27 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   }
   const journal = FileBackedSeamJournal.openExisting(layout.journalPath);
   const { writer, store, recovery } = composePersistence(layout);
+  // Composition-hygiene fail-close (identical to `createCoreRuntime`).
+  try {
+    return composeReopenedRuntime(options, layout, factLog, journal, { writer, store, recovery });
+  } catch (error) {
+    writer.close();
+    throw error;
+  }
+}
+
+function composeReopenedRuntime(
+  options: CoreRuntimeOptions,
+  layout: DurableLayout,
+  factLog: FileBackedControlFactLog,
+  journal: FileBackedSeamJournal,
+  persistence: {
+    writer: AuthoritativeLedgerWriter;
+    store: FilesystemArtifactStore;
+    recovery: RecoveryService;
+  },
+): CoreRuntime {
+  const { writer, store, recovery } = persistence;
   // Read-only recovery classification of every durable work item: the
   // DB-first/FS-first truth the reopened runtime inherits.
   const classifications = writer.reader
@@ -787,27 +898,46 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
   const terminalStore = createTerminalResultStore();
   const supervisor = createS1DriveSupervisor({ onHealth: options.onS1DriveHealth });
   const transferAbort = createS1TransferAbortHub();
+  // T02: the single-K route reopens from the durable route fact log (the
+  // owner survives restart); the K document store reopens at the same path.
+  const innerSeamHolder: { current?: CoreSeamServer } = {};
+  const route =
+    options.domainApp === undefined
+      ? undefined
+      : composeDomainAppRoute(options.domainApp, layout, false, innerSeamHolder);
   const s5RuntimeHolder: { current?: CoreRuntime } = {};
   const s6RuntimeHolder: { current?: CoreRuntime } = {};
+  const innerSeam = bindSeam(
+    options.expectedPeer,
+    journal,
+    {
+      scheduler,
+      writer,
+      store,
+      recovery,
+      terminalStore,
+    },
+    supervisor,
+    transferAbort,
+    options.s4Hls,
+    options.s5Collection,
+    s5RuntimeHolder,
+    options.s6Collection,
+    s6RuntimeHolder,
+    route === undefined
+      ? undefined
+      : {
+          v02IntentDecoder: validateConfirmedS4HlsIntent,
+          jobProjectionProvider: {
+            read: (lineageId: string) => readJobProjection(route.state, innerSeamHolder, lineageId),
+          },
+        },
+  );
+  if (route !== undefined) {
+    innerSeamHolder.current = innerSeam;
+  }
   const runtime: CoreRuntime = Object.freeze({
-    seam: bindSeam(
-      options.expectedPeer,
-      journal,
-      {
-        scheduler,
-        writer,
-        store,
-        recovery,
-        terminalStore,
-      },
-      supervisor,
-      transferAbort,
-      options.s4Hls,
-      options.s5Collection,
-      s5RuntimeHolder,
-      options.s6Collection,
-      s6RuntimeHolder,
-    ),
+    seam: route === undefined ? innerSeam : wrapSeamWithDomainAppRoute(innerSeam, route.state),
     scheduler,
     writer,
     store,
@@ -817,6 +947,7 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
     expectedPeer: options.expectedPeer,
     recoveryAtComposition: Object.freeze(classifications),
     s1DriveHealth: supervisor.health,
+    domainApp: route?.facade,
   });
   s5RuntimeHolder.current = runtime;
   s6RuntimeHolder.current = runtime;
@@ -836,5 +967,8 @@ export function reopenCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
 
 /** Release the runtime's durable handles (closes the authoritative writer). */
 export function closeCoreRuntime(runtime: CoreRuntime): void {
+  // T02: stop the one K and release its process-global bridge pin before
+  // the durable handles close (a later composition may claim the pin).
+  runtime.domainApp?.close();
   runtime.writer.close();
 }

@@ -7,10 +7,13 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@kaicreator/domain-harness-microkernel": "0.10.2-rc.0",
     "@xdownload/core-scheduler": "workspace:*",
     "@xdownload/core-seam": "workspace:*",
     "@xdownload/direct-acquisition": "workspace:*",
     "@xdownload/domain-contracts": "workspace:*",
+    "@xdownload/download-domain-app": "workspace:*",
+    "@xdownload/download-domain-host": "workspace:*",
     "@xdownload/hls-vod-adapter": "workspace:*",
     "@xdownload/persistence-ledger": "workspace:*"
   }

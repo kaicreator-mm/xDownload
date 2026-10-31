@@ -271,8 +271,19 @@ export function seamCommand(
   return runtime.seam.handleFrame(JSON.stringify(commandEnvelope(input)));
 }
 
-export function seamQuery(runtime: CoreRuntime, aggregateId: string): SeamResponse {
-  return runtime.seam.handleFrame(JSON.stringify(queryEnvelope({ aggregateId })));
+export function seamQuery(
+  runtime: CoreRuntime,
+  aggregateId: string,
+  explicitRequestId?: string,
+): SeamResponse {
+  return runtime.seam.handleFrame(
+    JSON.stringify(
+      queryEnvelope({
+        aggregateId,
+        ...(explicitRequestId === undefined ? {} : { requestId: requestIdOf(explicitRequestId) }),
+      }),
+    ),
+  );
 }
 
 // ------------------------------------------------------- loopback client wiring
