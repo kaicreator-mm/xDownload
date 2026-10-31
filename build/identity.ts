@@ -18,6 +18,8 @@ import path from 'node:path';
 export interface ToolchainRef {
   readonly name: string;
   readonly version: string;
+  /** Provenance: repo declaration only, never environment probing (T09). */
+  readonly source: 'declared';
 }
 
 export interface SourceRevision {

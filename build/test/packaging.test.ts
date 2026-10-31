@@ -24,7 +24,13 @@ import {
   verifyIdentity,
 } from '../identity.ts';
 import { renderFilledHostManifest, renderHostManifestTemplate } from '../native-host.ts';
-import { vendoredRuntimeDistPaths } from '../build-config.ts';
+import {
+  captureToolchain,
+  declaredEsbuildVersion,
+  declaredNodeVersion,
+  declaredPnpmVersion,
+  vendoredRuntimeDistPaths,
+} from '../build-config.ts';
 import { browserNodeStubsPlugin } from '../browser-node-stubs.ts';
 import esbuild from 'esbuild';
 
@@ -159,7 +165,7 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
       artifact: id,
       artifactDir: path.join(distRoot, id),
       sourceRevision: { sha: '0'.repeat(40), dirty: false },
-      toolchain: [{ name: 'node', version: 'test' }],
+      toolchain: [{ name: 'node', version: 'test', source: 'declared' }],
     });
     fs.writeFileSync(
       path.join(identityDir, `${id}.json`),
@@ -694,5 +700,106 @@ describe('browser node-builtin stub plugin (fail-closed packaging surface)', () 
     );
     expect(result.ok).toBe(false);
     expect(result.error).toContain('not part of the declared browser-stub surface');
+  });
+});
+
+// ------------------------------ T09 declared toolchain identity (determinism)
+
+describe('declared toolchain identity (environment-independent)', () => {
+  // Controller-found defect, fixed in T09: the identity previously probed
+  // npm_config_user_agent (pnpm) and the running runtime (node), so the same
+  // source revision composed to DIFFERENT installer hashes on hosts whose
+  // PATH differed. Every entry is now a repo declaration, labeled as such.
+
+  it('reads the exact declared trio and labels every entry source=declared', () => {
+    expect(captureToolchain(esbuild.version)).toEqual([
+      { name: 'node', version: '24.21.0', source: 'declared' },
+      { name: 'pnpm', version: '12.8.1', source: 'declared' },
+      { name: 'esbuild', version: '0.25.12', source: 'declared' },
+    ]);
+  });
+
+  it('is immune to the shell environment (no npm_config_user_agent probing)', () => {
+    const previous = process.env['npm_config_user_agent'];
+    try {
+      // The exact condition the controller reproduced: no package-manager
+      // user agent at all, then a hostile one — both must yield the SAME
+      // declared identity byte-for-byte.
+      delete process.env['npm_config_user_agent'];
+      expect(captureToolchain(esbuild.version)).toEqual(captureToolchain(esbuild.version));
+      const withoutAgent = JSON.stringify(captureToolchain(esbuild.version));
+      process.env['npm_config_user_agent'] = 'pnpm/9.9.9 npm/? node/v23.0.0 darwin x64';
+      expect(JSON.stringify(captureToolchain(esbuild.version))).toBe(withoutAgent);
+    } finally {
+      if (previous === undefined) {
+        delete process.env['npm_config_user_agent'];
+      } else {
+        process.env['npm_config_user_agent'] = previous;
+      }
+    }
+  });
+
+  it('fails closed with typed errors when a declaration is missing', () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-declared-'));
+    try {
+      // A tree without any package.json: every reader fails typed (the node
+      // reader reports the unreadable engines source it fell through to).
+      expect(() => declaredNodeVersion(empty)).toThrow(/cannot record toolchain identity/u);
+      expect(() => declaredPnpmVersion(empty)).toThrow(/cannot record toolchain identity/u);
+      expect(() => declaredEsbuildVersion(esbuild.version, empty)).toThrow(
+        /cannot record toolchain identity/u,
+      );
+      // A tree WITH a package.json that declares nothing relevant: the exact
+      // no-declaration messages.
+      const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-declared-bare-'));
+      try {
+        fs.writeFileSync(path.join(bare, 'package.json'), JSON.stringify({ name: 'bare' }), 'utf8');
+        expect(() => declaredNodeVersion(bare)).toThrow(
+          /no node version declaration \(.node-version, .nvmrc or engines.node\)/u,
+        );
+        expect(() => declaredPnpmVersion(bare)).toThrow(
+          /packageManager must declare 'pnpm@<version>'/u,
+        );
+        expect(() => declaredEsbuildVersion(esbuild.version, bare)).toThrow(
+          /devDependencies.esbuild must pin an exact version/u,
+        );
+      } finally {
+        fs.rmSync(bare, { recursive: true, force: true });
+      }
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses malformed declarations instead of guessing', () => {
+    const malformed = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-declared-bad-'));
+    try {
+      fs.writeFileSync(path.join(malformed, '.nvmrc'), 'latest\n', 'utf8');
+      expect(() => declaredNodeVersion(malformed)).toThrow(
+        /must pin an exact node version, got 'latest'/u,
+      );
+      fs.writeFileSync(
+        path.join(malformed, 'package.json'),
+        JSON.stringify({ packageManager: 'npm@10.0.0' }),
+        'utf8',
+      );
+      expect(() => declaredPnpmVersion(malformed)).toThrow(/must declare 'pnpm@<version>'/u);
+      fs.writeFileSync(
+        path.join(malformed, 'package.json'),
+        JSON.stringify({ devDependencies: { esbuild: '^0.25.12' } }),
+        'utf8',
+      );
+      expect(() => declaredEsbuildVersion('0.25.12', malformed)).toThrow(
+        /devDependencies.esbuild must pin an exact version/u,
+      );
+    } finally {
+      fs.rmSync(malformed, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed on a declared/installed esbuild drift', () => {
+    expect(() => captureToolchain('9.9.9')).toThrow(
+      /declared esbuild 0\.25\.12 != installed 9\.9\.9/u,
+    );
   });
 });

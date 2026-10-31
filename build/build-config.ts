@@ -24,6 +24,7 @@
  *   re-baselined green after the add).
  */
 
+import fs from 'node:fs';
 import path from 'node:path';
 
 /** Repo root (this file lives in <root>/build/). */
@@ -238,30 +239,129 @@ export const GLOBAL_DENYLIST: readonly string[] = [
 export interface ToolchainEntry {
   readonly name: string;
   readonly version: string;
+  /**
+   * T09 determinism repair: the version fact's provenance. The identity
+   * carries ONLY repo declarations — never environment probing — so the same
+   * source revision composes to byte-identical identities on every host
+   * (whatever pnpm/node happen to sit on the composing shell's PATH).
+   */
+  readonly source: 'declared';
+}
+
+/** Read the root package.json of a repo tree (typed, fail-closed). */
+function readRootPackageJson(root: string): Record<string, unknown> {
+  const file = path.join(root, 'package.json');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `cannot record toolchain identity: root package.json unreadable at ${file}: ${error instanceof Error ? error.message : 'error'}`,
+    );
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`cannot record toolchain identity: ${file} is not a JSON object`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * The declared node runtime: `.node-version`, then `.nvmrc`, then the
+ * `engines.node` declaration. A declaration file wins because it pins the
+ * EXACT version the repo builds and tests under; all three are repo
+ * declarations, never a probe of the running runtime.
+ */
+export function declaredNodeVersion(root: string = REPO_ROOT): string {
+  for (const file of ['.node-version', '.nvmrc']) {
+    const filePath = path.join(root, file);
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+    const value = fs.readFileSync(filePath, 'utf8').trim();
+    if (!/^v?\d+\.\d+\.\d+$/u.test(value)) {
+      throw new Error(
+        `cannot record toolchain identity: ${file} must pin an exact node version, got '${value}'`,
+      );
+    }
+    return value.replace(/^v/u, '');
+  }
+  const engines = readRootPackageJson(root)['engines'];
+  const nodeRange =
+    typeof engines === 'object' && engines !== null
+      ? (engines as Record<string, unknown>)['node']
+      : undefined;
+  if (typeof nodeRange === 'string' && nodeRange.trim() !== '') {
+    // No exact-pin declaration file: record the declared compat range
+    // verbatim (still a declaration, honestly labeled `source: 'declared'`).
+    return nodeRange.trim();
+  }
+  throw new Error(
+    'cannot record toolchain identity: no node version declaration (.node-version, .nvmrc or engines.node)',
+  );
+}
+
+/**
+ * The declared pnpm version: the root `packageManager` field's `pnpm@<semver>`
+ * (an integrity suffix, when present, is stripped). Corepack enforces this
+ * exact version, so the declaration IS the build's package-manager identity.
+ */
+export function declaredPnpmVersion(root: string = REPO_ROOT): string {
+  const packageManager = readRootPackageJson(root)['packageManager'];
+  if (typeof packageManager !== 'string' || !packageManager.startsWith('pnpm@')) {
+    throw new Error(
+      `cannot record toolchain identity: packageManager must declare 'pnpm@<version>', got '${String(packageManager)}'`,
+    );
+  }
+  const version = packageManager.slice('pnpm@'.length).split('+')[0]?.trim() ?? '';
+  if (!/^\d+\.\d+\.\d+$/u.test(version)) {
+    throw new Error(
+      `cannot record toolchain identity: packageManager pnpm version must be exact semver, got '${version}'`,
+    );
+  }
+  return version;
+}
+
+/**
+ * The declared esbuild version: the root devDependencies pin, cross-checked
+ * against the actually-loaded module (the same fail-closed drift discipline
+ * as the vendored koffi runtime — a non-frozen install cannot silently claim
+ * the declared identity).
+ */
+export function declaredEsbuildVersion(loadedVersion: string, root: string = REPO_ROOT): string {
+  if (loadedVersion.trim() === '') {
+    throw new Error('cannot record toolchain identity: esbuild version unreadable');
+  }
+  const devDependencies = readRootPackageJson(root)['devDependencies'];
+  const declared =
+    typeof devDependencies === 'object' && devDependencies !== null
+      ? (devDependencies as Record<string, unknown>)['esbuild']
+      : undefined;
+  if (typeof declared !== 'string' || !/^\d+\.\d+\.\d+$/u.test(declared.trim())) {
+    throw new Error(
+      `cannot record toolchain identity: devDependencies.esbuild must pin an exact version, got '${String(declared)}'`,
+    );
+  }
+  if (declared.trim() !== loadedVersion) {
+    throw new Error(
+      `toolchain identity drift: declared esbuild ${declared.trim()} != installed ${loadedVersion}; install from the frozen lockfile or re-derive the declaration before packaging`,
+    );
+  }
+  return declared.trim();
 }
 
 /**
  * Capture the exact toolchain identity bound into every package identity
- * (C33: a changed baseline/toolchain cannot silently claim the same
- * package identity). The esbuild version comes from the loaded module
- * itself so the identity never depends on a human hand-typing it.
+ * (C33: a changed baseline/toolchain cannot silently claim the same package
+ * identity). T09 determinism repair: every entry is read from a REPO
+ * DECLARATION (`.nvmrc`, `packageManager`, `devDependencies.esbuild`) and
+ * labeled `source: 'declared'` — no `npm_config_user_agent` probing, no
+ * runtime sampling, no 'unavailable' fallback. A missing declaration is a
+ * typed build failure, never a silently degraded identity.
  */
 export function captureToolchain(esbuildVersion: string): readonly ToolchainEntry[] {
-  if (esbuildVersion.trim() === '') {
-    throw new Error('cannot record toolchain identity: esbuild version unreadable');
-  }
   return [
-    { name: 'node', version: process.versions.node },
-    { name: 'pnpm', version: pnpmVersion() ?? 'unavailable' },
-    { name: 'esbuild', version: esbuildVersion },
+    { name: 'node', version: declaredNodeVersion(), source: 'declared' },
+    { name: 'pnpm', version: declaredPnpmVersion(), source: 'declared' },
+    { name: 'esbuild', version: declaredEsbuildVersion(esbuildVersion), source: 'declared' },
   ];
-}
-
-function pnpmVersion(): string | null {
-  const userAgent = process.env['npm_config_user_agent'];
-  if (userAgent === undefined) {
-    return null;
-  }
-  const match = /^pnpm\/(\d+\.\d+\.\d+)/.exec(userAgent);
-  return match === null ? null : (match[1] ?? null);
 }

@@ -156,6 +156,7 @@ describe('T09 installer composition (real dist)', () => {
       tuple: { os: string; arch: string };
       payloadContentHashes: Record<string, string>;
       sourceRevision: { sha: string };
+      toolchain: readonly { name: string; version: string; source: string }[];
     };
     expect(identity.contentVersion).toBe(INSTALLER_CONTENT_VERSION);
     expect(identity.tuple).toEqual({ os: 'windows', arch: 'x64' });
@@ -173,6 +174,20 @@ describe('T09 installer composition (real dist)', () => {
       });
     expect(identity.contentHash).toBe(canonicalContentHash(listed));
     expect(result.identity.contentHash).toBe(identity.contentHash);
+  });
+
+  it('binds a DECLARED-ONLY toolchain identity (no environment probing)', () => {
+    // Controller-found determinism defect, fixed: the identity toolchain must
+    // come from repo declarations so the same HEAD composes to the same
+    // installer bytes on any host, whatever pnpm/node sit on its PATH.
+    const identity = JSON.parse(
+      fs.readFileSync(path.join(INSTALLER_ROOT(), 'installer-identity.json'), 'utf8'),
+    ) as { toolchain: readonly { name: string; version: string; source: string }[] };
+    expect(identity.toolchain).toEqual([
+      { name: 'node', version: '24.21.0', source: 'declared' },
+      { name: 'pnpm', version: '12.8.1', source: 'declared' },
+      { name: 'esbuild', version: '0.25.12', source: 'declared' },
+    ]);
   });
 });
 
