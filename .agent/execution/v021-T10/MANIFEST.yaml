@@ -1,0 +1,29 @@
+schema: ads/execution-pack/v1
+task_id: v021-T10
+issue: "https://github.com/kaicreator-mm/xDownload/issues/259"
+project: kaicreator-mm/xDownload
+integration_target: version/v0.2.1
+expected_base_sha: 56f9e16d8d7afb29b2a493c07bdf4f886a0bf445
+frozen_task_pack_ref: "docs/implementation/v0.2.1/TASK_PACKS_R0.md@planning/v0.2.1-user-release@1cffd6445308ac78fa2f9e4489af579f0deb32ef"
+frozen_task_pack_blob: c0cbed29ffa1a47cad5aed288aa262dd0dd549a8
+task_branch: task/v0.2.1-t10-user-agent-docs
+builder: chatgpt-web:xdownload-v021-t10-docs-builder
+freedom: F1_BOUNDED_IMPLEMENTATION
+review: recommended
+depends_on_closed_issues: [253, 254, 255, 257, 258]
+allowed_write_set: ["docs/user/**", "docs/agent/**"]
+forbidden:
+  - Product/L2/DAG freeze edits
+  - runtime code changes
+  - fabricated installed/browser/Windows/human proof
+acceptance:
+  - Chinese-first user quick start/troubleshooting
+  - English-first Agent/automation contract and CLI examples
+  - honest permissions/destinations/retry/recovery/support matrix
+  - example commands checked against packaged candidate by separate validation
+ci:
+  - Windows Node >= 24; repository pinned Node 24.21.0, pnpm 12.8.1
+  - Woodpecker local Docker only; no GitHub Actions
+  - exact SHA source/write-set and documentation link checks
+  - real packaged examples remain NOT_PROVEN until T12/T16 evidence
+main_merge: forbidden
