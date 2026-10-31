@@ -15,15 +15,20 @@ export function observeIdentity(headers: Headers): RepresentationIdentity {
   const etag = headerOrNull(headers, 'etag');
   const lastModified = headerOrNull(headers, 'last-modified');
   const contentLengthRaw = headerOrNull(headers, 'content-length');
-  const contentLength =
+  const parsedContentLength =
     contentLengthRaw !== undefined && /^\d+$/.test(contentLengthRaw)
       ? Number(contentLengthRaw)
       : undefined;
+  const contentLengthValid =
+    parsedContentLength !== undefined &&
+    Number.isSafeInteger(parsedContentLength) &&
+    parsedContentLength >= 0;
   return {
     strongETag: etag !== undefined && !etag.startsWith('W/') ? etag : undefined,
     weakETag: etag !== undefined && etag.startsWith('W/') ? etag : undefined,
     lastModified,
-    contentLength,
+    ...(contentLengthValid ? { contentLength: parsedContentLength } : {}),
+    ...(contentLengthRaw !== undefined && !contentLengthValid ? { invalidContentLength: true } : {}),
   };
 }
 
