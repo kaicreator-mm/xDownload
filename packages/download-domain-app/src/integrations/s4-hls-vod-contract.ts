@@ -4,17 +4,8 @@
  * against the trusted manifest by the Host before any segment request.
  */
 import { createHash } from 'node:crypto';
-import {
-  diagnostic,
-  fail,
-  ok,
-  type DomainValidationResult,
-} from '@xdownload/domain-contracts';
-import {
-  REFERENCE_TOKEN_PATTERN,
-  SHA256_PATTERN,
-  validateOutputRoot,
-} from '../contracts/index.ts';
+import { diagnostic, fail, ok, type DomainValidationResult } from '@xdownload/domain-contracts';
+import { REFERENCE_TOKEN_PATTERN, SHA256_PATTERN, validateOutputRoot } from '../contracts/index.ts';
 
 export const S4_HLS_MEDIA_OPERATION = 'media.acquire' as const;
 export const S4_HLS_MEDIA_PROFILE = 'BASIC_HLS_VOD_MPEGTS_H264_AAC_V1' as const;
@@ -186,9 +177,9 @@ export function s4HlsSelectionTupleDigest(input: {
     input.renditionUri,
   )},"manifestUri":${JSON.stringify(input.manifestUri)},"mediaProfileId":${JSON.stringify(
     input.mediaProfileId,
-  )},"bandwidth":${String(input.bandwidth)},"width":${input.width === undefined ? 'null' : String(
-    input.width,
-  )},"height":${input.height === undefined ? 'null' : String(input.height)}}`;
+  )},"bandwidth":${String(input.bandwidth)},"width":${
+    input.width === undefined ? 'null' : String(input.width)
+  },"height":${input.height === undefined ? 'null' : String(input.height)}}`;
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
@@ -315,30 +306,32 @@ export function validateConfirmedS4HlsIntent(
     ]);
   }
 
-  return ok(Object.freeze({
-    requestId: record.requestId as string,
-    lineageId: record.lineageId as string,
-    contractId: record.contractId as string,
-    targetRef: record.targetRef as string,
-    outputRootScope: root.value,
-    allowedOperation: S4_HLS_MEDIA_OPERATION,
-    selection: Object.freeze({
-      confirmedSelectionId: selection.confirmedSelectionId as string,
-      previewId: selection.previewId as string,
-      snapshotId: selection.snapshotId as string,
-      memberId: selection.memberId as string,
-      manifestUri: selection.manifestUri as string,
-      mediaProfileId: S4_HLS_MEDIA_PROFILE,
-      renditionKey: selection.renditionKey as string,
-      renditionUri: selection.renditionUri as string,
-      displayedTupleDigest: selection.displayedTupleDigest as string,
-      confirmedAt: selection.confirmedAt as string,
-      expiresAt: selection.expiresAt as string,
+  return ok(
+    Object.freeze({
+      requestId: record.requestId as string,
+      lineageId: record.lineageId as string,
+      contractId: record.contractId as string,
+      targetRef: record.targetRef as string,
+      outputRootScope: root.value,
+      allowedOperation: S4_HLS_MEDIA_OPERATION,
+      selection: Object.freeze({
+        confirmedSelectionId: selection.confirmedSelectionId as string,
+        previewId: selection.previewId as string,
+        snapshotId: selection.snapshotId as string,
+        memberId: selection.memberId as string,
+        manifestUri: selection.manifestUri as string,
+        mediaProfileId: S4_HLS_MEDIA_PROFILE,
+        renditionKey: selection.renditionKey as string,
+        renditionUri: selection.renditionUri as string,
+        displayedTupleDigest: selection.displayedTupleDigest as string,
+        confirmedAt: selection.confirmedAt as string,
+        expiresAt: selection.expiresAt as string,
+      }),
+      caller: Object.freeze({
+        actor: caller.actor as string,
+        sessionRef: caller.sessionRef as string,
+      }),
+      ...(record.digestAnchor === undefined ? {} : { digestAnchor: record.digestAnchor as string }),
     }),
-    caller: Object.freeze({
-      actor: caller.actor as string,
-      sessionRef: caller.sessionRef as string,
-    }),
-    ...(record.digestAnchor === undefined ? {} : { digestAnchor: record.digestAnchor as string }),
-  }));
+  );
 }

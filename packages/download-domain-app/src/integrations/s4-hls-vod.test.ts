@@ -8,8 +8,12 @@ import { basename, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
+  acquireS4HlsBridgePin,
   assembleS4HlsRuntime,
+  S4_HLS_BRIDGE_PIN,
   submitConfirmedS4HlsVod,
+  type S4HlsPinCounters,
+  type S4HlsRuntime,
 } from './s4-hls-vod.ts';
 import {
   S4_HLS_MEDIA_OPERATION,
@@ -73,7 +77,11 @@ function budgetFixture(): Record<string, unknown> {
     discovery: { domain: 'discovery', maxGeneratedRequests: 100 },
     transfer: {
       domain: 'transfer',
-      maxBytes: 2_000_000,
+      // The engine's conservative pre-HTTP gate admits a segment only when the
+      // fetcher's worst-case bound still fits the remaining budget, so the
+      // transfer budget must exceed segmentMaxBytes (2 MiB) plus the playlist
+      // fetches — 8 MiB leaves room for every fixture segment.
+      maxBytes: 8_000_000,
       maxSegments: 8,
       maxRetryTransferRequests: 4,
     },
@@ -101,59 +109,61 @@ async function createRealHlsFixture(root: string): Promise<{
   await mkdir(fixtureDir, { recursive: true });
   const mediaPath = join(fixtureDir, 'media.m3u8');
   const segmentPattern = join(fixtureDir, 'segment%03d.ts');
-  const generated = spawnSync('ffmpeg', [
-    '-hide_banner',
-    '-loglevel',
-    'error',
-    '-y',
-    '-f',
-    'lavfi',
-    '-i',
-    'testsrc=size=160x90:rate=25:duration=4',
-    '-f',
-    'lavfi',
-    '-i',
-    'sine=frequency=1000:sample_rate=48000:duration=4',
-    '-t',
-    '4',
-    '-c:v',
-    'libx264',
-    '-preset',
-    'ultrafast',
-    '-tune',
-    'zerolatency',
-    '-profile:v',
-    'baseline',
-    '-level',
-    '3.0',
-    '-pix_fmt',
-    'yuv420p',
-    '-g',
-    '50',
-    '-keyint_min',
-    '50',
-    '-sc_threshold',
-    '0',
-    '-c:a',
-    'aac',
-    '-b:a',
-    '64k',
-    '-force_key_frames',
-    'expr:gte(t,n_forced*2)',
-    '-f',
-    'hls',
-    '-hls_time',
-    '2',
-    '-hls_list_size',
-    '0',
-    '-hls_playlist_type',
-    'vod',
-    '-hls_flags',
-    'independent_segments',
-    '-hls_segment_filename',
-    segmentPattern,
-    mediaPath,
-  ], { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true });
+  const generated = spawnSync(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=size=160x90:rate=25:duration=4',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=1000:sample_rate=48000:duration=4',
+      '-t',
+      '4',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-tune',
+      'zerolatency',
+      '-profile:v',
+      'baseline',
+      '-level',
+      '3.0',
+      '-pix_fmt',
+      'yuv420p',
+      '-g',
+      '50',
+      '-keyint_min',
+      '50',
+      '-sc_threshold',
+      '0',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '64k',
+      '-force_key_frames',
+      'expr:gte(t,n_forced*2)',
+      '-f',
+      'hls',
+      '-hls_time',
+      '2',
+      '-hls_list_size',
+      '0',
+      '-hls_playlist_type',
+      'vod',
+      '-hls_segment_filename',
+      segmentPattern,
+      mediaPath,
+    ],
+    { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true },
+  );
   assert.equal(
     generated.error,
     undefined,
@@ -224,19 +234,21 @@ async function runS4RefusalScenario(input: {
     const targetRef = 'ref:s4-target-negative';
     runtime = await assembleS4HlsRuntime({
       storePath: join(root, 'k-documents.json'),
-      mediaTargetRefs: [{
-        handle: targetRef,
-        record: {
-          protocol: 'HLS',
-          manifestUri,
-          selectedRenditionUri: renditionUri,
-          artifactFileName: 's4-refusal.ts',
-          allowedManifestOrigins: [origin],
-          allowedSegmentOrigins: [origin],
-          budget: budgetFixture(),
-          fixtureLoopbackHttp: true,
+      mediaTargetRefs: [
+        {
+          handle: targetRef,
+          record: {
+            protocol: 'HLS',
+            manifestUri,
+            selectedRenditionUri: renditionUri,
+            artifactFileName: 's4-refusal.ts',
+            allowedManifestOrigins: [origin],
+            allowedSegmentOrigins: [origin],
+            budget: budgetFixture(),
+            fixtureLoopbackHttp: true,
+          },
         },
-      }],
+      ],
     });
     const intent = confirmedIntent(outputRoot, { manifestUri, renditionUri, targetRef });
     const selection = intent.selection as Record<string, unknown>;
@@ -315,7 +327,6 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
       expiredSelection.confirmedAt = new Date(Date.now() - 61_000).toISOString();
       expiredSelection.expiresAt = new Date(Date.now() - 1_000).toISOString();
       assert.equal(validateConfirmedS4HlsIntent(expired).ok, false);
-
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -438,16 +449,18 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
         }
         const name = pathname.slice(1);
         if (fixture.segmentNames.includes(name)) {
-          void readFile(join(fixture.fixtureDir, name)).then((bytes) => {
-            response.writeHead(200, {
-              'content-type': 'video/mp2t',
-              'content-length': String(bytes.length),
+          void readFile(join(fixture.fixtureDir, name))
+            .then((bytes) => {
+              response.writeHead(200, {
+                'content-type': 'video/mp2t',
+                'content-length': String(bytes.length),
+              });
+              response.end(bytes);
+            })
+            .catch(() => {
+              response.writeHead(404);
+              response.end();
             });
-            response.end(bytes);
-          }).catch(() => {
-            response.writeHead(404);
-            response.end();
-          });
           return;
         }
         response.writeHead(404);
@@ -469,22 +482,24 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
 
       runtime = await assembleS4HlsRuntime({
         storePath: join(root, 'k-documents.json'),
-        mediaTargetRefs: [{
-          handle: targetRef,
-          record: {
-            protocol: 'HLS',
-            manifestUri,
-            selectedRenditionUri: renditionUri,
-            artifactFileName: 's4-positive.ts',
-            allowedManifestOrigins: [origin],
-            allowedSegmentOrigins: [origin],
-            budget: budgetFixture(),
-            fixtureLoopbackHttp: true,
-            manifestMaxBytes: 65_536,
-            segmentMaxBytes: 2_000_000,
-            timeoutMs: 10_000,
+        mediaTargetRefs: [
+          {
+            handle: targetRef,
+            record: {
+              protocol: 'HLS',
+              manifestUri,
+              selectedRenditionUri: renditionUri,
+              artifactFileName: 's4-positive.ts',
+              allowedManifestOrigins: [origin],
+              allowedSegmentOrigins: [origin],
+              budget: budgetFixture(),
+              fixtureLoopbackHttp: true,
+              manifestMaxBytes: 65_536,
+              segmentMaxBytes: 2_000_000,
+              timeoutMs: 10_000,
+            },
           },
-        }],
+        ],
       });
 
       const intent = confirmedIntent(outputRoot, {
@@ -537,6 +552,178 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
           server!.close((error) => (error ? rejectClose(error) : resolveClose()));
         });
       }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a duplicate bridge registration without displacing the live holder', () => {
+    const first = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => ({
+        phase: 'terminal',
+        externalRef: 'x',
+        outcome: { ok: true, output: {} },
+      }),
+    });
+    assert.equal(first.ok, true);
+    if (!first.ok) throw new Error('expected first registration to succeed');
+
+    const second = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => {
+        throw new Error('never routed');
+      },
+    });
+    assert.equal(second.ok, false);
+    if (second.ok) throw new Error('expected duplicate registration refusal');
+    assert.equal(second.code, 'S4_BRIDGE_PIN_CONFLICT');
+
+    // The live holder keeps its authority: the conflicting registration routed nothing.
+    assert.equal((globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], first.lease.bridge);
+    first.lease.release();
+    first.lease.release();
+    assert.equal((globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], undefined);
+
+    const reacquired = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => ({
+        phase: 'terminal',
+        externalRef: 'x',
+        outcome: { ok: true, output: {} },
+      }),
+    });
+    assert.equal(reacquired.ok, true);
+    if (reacquired.ok) reacquired.lease.release();
+  });
+
+  it('refuses a second standalone assembly beside a live runtime instead of displacing its bridge', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-conflict-'));
+    let first: Awaited<ReturnType<typeof assembleS4HlsRuntime>> | undefined;
+    try {
+      const outputRoot = resolve(join(root, 'output'));
+      await mkdir(outputRoot, { recursive: true });
+      first = await assembleS4HlsRuntime({
+        storePath: join(root, 'k-first.json'),
+        mediaTargetRefs: [],
+      });
+
+      await assert.rejects(
+        assembleS4HlsRuntime({ storePath: join(root, 'k-second.json'), mediaTargetRefs: [] }),
+        /S4_BRIDGE_PIN_CONFLICT/,
+      );
+
+      // Zero wrong-registry effects from the refused assembly: the live runtime
+      // still owns the pin and answers with its own registry refusal.
+      const result = await submitConfirmedS4HlsVod(first, confirmedIntent(outputRoot));
+      assert.equal(result.status, 'failed');
+      if (result.status !== 'failed') throw new Error('expected unknown target refusal');
+      assert.equal(result.code, 'CONTRACT_BINDING_MISMATCH');
+      assert.equal(first.pin.acquireCalls, 1);
+      assert.equal(first.pin.registryRefusals, 1);
+      assert.deepEqual(await readdir(outputRoot), []);
+    } finally {
+      first?.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+
+    // After the live runtime is stopped, a new assembly may hold the pin again.
+    const secondRoot = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-reacquire-'));
+    try {
+      const second = await assembleS4HlsRuntime({
+        storePath: join(secondRoot, 'k-second.json'),
+        mediaTargetRefs: [],
+      });
+      second.stop();
+    } finally {
+      await rm(secondRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('composes the S4 contribution into one externally-built single-K app', async () => {
+    const { buildV10App } = await import('@kaicreator/domain-harness-build');
+    const { load } = await import('@kaicreator/domain-harness-microkernel');
+    const {
+      s4HlsCompositionContribution,
+      S4_HLS_BRIDGE_PIN,
+      submitConfirmedS4HlsVod: submit,
+    } = await import('./s4-hls-vod.ts');
+    const { buildDownloadDomainApp, verifySealedModules } =
+      await import('../business/composition.ts');
+    const { FileCasDocStore } = await import('../composition/runtime.ts');
+    const { s4HlsSealedPassthrough } = await import('./s4-hls-vod.ts');
+
+    const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-single-k-'));
+    const contribution = s4HlsCompositionContribution();
+    const core = buildDownloadDomainApp().built;
+    const modules = core.modules.map((module) => {
+      if (module.role === 'business') return contribution.business;
+      if (module.role === 'capability') return contribution.capability;
+      return s4HlsSealedPassthrough(module);
+    });
+    const built = buildV10App({
+      appId: 'app:xdownload-v021-single-k-t06-contribution',
+      audience: core.audience,
+      targetProfile: core.targetProfile,
+      modules,
+      routes: [contribution.route],
+      hardBudget: core.hardBudget,
+      buildId: 'xdownload-v021-single-k-t06-contribution-v1',
+    });
+    verifySealedModules(built);
+
+    const store = new FileCasDocStore(join(root, 'single-k-documents.json'));
+    const pinCounters = { acquireCalls: 0, registryRefusals: 0 };
+    const registration = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => {
+        pinCounters.acquireCalls += 1;
+        pinCounters.registryRefusals += 1;
+        return {
+          phase: 'terminal',
+          externalRef: 'media.acquire:unpermitted',
+          outcome: {
+            ok: false,
+            error: { code: 'MEDIA_TARGET_UNKNOWN', message: 'opaque targetRef did not resolve' },
+          },
+        };
+      },
+    });
+    assert.equal(registration.ok, true);
+    if (!registration.ok) throw new Error('expected contribution bridge registration');
+    try {
+      const app = await load(built, {
+        store,
+        tenantId: 'tenant:xdownload-v021-s4',
+        deploymentIdentity: {
+          deployedAppId: 'deploy:xdownload-v021-single-k',
+          tenantId: 'tenant:xdownload-v021-s4',
+          appId: built.appId,
+        },
+        queryAuthority: {
+          principal: { actor: 'xdownload-v021-s4-host' },
+          authorize: (candidate, target) =>
+            Boolean(
+              candidate !== null &&
+              typeof candidate === 'object' &&
+              (candidate as { actor?: string }).actor === 'xdownload-v021-s4-host' &&
+              target.tenantId === 'tenant:xdownload-v021-s4',
+            ),
+        },
+      });
+      try {
+        assert.equal(typeof (globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], 'object');
+        const runtime = {
+          app,
+          pin: pinCounters as unknown as S4HlsPinCounters,
+        } as unknown as S4HlsRuntime;
+        const result = await submit(runtime, confirmedIntent(join(root, 'output')));
+        assert.equal(result.status, 'failed');
+        if (result.status !== 'failed')
+          throw new Error('expected typed registry refusal through one K');
+        assert.equal(result.code, 'MEDIA_TARGET_UNKNOWN');
+        assert.equal(pinCounters.acquireCalls, 1);
+      } finally {
+        app.stop();
+      }
+    } finally {
+      if (registration.ok) registration.lease.release();
+      store.close();
       await rm(root, { recursive: true, force: true });
     }
   });

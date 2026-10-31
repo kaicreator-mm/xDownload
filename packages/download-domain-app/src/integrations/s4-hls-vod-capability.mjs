@@ -28,8 +28,9 @@ function bridge() {
 export function acquireS4HlsVod(payload, dispatchContext) {
   if (arguments.length !== 2) throw new Error('S4 HLS receives exactly (payload, dispatchContext)');
   const record = payload === null || typeof payload !== 'object' ? {} : payload;
-  const permit = dispatchContext && typeof dispatchContext === 'object'
-    ? dispatchContext.effectPermit
-    : undefined;
+  const permit =
+    dispatchContext && typeof dispatchContext === 'object'
+      ? dispatchContext.effectPermit
+      : undefined;
   return bridge().acquireS4HlsVod(record, permit);
 }

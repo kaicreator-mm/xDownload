@@ -513,10 +513,12 @@ async function executeMediaHls(
       manifestUri: selection.manifestUri,
       mediaProfileId: selection.mediaProfileId,
       bandwidth: selected.bandwidth,
-      ...(selected.resolution === undefined ? {} : {
-        width: selected.resolution.width,
-        height: selected.resolution.height,
-      }),
+      ...(selected.resolution === undefined
+        ? {}
+        : {
+            width: selected.resolution.width,
+            height: selected.resolution.height,
+          }),
     });
     if (
       selection.manifestUri !== request.manifestUri ||
