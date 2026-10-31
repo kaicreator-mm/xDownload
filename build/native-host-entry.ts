@@ -466,7 +466,10 @@ export interface ServeBrokerHostIo {
  * per-connection Native Messaging discipline (the shipped extension performs
  * one request/response per port and disconnects) keeps the two writers from
  * interleaving; stdin end drains the in-flight relay work before the broker
- * session sees EOF, so trailing answers are never cut off.
+ * session sees EOF, so trailing answers are never cut off, and the relay's
+ * pooled Core connection is then closed so the event loop drains and the
+ * process honors its exit contract (0 on clean stdin close — a leaked ref'd
+ * socket here would leave one zombie broker per browser port).
  */
 export function serveBrokerHostStdio(
   io: ServeBrokerHostIo,
@@ -595,9 +598,20 @@ export function serveBrokerHostStdio(
     }
   });
   io.input.on('end', () => {
-    void relayChain.then(() => {
-      brokerInput.end();
-    });
+    // Drain in-flight relay work, answer trailing frames, then RELEASE the
+    // Core connection: the relay's pooled seam socket is ref'd, and without
+    // an explicit close it keeps the event loop (this short-lived per-port
+    // host process) alive indefinitely after stdin EOF — a zombie holding a
+    // Core connection per browser port. stdin EOF means the exit contract
+    // ("0 clean (stdin closed)") must actually run.
+    void relayChain
+      .then(async () => {
+        brokerInput.end();
+        await relay.close();
+      })
+      .catch(() => {
+        brokerInput.end();
+      });
   });
   // Release the relay connection if the input errors out unexpectedly.
   io.input.on('error', () => {

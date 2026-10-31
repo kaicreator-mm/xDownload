@@ -53,7 +53,13 @@ import {
   type PackageIdentity,
   type ToolchainRef,
 } from '../build/identity.ts';
-import { REPO_ROOT, captureToolchain } from '../build/build-config.ts';
+import {
+  ARTIFACTS,
+  REPO_ROOT,
+  captureToolchain,
+  VENDORED_NATIVE_RUNTIME,
+  vendoredRuntimeDistPaths,
+} from '../build/build-config.ts';
 import esbuild from 'esbuild';
 
 /** The exact tuple this installer claims — never widened, never guessed. */
@@ -210,14 +216,64 @@ export interface ComposeResult {
 }
 
 /**
+ * P2 fail-closed gate: the installer claims exactly the selected tuple
+ * (`VENDORED_NATIVE_RUNTIME`), and only a host ON that tuple can have vendored
+ * the native runtime into the dist. Composing anywhere else would emit a
+ * stripped installer that fails closed at runtime while reporting success —
+ * refused here, typed, before any byte is copied.
+ */
+export function assertInstallerHostTuple(platform: string, arch: string): void {
+  if (platform !== VENDORED_NATIVE_RUNTIME.platform || arch !== VENDORED_NATIVE_RUNTIME.arch) {
+    throw new Error(
+      `refusing to compose the ${INSTALLER_TUPLE.os}-${INSTALLER_TUPLE.arch} installer on a ${platform}-${arch} host: ` +
+        `this host cannot produce the selected ${VENDORED_NATIVE_RUNTIME.platform}-${VENDORED_NATIVE_RUNTIME.arch} native runtime; ` +
+        'run the composition on the selected build host (fail-closed, no stripped installer is produced)',
+    );
+  }
+}
+
+/**
+ * P2 fail-closed gate on the dist bytes themselves: every vendored native
+ * runtime path the build declares for the pipe-capable artifacts must be
+ * physically present. A dist built on a non-selected tuple (where package.ts
+ * honestly skips the vendoring) is missing exactly these paths.
+ */
+export function assertSelectedRuntimePresent(distDir: string): void {
+  const missing: string[] = [];
+  for (const artifact of ARTIFACTS) {
+    for (const relative of vendoredRuntimeDistPaths(artifact.id)) {
+      if (!fs.existsSync(path.join(distDir, artifact.outDir, relative))) {
+        missing.push(`${artifact.outDir}/${relative}`);
+      }
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `dist is missing the vendored native runtime of the selected ${VENDORED_NATIVE_RUNTIME.platform}-${VENDORED_NATIVE_RUNTIME.arch} tuple ` +
+        `(${String(missing.length)} declared paths absent, e.g. '${missing[0]}'); ` +
+        'the dist was not built on the selected tuple — refusing to compose a stripped installer',
+    );
+  }
+}
+
+/**
  * Compose the installer. Throws typed Errors (exit 2) on any fail-closed
  * refusal; returns the composed tree facts on success.
  */
 export function composeInstaller(options: ComposeOptions): ComposeResult {
   const { distDir, outDir, version } = options;
+  // P2 fail-closed gate: a host that is not the selected tuple cannot
+  // produce the vendored native runtime, and package.ts then honestly skips
+  // it — composing anyway would ship a STRIPPED installer that fails closed
+  // at runtime while reporting success. Refuse before anything is copied.
+  assertInstallerHostTuple(process.platform, process.arch);
   if (!fs.existsSync(path.join(distDir, 'identity'))) {
     throw new Error(`dist not found or incomplete at '${distDir}'; run 'pnpm build' first`);
   }
+  // Second gate on the dist itself: whatever host produced it, the declared
+  // vendored runtime must physically be present (a dist built on a
+  // non-selected tuple is missing exactly those paths).
+  assertSelectedRuntimePresent(distDir);
   // Fail-closed audit over the EXACT bytes that are about to ship: no
   // execution/evidence-only file, no credential shape, no manifest mismatch
   // can enter an installer.

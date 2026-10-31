@@ -20,8 +20,9 @@
  *   machine restored as found).
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,6 +31,8 @@ import { runPackageBuild } from '../package.ts';
 import { REPO_ROOT } from '../build-config.ts';
 import { canonicalContentHash } from '../identity.ts';
 import {
+  assertInstallerHostTuple,
+  assertSelectedRuntimePresent,
   composeInstaller,
   installerDirName,
   installerZipName,
@@ -514,3 +517,226 @@ async function execReg(args: readonly string[]): Promise<void> {
   const { promisify } = await import('node:util');
   await promisify(execFile)('reg', args, { windowsHide: true }).catch(() => undefined);
 }
+
+// ------------------------- T09 P1: packaged host honors its exit contract
+
+const EXIT_ORIGIN = 'chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/';
+
+interface ExitProbeCore {
+  readonly port: number;
+  close(): Promise<void>;
+}
+
+/** Minimal loopback seam listener answering the echo ACCEPTED response. */
+function startExitProbeCore(): Promise<ExitProbeCore> {
+  const sockets: net.Socket[] = [];
+  const server = net.createServer((socket) => {
+    sockets.push(socket);
+    let buffered = Buffer.alloc(0);
+    socket.on('data', (chunk: Buffer) => {
+      buffered = Buffer.concat([buffered, chunk]);
+      while (buffered.length >= 4) {
+        const declared = buffered.readUInt32BE(0);
+        if (buffered.length - 4 < declared) return;
+        const envelope = JSON.parse(buffered.subarray(4, 4 + declared).toString('utf8')) as Record<
+          string,
+          unknown
+        >;
+        buffered = buffered.subarray(4 + declared);
+        const answer = {
+          schemaIdentity: { schema: 'xdownload.core-seam', version: '1.3.0' },
+          kind: 'response',
+          route: 'v0.2',
+          inReplyTo: envelope['requestId'],
+          outcome: 'ACCEPTED',
+          acceptance: {
+            requestId: envelope['requestId'],
+            aggregateId: envelope['aggregateId'],
+            revision: 0,
+            converged: false,
+          },
+        };
+        const body = Buffer.from(JSON.stringify(answer), 'utf8');
+        const header = Buffer.alloc(4);
+        header.writeUInt32BE(body.length, 0);
+        socket.write(Buffer.concat([header, body]));
+      }
+    });
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve({
+        port: (server.address() as net.AddressInfo).port,
+        close: () =>
+          new Promise((resolveClose) => {
+            for (const socket of sockets) socket.destroy();
+            server.close(() => resolveClose());
+          }),
+      });
+    });
+  });
+}
+
+function nmFrameFor(message: unknown): Buffer {
+  const encoded = Buffer.from(JSON.stringify(message), 'utf8');
+  const header = Buffer.alloc(4);
+  header.writeUInt32LE(encoded.length, 0);
+  return Buffer.concat([header, encoded]);
+}
+
+function awaitExit(child: ChildProcess, timeoutMs = 15_000): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('packaged broker did not exit within bounds (event loop held?)')),
+      timeoutMs,
+    );
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      resolve(code ?? -1);
+    });
+  });
+}
+
+/** Wait for the first complete NM frame on the child's stdout. */
+function awaitFirstFrame(child: ChildProcess, timeoutMs = 15_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0);
+    const timer = setTimeout(
+      () => reject(new Error('no broker answer arrived in time')),
+      timeoutMs,
+    );
+    child.stdout?.on('data', (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (buffer.length >= 4) {
+        const declared = buffer.readUInt32LE(0);
+        if (buffer.length - 4 < declared) break;
+        if (buffer.length >= 4 + declared) {
+          clearTimeout(timer);
+          resolve();
+          return;
+        }
+      }
+    });
+  });
+}
+
+describe.skipIf(process.platform !== 'win32')(
+  'T09 P1 packaged native-host process exit (real bundle, real loopback Core)',
+  () => {
+    // The P1 defect this guards: the relay's pooled seam socket is ref'd, so
+    // without an explicit close the packaged broker stayed alive indefinitely
+    // after stdin EOF once it had served one v0.2 frame (one zombie holding a
+    // Core connection per browser port). The exit contract is "0 clean
+    // (stdin closed)".
+    let core: ExitProbeCore;
+    let configPath = '';
+
+    beforeAll(async () => {
+      core = await startExitProbeCore();
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-t09-exit-'));
+      configPath = path.join(dir, 'broker-config.json');
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify({
+          allowedOrigins: [EXIT_ORIGIN],
+          core: {
+            host: '127.0.0.1',
+            port: core.port,
+            installId: 'install-001',
+            userId: 'user-001',
+          },
+        }),
+        'utf8',
+      );
+    });
+
+    afterAll(async () => {
+      await core.close();
+      if (configPath !== '') {
+        fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
+      }
+    });
+
+    function spawnPackagedBroker(): ChildProcess {
+      return spawn(
+        process.execPath,
+        [
+          path.join(distRoot, 'native-host', 'xdownload-broker-host.js'),
+          '--config',
+          configPath,
+          EXIT_ORIGIN,
+        ],
+        { stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+    }
+
+    it('exits 0 within bounds after serving one v0.2 frame and stdin EOF', async () => {
+      const child = spawnPackagedBroker();
+      try {
+        child.stdin?.write(
+          nmFrameFor({
+            schemaIdentity: { schema: 'xdownload.core-seam', version: '1.3.0' },
+            kind: 'command',
+            route: 'v0.2',
+            commandType: 'DOMAIN_APP_SEND',
+            peer: {
+              installId: 'install-001',
+              userId: 'user-001',
+              surface: 'BROWSER_EXTENSION',
+            },
+            requestId: 'exit-1',
+            aggregateId: 'ln-0001',
+            issuedAt: '2026-11-01T00:00:00.000Z',
+            payload: { intent: { requestId: 'exit-1', lineageId: 'ln-0001' } },
+          }),
+        );
+        await awaitFirstFrame(child);
+        child.stdin?.end();
+        expect(await awaitExit(child)).toBe(0);
+      } finally {
+        child.kill();
+      }
+    }, 30_000);
+
+    it('exits 0 on plain stdin EOF with no v0.2 traffic (control)', async () => {
+      const child = spawnPackagedBroker();
+      try {
+        child.stdin?.end();
+        expect(await awaitExit(child)).toBe(0);
+      } finally {
+        child.kill();
+      }
+    }, 30_000);
+  },
+);
+
+// --------------------------------- T09 P2: composer tuple fail-closed gates
+
+describe('T09 P2 composer tuple gates (fail-closed, no stripped installers)', () => {
+  it('refuses a host outside the selected win32-x64 tuple with a typed error', () => {
+    expect(() => assertInstallerHostTuple('linux', 'x64')).toThrow(
+      /refusing to compose the windows-x64 installer on a linux-x64 host/u,
+    );
+    expect(() => assertInstallerHostTuple('win32', 'arm64')).toThrow(/win32-arm64 host/u);
+    expect(() => assertInstallerHostTuple('darwin', 'x64')).toThrow(/fail-closed/u);
+    // The selected tuple itself composes.
+    expect(() => assertInstallerHostTuple('win32', 'x64')).not.toThrow();
+  });
+
+  it('refuses a dist missing the declared vendored native runtime', () => {
+    const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-t09-p2-'));
+    try {
+      fs.mkdirSync(path.join(fake, 'cli'), { recursive: true });
+      fs.writeFileSync(path.join(fake, 'cli', 'xdownload-cli.js'), '// stripped dist', 'utf8');
+      const failure = (): unknown => assertSelectedRuntimePresent(fake);
+      expect(failure).toThrow(
+        /missing the vendored native runtime of the selected win32-x64 tuple/u,
+      );
+      expect(failure).toThrow(/refusing to compose a stripped installer/u);
+      // The real dist satisfies every declared path.
+      expect(() => assertSelectedRuntimePresent(distRoot)).not.toThrow();
+    } finally {
+      fs.rmSync(fake, { recursive: true, force: true });
+    }
+  });
+});
