@@ -370,6 +370,11 @@ export interface DurableLayout {
   readonly journalPath: string;
   readonly dbPath: string;
   readonly artifactRoot: string;
+  /**
+   * T02 single-K route fact log (absent file = no v0.2 lineage was ever
+   * routed; legacy-only compositions never create it).
+   */
+  readonly domainAppRouteLogPath: string;
 }
 
 export function durableLayout(rootDir: string): DurableLayout {
@@ -379,5 +384,240 @@ export function durableLayout(rootDir: string): DurableLayout {
     journalPath: join(rootDir, 'seam-journal.jsonl'),
     dbPath: join(rootDir, 'ledger.sqlite'),
     artifactRoot: join(rootDir, 'artifacts'),
+    domainAppRouteLogPath: join(rootDir, 'domain-app-route.jsonl'),
   };
+}
+
+// ------------------------------------------------------- v0.2 route fact log
+
+/**
+ * T02 one-authority lineage-owner facts of the single-K Domain App route.
+ * These are the Core route's OWN durable routing decisions — never lifecycle
+ * authority over a lineage (an old lineage stays owned by the old canonical
+ * stores; a K lineage's authority stays the one Core-owned K):
+ *
+ * - `CLAIM` — the lineageId is durably claimed for the new v0.2 K lineage
+ *   partition. Written (fsync'd) BEFORE the first K send of that lineage
+ *   (journal-before-effect) and only after the frozen owner resolution
+ *   proved the legacy partition does not own the lineage.
+ * - `ATTEMPT` — one K occurrence was admitted on a claimed lineage
+ *   (journal-before-effect: written before `app.send` runs).
+ * - `OUTCOME` — the verbatim K receipt class of one admitted attempt
+ *   (routing provenance for the Core job projection; recorded after the
+ *   send settles, never invented).
+ *
+ * Same durability discipline as the other composition stores: one JSON line
+ * per fact, fsync'd per append, fail-closed structural decode on reopen.
+ */
+export type DomainAppRouteFact =
+  | { readonly kind: 'CLAIM'; readonly lineageId: string }
+  | {
+      readonly kind: 'ATTEMPT';
+      readonly lineageId: string;
+      readonly requestId: string;
+      readonly attemptId: string;
+      readonly sequence: number;
+    }
+  | {
+      readonly kind: 'OUTCOME';
+      readonly lineageId: string;
+      readonly attemptId: string;
+      readonly status: 'SUCCEEDED' | 'FAILED';
+      readonly errorCode?: string;
+      readonly errorMessage?: string;
+      readonly transferredBytes?: number;
+    };
+
+function boundedRouteToken(value: unknown, max = 256): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > max) {
+    return false;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    // Reject ASCII control characters (including newline/DEL): route facts
+    // are opaque bounded tokens, never multi-line payloads.
+    if (code <= 0x1f || code === 0x7f) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function decodeRouteFact(record: Record<string, unknown>): DomainAppRouteFact {
+  const kind = record['kind'];
+  const lineageId = record['lineageId'];
+  if (kind === 'CLAIM') {
+    if (!boundedRouteToken(lineageId)) {
+      throw new Error('route CLAIM fact is missing a bounded lineageId');
+    }
+    if (Object.keys(record).some((key) => key !== 'kind' && key !== 'lineageId')) {
+      throw new Error('route CLAIM fact carries unknown fields');
+    }
+    return { kind: 'CLAIM', lineageId };
+  }
+  if (kind === 'ATTEMPT') {
+    for (const field of ['requestId', 'attemptId'] as const) {
+      if (!boundedRouteToken(record[field])) {
+        throw new Error(`route ATTEMPT fact is missing a bounded ${field}`);
+      }
+    }
+    const sequence = record['sequence'];
+    if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence) || sequence < 1) {
+      throw new Error('route ATTEMPT fact sequence must be a positive integer');
+    }
+    if (
+      Object.keys(record).some(
+        (key) =>
+          key !== 'kind' &&
+          key !== 'lineageId' &&
+          key !== 'requestId' &&
+          key !== 'attemptId' &&
+          key !== 'sequence',
+      )
+    ) {
+      throw new Error('route ATTEMPT fact carries unknown fields');
+    }
+    return {
+      kind: 'ATTEMPT',
+      lineageId: lineageId as string,
+      requestId: record['requestId'] as string,
+      attemptId: record['attemptId'] as string,
+      sequence,
+    };
+  }
+  if (kind === 'OUTCOME') {
+    if (!boundedRouteToken(record['attemptId'])) {
+      throw new Error('route OUTCOME fact is missing a bounded attemptId');
+    }
+    const status = record['status'];
+    if (status !== 'SUCCEEDED' && status !== 'FAILED') {
+      throw new Error('route OUTCOME fact status must be SUCCEEDED or FAILED');
+    }
+    const extra = Object.keys(record).filter(
+      (key) =>
+        key !== 'kind' &&
+        key !== 'lineageId' &&
+        key !== 'attemptId' &&
+        key !== 'status' &&
+        key !== 'errorCode' &&
+        key !== 'errorMessage' &&
+        key !== 'transferredBytes',
+    );
+    if (extra.length > 0) {
+      throw new Error('route OUTCOME fact carries unknown fields');
+    }
+    if (record['errorCode'] !== undefined && !boundedRouteToken(record['errorCode'], 64)) {
+      throw new Error('route OUTCOME fact errorCode must be a bounded string');
+    }
+    if (record['errorMessage'] !== undefined && !boundedRouteToken(record['errorMessage'], 512)) {
+      throw new Error('route OUTCOME fact errorMessage must be a bounded string');
+    }
+    const transferred = record['transferredBytes'];
+    if (
+      transferred !== undefined &&
+      (typeof transferred !== 'number' || !Number.isSafeInteger(transferred) || transferred < 0)
+    ) {
+      throw new Error('route OUTCOME fact transferredBytes must be a non-negative integer');
+    }
+    if (status === 'FAILED' && typeof record['errorCode'] !== 'string') {
+      throw new Error('route OUTCOME FAILED fact is missing its errorCode');
+    }
+    return {
+      kind: 'OUTCOME',
+      lineageId: lineageId as string,
+      attemptId: record['attemptId'] as string,
+      status,
+      ...(typeof record['errorCode'] === 'string' ? { errorCode: record['errorCode'] } : {}),
+      ...(typeof record['errorMessage'] === 'string'
+        ? { errorMessage: record['errorMessage'] }
+        : {}),
+      ...(typeof transferred === 'number' ? { transferredBytes: transferred } : {}),
+    };
+  }
+  throw new Error(`route fact kind must be CLAIM, ATTEMPT or OUTCOME; got ${String(kind)}`);
+}
+
+/**
+ * Durable owner/attempt/outcome fact log of the v0.2 Domain App route.
+ * `createFresh` refuses an existing non-empty log (a fresh runtime never
+ * clobbers routed-lineage truth); `openExisting` decodes every line
+ * structurally and fails closed on corruption.
+ */
+export class FileBackedDomainAppRouteLog {
+  readonly #path: string;
+  readonly #facts: DomainAppRouteFact[];
+  /** LineageIds with a durable CLAIM (the new v0.2 K partition). */
+  readonly #claimed: Set<string>;
+
+  private constructor(path: string, facts: DomainAppRouteFact[]) {
+    this.#path = path;
+    this.#facts = facts;
+    this.#claimed = new Set(
+      facts.flatMap((fact) => (fact.kind === 'CLAIM' ? [fact.lineageId] : [])),
+    );
+  }
+
+  static createFresh(path: string): FileBackedDomainAppRouteLog {
+    if (existsSync(path) && readDurableLines(path).length > 0) {
+      throw new DurableStoreCorruptError(
+        path,
+        'domain-app route log already holds facts; reopen instead of re-initializing',
+      );
+    }
+    return new FileBackedDomainAppRouteLog(path, []);
+  }
+
+  static openExisting(path: string): FileBackedDomainAppRouteLog {
+    const facts: DomainAppRouteFact[] = [];
+    for (const line of readDurableLines(path)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line) as unknown;
+      } catch (error) {
+        throw new DurableStoreCorruptError(
+          path,
+          `domain-app route log contains a line that is not valid JSON: ${String(error)}`,
+        );
+      }
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new DurableStoreCorruptError(path, 'domain-app route fact must be an object');
+      }
+      try {
+        facts.push(decodeRouteFact(parsed as Record<string, unknown>));
+      } catch (error) {
+        throw new DurableStoreCorruptError(
+          path,
+          `domain-app route fact rejected: ${String(error)}`,
+        );
+      }
+    }
+    return new FileBackedDomainAppRouteLog(path, facts);
+  }
+
+  get path(): string {
+    return this.#path;
+  }
+
+  /** Durably append one route fact (fsync before returning). */
+  append(fact: DomainAppRouteFact): void {
+    appendDurableLine(this.#path, JSON.stringify(fact));
+    this.#facts.push(fact);
+    if (fact.kind === 'CLAIM') {
+      this.#claimed.add(fact.lineageId);
+    }
+  }
+
+  all(): readonly DomainAppRouteFact[] {
+    return [...this.#facts];
+  }
+
+  /** True when the lineage is durably claimed for the new v0.2 K partition. */
+  isClaimed(lineageId: string): boolean {
+    return this.#claimed.has(lineageId);
+  }
+
+  /** Every lineage claimed for the new v0.2 K partition. */
+  claimedLineageIds(): readonly string[] {
+    return [...this.#claimed];
+  }
 }

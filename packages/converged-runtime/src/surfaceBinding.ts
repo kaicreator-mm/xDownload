@@ -75,6 +75,19 @@ export interface CanonicalCommandInput {
   readonly correlation?: SeamCorrelation;
 }
 
+/**
+ * T02 explicit v0.2 Domain App send: the confirmed intent travels verbatim;
+ * Core's seam owns the no-widening validation and the single-K route.
+ */
+export interface DomainAppSendInput {
+  /** The intent's lineageId — also the envelope's aggregateId. */
+  readonly lineageId: string;
+  /** The confirmed intent (exact-key validated by Core, never here). */
+  readonly intent: unknown;
+  /** Explicit idempotent identity; defaults to the binder's allocator. */
+  readonly requestId?: string;
+}
+
 /** One surface bound to the single Core authority through the T004 seam. */
 export interface BoundSurface {
   readonly surface: SurfaceKind;
@@ -86,8 +99,20 @@ export interface BoundSurface {
    * surface's only remaining job.
    */
   submitCanonicalCommand(input: CanonicalCommandInput): Promise<SeamResponse>;
+  /**
+   * T02: submit one explicit v0.2 DOMAIN_APP_SEND command (route 'v0.2',
+   * payload `{ intent }`). The response is the verbatim SeamResponse; no
+   * surface-local status is derived from it (READ_JOB_PROJECTION is the
+   * read path).
+   */
+  submitDomainAppIntent(input: DomainAppSendInput): Promise<SeamResponse>;
   /** Read the Core-owned projection for one aggregate (read-only, safe to repeat). */
   readProjection(aggregateId: string, requestId?: string): Promise<SeamResponse>;
+  /**
+   * T02: read the Core-owned v0.2 job projection for one lineage (route
+   * 'v0.2' READ_JOB_PROJECTION). Verbatim response; rendering only.
+   */
+  readJobProjection(lineageId: string, requestId?: string): Promise<SeamResponse>;
   /** Close the client connection; never affects Core lifetime. */
   close(): Promise<void>;
 }
@@ -157,6 +182,26 @@ export function bindSurfaceToCore(input: SurfaceBindingInput): BoundSurface {
       };
       return client.submitCommand(envelope);
     },
+    // T02 explicit v0.2 route: no expectedRevision/correlation exist on the
+    // v0.2 envelope grammar; the intent is validated by Core's seam, not here.
+    async submitDomainAppIntent(canonical: DomainAppSendInput): Promise<SeamResponse> {
+      const rawRequestId = canonical.requestId ?? input.makeRequestId();
+      const requestId = checkBranded(makeCommandRequestId(rawRequestId), rawRequestId, 'requestId');
+      const envelope = {
+        schemaIdentity: currentSeamSchemaIdentity(),
+        kind: 'command',
+        route: 'v0.2',
+        commandType: 'DOMAIN_APP_SEND',
+        peer: peer,
+        requestId: requestId,
+        aggregateId: canonical.lineageId,
+        issuedAt: now(),
+        payload: { intent: canonical.intent },
+      } as const;
+      return client.submitCommand(
+        envelope as unknown as Parameters<SeamClient['submitCommand']>[0],
+      );
+    },
     async readProjection(aggregateId: string, requestId?: string): Promise<SeamResponse> {
       const rawRequestId = requestId ?? input.makeRequestId();
       const query: QueryEnvelope = {
@@ -173,6 +218,22 @@ export function bindSurfaceToCore(input: SurfaceBindingInput): BoundSurface {
         issuedAt: now(),
       };
       return client.submitQuery(query);
+    },
+    // T02 explicit v0.2 read route: the Core-owned job projection of one
+    // lineage, verbatim.
+    async readJobProjection(lineageId: string, requestId?: string): Promise<SeamResponse> {
+      const rawRequestId = requestId ?? input.makeRequestId();
+      const query = {
+        schemaIdentity: currentSeamSchemaIdentity(),
+        kind: 'query',
+        route: 'v0.2',
+        queryType: 'READ_JOB_PROJECTION',
+        peer: peer,
+        requestId: checkBranded(makeCommandRequestId(rawRequestId), rawRequestId, 'requestId'),
+        aggregateId: lineageId,
+        issuedAt: now(),
+      } as const;
+      return client.submitQuery(query as unknown as QueryEnvelope);
     },
     async close(): Promise<void> {
       await client.close();
