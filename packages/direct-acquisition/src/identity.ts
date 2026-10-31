@@ -91,10 +91,11 @@ export function classifyRangeResponse(
     }
     if (
       recordedStrongETag !== undefined &&
-      responseIdentity.strongETag !== undefined &&
       responseIdentity.strongETag !== recordedStrongETag
     ) {
-      return { kind: 'RESTART_NEW_REPRESENTATION' };
+      // If-Range mismatch should produce a full 200. A 206 without the exact
+      // recorded strong validator is not safe evidence for appending bytes.
+      return { kind: 'PROTOCOL_VIOLATION' };
     }
     return { kind: 'APPEND_VALIDATED' };
   }

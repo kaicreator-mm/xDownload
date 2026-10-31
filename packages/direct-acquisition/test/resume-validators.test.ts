@@ -234,6 +234,44 @@ describe('validator-change-and-range-support: change detection and range handlin
     expect(outcome.observedIdentity.strongETag).toBe('"v2"');
   });
 
+  it('refuses a 206 that omits the recorded strong ETag instead of appending', async () => {
+    fixture.on('/missing-response-etag.bin', (_request, response) => {
+      response.writeHead(206, {
+        'content-type': 'application/octet-stream',
+        'content-length': '60',
+        'content-range': 'bytes 40-99/100',
+      });
+      response.end(Buffer.from(FULL.subarray(40)));
+    });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const request = {
+      ...directRequest(baseUri, '/missing-response-etag.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
+      resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
+    };
+
+    const outcome = unwrapOrThrow(await adapter.acquire(request));
+
+    expect(outcome.reason).toBe('UNSUPPORTED_RESPONSE');
+    expect(outcome.bytes).toBeUndefined();
+    expect(outcome.resumeDecision).toEqual({
+      kind: 'SAFE_RESTART',
+      reason: 'PROTOCOL_VIOLATION',
+    });
+    expect(outcome.validations.find((check) => check.layer === 'transfer')).toMatchObject({
+      passed: false,
+      code: 'PROTOCOL_VIOLATION',
+    });
+    expect(outcome.terminalResult.selectionAcquisition).not.toBe('COMPLETE');
+  });
+
   it('rejects a 206 whose body length does not match its Content-Range span', async () => {
     fixture.on('/range-span-mismatch.bin', (_request, response) => {
       response.writeHead(206, {

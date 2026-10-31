@@ -21,12 +21,12 @@ describe('stream interruption without declared length', () => {
   });
 
   it('never turns a reset after partial bytes into COMPLETE without Content-Length or digest anchor', async () => {
-    fixture.on('/reset-without-length.bin', async (_request, response) => {
+    fixture.on('/reset-without-length.bin', (_request, response) => {
       response.writeHead(200, { 'content-type': 'application/octet-stream' });
       response.flushHeaders();
-      response.write(Buffer.from(full.subarray(0, 40)));
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      response.socket?.destroy();
+      response.write(Buffer.from(full.subarray(0, 40)), () => {
+        response.socket?.destroy();
+      });
     });
     const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
     const adapter = new DirectHttpAdapter(ledger);
