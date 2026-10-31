@@ -21,10 +21,21 @@ import {
   buildIdentity,
   canonicalContentHash,
   contentManifest,
+  currentSourceRevision,
+  sourceCommitTime,
   verifyIdentity,
 } from '../identity.ts';
 import { renderFilledHostManifest, renderHostManifestTemplate } from '../native-host.ts';
-import { vendoredRuntimeDistPaths } from '../build-config.ts';
+import {
+  captureToolchain,
+  declaredEsbuildVersion,
+  declaredNodeVersion,
+  declaredPnpmVersion,
+  REPO_ROOT,
+  vendoredRuntimeDistPaths,
+} from '../build-config.ts';
+import { browserNodeStubsPlugin } from '../browser-node-stubs.ts';
+import esbuild from 'esbuild';
 
 const ORIGIN = 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/';
 
@@ -157,7 +168,7 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
       artifact: id,
       artifactDir: path.join(distRoot, id),
       sourceRevision: { sha: '0'.repeat(40), dirty: false },
-      toolchain: [{ name: 'node', version: 'test' }],
+      toolchain: [{ name: 'node', version: 'test', source: 'declared' }],
     });
     fs.writeFileSync(
       path.join(identityDir, `${id}.json`),
@@ -447,6 +458,32 @@ describe('package identity', () => {
     });
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('mints the identity at the exact generatedAt the caller passes (no hidden clock)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xid-gen-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'artifact.js'), BUNDLE_STUB, 'utf8');
+      const identity = buildIdentity({
+        artifact: 'probe',
+        artifactDir: dir,
+        sourceRevision: { sha: 'f'.repeat(40), dirty: false },
+        toolchain: [],
+        generatedAt: '2026-10-31T00:00:00.000Z',
+      });
+      expect(identity.generatedAt).toBe('2026-10-31T00:00:00.000Z');
+      // The mint time never enters the content hash (artifact bytes only).
+      expect(identity.contentHash).toBe(canonicalContentHash(contentManifest(dir)));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves the deterministic commit time for the current revision', () => {
+    // The helper reads the revision's own commit time: a pure function of the
+    // sha, identical for every caller in every environment.
+    const { sha } = currentSourceRevision(REPO_ROOT);
+    expect(sourceCommitTime(REPO_ROOT, sha)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u);
+  });
 });
 
 describe('native host manifest generation', () => {
@@ -607,6 +644,31 @@ describe('#95 installed S2 journey reachability (real package build)', () => {
     expect(core).toMatch(/peer\.surface\s*!==\s*["']BROWSER_EXTENSION["']/u);
   });
 
+  it('ships a browser bundle free of node builtin specifiers (fail-closed stubs)', () => {
+    // T09 repair of the T05/T08 legacy red: the packaged extension bundle
+    // must LOAD in a browser, so no emitted `from "node:…"` specifier may
+    // remain — every node builtin the barrel drags in is stubbed fail-closed
+    // at package time (build/browser-node-stubs.ts). The node artifacts keep
+    // their real builtins and are asserted separately below.
+    const bundle = fs.readFileSync(
+      path.join(distRoot, 'extension', 'background.service-worker.js'),
+      'utf8',
+    );
+    expect(bundle).not.toMatch(/from\s*["']node:[^"']+["']/u);
+    expect(bundle).not.toMatch(/import\s*\(\s*["']node:/u);
+  });
+
+  it('keeps real node builtins in the node artifacts (stubs never leak across platforms)', () => {
+    for (const artifact of ['core/xdownload-core-host.js', 'cli/xdownload-cli.js']) {
+      const bundle = fs.readFileSync(path.join(distRoot, artifact), 'utf8');
+      expect(bundle.length, `${artifact} must be emitted`).toBeGreaterThan(0);
+      expect(
+        /node:(net|crypto|module)/u.test(bundle),
+        `${artifact} must keep real node builtins`,
+      ).toBe(true);
+    }
+  });
+
   it('emits no credential-shaped material in the extension or native-host artifacts', () => {
     for (const artifact of [
       'extension/background.service-worker.js',
@@ -617,5 +679,156 @@ describe('#95 installed S2 journey reachability (real package build)', () => {
       expect(text).not.toMatch(/AKIA[0-9A-Z]{16}/u);
       expect(text).not.toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/u);
     }
+  });
+});
+
+// --------------------------------- T09 browser node-builtin stub plugin
+
+describe('browser node-builtin stub plugin (fail-closed packaging surface)', () => {
+  async function bundleSource(
+    source: string,
+  ): Promise<{ ok: boolean; output?: string; error?: string }> {
+    const entry = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'xd-stub-')), 'entry.ts');
+    fs.writeFileSync(entry, source, 'utf8');
+    try {
+      await esbuild.build({
+        entryPoints: [entry],
+        bundle: true,
+        platform: 'browser',
+        format: 'esm',
+        target: 'es2023',
+        logLevel: 'silent',
+        plugins: [browserNodeStubsPlugin()],
+        outfile: path.join(path.dirname(entry), 'out.js'),
+      });
+      return { ok: true, output: fs.readFileSync(entry.replace(/entry\.ts$/, 'out.js'), 'utf8') };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'build failed' };
+    }
+  }
+
+  it('stubs the declared builtin surface with call-time throwing exports', async () => {
+    const result = await bundleSource(
+      [
+        "import { createHash } from 'node:crypto';",
+        "import { isIP } from 'node:net';",
+        "import net from 'node:net';",
+        "import { createRequire } from 'node:module';",
+        'export const probes = [createHash, isIP, createRequire, net];',
+      ].join('\n'),
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(result.output).not.toMatch(/from\s*["']node:/u);
+    // Every stubbed binding throws its typed, actionable message when called.
+    expect(result.output).toContain('not available in the packaged browser zone');
+  });
+
+  it('fails the build closed on a builtin outside the declared stub surface', async () => {
+    const result = await bundleSource(
+      "import { createServer } from 'node:http';\nexport const x = createServer;\n",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('not part of the declared browser-stub surface');
+  });
+});
+
+// ------------------------------ T09 declared toolchain identity (determinism)
+
+describe('declared toolchain identity (environment-independent)', () => {
+  // Controller-found defect, fixed in T09: the identity previously probed
+  // npm_config_user_agent (pnpm) and the running runtime (node), so the same
+  // source revision composed to DIFFERENT installer hashes on hosts whose
+  // PATH differed. Every entry is now a repo declaration, labeled as such.
+
+  it('reads the exact declared trio and labels every entry source=declared', () => {
+    expect(captureToolchain(esbuild.version)).toEqual([
+      { name: 'node', version: '24.21.0', source: 'declared' },
+      { name: 'pnpm', version: '12.8.1', source: 'declared' },
+      { name: 'esbuild', version: '0.25.12', source: 'declared' },
+    ]);
+  });
+
+  it('is immune to the shell environment (no npm_config_user_agent probing)', () => {
+    const previous = process.env['npm_config_user_agent'];
+    try {
+      // The exact condition the controller reproduced: no package-manager
+      // user agent at all, then a hostile one — both must yield the SAME
+      // declared identity byte-for-byte.
+      delete process.env['npm_config_user_agent'];
+      expect(captureToolchain(esbuild.version)).toEqual(captureToolchain(esbuild.version));
+      const withoutAgent = JSON.stringify(captureToolchain(esbuild.version));
+      process.env['npm_config_user_agent'] = 'pnpm/9.9.9 npm/? node/v23.0.0 darwin x64';
+      expect(JSON.stringify(captureToolchain(esbuild.version))).toBe(withoutAgent);
+    } finally {
+      if (previous === undefined) {
+        delete process.env['npm_config_user_agent'];
+      } else {
+        process.env['npm_config_user_agent'] = previous;
+      }
+    }
+  });
+
+  it('fails closed with typed errors when a declaration is missing', () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-declared-'));
+    try {
+      // A tree without any package.json: every reader fails typed (the node
+      // reader reports the unreadable engines source it fell through to).
+      expect(() => declaredNodeVersion(empty)).toThrow(/cannot record toolchain identity/u);
+      expect(() => declaredPnpmVersion(empty)).toThrow(/cannot record toolchain identity/u);
+      expect(() => declaredEsbuildVersion(esbuild.version, empty)).toThrow(
+        /cannot record toolchain identity/u,
+      );
+      // A tree WITH a package.json that declares nothing relevant: the exact
+      // no-declaration messages.
+      const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-declared-bare-'));
+      try {
+        fs.writeFileSync(path.join(bare, 'package.json'), JSON.stringify({ name: 'bare' }), 'utf8');
+        expect(() => declaredNodeVersion(bare)).toThrow(
+          /no node version declaration \(.node-version, .nvmrc or engines.node\)/u,
+        );
+        expect(() => declaredPnpmVersion(bare)).toThrow(
+          /packageManager must declare 'pnpm@<version>'/u,
+        );
+        expect(() => declaredEsbuildVersion(esbuild.version, bare)).toThrow(
+          /devDependencies.esbuild must pin an exact version/u,
+        );
+      } finally {
+        fs.rmSync(bare, { recursive: true, force: true });
+      }
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses malformed declarations instead of guessing', () => {
+    const malformed = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-declared-bad-'));
+    try {
+      fs.writeFileSync(path.join(malformed, '.nvmrc'), 'latest\n', 'utf8');
+      expect(() => declaredNodeVersion(malformed)).toThrow(
+        /must pin an exact node version, got 'latest'/u,
+      );
+      fs.writeFileSync(
+        path.join(malformed, 'package.json'),
+        JSON.stringify({ packageManager: 'npm@10.0.0' }),
+        'utf8',
+      );
+      expect(() => declaredPnpmVersion(malformed)).toThrow(/must declare 'pnpm@<version>'/u);
+      fs.writeFileSync(
+        path.join(malformed, 'package.json'),
+        JSON.stringify({ devDependencies: { esbuild: '^0.25.12' } }),
+        'utf8',
+      );
+      expect(() => declaredEsbuildVersion('0.25.12', malformed)).toThrow(
+        /devDependencies.esbuild must pin an exact version/u,
+      );
+    } finally {
+      fs.rmSync(malformed, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed on a declared/installed esbuild drift', () => {
+    expect(() => captureToolchain('9.9.9')).toThrow(
+      /declared esbuild 0\.25\.12 != installed 9\.9\.9/u,
+    );
   });
 });
