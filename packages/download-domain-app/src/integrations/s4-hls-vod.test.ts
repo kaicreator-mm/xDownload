@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { after, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 
 import {
   assembleS4HlsRuntime,
@@ -54,49 +54,50 @@ function confirmedIntent(outputRootScope: string): Record<string, unknown> {
 }
 
 describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
-  let root = '';
-  let outputRoot = '';
-
-  after(async () => {
-    if (root.length > 0) await rm(root, { recursive: true, force: true });
-  });
-
   it('accepts only the closed explicit rendition-selection contract', async () => {
-    root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-contract-'));
-    outputRoot = resolve(join(root, 'output'));
-    await mkdir(outputRoot, { recursive: true });
+    const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-contract-'));
+    try {
+      const outputRoot = resolve(join(root, 'output'));
+      await mkdir(outputRoot, { recursive: true });
 
-    const valid = validateConfirmedS4HlsIntent(confirmedIntent(outputRoot));
-    assert.equal(valid.ok, true);
+      const valid = validateConfirmedS4HlsIntent(confirmedIntent(outputRoot));
+      assert.equal(valid.ok, true);
 
-    const widened = validateConfirmedS4HlsIntent({
-      ...confirmedIntent(outputRoot),
-      rawUrl: 'https://cdn.example.test/vod/master.m3u8',
-    });
-    assert.equal(widened.ok, false);
-    if (!widened.ok) assert.equal(widened.diagnostics[0]?.code, 'SCOPE_WIDENING_REFUSED');
+      const widened = validateConfirmedS4HlsIntent({
+        ...confirmedIntent(outputRoot),
+        rawUrl: 'https://cdn.example.test/vod/master.m3u8',
+      });
+      assert.equal(widened.ok, false);
+      if (!widened.ok) assert.equal(widened.diagnostics[0]?.code, 'SCOPE_WIDENING_REFUSED');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('routes one valid S4 intent through K to the trusted Host pin and refuses an unknown target before media effects', async () => {
-    root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-runtime-'));
-    outputRoot = resolve(join(root, 'output'));
-    await mkdir(outputRoot, { recursive: true });
-
-    const runtime = await assembleS4HlsRuntime({
-      storePath: join(root, 'k-documents.json'),
-      mediaTargetRefs: [],
-    });
+    const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-runtime-'));
     try {
-      const result = await submitConfirmedS4HlsVod(runtime, confirmedIntent(outputRoot));
-      assert.equal(result.status, 'failed');
-      if (result.status !== 'failed') throw new Error('expected unknown target refusal');
-      assert.equal(result.code, 'CONTRACT_BINDING_MISMATCH');
-      assert.equal(runtime.pin.acquireCalls, 1);
-      assert.equal(runtime.pin.registryRefusals, 1);
-      assert.equal(runtime.pin.completedExecutions, 0);
-      assert.deepEqual(await readdir(outputRoot), []);
+      const outputRoot = resolve(join(root, 'output'));
+      await mkdir(outputRoot, { recursive: true });
+
+      const runtime = await assembleS4HlsRuntime({
+        storePath: join(root, 'k-documents.json'),
+        mediaTargetRefs: [],
+      });
+      try {
+        const result = await submitConfirmedS4HlsVod(runtime, confirmedIntent(outputRoot));
+        assert.equal(result.status, 'failed');
+        if (result.status !== 'failed') throw new Error('expected unknown target refusal');
+        assert.equal(result.code, 'CONTRACT_BINDING_MISMATCH');
+        assert.equal(runtime.pin.acquireCalls, 1);
+        assert.equal(runtime.pin.registryRefusals, 1);
+        assert.equal(runtime.pin.completedExecutions, 0);
+        assert.deepEqual(await readdir(outputRoot), []);
+      } finally {
+        runtime.stop();
+      }
     } finally {
-      runtime.stop();
+      await rm(root, { recursive: true, force: true });
     }
   });
 });
