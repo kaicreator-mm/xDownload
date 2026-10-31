@@ -60,7 +60,7 @@ function confirmedIntent(
       renditionUri: tuple.renditionUri,
       displayedTupleDigest: s4HlsSelectionTupleDigest(tuple),
       confirmedAt: new Date(Date.now() - 1_000).toISOString(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      expiresAt: new Date(Date.now() + 59_000).toISOString(),
     },
     caller: { actor: 't06-test', sessionRef: 'session-s4-001' },
     ...(options.digestAnchor === undefined ? {} : { digestAnchor: options.digestAnchor }),
