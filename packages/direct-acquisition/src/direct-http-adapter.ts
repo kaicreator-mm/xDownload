@@ -349,14 +349,6 @@ export class DirectHttpAdapter {
         receivedBytes: byteLengthOf(read.chunks),
       });
     }
-    if (read.streamFailure) {
-      return integrityFailure(request, concatChunks(read.chunks), locatorChain, resumeFinal, responseIdentity, {
-        layer: 'transfer',
-        passed: false,
-        code: 'STREAM_INTERRUPTED',
-        failure: 'response body stream terminated with a read error before completion',
-      });
-    }
     if (read.budgetStop !== undefined) {
       return stopState(request, read.budgetStop, {
         chain: locatorChain,
@@ -402,15 +394,24 @@ export class DirectHttpAdapter {
       }
     }
 
-    const transferCheck = validateTransfer({
-      status: response.status,
-      sentRange,
-      resumeOffsetBytes: resumeOffset,
-      responseIdentity,
-      receivedBytes: bytes.byteLength,
-      expectedTotalBytes: request.expectedTotalBytes,
-      contentRange,
-    });
+    // A read error is not EOF. Keep Transfer failure while reporting Format
+    // and Target checks on the arrived bytes; never complete the attempt.
+    const transferCheck: ValidationLayerOutcome = read.streamFailure
+      ? {
+          layer: 'transfer',
+          passed: false,
+          code: 'STREAM_INTERRUPTED',
+          failure: 'response body stream terminated with a read error before completion',
+        }
+      : validateTransfer({
+          status: response.status,
+          sentRange,
+          resumeOffsetBytes: resumeOffset,
+          responseIdentity,
+          receivedBytes: bytes.byteLength,
+          expectedTotalBytes: request.expectedTotalBytes,
+          contentRange,
+        });
     const formatCheck = validateFormat({
       contentType,
       bodyPrefix: bytes,
