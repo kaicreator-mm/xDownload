@@ -135,8 +135,8 @@ describe('OS-verified peer transport authorization gate', () => {
     if (!decodedV12.ok) {
       expect(decodedV12.diagnostics.some((d) => d.code === 'ENVELOPE_MALFORMED')).toBe(true);
     }
-    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.2.0');
-    expect(currentSeamSchemaIdentity().version).toBe('1.2.0');
+    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.3.0');
+    expect(currentSeamSchemaIdentity().version).toBe('1.3.0');
   });
 });
 

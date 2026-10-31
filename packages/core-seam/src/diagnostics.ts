@@ -34,7 +34,16 @@ export type SeamOnlyDiagnosticCode =
   | 'CORRELATION_BINDING_REJECTED'
   | 'RETRY_AUTHORITY_DOMAIN_REJECTED'
   | 'QUERY_REJECTED'
-  | 'MEDIA_POLICY_REQUIRED';
+  | 'MEDIA_POLICY_REQUIRED'
+  | 'UNSUPPORTED_ROUTE'
+  | 'ROUTE_REQUIRED'
+  | 'ROUTE_COMMAND_MISMATCH'
+  | 'ROUTE_QUERY_MISMATCH'
+  | 'V02_INTENT_VALIDATOR_UNAVAILABLE'
+  | 'V02_COMMAND_BINDING_MISMATCH'
+  | 'V02_COMMAND_ROUTE_UNAVAILABLE'
+  | 'JOB_PROJECTION_UNAVAILABLE'
+  | 'JOB_PROJECTION_BINDING_MISMATCH';
 
 /** Every diagnostic code observable at the seam: domain codes plus seam-only codes. */
 export type SeamDiagnosticCode = DiagnosticCode | SeamOnlyDiagnosticCode;

@@ -13,10 +13,11 @@
  * correlation (contract/snapshot/effect lineage references, issue time).
  */
 
-import { parseSemVer } from '@xdownload/domain-contracts';
+import { decodeDownloadJobProjection, parseSemVer } from '@xdownload/domain-contracts';
 import {
   seamDiagnostic,
   seamFail,
+  seamFromDomainFailure,
   seamOk,
   type SeamDiagnostic,
   type SeamResult,
@@ -53,7 +54,7 @@ export const CORE_SEAM_SCHEMA_ID = 'xdownload.core-seam' as const;
  * 1.0/1.1 commands and peers remain accepted unchanged under their existing
  * gates; S3 commands demand a 1.2+ frame.
  */
-export const CORE_SEAM_SCHEMA_VERSION = '1.2.0' as const;
+export const CORE_SEAM_SCHEMA_VERSION = '1.3.0' as const;
 export const SUPPORTED_SEAM_MAJOR_VERSIONS: readonly number[] = [1];
 
 /**
@@ -165,6 +166,12 @@ export const QUERY_TYPES = ['READ_PROJECTION'] as const;
 
 export type QueryType = (typeof QUERY_TYPES)[number];
 
+/** Explicit Domain App v0.2 route vocabularies; kept separate from legacy v1 commands/queries. */
+export const V02_COMMAND_TYPES = ['DOMAIN_APP_SEND'] as const;
+export type V02CommandType = (typeof V02_COMMAND_TYPES)[number];
+export const V02_QUERY_TYPES = ['READ_JOB_PROJECTION'] as const;
+export type V02QueryType = (typeof V02_QUERY_TYPES)[number];
+
 /** Provenance/audit lineage references carried on every command (L2 §6.3 item 6). */
 export interface SeamCorrelation {
   readonly contractId?: string;
@@ -191,7 +198,21 @@ export interface CommandEnvelope {
   readonly payload: unknown;
 }
 
-export interface QueryEnvelope {
+/** Explicit v0.2 Domain App command; its intent is validated before any send boundary. */
+export interface V02CommandEnvelope {
+  readonly schemaIdentity: SeamSchemaIdentity;
+  readonly kind: 'command';
+  readonly route: 'v0.2';
+  readonly commandType: V02CommandType;
+  readonly peer: PeerIdentity;
+  readonly requestId: CommandRequestId;
+  /** Binds the command to the confirmed intent's lineageId. */
+  readonly aggregateId: string;
+  readonly issuedAt: string;
+  readonly payload: { readonly intent: unknown };
+}
+
+export interface LegacyQueryEnvelope {
   readonly schemaIdentity: SeamSchemaIdentity;
   readonly kind: 'query';
   readonly queryType: QueryType;
@@ -203,7 +224,21 @@ export interface QueryEnvelope {
   readonly issuedAt: string;
 }
 
-export type SeamEnvelope = CommandEnvelope | QueryEnvelope;
+/** Explicit v0.2 read route. aggregateId is the requested lineageId. */
+export interface V02JobQueryEnvelope {
+  readonly schemaIdentity: SeamSchemaIdentity;
+  readonly kind: 'query';
+  readonly route: 'v0.2';
+  readonly queryType: V02QueryType;
+  readonly peer: PeerIdentity;
+  readonly requestId: CommandRequestId;
+  readonly aggregateId: string;
+  readonly issuedAt: string;
+}
+
+export type QueryEnvelope = LegacyQueryEnvelope | V02JobQueryEnvelope;
+
+export type SeamEnvelope = CommandEnvelope | V02CommandEnvelope | QueryEnvelope;
 
 export type SeamOutcome = 'ACCEPTED' | 'REJECTED' | 'PROJECTION';
 
@@ -219,6 +254,8 @@ export interface SeamAcceptance {
 export interface SeamResponse {
   readonly schemaIdentity: SeamSchemaIdentity;
   readonly kind: 'response';
+  /** Present only for responses to the explicit Domain App v0.2 route. */
+  readonly route?: 'v0.2';
   readonly inReplyTo: CommandRequestId;
   readonly outcome: SeamOutcome;
   readonly acceptance?: SeamAcceptance;
@@ -242,6 +279,7 @@ const CORRELATION_KEYS: readonly string[] = ['contractId', 'snapshotId', 'effect
 const COMMAND_KEYS: readonly string[] = [
   'schemaIdentity',
   'kind',
+  'route',
   'commandType',
   'peer',
   'requestId',
@@ -254,6 +292,30 @@ const COMMAND_KEYS: readonly string[] = [
 const QUERY_KEYS: readonly string[] = [
   'schemaIdentity',
   'kind',
+  'route',
+  'queryType',
+  'peer',
+  'requestId',
+  'aggregateId',
+  'issuedAt',
+];
+
+const V02_COMMAND_KEYS: readonly string[] = [
+  'schemaIdentity',
+  'kind',
+  'route',
+  'commandType',
+  'peer',
+  'requestId',
+  'aggregateId',
+  'issuedAt',
+  'payload',
+];
+
+const V02_QUERY_KEYS: readonly string[] = [
+  'schemaIdentity',
+  'kind',
+  'route',
   'queryType',
   'peer',
   'requestId',
@@ -428,6 +490,20 @@ function decodeAggregateId(value: unknown): SeamResult<string> {
   return seamOk(value);
 }
 
+function requireV02RouteVersion(identity: SeamSchemaIdentity): SeamResult<void> {
+  const version = parseSemVer(identity.version);
+  if (version === undefined || version.major !== 1 || version.minor < 3) {
+    return seamFail([
+      seamDiagnostic(
+        'UNSUPPORTED_ENVELOPE_VERSION',
+        'schemaIdentity.version',
+        'the explicit v0.2 route requires core-seam schema 1.3.0 or newer',
+      ),
+    ]);
+  }
+  return seamOk(undefined);
+}
+
 /** Decode a command or query envelope from untrusted decoded-JSON input. */
 export function decodeSeamEnvelope(value: unknown): SeamResult<SeamEnvelope> {
   if (!isPlainObject(value)) {
@@ -445,7 +521,78 @@ export function decodeSeamEnvelope(value: unknown): SeamResult<SeamEnvelope> {
   ]);
 }
 
-function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<CommandEnvelope> {
+function decodeCommandEnvelope(
+  record: Record<string, unknown>,
+): SeamResult<CommandEnvelope | V02CommandEnvelope> {
+  const route = record['route'];
+  if (route === 'v0.2') return decodeV02CommandEnvelope(record);
+  if (route !== undefined) {
+    return seamFail([
+      seamDiagnostic('UNSUPPORTED_ROUTE', 'route', 'unknown command route; fail closed'),
+    ]);
+  }
+  if (record['commandType'] === 'DOMAIN_APP_SEND') {
+    return seamFail([
+      seamDiagnostic('ROUTE_REQUIRED', 'route', 'DOMAIN_APP_SEND requires the explicit v0.2 route'),
+    ]);
+  }
+  return decodeLegacyCommandEnvelope(record);
+}
+
+function decodeV02CommandEnvelope(record: Record<string, unknown>): SeamResult<V02CommandEnvelope> {
+  const shape = rejectUnknownKeys(record, V02_COMMAND_KEYS, '$');
+  if (!shape.ok) return shape;
+  if (record['route'] !== 'v0.2') {
+    return seamFail([seamDiagnostic('UNSUPPORTED_ROUTE', 'route', 'expected route v0.2')]);
+  }
+  if (!V02_COMMAND_TYPES.includes(record['commandType'] as V02CommandType)) {
+    return seamFail([
+      seamDiagnostic(
+        'ROUTE_COMMAND_MISMATCH',
+        'commandType',
+        'the v0.2 command route accepts only DOMAIN_APP_SEND',
+      ),
+    ]);
+  }
+  const schemaIdentity = decodeSeamSchemaIdentity(record['schemaIdentity']);
+  if (!schemaIdentity.ok) return schemaIdentity;
+  const routeVersion = requireV02RouteVersion(schemaIdentity.value);
+  if (!routeVersion.ok) return routeVersion;
+  const peer = decodePeerIdentity(record['peer']);
+  if (!peer.ok) return peer;
+  const requestId = decodeRequestId(record['requestId']);
+  if (!requestId.ok) return requestId;
+  const aggregateId = decodeAggregateId(record['aggregateId']);
+  if (!aggregateId.ok) return aggregateId;
+  const issuedAt = decodeIssuedAt(record['issuedAt']);
+  if (!issuedAt.ok) return issuedAt;
+  const payload = record['payload'];
+  if (!isPlainObject(payload)) {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'payload', 'v0.2 command payload must be an object'),
+    ]);
+  }
+  const payloadShape = rejectUnknownKeys(payload, ['intent'], 'payload');
+  if (!payloadShape.ok) return payloadShape;
+  if (!('intent' in payload)) {
+    return seamFail([
+      seamDiagnostic('ENVELOPE_MALFORMED', 'payload.intent', 'confirmed intent is required'),
+    ]);
+  }
+  return seamOk({
+    schemaIdentity: schemaIdentity.value,
+    kind: 'command',
+    route: 'v0.2',
+    commandType: 'DOMAIN_APP_SEND',
+    peer: peer.value,
+    requestId: requestId.value,
+    aggregateId: aggregateId.value,
+    issuedAt: issuedAt.value,
+    payload: { intent: payload['intent'] },
+  });
+}
+
+function decodeLegacyCommandEnvelope(record: Record<string, unknown>): SeamResult<CommandEnvelope> {
   const shape = rejectUnknownKeys(record, COMMAND_KEYS, '$');
   if (!shape.ok) {
     return shape;
@@ -575,6 +722,67 @@ function decodeCommandEnvelope(record: Record<string, unknown>): SeamResult<Comm
 }
 
 function decodeQueryEnvelope(record: Record<string, unknown>): SeamResult<QueryEnvelope> {
+  const route = record['route'];
+  if (route === 'v0.2') return decodeV02QueryEnvelope(record);
+  if (route !== undefined) {
+    return seamFail([
+      seamDiagnostic('UNSUPPORTED_ROUTE', 'route', 'unknown query route; fail closed'),
+    ]);
+  }
+  if (record['queryType'] === 'READ_JOB_PROJECTION') {
+    return seamFail([
+      seamDiagnostic(
+        'ROUTE_REQUIRED',
+        'route',
+        'READ_JOB_PROJECTION requires the explicit v0.2 route',
+      ),
+    ]);
+  }
+  return decodeLegacyQueryEnvelope(record);
+}
+
+function decodeV02QueryEnvelope(record: Record<string, unknown>): SeamResult<V02JobQueryEnvelope> {
+  const shape = rejectUnknownKeys(record, V02_QUERY_KEYS, '$');
+  if (!shape.ok) return shape;
+  if (record['route'] !== 'v0.2') {
+    return seamFail([seamDiagnostic('UNSUPPORTED_ROUTE', 'route', 'expected route v0.2')]);
+  }
+  if (!V02_QUERY_TYPES.includes(record['queryType'] as V02QueryType)) {
+    return seamFail([
+      seamDiagnostic(
+        'ROUTE_QUERY_MISMATCH',
+        'queryType',
+        'the v0.2 query route accepts only READ_JOB_PROJECTION',
+      ),
+    ]);
+  }
+  const schemaIdentity = decodeSeamSchemaIdentity(record['schemaIdentity']);
+  if (!schemaIdentity.ok) return schemaIdentity;
+  const routeVersion = requireV02RouteVersion(schemaIdentity.value);
+  if (!routeVersion.ok) return routeVersion;
+  const peer = decodePeerIdentity(record['peer']);
+  if (!peer.ok) return peer;
+  const requestId = decodeRequestId(record['requestId']);
+  if (!requestId.ok) return requestId;
+  const aggregateId = decodeAggregateId(record['aggregateId']);
+  if (!aggregateId.ok) return aggregateId;
+  const issuedAt = decodeIssuedAt(record['issuedAt']);
+  if (!issuedAt.ok) return issuedAt;
+  return seamOk({
+    schemaIdentity: schemaIdentity.value,
+    kind: 'query',
+    route: 'v0.2',
+    queryType: 'READ_JOB_PROJECTION',
+    peer: peer.value,
+    requestId: requestId.value,
+    aggregateId: aggregateId.value,
+    issuedAt: issuedAt.value,
+  });
+}
+
+function decodeLegacyQueryEnvelope(
+  record: Record<string, unknown>,
+): SeamResult<LegacyQueryEnvelope> {
   const shape = rejectUnknownKeys(record, QUERY_KEYS, '$');
   if (!shape.ok) {
     return shape;
@@ -645,19 +853,38 @@ export function decodeSeamResponse(value: unknown): SeamResult<SeamResponse> {
   if (!inReplyTo.ok) {
     return inReplyTo;
   }
+  const route = value['route'];
+  if (route !== undefined && route !== 'v0.2') {
+    return seamFail([
+      seamDiagnostic('UNSUPPORTED_ROUTE', 'route', 'unknown response route; fail closed'),
+    ]);
+  }
+  if (route === 'v0.2') {
+    const routeVersion = requireV02RouteVersion(schemaIdentity.value);
+    if (!routeVersion.ok) return routeVersion;
+  }
   const outcome = value['outcome'];
   if (outcome !== 'ACCEPTED' && outcome !== 'REJECTED' && outcome !== 'PROJECTION') {
     return seamFail([seamDiagnostic('ENVELOPE_MALFORMED', 'outcome', 'unknown response outcome')]);
   }
+  let projection: unknown = value['projection'];
+  if (route === 'v0.2' && outcome === 'PROJECTION') {
+    const decodedProjection = decodeDownloadJobProjection(value['projection']);
+    if (!decodedProjection.ok) {
+      return seamFromDomainFailure(decodedProjection);
+    }
+    projection = decodedProjection.value;
+  }
   return seamOk({
     schemaIdentity: schemaIdentity.value,
     kind: 'response',
+    ...(route === 'v0.2' ? { route } : {}),
     inReplyTo: inReplyTo.value,
     outcome,
     acceptance: decodeAcceptance(value['acceptance']),
     currentRevision:
       typeof value['currentRevision'] === 'number' ? value['currentRevision'] : undefined,
-    projection: value['projection'],
+    projection,
     challenge: decodeS3SelectionChallenge(value['challenge']),
     s4PrivateChallenge: decodeS4PrivateChallenge(value['s4PrivateChallenge']),
     s5PrivateChallenge: decodeS5PrivateChallenge(value['s5PrivateChallenge']),

@@ -35,7 +35,7 @@ function frame(commandType: string, payload: unknown = previewPayload, version =
 
 describe('#148 closed S4 1.2 wire admission — NO installed S4 authority', () => {
   it('recognizes only the 3 reviewed S4 commands under final 1.2, not v1.0/v1.1 or S3', () => {
-    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.2.0');
+    expect(CORE_SEAM_SCHEMA_VERSION).toBe('1.3.0');
     expect(COMMAND_TYPES).not.toContain('EXECUTE_S3_SELECTED_MEDIA');
     for (const name of [
       'PREVIEW_S4_HLS_VOD',
