@@ -48,7 +48,8 @@ async function main() {
       );
       const elapsedMs = performance.now() - startedAt;
       if (!result.ok) {
-        throw new Error(`same-host baseline acquisition was refused: ${result.diagnostics.map((entry) => entry.code).join(',')}`);
+        const codes = result.diagnostics.map((entry) => entry.code).join(',');
+        throw new Error(`same-host baseline acquisition was refused: ${codes}`);
       }
       if (
         result.value.bytes?.byteLength !== PAYLOAD_BYTES ||
@@ -81,10 +82,10 @@ async function main() {
     requestCount: fixture.requests.length,
     validation: 'PASSED',
   };
-  process.stdout.write(`SAME_HOST_DIRECT_TRANSFER_BASELINE ${JSON.stringify(record)}\\n`);
+  process.stdout.write(`SAME_HOST_DIRECT_TRANSFER_BASELINE ${JSON.stringify(record)}\n`);
 }
 
 main().catch((error) => {
-  process.stderr.write(`SAME_HOST_DIRECT_TRANSFER_BASELINE_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}\\n`);
+  process.stderr.write(`SAME_HOST_DIRECT_TRANSFER_BASELINE_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
   process.exitCode = 1;
 });
