@@ -1,0 +1,31 @@
+schema: xdownload/execution-failure-matrix/v1
+task_id: v021-T11
+failures:
+  - id: F01
+    condition: fixture classification missing or fake is presented as real
+    severity: P1
+    action: mark evidence INVALID and separate real vs fake results
+  - id: F02
+    condition: fixture uses arbitrary internet, credentials or real user data
+    severity: P1
+    action: remove external dependency and rotate/remove any exposed secret
+  - id: F03
+    condition: UNKNOWN is cleared, coerced to zero or counted as success
+    severity: P1
+    action: preserve UNKNOWN and correct the oracle
+  - id: F04
+    condition: real loopback server or temp directory is not cleaned up
+    severity: P2
+    action: ensure afterAll/finally cleanup and rerun
+  - id: F05
+    condition: fixture changes production behavior or source outside tests/v0.2.1/**
+    severity: P1
+    action: revert and keep the write set test-only
+  - id: F06
+    condition: injected disk-full/permission error is reported as a real OS failure
+    severity: P1
+    action: label INJECTED_FAILURE_FAKE and retain installed gate
+  - id: F07
+    condition: redaction tests persist raw token/cookie/query secret
+    severity: P1
+    action: sanitize fixture and assert absence from all output surfaces

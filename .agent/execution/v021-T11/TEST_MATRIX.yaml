@@ -1,0 +1,74 @@
+schema: xdownload/execution-test-matrix/v1
+task_id: v021-T11
+required_environment:
+  node: "24.21.0"
+  pnpm: "12.8.1"
+  external_network: forbidden
+  real_network: loopback_only
+  real_filesystem: temporary_directory_only
+suites:
+  - id: T11-01
+    scope: restart and replay
+    positive: durable accepted effect reconciles without a second external transfer
+    negative: replay cannot create duplicate accepted artifact
+    classification: REAL_TEMP_FILESYSTEM plus controlled runtime fixture
+  - id: T11-02
+    scope: cancellation
+    positive: cancellation stops subsequent work
+    negative: partial bytes never become COMPLETE
+    classification: REAL_LOOPBACK_NETWORK
+  - id: T11-03
+    scope: UNKNOWN truth
+    positive: unresolved state remains UNKNOWN
+    negative: no helper maps UNKNOWN to zero or success
+    classification: PURE_CONTRACT
+  - id: T11-04
+    scope: duplicate/idempotency
+    positive: identical duplicate converges
+    negative: conflicting duplicate rejects before duplicate materialization
+    classification: REAL_TEMP_FILESYSTEM plus controlled runtime fixture
+  - id: T11-05
+    scope: changed validator
+    positive: strong validator and matching range resume
+    negative: changed validator restarts without append
+    classification: REAL_LOOPBACK_NETWORK
+  - id: T11-06
+    scope: bad path and collision
+    positive: valid unique artifact stays inside temp root
+    negative: traversal/collision/containment escape rejects before effect
+    classification: REAL_TEMP_FILESYSTEM
+  - id: T11-07
+    scope: permission and disk-full failure
+    positive: successful temp write/rename verifies digest
+    negative: injected permission/disk-full failure is labelled FAKE and leaves no accepted artifact
+    classification: REAL_TEMP_FILESYSTEM plus INJECTED_FAILURE_FAKE
+  - id: T11-08
+    scope: Host mismatch
+    positive: exact Host permit/intent binding accepted
+    negative: mismatched Host/request/lineage refuses with zero effects
+    classification: PURE_CONTRACT plus REAL_LOOPBACK_NETWORK zero-request assertion
+  - id: T11-09
+    scope: corrupt output
+    positive: validated output digest matches bytes read back
+    negative: corrupt/truncated output never accepted
+    classification: REAL_TEMP_FILESYSTEM
+  - id: T11-10
+    scope: lineage owner conflict
+    positive: one resolved owner is preserved
+    negative: ambiguous/conflicting facts return typed REFUSED
+    classification: PURE_CONTRACT
+  - id: T11-11
+    scope: redaction
+    positive: safe bounded evidence contains no secret material
+    negative: bearer/query/cookie/token/path secrets absent from logs and persisted events
+    classification: PURE_CONTRACT plus captured fixture output
+commands:
+  scoped: "pnpm exec vitest run tests/v0.2.1"
+  root: "pnpm run ci:verify"
+pass_rule:
+  - every test declares fixture classification and case ID
+  - REAL_LOOPBACK_NETWORK and REAL_TEMP_FILESYSTEM are actually exercised where required
+  - INJECTED_FAILURE_FAKE never substitutes for real installed gates
+  - UNKNOWN is preserved and never auto-cleared
+  - no arbitrary external network or secret material
+  - exact task HEAD/tree and Node/pnpm are recorded
