@@ -196,9 +196,7 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     }
   });
 
-  it(
-    'routes a valid S4 intent through K to the trusted Host pin and refuses an unknown target before media effects',
-    async () => {
+  it('refuses unknown S4 targets before media effects through K/Host', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-runtime-'));
     try {
       const outputRoot = resolve(join(root, 'output'));
@@ -225,9 +223,7 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     }
   });
 
-  it(
-    're-reads an explicit selected variant, probes real H264/AAC TS segments, and materializes digest-backed output through K/Host',
-    async () => {
+  it('materializes real HLS VOD through K/Host with FFmpeg integrity checks', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-positive-'));
     let runtime: Awaited<ReturnType<typeof assembleS4HlsRuntime>> | undefined;
     let server: Server | undefined;
