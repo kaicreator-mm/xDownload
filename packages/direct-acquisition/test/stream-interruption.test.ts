@@ -20,6 +20,34 @@ describe('stream interruption without declared length', () => {
     await fixture.stop();
   });
 
+  it('does not accept extra chunked bytes when the budget reaches the expected target size', async () => {
+    fixture.on('/chunked-extra.bin', async (_request, response) => {
+      response.writeHead(200, { 'content-type': 'application/octet-stream' });
+      response.flushHeaders();
+      response.write(Buffer.from(full));
+      await new Promise<void>((resolve) => setTimeout(resolve, 30));
+      if (!response.destroyed) response.end(Buffer.from(payload(1, 91)));
+    });
+    const ledger = new InMemoryAuthoritativeLedger(
+      transferProfile({ maxBytes: full.byteLength }),
+    );
+    const adapter = new DirectHttpAdapter(ledger);
+
+    const outcome = unwrapOrThrow(
+      await adapter.acquire(
+        directRequest(baseUri, '/chunked-extra.bin', full, {
+          expectedTotalBytes: full.byteLength,
+        }),
+      ),
+    );
+
+    expect(outcome.reason).toBe('TRANSFER_BUDGET_EXHAUSTED');
+    expect(outcome.receivedBytes).toBe(full.byteLength);
+    expect(outcome.terminalResult.requestFulfillment).toBe('PARTIAL');
+    expect(outcome.terminalResult.selectionAcquisition).not.toBe('COMPLETE');
+    expect(outcome.allApplicableValidationPassed).toBe(false);
+  });
+
   it('keeps a reset after partial bytes incomplete without a length or digest anchor', async () => {
     fixture.on('/reset-without-length.bin', (_request, response) => {
       response.writeHead(200, { 'content-type': 'application/octet-stream' });

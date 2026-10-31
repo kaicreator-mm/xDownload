@@ -329,12 +329,14 @@ export class DirectHttpAdapter {
           : { kind: 'SAFE_RESTART', reason: 'IDENTITY_CHANGED' }
         : plan;
 
-    const expectedStreamTotal =
-      request.expectedTotalBytes ??
-      (responseIdentity.contentLength === undefined
+    // Budget-bound completion is allowed only when the HTTP response itself
+    // declares the exact remaining body length. A caller's expected target
+    // total cannot prove EOF for a chunked/unknown-length response.
+    const declaredStreamTotal =
+      responseIdentity.contentLength === undefined
         ? undefined
-        : (prefix?.byteLength ?? 0) + responseIdentity.contentLength);
-    const read = await this.streamBytes(response, prefix, request.signal, expectedStreamTotal);
+        : (prefix?.byteLength ?? 0) + responseIdentity.contentLength;
+    const read = await this.streamBytes(response, prefix, request.signal, declaredStreamTotal);
     if (read.aborted) {
       // The cancellation checkpoint fired mid-body: what arrived stays
       // partial/unaccepted truth — never a completed transfer (P2-1).
@@ -471,7 +473,7 @@ export class DirectHttpAdapter {
     response: Response,
     prefix: Uint8Array | undefined,
     signal?: AbortSignal,
-    expectedTotalBytes?: number,
+    declaredStreamTotalBytes?: number,
   ): Promise<{
     chunks: Uint8Array[];
     budgetStop: 'TRANSFER_BUDGET_EXHAUSTED' | 'GLOBAL_SAFETY_EXHAUSTED' | undefined;
@@ -508,8 +510,11 @@ export class DirectHttpAdapter {
         if (after.globalSafety.exhausted || after.transfer.exhausted) {
           // Never read one more chunk to discover whether the body ended at
           // the boundary: that would receive uncharged bytes beyond budget.
-          // A known exact total may complete; otherwise stop conservatively.
-          if (expectedTotalBytes !== undefined && byteLengthOf(chunks) === expectedTotalBytes) {
+          // Only the declared response framing proves an exact body boundary.
+          if (
+            declaredStreamTotalBytes !== undefined &&
+            byteLengthOf(chunks) === declaredStreamTotalBytes
+          ) {
             // The declared byte total is complete, but this branch exits before
             // reader.read() can observe EOF. Cancel explicitly so the response
             // stream/socket is not left live after a budget-bound completion.
