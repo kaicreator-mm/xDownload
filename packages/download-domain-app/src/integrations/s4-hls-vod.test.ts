@@ -175,6 +175,108 @@ async function createRealHlsFixture(root: string): Promise<{
   return { fixtureDir, mediaPlaylist, segmentNames, segments };
 }
 
+async function runS4RefusalScenario(input: {
+  readonly master: string;
+  readonly media: string;
+  readonly expectedCode: string;
+  readonly expectedPlaylistRequests: number;
+}): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-refusal-'));
+  let runtime: Awaited<ReturnType<typeof assembleS4HlsRuntime>> | undefined;
+  let server: Server | undefined;
+  try {
+    const outputRoot = resolve(join(root, 'output'));
+    await mkdir(outputRoot, { recursive: true });
+    const hits = new Map<string, number>();
+    const serverInstance = createServer((request, response) => {
+      const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+      hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+      const body =
+        pathname === '/master.m3u8'
+          ? input.master
+          : pathname === '/media.m3u8'
+            ? input.media
+            : undefined;
+      if (body !== undefined) {
+        response.writeHead(200, {
+          'content-type': 'application/vnd.apple.mpegurl',
+          'content-length': String(Buffer.byteLength(body)),
+        });
+        response.end(body);
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+    server = serverInstance;
+    await new Promise<void>((resolveListen, rejectListen) => {
+      serverInstance.once('error', rejectListen);
+      serverInstance.listen(0, '127.0.0.1', resolveListen);
+    });
+    const address = serverInstance.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('S4 refusal fixture server did not bind a TCP port');
+    }
+    const origin = `http://127.0.0.1:${String(address.port)}`;
+    const manifestUri = origin + '/master.m3u8';
+    const renditionUri = origin + '/media.m3u8';
+    const targetRef = 'ref:s4-target-negative';
+    runtime = await assembleS4HlsRuntime({
+      storePath: join(root, 'k-documents.json'),
+      mediaTargetRefs: [{
+        handle: targetRef,
+        record: {
+          protocol: 'HLS',
+          manifestUri,
+          selectedRenditionUri: renditionUri,
+          artifactFileName: 's4-refusal.ts',
+          allowedManifestOrigins: [origin],
+          allowedSegmentOrigins: [origin],
+          budget: budgetFixture(),
+          fixtureLoopbackHttp: true,
+        },
+      }],
+    });
+    const intent = confirmedIntent(outputRoot, { manifestUri, renditionUri, targetRef });
+    const selection = intent.selection as Record<string, unknown>;
+    selection.displayedTupleDigest = s4HlsSelectionTupleDigest({
+      contractId: 'contract-s4-001',
+      snapshotId: 'snapshot-s4-001',
+      memberId: 'member-s4-001',
+      previewId: 'preview-s4-001',
+      renditionKey: 'rend-0',
+      renditionUri,
+      manifestUri,
+      mediaProfileId: S4_HLS_MEDIA_PROFILE,
+      bandwidth: 500_000,
+      width: 160,
+      height: 90,
+    });
+
+    const result = await submitConfirmedS4HlsVod(runtime, intent);
+    assert.equal(result.status, 'failed');
+    if (result.status !== 'failed') throw new Error('expected a typed S4 topology refusal');
+    assert.equal(result.code, input.expectedCode);
+    assert.equal(runtime.pin.acquireCalls, 1);
+    assert.equal(runtime.pin.completedExecutions, 0);
+    assert.equal(runtime.pin.failedExecutions, 1);
+    assert.equal(hits.get('/master.m3u8'), 1);
+    assert.equal(hits.get('/media.m3u8') ?? 0, input.expectedPlaylistRequests);
+    assert.equal(hits.get('/segment000.ts') ?? 0, 0);
+    assert.equal(hits.get('/key.bin') ?? 0, 0);
+    assert.deepEqual(await readdir(outputRoot), []);
+  } finally {
+    runtime?.stop();
+    if (server !== undefined) {
+      server.closeAllConnections();
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server!.close((error) => (error ? rejectClose(error) : resolveClose()));
+      });
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
 describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
   it('accepts only the closed explicit rendition-selection contract', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-contract-'));
@@ -221,6 +323,62 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it('refuses an unclosed live playlist before requesting any segment', async () => {
+    await runS4RefusalScenario({
+      master: masterPlaylist(),
+      media: [
+        '#EXTM3U',
+        '#EXT-X-VERSION:6',
+        '#EXT-X-TARGETDURATION:2',
+        '#EXT-X-MEDIA-SEQUENCE:0',
+        '#EXTINF:2.000000,',
+        'segment000.ts',
+        '',
+      ].join('\\n'),
+      expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
+      expectedPlaylistRequests: 1,
+    });
+  });
+
+  it('refuses AES-128 protected media without requesting keys or segments', async () => {
+    await runS4RefusalScenario({
+      master: masterPlaylist(),
+      media: [
+        '#EXTM3U',
+        '#EXT-X-VERSION:6',
+        '#EXT-X-TARGETDURATION:2',
+        '#EXT-X-PLAYLIST-TYPE:VOD',
+        '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"',
+        '#EXTINF:2.000000,',
+        'segment000.ts',
+        '#EXTINF:2.000000,',
+        'segment001.ts',
+        '#EXT-X-ENDLIST',
+        '',
+      ].join('\\n'),
+      expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
+      expectedPlaylistRequests: 1,
+    });
+  });
+
+  it('refuses duplicate variant rendition identities before fetching a media playlist', async () => {
+    const ambiguousMaster = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:6',
+      '#EXT-X-STREAM-INF:BANDWIDTH=500000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
+      'media.m3u8',
+      '#EXT-X-STREAM-INF:BANDWIDTH=600000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
+      'media.m3u8',
+      '',
+    ].join('\\n');
+    await runS4RefusalScenario({
+      master: ambiguousMaster,
+      media: '',
+      expectedCode: 'MEDIA_MANIFEST_MALFORMED',
+      expectedPlaylistRequests: 0,
+    });
   });
 
   it('materializes real HLS VOD through K/Host with FFmpeg integrity checks', async () => {
