@@ -336,7 +336,7 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
         '#EXTINF:2.000000,',
         'segment000.ts',
         '',
-      ].join('\\n'),
+      ].join('\n'),
       expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
       expectedPlaylistRequests: 1,
     });
@@ -357,13 +357,13 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
         'segment001.ts',
         '#EXT-X-ENDLIST',
         '',
-      ].join('\\n'),
+      ].join('\n'),
       expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
       expectedPlaylistRequests: 1,
     });
   });
 
-  it('refuses duplicate variant rendition identities before fetching a media playlist', async () => {
+  it('refuses duplicate variants before fetching a media playlist', async () => {
     const ambiguousMaster = [
       '#EXTM3U',
       '#EXT-X-VERSION:6',
@@ -372,7 +372,7 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
       '#EXT-X-STREAM-INF:BANDWIDTH=600000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
       'media.m3u8',
       '',
-    ].join('\\n');
+    ].join('\n');
     await runS4RefusalScenario({
       master: ambiguousMaster,
       media: '',
