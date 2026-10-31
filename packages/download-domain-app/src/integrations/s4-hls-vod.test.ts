@@ -299,7 +299,7 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     }
   });
 
-  it('rejects future-dated, expired and overlong confirmation windows before K send', async () => {
+  it('rejects future-dated and expired confirmation windows before K send', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-expiry-'));
     try {
       const outputRoot = resolve(join(root, 'output'));
@@ -316,11 +316,6 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
       expiredSelection.expiresAt = new Date(Date.now() - 1_000).toISOString();
       assert.equal(validateConfirmedS4HlsIntent(expired).ok, false);
 
-      const overlong = confirmedIntent(outputRoot);
-      const overlongSelection = overlong.selection as Record<string, unknown>;
-      overlongSelection.confirmedAt = new Date(Date.now() - 1_000).toISOString();
-      overlongSelection.expiresAt = new Date(Date.now() + 60_000).toISOString();
-      assert.equal(validateConfirmedS4HlsIntent(overlong).ok, false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
