@@ -9,10 +9,7 @@ import {
   redactForSink,
   registerSinkScrubSentinel,
 } from '@xdownload/browser-observation';
-import {
-  decodeDownloadProgressProjection,
-  resolveLineageOwner,
-} from '@xdownload/domain-contracts';
+import { decodeDownloadProgressProjection, resolveLineageOwner } from '@xdownload/domain-contracts';
 import { ControlledHttpFixture } from '../../packages/direct-acquisition/test/helpers/fixture-server.ts';
 import { payload } from '../../packages/direct-acquisition/test/helpers/fixtures.ts';
 import { startControlledHlsFixture, type ControlledHlsFixture } from './controlled-hls-fixture.ts';

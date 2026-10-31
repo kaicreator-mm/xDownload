@@ -1,8 +1,5 @@
 export type FixtureClassification =
-  | 'REAL_LOOPBACK_NETWORK'
-  | 'REAL_TEMP_FILESYSTEM'
-  | 'INJECTED_FAILURE_FAKE'
-  | 'PURE_CONTRACT';
+  'REAL_LOOPBACK_NETWORK' | 'REAL_TEMP_FILESYSTEM' | 'INJECTED_FAILURE_FAKE' | 'PURE_CONTRACT';
 
 export interface V021ScenarioCase {
   readonly id: string;
@@ -67,7 +64,8 @@ export const V021_SCENARIO_CORPUS: readonly V021ScenarioCase[] = [
     required: true,
     classifications: ['INJECTED_FAILURE_FAKE'],
     evidencePaths: ['tests/v0.2.1/controlled-fixtures.test.ts'],
-    expectedTruth: 'injected publication failures leave no accepted artifact; real OS failure remains NOT_PROVEN',
+    expectedTruth:
+      'injected publication failures leave no accepted artifact; real OS failure remains NOT_PROVEN',
     installedGate: 'NOT_PROVEN',
   },
   {

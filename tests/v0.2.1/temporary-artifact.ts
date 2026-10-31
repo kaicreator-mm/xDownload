@@ -13,9 +13,7 @@ export interface FixtureArtifact {
  * Test-only real temporary-filesystem fixture. It does not replace or certify
  * the production Host path-containment/materialization implementation.
  */
-export async function withTemporaryArtifactRoot<T>(
-  run: (root: string) => Promise<T>,
-): Promise<T> {
+export async function withTemporaryArtifactRoot<T>(run: (root: string) => Promise<T>): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t11-'));
   try {
     return await run(root);
@@ -58,9 +56,10 @@ export async function materializeFixtureAtomically(
     if (options.injectedFailure === 'PERMISSION_DENIED') {
       throw new Error('INJECTED_FAILURE_FAKE: simulated EACCES before creating a partial artifact');
     }
-    const staged = options.injectedFailure === 'DISK_FULL'
-      ? bytes.subarray(0, Math.floor(bytes.byteLength / 2))
-      : bytes;
+    const staged =
+      options.injectedFailure === 'DISK_FULL'
+        ? bytes.subarray(0, Math.floor(bytes.byteLength / 2))
+        : bytes;
     const handle = await open(partialPath, 'wx', 0o600);
     partialCreated = true;
     try {
