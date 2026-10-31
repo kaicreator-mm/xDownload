@@ -95,6 +95,10 @@ describe('truncation: detected, never accepted, truthful vocabulary', () => {
       ...directRequest(baseUri, '/truncated-resume.bin', FULL, {
         effectId: 'effect-001',
         attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
       }),
       resumeFrom: {
         bytes: FULL.subarray(0, 40),
