@@ -25,6 +25,8 @@ import {
 } from '../identity.ts';
 import { renderFilledHostManifest, renderHostManifestTemplate } from '../native-host.ts';
 import { vendoredRuntimeDistPaths } from '../build-config.ts';
+import { browserNodeStubsPlugin } from '../browser-node-stubs.ts';
+import esbuild from 'esbuild';
 
 const ORIGIN = 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/';
 
@@ -607,6 +609,31 @@ describe('#95 installed S2 journey reachability (real package build)', () => {
     expect(core).toMatch(/peer\.surface\s*!==\s*["']BROWSER_EXTENSION["']/u);
   });
 
+  it('ships a browser bundle free of node builtin specifiers (fail-closed stubs)', () => {
+    // T09 repair of the T05/T08 legacy red: the packaged extension bundle
+    // must LOAD in a browser, so no emitted `from "node:…"` specifier may
+    // remain — every node builtin the barrel drags in is stubbed fail-closed
+    // at package time (build/browser-node-stubs.ts). The node artifacts keep
+    // their real builtins and are asserted separately below.
+    const bundle = fs.readFileSync(
+      path.join(distRoot, 'extension', 'background.service-worker.js'),
+      'utf8',
+    );
+    expect(bundle).not.toMatch(/from\s*["']node:[^"']+["']/u);
+    expect(bundle).not.toMatch(/import\s*\(\s*["']node:/u);
+  });
+
+  it('keeps real node builtins in the node artifacts (stubs never leak across platforms)', () => {
+    for (const artifact of ['core/xdownload-core-host.js', 'cli/xdownload-cli.js']) {
+      const bundle = fs.readFileSync(path.join(distRoot, artifact), 'utf8');
+      expect(bundle.length, `${artifact} must be emitted`).toBeGreaterThan(0);
+      expect(
+        /node:(net|crypto|module)/u.test(bundle),
+        `${artifact} must keep real node builtins`,
+      ).toBe(true);
+    }
+  });
+
   it('emits no credential-shaped material in the extension or native-host artifacts', () => {
     for (const artifact of [
       'extension/background.service-worker.js',
@@ -617,5 +644,55 @@ describe('#95 installed S2 journey reachability (real package build)', () => {
       expect(text).not.toMatch(/AKIA[0-9A-Z]{16}/u);
       expect(text).not.toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/u);
     }
+  });
+});
+
+// --------------------------------- T09 browser node-builtin stub plugin
+
+describe('browser node-builtin stub plugin (fail-closed packaging surface)', () => {
+  async function bundleSource(
+    source: string,
+  ): Promise<{ ok: boolean; output?: string; error?: string }> {
+    const entry = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'xd-stub-')), 'entry.ts');
+    fs.writeFileSync(entry, source, 'utf8');
+    try {
+      await esbuild.build({
+        entryPoints: [entry],
+        bundle: true,
+        platform: 'browser',
+        format: 'esm',
+        target: 'es2023',
+        logLevel: 'silent',
+        plugins: [browserNodeStubsPlugin()],
+        outfile: path.join(path.dirname(entry), 'out.js'),
+      });
+      return { ok: true, output: fs.readFileSync(entry.replace(/entry\.ts$/, 'out.js'), 'utf8') };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'build failed' };
+    }
+  }
+
+  it('stubs the declared builtin surface with call-time throwing exports', async () => {
+    const result = await bundleSource(
+      [
+        "import { createHash } from 'node:crypto';",
+        "import { isIP } from 'node:net';",
+        "import net from 'node:net';",
+        "import { createRequire } from 'node:module';",
+        'export const probes = [createHash, isIP, createRequire, net];',
+      ].join('\n'),
+    );
+    expect(result.ok, result.error).toBe(true);
+    expect(result.output).not.toMatch(/from\s*["']node:/u);
+    // Every stubbed binding throws its typed, actionable message when called.
+    expect(result.output).toContain('not available in the packaged browser zone');
+  });
+
+  it('fails the build closed on a builtin outside the declared stub surface', async () => {
+    const result = await bundleSource(
+      "import { createServer } from 'node:http';\nexport const x = createServer;\n",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('not part of the declared browser-stub surface');
   });
 });

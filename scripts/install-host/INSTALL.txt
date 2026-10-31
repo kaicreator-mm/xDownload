@@ -1,0 +1,66 @@
+xDownload v0.2.1 — Windows x64 user package (installer payload + per-user install)
+==================================================================================
+
+This directory is a reproducible, hash-manifested user package. It contains the
+audited build payload (payload/) and the per-user install entry points. The
+only supported tuple of this package is Windows x64 with Node.js 24 (the
+runtime the install scripts invoke `node` with must be Node 24); no other OS,
+architecture or browser is claimed by this package.
+
+Contents
+--------
+  payload/                     audited build output (cli, core, extension,
+                               native-host, identity/, support-matrix.json)
+  install.cmd                  per-user install (HKCU Native Messaging
+                               registration; never elevated, never overwrites)
+  uninstall.cmd                per-user uninstall (registration + install files)
+  status.cmd                   readback of registration and bound Core config
+  verify.cmd                   integrity readback of this directory
+  SHA256SUMS                   hash manifest of every shipped file
+  installer-identity.json      exact source revision, toolchain and content hash
+  verify-installer.mjs         the verifier verify.cmd runs
+
+Install (per user, no elevation)
+--------------------------------
+  1. verify.cmd                -> must print PASS before anything else
+  2. install.cmd --extension-id <id>
+       <id> is the real 32-letter browser-minted extension id from
+       chrome://extensions (the packaging placeholder is refused). Options:
+       --install-id <id> (default xdownload), --user-id <id>,
+       --launch-core (start the single Core now).
+  3. status.cmd                -> registration + bound Core pipe readback
+  4. Load the unpacked extension from payload/extension in a Chromium-family
+     browser and use the same origin that --extension-id named.
+
+The single Core (one authority per install)
+-------------------------------------------
+  install.cmd writes %USERPROFILE%\.xdownload\install\xdownload-core-start.cmd.
+  Run it once per machine boot (or pass --launch-core to install.cmd) to start
+  the ONE Core authority bound to the canonical named pipe
+  \\\\.\\pipe\\xdownload-core-<install-id>. The browser native host relays
+  both the legacy v1 lanes and the explicit v0.2 seam route
+  (DOMAIN_APP_SEND / READ_JOB_PROJECTION) to that same Core.
+
+Upgrade
+-------
+  Run uninstall.cmd first, then install again with the new package. An
+  install over an existing registration is refused (never overwritten).
+
+Uninstall
+---------
+  Stop the single Core window, then run uninstall.cmd. The HKCU registration
+  and %USERPROFILE%\\.xdownload\\install are removed; this extracted package
+  directory is never modified by the uninstall.
+
+Integrity
+---------
+  Every file ships in SHA256SUMS; verify.cmd re-hashes the directory and
+  checks installer-identity.json. A failed verification means the extracted
+  tree differs from the composed package - do not install it.
+
+What this package does NOT claim
+--------------------------------
+  - No Linux/macOS package or registration is included or claimed.
+  - No updater, code signing or store distribution exists or is claimed.
+  - The extension/native-host tuple is NOT_PROVEN until exercised in a real
+    browser (see payload/support-matrix.json for the exact claim matrix).

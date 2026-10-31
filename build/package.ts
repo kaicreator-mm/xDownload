@@ -19,7 +19,7 @@
  */
 
 import { createRequire } from 'node:module';
-import esbuild from 'esbuild';
+import esbuild, { type Plugin } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -38,8 +38,19 @@ import {
 import { buildIdentity, currentSourceRevision } from './identity.ts';
 import { auditDist } from './audit.ts';
 import { renderHostManifestTemplate } from './native-host.ts';
+import { browserNodeStubsPlugin } from './browser-node-stubs.ts';
 
 const SHEBANG = '#!/usr/bin/env node\n';
+
+/**
+ * #T05-legacy repair (T09): the browser artifact must bundle the node-free
+ * reachable surface even though the `@xdownload/core-seam` barrel re-exports
+ * node-only modules. Only browser-platform bundles get the fail-closed
+ * node-builtin stubs; the node artifacts keep real built-ins.
+ */
+function esbuildPluginsFor(platform: ArtifactSpec['platform']): Plugin[] | undefined {
+  return platform === 'browser' ? [browserNodeStubsPlugin()] : undefined;
+}
 
 const CLI_BIN_SH = `#!/bin/sh
 exec node "$(dirname "$0")/../xdownload-cli.js" "$@"
@@ -90,6 +101,7 @@ async function bundleArtifacts(distDir: string): Promise<void> {
       // below, so the guarded loader resolves `require('koffi')` from the
       // clean dist instead of failing closed there.
       external: ['koffi', '@koromix/*'],
+      plugins: esbuildPluginsFor(artifact.platform),
       ...(artifact.withShebang ? { banner: { js: SHEBANG } } : {}),
     });
     // #179: additional same-artifact bundles (packaging/install write set)
@@ -106,6 +118,7 @@ async function bundleArtifacts(distDir: string): Promise<void> {
         legalComments: 'none',
         logLevel: 'warning',
         external: ['koffi', '@koromix/*'],
+        plugins: esbuildPluginsFor(artifact.platform),
         ...(artifact.withShebang ? { banner: { js: SHEBANG } } : {}),
       });
     }
