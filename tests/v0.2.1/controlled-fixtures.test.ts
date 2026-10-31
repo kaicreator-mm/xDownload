@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import {
@@ -118,6 +119,22 @@ describe('real temporary filesystem fixture', () => {
         materializeFixtureAtomically(root, '../escape.bin', payload(8)),
         /fixture filename must be one basename/,
       );
+    });
+  });
+
+  it('never overwrites an existing final artifact, including on filesystems where rename would replace it', async () => {
+    await withTemporaryArtifactRoot(async (root) => {
+      const existing = payload(16, 7);
+      const finalPath = join(root, 'existing.bin');
+      await writeFile(finalPath, existing, { flag: 'wx' });
+
+      await assert.rejects(
+        materializeFixtureAtomically(root, 'existing.bin', payload(32, 9)),
+        /fixture artifact collision/,
+      );
+
+      assert.deepEqual(await readFile(finalPath), existing);
+      assert.equal(existsSync(finalPath + '.partial'), false);
     });
   });
 

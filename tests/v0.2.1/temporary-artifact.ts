@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, link, mkdtemp, open, readFile, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -48,6 +48,7 @@ export async function materializeFixtureAtomically(
 
   const partialPath = finalPath + '.partial';
   let partialCreated = false;
+  let finalCreated = false;
   try {
     if (options.injectedFailure === 'PERMISSION_DENIED') {
       throw new Error('INJECTED_FAILURE_FAKE: simulated EACCES before creating a partial artifact');
@@ -55,12 +56,21 @@ export async function materializeFixtureAtomically(
     const staged = options.injectedFailure === 'DISK_FULL'
       ? bytes.subarray(0, Math.floor(bytes.byteLength / 2))
       : bytes;
-    await writeFile(partialPath, staged, { flag: 'wx', mode: 0o600 });
+    const handle = await open(partialPath, 'wx', 0o600);
     partialCreated = true;
+    try {
+      await handle.writeFile(staged);
+    } finally {
+      await handle.close();
+    }
     if (options.injectedFailure === 'DISK_FULL') {
       throw new Error('INJECTED_FAILURE_FAKE: simulated ENOSPC after a partial write');
     }
-    await rename(partialPath, finalPath);
+    // Hard-link creation is atomic and fails if the final path already exists;
+    // unlike POSIX rename(), it cannot silently replace a concurrent artifact.
+    await link(partialPath, finalPath);
+    finalCreated = true;
+    await unlink(partialPath);
     partialCreated = false;
     const readBack = await readFile(finalPath);
     return {
@@ -68,6 +78,9 @@ export async function materializeFixtureAtomically(
       bytes: readBack,
       sha256: createHash('sha256').update(readBack).digest('hex'),
     };
+  } catch (error) {
+    if (finalCreated) await rm(finalPath, { force: true });
+    throw error;
   } finally {
     if (partialCreated) {
       await rm(partialPath, { force: true });
