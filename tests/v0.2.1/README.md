@@ -1,11 +1,11 @@
 # xDownload v0.2.1 controlled validation fixtures
 
-This directory is the version-scoped fixture registry for T11. It consolidates existing scenario evidence and provides reusable, deterministic direct/HLS loopback fixtures plus real temporary-filesystem materialization helpers.
+This directory is the version-scoped T11 fixture registry. It consolidates scenario evidence and provides deterministic direct/HLS loopback fixtures plus real temporary-filesystem materialization helpers.
 
 ## Evidence classes
 
 - REAL_LOOPBACK_NETWORK: a real local HTTP listener and real HTTP client are used; this is not public-network or installed-user-network evidence.
-- REAL_TEMP_FILESYSTEM: a real temporary directory is written, renamed, read back and cleaned up.
+- REAL_TEMP_FILESYSTEM: a real temporary directory is written, atomically published without overwriting an existing path, read back and cleaned up.
 - INJECTED_FAILURE_FAKE: a deterministic injected error such as permission-denied/disk-full simulation; it is explicitly fake and cannot satisfy a real OS/installed gate.
 - PURE_CONTRACT: a decoder/policy/redaction assertion with no external effect.
 
