@@ -1,0 +1,39 @@
+schema: xdownload/execution-failure-matrix/v1
+task_id: v021-T03
+failures:
+  - id: F01
+    condition: retry is unbounded or starts a new effect/target lineage
+    severity: P1
+    action: stop; preserve same lineage and existing retry budget
+  - id: F02
+    condition: partial bytes append without strong validator and matching range response
+    severity: P1
+    action: safe restart or typed refusal; never blind append
+  - id: F03
+    condition: changed validator is treated as same representation
+    severity: P1
+    action: discard partial prefix and use full new representation
+  - id: F04
+    condition: timeout/reset/cancel can project COMPLETE without all bytes and validation
+    severity: P1
+    action: preserve partial/UNKNOWN terminal truth
+  - id: F05
+    condition: redirect widens target or bypasses declared host policy
+    severity: P1
+    action: refuse before next request
+  - id: F06
+    condition: budget is reset/replenished across retries
+    severity: P1
+    action: use authoritative ledger remaining projection only
+  - id: F07
+    condition: file-system path/materialization code is added outside the write set
+    severity: P1
+    action: revert; route Host evidence to T11
+  - id: F08
+    condition: test uses arbitrary public network or secrets
+    severity: P1
+    action: replace with deterministic loopback fixture
+  - id: F09
+    condition: task evidence claims Windows/installed/disk-full PASS from adapter-only tests
+    severity: P1
+    action: downgrade to NOT_PROVEN and retain platform gate

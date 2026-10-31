@@ -1,0 +1,50 @@
+schema: xdownload/execution-test-matrix/v1
+task_id: v021-T03
+required_environment:
+  node: "24.21.0"
+  pnpm: "12.8.1"
+  external_network: forbidden
+  fixture_network: loopback_only
+suites:
+  - id: T03-01
+    scope: transient timeout/reset
+    positive: complete response remains complete
+    negative: mid-stream reset/timeout yields partial or failed truth, never COMPLETE
+  - id: T03-02
+    scope: bounded retry and budget
+    positive: retry within same effect/target lineage and remaining budget
+    negative: exhausted retry budget rejects before a new request; no replenishment
+  - id: T03-03
+    scope: validated resume
+    positive: strong ETag + matching 206 + Content-Range appends at exact offset
+    negative: weak/missing validator or unsolicited 206 never appends
+  - id: T03-04
+    scope: changed representation
+    positive: changed validator receives a fresh full representation
+    negative: old partial bytes are not appended to changed representation
+  - id: T03-05
+    scope: redirects
+    positive: declared delivery hop is preserved
+    negative: off-policy redirect or hop overflow refuses before next fetch
+  - id: T03-06
+    scope: partial corruption and target identity
+    positive: validated bytes pass transfer/format/target checks
+    negative: corrupt/mismatched partial state never projects accepted COMPLETE
+  - id: T03-07
+    scope: cancellation and UNKNOWN
+    positive: completed stream settles truthfully
+    negative: abort/reset preserves partial/UNKNOWN semantics
+  - id: T03-08
+    scope: Host materialization boundary
+    positive: T11 cross-layer fixture verifies disk-full/path/collision/atomic-finalize refusal
+    negative: T03 must not claim Host filesystem behavior from adapter-only tests
+commands:
+  scoped: "pnpm exec vitest run packages/direct-acquisition/test"
+  root: "pnpm run ci:verify"
+  readonly_host: "pnpm exec vitest run packages/download-domain-host/src/direct"
+pass_rule:
+  - all T03-owned scoped suites exit 0
+  - no external network
+  - no false COMPLETE, blind append, budget reset or out-of-lineage retry
+  - Host-only acceptance evidence is explicitly owned by T11 and remains NOT_PROVEN until its real fixture run
+  - exact task HEAD/tree and Node/pnpm are recorded

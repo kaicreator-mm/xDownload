@@ -1,0 +1,41 @@
+pack_id: xdownload-v0.2.1-v021-T03-e71ff24c
+task_id: v021-T03
+repository: kaicreator-mm/xDownload
+version: 0.2.1
+parent_issue: "#252"
+base_sha: e71ff24c4d4e04e86bb7771c23309b55e4fb5a16
+base_tree: 5f2116fc5de75f92d8069d0ff5fbae6cae551a37
+integration_branch: version/v0.2.1
+task_branch: task/v0.2.1-t03-transfer-reliability-safe-files
+task_pack_ref: docs/implementation/v0.2.1/TASK_PACKS_R0.md@planning/v0.2.1-user-release@1cffd6445308ac78fa2f9e4489af579f0deb32ef#blob:c0cbed29ffa1a47cad5aed288aa262dd0dd549a8
+task_pack_blob: c0cbed29ffa1a47cad5aed288aa262dd0dd549a8
+task_dag_blob: ecb2e31088c9e3895fad042401f737938c37628a
+freeze_subject: 07af78c3abee741196ff566a7f21fdfe15d71da7
+dependency_completion:
+  - "T01/#250 CLOSED; PR #272 merge e71ff24c4d4e04e86bb7771c23309b55e4fb5a16"
+agent_freedom: F1_BOUNDED_IMPLEMENTATION
+review_policy: required
+risk: critical
+pinned_standard_revision: 2c395c55569fe2edf3f4135f12d3d069e526d0b7
+generated_by: chatgpt-web:xdownload-v021-t03-jit-prep
+generated_at: "2026-10-31"
+core_artifacts:
+  - MANIFEST.yaml
+  - EXECUTION_CONTRACT.md
+  - IMPLEMENTATION_MAP.md
+  - TEST_MATRIX.yaml
+  - FAILURE_MATRIX.yaml
+  - REVIEW_CHECKLIST.md
+retention: full-provenance
+package_excluded: true
+owned_write_set:
+  - packages/direct-acquisition/**
+material_paths:
+  - package.json
+  - pnpm-workspace.yaml
+  - pnpm-lock.yaml
+  - tsconfig.json
+  - vitest.config.ts
+  - packages/domain-contracts/**
+  - packages/direct-acquisition/**
+  - packages/download-domain-host/src/direct/**
