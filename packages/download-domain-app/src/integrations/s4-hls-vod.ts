@@ -36,7 +36,9 @@ import {
 } from '../contracts/index.ts';
 import { FileCasDocStore } from '../composition/runtime.ts';
 import { InMemoryMediaTargetRegistry, type MediaTargetRefSeed } from './media-registry.ts';
-import { acquireSelectedHlsVod } from '../../../download-domain-host/src/media/media-acquisition-bridge.ts';
+import {
+  acquireSelectedHlsVod,
+} from '../../../download-domain-host/src/media/media-acquisition-bridge.ts';
 import {
   S4_HLS_MEDIA_OPERATION,
   validateConfirmedS4HlsIntent,
@@ -116,7 +118,9 @@ export function sealS4HlsComposition(): V10BuiltApp {
   });
   const routeCheck = validateRouteTable([S4_HLS_ROUTE], DECLARATIONS);
   if (!routeCheck.ok || t03.routes.length !== 1) {
-    throw new Error('S4_HLS_COMPOSITION_BINDING_MISMATCH: route is outside frozen media.acquire vocabulary');
+    throw new Error(
+      'S4_HLS_COMPOSITION_BINDING_MISMATCH: route is outside frozen media.acquire vocabulary',
+    );
   }
   const built = buildV10App({
     appId: APP_ID_S4_HLS_VOD,
@@ -183,8 +187,12 @@ function parseKernelPermit(value: unknown): KernelPermitClaim | undefined {
   const record = value as Record<string, unknown>;
   if (
     Object.keys(record).some((key) => key !== 'effectId' && key !== 'durableControlTurnId') ||
-    typeof record.effectId !== 'string' || record.effectId.length < 1 || record.effectId.length > 256 ||
-    typeof record.durableControlTurnId !== 'string' || record.durableControlTurnId.length < 1 || record.durableControlTurnId.length > 256
+    typeof record.effectId !== 'string' ||
+    record.effectId.length < 1 ||
+    record.effectId.length > 256 ||
+    typeof record.durableControlTurnId !== 'string' ||
+    record.durableControlTurnId.length < 1 ||
+    record.durableControlTurnId.length > 256
   ) return undefined;
   return { effectId: record.effectId, durableControlTurnId: record.durableControlTurnId };
 }
@@ -206,7 +214,11 @@ async function executeS4Hls(
   const kernelPermit = parseKernelPermit(permit);
   if (kernelPermit === undefined) {
     counters.permitRefusals += 1;
-    return refusalEnvelope('media.acquire:unpermitted', 'MEDIA_PERMIT_REQUIRED', 'Kernel effect permit is required');
+    return refusalEnvelope(
+      'media.acquire:unpermitted',
+      'MEDIA_PERMIT_REQUIRED',
+      'Kernel effect permit is required',
+    );
   }
   const externalRef = kernelPermit.effectId;
   const candidate: Record<string, unknown> = { ...payload };
@@ -214,22 +226,35 @@ async function executeS4Hls(
   const checked = validateConfirmedS4HlsIntent(candidate);
   if (!checked.ok) {
     counters.intentRefusals += 1;
-    return refusalEnvelope(externalRef, 'S4_INTENT_INVALID', checked.diagnostics[0]?.message ?? 'S4 intent refused');
+    return refusalEnvelope(
+      externalRef,
+      'S4_INTENT_INVALID',
+      checked.diagnostics[0]?.message ?? 'S4 intent refused',
+    );
   }
   const intent: ConfirmedS4HlsIntent = checked.value;
   const recordCheck = registry.resolve(intent.targetRef);
   if (!recordCheck.ok) {
     counters.registryRefusals += 1;
-    return refusalEnvelope(externalRef, recordCheck.diagnostics[0]?.code ?? 'MEDIA_TARGET_UNKNOWN', 'opaque targetRef did not resolve');
+    return refusalEnvelope(
+      externalRef,
+      recordCheck.diagnostics[0]?.code ?? 'MEDIA_TARGET_UNKNOWN',
+      'opaque targetRef did not resolve',
+    );
   }
   const record = recordCheck.value;
   if (
     record.protocol !== 'HLS' ||
     record.manifestUri !== intent.selection.manifestUri ||
-    (record.selectedRenditionUri !== undefined && record.selectedRenditionUri !== intent.selection.renditionUri)
+    (record.selectedRenditionUri !== undefined &&
+      record.selectedRenditionUri !== intent.selection.renditionUri)
   ) {
     counters.registryRefusals += 1;
-    return refusalEnvelope(externalRef, 'S4_SELECTION_TARGET_MISMATCH', 'confirmed selection does not match trusted target registry facts');
+    return refusalEnvelope(
+      externalRef,
+      'S4_SELECTION_TARGET_MISMATCH',
+      'confirmed selection does not match trusted target registry facts',
+    );
   }
   const mediaPermit = {
     kind: 'media-acquisition-permit',
@@ -269,7 +294,9 @@ async function executeS4Hls(
         },
       },
     });
-    if (!normalized.ok) throw new Error('S4 Host permit enrichment rejected by T01 envelope grammar');
+    if (!normalized.ok) {
+      throw new Error('S4 Host permit enrichment rejected by T01 envelope grammar');
+    }
     counters.completedExecutions += 1;
     return normalized.value;
   }
@@ -341,11 +368,19 @@ export async function submitConfirmedS4HlsVod(
 ): Promise<S4HlsJourneyResult> {
   const checked = validateConfirmedS4HlsIntent(candidate);
   if (!checked.ok) {
-    return { status: 'refused', code: 'S4_INTENT_INVALID', message: checked.diagnostics[0]?.message ?? 'S4 intent refused' };
+    return {
+      status: 'refused',
+      code: 'S4_INTENT_INVALID',
+      message: checked.diagnostics[0]?.message ?? 'S4 intent refused',
+    };
   }
   const intent = checked.value;
   if (options.signal?.aborted === true) {
-    return { status: 'refused', code: 'SUBMISSION_ABORTED', message: 'submission aborted before K send' };
+    return {
+      status: 'refused',
+      code: 'SUBMISSION_ABORTED',
+      message: 'submission aborted before K send',
+    };
   }
   const publicIntent: V10PublicIntent = {
     intentType: 'confirmDownload',
@@ -361,18 +396,40 @@ export async function submitConfirmedS4HlsVod(
   if (view.idempotentReplay === true) return { status: 'replayed', receipt };
   const effect = view.admitted?.effects?.[0];
   if (effect === undefined) {
-    return { status: 'failed', code: 'EFFECT_ENVELOPE_MISSING', message: 'K receipt has no media effect envelope', receipt };
+    return {
+      status: 'failed',
+      code: 'EFFECT_ENVELOPE_MISSING',
+      message: 'K receipt has no media effect envelope',
+      receipt,
+    };
   }
   const normalized = normalizeEffectEnvelope(effect.output);
   if (!normalized.ok) {
-    return { status: 'failed', code: 'EFFECT_ENVELOPE_INVALID', message: normalized.diagnostics[0]?.message ?? 'invalid effect envelope', receipt };
+    return {
+      status: 'failed',
+      code: 'EFFECT_ENVELOPE_INVALID',
+      message: normalized.diagnostics[0]?.message ?? 'invalid effect envelope',
+      receipt,
+    };
   }
   const terminal = normalized.value;
   if (terminal.phase !== 'terminal') {
-    return { status: 'failed', code: 'EFFECT_NOT_TERMINAL', message: 'S4 effect did not settle terminally', terminal, receipt };
+    return {
+      status: 'failed',
+      code: 'EFFECT_NOT_TERMINAL',
+      message: 'S4 effect did not settle terminally',
+      terminal,
+      receipt,
+    };
   }
   if (terminal.outcome.ok === false) {
-    return { status: 'failed', code: terminal.outcome.error.code, message: terminal.outcome.error.message, terminal, receipt };
+    return {
+      status: 'failed',
+      code: terminal.outcome.error.code,
+      message: terminal.outcome.error.message,
+      terminal,
+      receipt,
+    };
   }
   const output = terminal.outcome.output;
   if (
@@ -383,7 +440,13 @@ export async function submitConfirmedS4HlsVod(
     typeof output.durableControlTurnId !== 'string' ||
     output.durableControlTurnId.length === 0
   ) {
-    return { status: 'failed', code: 'EVIDENCE_PERMIT_IDENTITY_MISSING', message: 'terminal output is not bound to the K permit', terminal, receipt };
+    return {
+      status: 'failed',
+      code: 'EVIDENCE_PERMIT_IDENTITY_MISSING',
+      message: 'terminal output is not bound to the K permit',
+      terminal,
+      receipt,
+    };
   }
   const evidenceCheck = validateMaterializedEvidence({
     fileSha256: output.fileSha256,
@@ -392,17 +455,38 @@ export async function submitConfirmedS4HlsVod(
     stopReason: output.stopReason,
   }, intent.outputRootScope);
   if (!evidenceCheck.ok) {
-    return { status: 'failed', code: 'EVIDENCE_INVALID', message: evidenceCheck.diagnostics[0]?.message ?? 'invalid artifact evidence', terminal, receipt };
+    return {
+      status: 'failed',
+      code: 'EVIDENCE_INVALID',
+      message: evidenceCheck.diagnostics[0]?.message ?? 'invalid artifact evidence',
+      terminal,
+      receipt,
+    };
   }
   let bytes: Buffer;
   try {
     bytes = readFileSync(evidenceCheck.value.artifactPath);
   } catch {
-    return { status: 'failed', code: 'EVIDENCE_FILE_UNREADABLE', message: 'materialized S4 artifact cannot be read back', terminal, receipt };
+    return {
+      status: 'failed',
+      code: 'EVIDENCE_FILE_UNREADABLE',
+      message: 'materialized S4 artifact cannot be read back',
+      terminal,
+      receipt,
+    };
   }
   const digest = createHash('sha256').update(bytes).digest('hex');
-  if (digest !== evidenceCheck.value.fileSha256 || bytes.byteLength !== evidenceCheck.value.bytesWritten) {
-    return { status: 'failed', code: 'EVIDENCE_DIGEST_MISMATCH', message: 'S4 artifact bytes do not reproduce Host evidence', terminal, receipt };
+  if (
+    digest !== evidenceCheck.value.fileSha256 ||
+    bytes.byteLength !== evidenceCheck.value.bytesWritten
+  ) {
+    return {
+      status: 'failed',
+      code: 'EVIDENCE_DIGEST_MISMATCH',
+      message: 'S4 artifact bytes do not reproduce Host evidence',
+      terminal,
+      receipt,
+    };
   }
   return {
     status: 'completed',
@@ -410,8 +494,10 @@ export async function submitConfirmedS4HlsVod(
     terminal,
     receipt,
     summary: {
-      segmentsTransferred: typeof output.segmentsTransferred === 'number' ? output.segmentsTransferred : 0,
-      transferredByteCount: typeof output.transferredByteCount === 'number' ? output.transferredByteCount : 0,
+      segmentsTransferred:
+        typeof output.segmentsTransferred === 'number' ? output.segmentsTransferred : 0,
+      transferredByteCount:
+        typeof output.transferredByteCount === 'number' ? output.transferredByteCount : 0,
     },
   };
 }
