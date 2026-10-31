@@ -329,9 +329,9 @@ describe('retries: same lineage only (C12), budget boundaries enforced', () => {
           effectId: 'effect-001',
           attempt: 1,
           retryLineage: {
-          effectId: effectIdOf('effect-001'),
-          targetId: targetIdOf('target-file-001'),
-        },
+            effectId: effectIdOf('effect-001'),
+            targetId: targetIdOf('target-file-001'),
+          },
         }),
         resumeFrom: carriedPartial(payload(40)),
       }),
