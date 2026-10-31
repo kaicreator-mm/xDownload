@@ -52,9 +52,11 @@ async function main() {
         throw new Error(`same-host baseline acquisition was refused: ${codes}`);
       }
       if (
+        result.value.reason !== 'COMPLETED' ||
         result.value.bytes?.byteLength !== PAYLOAD_BYTES ||
         result.value.allApplicableValidationPassed !== true ||
-        result.value.terminalResult.validationSummary.status !== 'PASSED'
+        result.value.terminalResult.requestFulfillment !== 'COMPLETE' ||
+        result.value.terminalResult.validationSummary.status !== 'ALL_PASSED'
       ) {
         throw new Error('same-host baseline validation did not complete');
       }
