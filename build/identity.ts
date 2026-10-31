@@ -99,6 +99,21 @@ export function currentSourceRevision(repoRoot: string): SourceRevision {
   return { sha, dirty: status.trim().length > 0 };
 }
 
+/**
+ * The exact commit time of a source revision (ISO-8601). This is the ONLY
+ * timestamp a shipped identity may carry: it is a deterministic function of
+ * the revision itself, so rebuilding the same HEAD reproduces the same
+ * identity bytes (T09 review fix — wall-clock `generatedAt` inside the dist
+ * identity sidecars made every fresh build hash differently, and those
+ * sidecars ship inside the installer payload's SHA256SUMS set).
+ */
+export function sourceCommitTime(repoRoot: string, sha: string): string {
+  return execFileSync('git', ['show', '-s', '--format=%cI', sha], {
+    encoding: 'utf8',
+    cwd: repoRoot,
+  }).trim();
+}
+
 export function hostTuple(): string {
   return `${process.platform}-${process.arch}`;
 }
@@ -109,6 +124,13 @@ export function buildIdentity(input: {
   sourceRevision: SourceRevision;
   toolchain: readonly ToolchainRef[];
   contentVersion?: string;
+  /**
+   * Deterministic mint time. Shipped builds MUST pass the source revision's
+   * commit time (see `sourceCommitTime`) so the sidecar bytes reproduce; the
+   * wall-clock default exists only for in-memory fixtures whose bytes never
+   * ship and whose shas are synthetic (a git lookup would be meaningless).
+   */
+  generatedAt?: string;
 }): PackageIdentity {
   const files = contentManifest(input.artifactDir);
   return {
@@ -119,7 +141,7 @@ export function buildIdentity(input: {
     contentHash: canonicalContentHash(files),
     fileCount: files.length,
     hostTuple: hostTuple(),
-    generatedAt: new Date().toISOString(),
+    generatedAt: input.generatedAt ?? new Date().toISOString(),
   };
 }
 

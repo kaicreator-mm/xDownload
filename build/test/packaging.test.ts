@@ -21,6 +21,8 @@ import {
   buildIdentity,
   canonicalContentHash,
   contentManifest,
+  currentSourceRevision,
+  sourceCommitTime,
   verifyIdentity,
 } from '../identity.ts';
 import { renderFilledHostManifest, renderHostManifestTemplate } from '../native-host.ts';
@@ -29,6 +31,7 @@ import {
   declaredEsbuildVersion,
   declaredNodeVersion,
   declaredPnpmVersion,
+  REPO_ROOT,
   vendoredRuntimeDistPaths,
 } from '../build-config.ts';
 import { browserNodeStubsPlugin } from '../browser-node-stubs.ts';
@@ -454,6 +457,32 @@ describe('package identity', () => {
       reason: "content hash mismatch for artifact 'probe'",
     });
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('mints the identity at the exact generatedAt the caller passes (no hidden clock)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xid-gen-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'artifact.js'), BUNDLE_STUB, 'utf8');
+      const identity = buildIdentity({
+        artifact: 'probe',
+        artifactDir: dir,
+        sourceRevision: { sha: 'f'.repeat(40), dirty: false },
+        toolchain: [],
+        generatedAt: '2026-10-31T00:00:00.000Z',
+      });
+      expect(identity.generatedAt).toBe('2026-10-31T00:00:00.000Z');
+      // The mint time never enters the content hash (artifact bytes only).
+      expect(identity.contentHash).toBe(canonicalContentHash(contentManifest(dir)));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves the deterministic commit time for the current revision', () => {
+    // The helper reads the revision's own commit time: a pure function of the
+    // sha, identical for every caller in every environment.
+    const { sha } = currentSourceRevision(REPO_ROOT);
+    expect(sourceCommitTime(REPO_ROOT, sha)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u);
   });
 });
 

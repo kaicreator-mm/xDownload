@@ -16,10 +16,12 @@
  *
  * Reproducibility: the payload copy, script copies, SHA256SUMS and zip are
  * byte-stable for the same dist bytes (sorted entries, fixed archive
- * timestamps, fixed deflate parameters; no wall-clock bytes enter any file
- * except the identity sidecar's `generatedAt`, which the content hash never
- * covers). A rebuild either reproduces the same installer content hash or
- * the deviation is visible and must be recorded.
+ * timestamps, fixed deflate parameters). T09 review fix: NO wall-clock bytes
+ * enter any file anywhere — the dist identity sidecars mint their generatedAt
+ * from the source revision's commit time (build/identity.ts) and the
+ * installer sidecar derives its own from the same revision, so rebuilding the
+ * same HEAD reproduces every byte. A deviation is therefore always a real
+ * input change, visible and recordable.
  *
  * Fail-closed rules:
  * - the audit (`build/audit.ts`) runs over the dist BEFORE composition; any
@@ -36,7 +38,6 @@
  */
 
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -46,6 +47,7 @@ import {
   canonicalContentHash,
   currentSourceRevision,
   sha256Bytes,
+  sourceCommitTime,
   verifyIdentity,
   type ContentFileEntry,
   type PackageIdentity,
@@ -315,14 +317,14 @@ export function composeInstaller(options: ComposeOptions): ComposeResult {
     // The compose wall clock is intentionally NOT recorded anywhere — the
     // identity sidecar must stay byte-stable so the archive is reproducible,
     // and the honest time fact of a build is the revision it was made from.
-    generatedAt: sourceCommitTime(sourceRevision.sha),
+    generatedAt: sourceCommitTime(REPO_ROOT, sourceRevision.sha),
   };
   const identityDoc = {
     ...identity,
     tuple: INSTALLER_TUPLE,
     payloadContentHashes,
     sumsFile: SUMS_FILE,
-    note: 'contentHash covers exactly the files listed in SHA256SUMS; generatedAt is metadata and never enters the hash',
+    note: 'contentHash covers exactly the files listed in SHA256SUMS; generatedAt is the source revision commit time (deterministic), never the compose wall clock',
   };
   fs.writeFileSync(
     path.join(installerRoot, IDENTITY_FILE),
@@ -373,14 +375,6 @@ function main(): void {
     );
     process.exitCode = 2;
   }
-}
-
-/** The exact commit time of a source revision (deterministic per sha). */
-function sourceCommitTime(sha: string): string {
-  return execFileSync('git', ['show', '-s', '--format=%cI', sha], {
-    encoding: 'utf8',
-    cwd: REPO_ROOT,
-  }).trim();
 }
 
 const invokedDirectly =

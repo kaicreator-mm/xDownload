@@ -176,6 +176,26 @@ describe('T09 installer composition (real dist)', () => {
     expect(result.identity.contentHash).toBe(identity.contentHash);
   });
 
+  it('mints every shipped timestamp from the one deterministic commit time', () => {
+    // Controller-found defect, fixed: the payload identity sidecars used to
+    // carry the BUILD wall clock, so every fresh build re-hashed the whole
+    // installer. Sidecars and installer identity now share the source
+    // revision's commit time.
+    const identity = JSON.parse(
+      fs.readFileSync(path.join(INSTALLER_ROOT(), 'installer-identity.json'), 'utf8'),
+    ) as { generatedAt: string };
+    expect(identity.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u);
+    for (const artifact of ['cli', 'core', 'extension', 'native-host']) {
+      const sidecar = JSON.parse(
+        fs.readFileSync(
+          path.join(INSTALLER_ROOT(), 'payload', 'identity', `${artifact}.json`),
+          'utf8',
+        ),
+      ) as { generatedAt: string; sourceRevision: { sha: string } };
+      expect(sidecar.generatedAt, artifact).toBe(identity.generatedAt);
+    }
+  });
+
   it('binds a DECLARED-ONLY toolchain identity (no environment probing)', () => {
     // Controller-found determinism defect, fixed: the identity toolchain must
     // come from repo declarations so the same HEAD composes to the same
@@ -445,6 +465,31 @@ describe.skipIf(process.platform !== 'win32')(
     });
   },
 );
+
+describe('T09 dist rebuild determinism (whole-tree, two real builds)', () => {
+  // The installer hashes EVERY payload byte. This is the regression guard for
+  // the controller-found defect class: any wall-clock or environment byte
+  // anywhere under dist/ shows up here as a cross-build difference.
+  it('two independent runPackageBuild calls emit byte-identical trees', async () => {
+    const secondDist = fs.mkdtempSync(path.join(os.tmpdir(), 'xdownload-t09-dist2-'));
+    try {
+      await runPackageBuild(secondDist);
+      const firstFiles = walkFiles(distRoot).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      const secondFiles = walkFiles(secondDist).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      expect(secondFiles).toEqual(firstFiles);
+      for (const relative of firstFiles) {
+        expect(
+          fs
+            .readFileSync(path.join(secondDist, relative))
+            .equals(fs.readFileSync(path.join(distRoot, relative))),
+          `${relative} must be byte-identical across independent builds`,
+        ).toBe(true);
+      }
+    } finally {
+      fs.rmSync(secondDist, { recursive: true, force: true });
+    }
+  }, 240_000);
+});
 
 // ------------------------------------------------------------------ helpers
 

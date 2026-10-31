@@ -35,7 +35,7 @@ import {
   vendoredRuntimeDistPaths,
   type ArtifactSpec,
 } from './build-config.ts';
-import { buildIdentity, currentSourceRevision } from './identity.ts';
+import { buildIdentity, currentSourceRevision, sourceCommitTime } from './identity.ts';
 import { auditDist } from './audit.ts';
 import { renderHostManifestTemplate } from './native-host.ts';
 import { browserNodeStubsPlugin } from './browser-node-stubs.ts';
@@ -279,6 +279,12 @@ export async function runPackageBuild(distDir: string): Promise<{
   vendorNativeRuntime(distDir);
   const sourceRevision = currentSourceRevision(REPO_ROOT);
   const toolchain = captureToolchain(esbuild.version);
+  // T09 review fix: the shipped identity sidecars must be byte-reproducible,
+  // so their mint time is the source revision's own commit time — never the
+  // wall clock of the building shell (the sidecars ship inside the installer
+  // payload's SHA256SUMS set; a wall-clock byte would make every fresh build
+  // hash differently).
+  const generatedAt = sourceCommitTime(REPO_ROOT, sourceRevision.sha);
   const hashes: Record<string, string> = {};
   for (const artifact of ARTIFACTS) {
     const identity = buildIdentity({
@@ -286,6 +292,7 @@ export async function runPackageBuild(distDir: string): Promise<{
       artifactDir: path.join(distDir, artifact.outDir),
       sourceRevision,
       toolchain,
+      generatedAt,
     });
     hashes[artifact.id] = identity.contentHash;
     writeTextFile(
