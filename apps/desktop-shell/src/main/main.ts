@@ -1,6 +1,6 @@
 /**
- * T07 desktop-shell process entry — a thin Electron main process over the
- * existing Core lifecycle/seam and the existing desktop adapter semantics.
+ * T07/T08 desktop-shell process entry — a thin Electron main process over
+ * the existing Core lifecycle/seam and the existing desktop adapter semantics.
  *
  * - `app.enableSandbox()` hardens every renderer process of this app.
  * - One instance lock; a second launch focuses the existing window.
@@ -9,18 +9,23 @@
  *   per-window factory hardening).
  * - The ONE Core connection is the seam CLIENT composed over the existing
  *   desktop adapter (DESKTOP_UI peer) — never a private Core/Kernel.
+ * - The T08 download manager composes over the same adapter: the renderer
+ *   reaches it ONLY through the closed IPC registry; the native destination
+ *   dialog and the reveal authority stay main-process-side.
  * - `--xdownload-smoke=<out.json>` runs the minimal non-installed shell
  *   smoke: hidden window, in-renderer bridge/CSP/isolation probes, a JSON
  *   verdict on stdout and at the given path, then a deterministic exit.
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, shell } from 'electron';
+import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CoreConnection } from './core-connection.ts';
 import { registerShellIpc, unregisterShellIpc } from './ipc.ts';
+import { DesktopManager } from './manager.ts';
 import { resolveSeamAccess } from './seam-endpoint.ts';
-import type { ShellStatusDocument } from './shell-contract.ts';
+import { SHELL_IPC_CHANNELS, type ShellStatusDocument } from './shell-contract.ts';
 import { createShellWindow } from './window.ts';
 
 const SMOKE_ARG_PREFIX = '--xdownload-smoke=';
@@ -80,7 +85,7 @@ if (!app.requestSingleInstanceLock()) {
 
 async function ready(): Promise<void> {
   const smoke = smokeOutputPath();
-  const assetPath = join(__dirname, 'assets', 'shell.html');
+  const assetPath = join(__dirname, '..', 'renderer', 'index.html');
   const preloadPath = join(__dirname, '..', 'preload', 'preload.cjs');
   const connection = new CoreConnection({
     ...resolveSeamAccess({ home: app.getPath('home'), env: process.env }),
@@ -89,12 +94,29 @@ async function ready(): Promise<void> {
   // One truthful seam round-trip before any window is shown.
   await connection.probeOnce();
   const window = createShellWindow({ assetPath, preloadPath, show: smoke === undefined });
+  // T08: the download manager composes over the SAME adapter. The renderer
+  // never touches it directly — every capability crosses the closed registry
+  // below; the native authorities (directory picker, folder reveal) stay in
+  // this process.
+  const manager = new DesktopManager({
+    getAdapter: () => connection.adapterOrNull(),
+    getConnectionWhenUnconfigured: () => connection.connectionState(),
+    pickDestination: () => pickDestinationDirectory(window),
+    revealFolder: (path) => {
+      if (!existsSync(path)) {
+        return false;
+      }
+      shell.showItemInFolder(path);
+      return true;
+    },
+  });
   // Registered in the same tick as window creation: the page cannot call the
   // bridge before did-finish-load, and the admitted sender is exactly this
   // window's main frame.
   registerShellIpc({
     getWindow: () => window,
     status: () => connection.statusDocument(),
+    manager,
   });
 
   app.on('window-all-closed', () => {
@@ -105,6 +127,18 @@ async function ready(): Promise<void> {
       void runSmoke(window, connection, smoke);
     }
   });
+}
+
+/** The main-process destination authority: one native directory pick. */
+async function pickDestinationDirectory(parent: BrowserWindow): Promise<string | null> {
+  const result = await dialog.showOpenDialog(parent, {
+    title: 'Choose download destination',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0] ?? null;
 }
 
 async function runSmoke(
@@ -186,14 +220,15 @@ async function smokeVerdict(
     'seamEndpoint' in status &&
     'core' in status;
   const csp = probe.csp ?? '';
+  const expectedBridgeKeys = Object.keys(SHELL_IPC_CHANNELS).sort();
+  const actualBridgeKeys = [...probe.bridgeKeys].sort();
+  const bridgeKeysExact =
+    actualBridgeKeys.length === expectedBridgeKeys.length &&
+    expectedBridgeKeys.every((key, index) => actualBridgeKeys[index] === key);
   const checks: SmokeVerdict['checks'] = [
     {
-      name: 'preload bridge exposes exactly {status}',
-      pass:
-        probe.bridgePresent &&
-        probe.bridgeFrozen &&
-        probe.bridgeKeys.length === 1 &&
-        probe.bridgeKeys[0] === 'status',
+      name: 'preload bridge exposes exactly the allowlisted method set',
+      pass: probe.bridgePresent && probe.bridgeFrozen && bridgeKeysExact,
       detail: `keys=${JSON.stringify(probe.bridgeKeys)} frozen=${String(probe.bridgeFrozen)}`,
     },
     {

@@ -4,7 +4,7 @@
  * Proves, against the REAL pinned Electron binary and a REAL seam authority
  * in another process:
  *   1. the shell launches a hidden, sandboxed window from local assets;
- *   2. the preload bridge exposes exactly {status} and is frozen;
+ *   2. the preload bridge exposes exactly the allowlisted method set and is frozen;
  *   3. the page serves a restrictive CSP on a file: origin;
  *   4. renderer isolation holds (no require/process) and navigation and
  *      window.open are refused;

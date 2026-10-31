@@ -8,7 +8,9 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalPipeName,
   decodeInstallCoreBinding,
+  decodeLineageRefPayload,
   decodeLoopbackOverride,
+  decodePreviewAddPayload,
   decodeUnitPayload,
   isCanonicalPipeName,
 } from '../src/main/validators.ts';
@@ -129,5 +131,78 @@ describe('canonicalPipeName', () => {
     expect(canonicalPipeName('abc')).toBe('\\\\.\\pipe\\xdownload-core-abc');
     expect(isCanonicalPipeName(canonicalPipeName('abc'), 'abc')).toBe(true);
     expect(isCanonicalPipeName(canonicalPipeName('abc'), 'other')).toBe(false);
+  });
+});
+
+describe('decodePreviewAddPayload', () => {
+  it('accepts exactly { url } and { url, destination }', () => {
+    const bare = decodePreviewAddPayload({ url: 'https://example.com/a.mp4' });
+    expect(bare.ok).toBe(true);
+    if (bare.ok) {
+      expect(bare.value.url).toBe('https://example.com/a.mp4');
+      expect(bare.value.destination).toBeUndefined();
+    }
+    const withDestination = decodePreviewAddPayload({
+      url: 'http://127.0.0.1:8000/x',
+      destination: 'C:/downloads',
+    });
+    expect(withDestination.ok).toBe(true);
+    if (withDestination.ok) {
+      expect(withDestination.value.destination).toBe('C:/downloads');
+    }
+  });
+
+  it('refuses non-objects, unknown fields and hostile url shapes', () => {
+    for (const hostile of [
+      undefined,
+      null,
+      'https://example.com/a.mp4',
+      [],
+      { url: 'https://example.com/a.mp4', extra: 1 },
+      { url: '' },
+      { url: 42 },
+      { url: 'https://e.com/x\n' },
+      { url: 'ftp://example.com/a' },
+      { url: 'https://example.com/a.mp4', destination: 7 },
+      { url: 'https://example.com/' + 'a'.repeat(2100) },
+    ]) {
+      const result = decodePreviewAddPayload(hostile);
+      expect(result.ok, JSON.stringify(hostile) ?? 'undefined').toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe('PAYLOAD_REJECTED');
+      }
+    }
+  });
+});
+
+describe('decodeLineageRefPayload', () => {
+  it('accepts exactly { lineageId } with an opaque bounded identity', () => {
+    const result = decodeLineageRefPayload({
+      lineageId: 'contract-desktop-ab12cd34-000001',
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.lineageId).toBe('contract-desktop-ab12cd34-000001');
+    }
+  });
+
+  it('refuses non-objects, unknown fields and non-opaque identities', () => {
+    for (const hostile of [
+      undefined,
+      null,
+      {},
+      { lineageId: 'x', extra: 1 },
+      { lineageId: '' },
+      { lineageId: 9 },
+      { lineageId: 'has space' },
+      { lineageId: 'line\tx' },
+      { lineageId: 'x'.repeat(129) },
+    ]) {
+      const result = decodeLineageRefPayload(hostile);
+      expect(result.ok, JSON.stringify(hostile) ?? 'undefined').toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe('PAYLOAD_REJECTED');
+      }
+    }
   });
 });
