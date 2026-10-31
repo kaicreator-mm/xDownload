@@ -28,9 +28,7 @@ describe('stream interruption without declared length', () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 30));
       if (!response.destroyed) response.end(Buffer.from(payload(1, 91)));
     });
-    const ledger = new InMemoryAuthoritativeLedger(
-      transferProfile({ maxBytes: full.byteLength }),
-    );
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: full.byteLength }));
     const adapter = new DirectHttpAdapter(ledger);
 
     const outcome = unwrapOrThrow(

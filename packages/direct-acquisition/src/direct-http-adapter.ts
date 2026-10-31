@@ -484,7 +484,12 @@ export class DirectHttpAdapter {
     const chunks: Uint8Array[] = prefix !== undefined ? [prefix] : [];
     const reader = response.body?.getReader();
     if (reader === undefined) {
-      return { chunks, budgetStop: undefined, aborted: signal?.aborted === true, streamFailure: false };
+      return {
+        chunks,
+        budgetStop: undefined,
+        aborted: signal?.aborted === true,
+        streamFailure: false,
+      };
     }
     try {
       for (;;) {

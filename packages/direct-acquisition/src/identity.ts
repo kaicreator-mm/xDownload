@@ -40,7 +40,9 @@ export function observeIdentity(headers: Headers): RepresentationIdentity {
       ? {}
       : { lastModified: lastModifiedSafe }),
     ...(contentLengthValid ? { contentLength: parsedContentLength } : {}),
-    ...(contentLengthRaw !== undefined && !contentLengthValid ? { invalidContentLength: true } : {}),
+    ...(contentLengthRaw !== undefined && !contentLengthValid
+      ? { invalidContentLength: true }
+      : {}),
   };
 }
 
@@ -104,10 +106,7 @@ export function classifyRangeResponse(
     if (!sentRange) {
       return { kind: 'PROTOCOL_VIOLATION' };
     }
-    if (
-      recordedStrongETag !== undefined &&
-      responseIdentity.strongETag !== recordedStrongETag
-    ) {
+    if (recordedStrongETag !== undefined && responseIdentity.strongETag !== recordedStrongETag) {
       // If-Range mismatch should produce a full 200. A 206 without the exact
       // recorded strong validator is not safe evidence for appending bytes.
       return { kind: 'PROTOCOL_VIOLATION' };

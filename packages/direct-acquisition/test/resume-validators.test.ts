@@ -145,30 +145,36 @@ describe('strong-and-no-validators: no usable validator forbids append', () => {
     ['unquoted value', 'v1'],
     ['unterminated quoted value', '"v1'],
     ['empty value', ''],
-  ])('malformed partial strong validator (%s) safely restarts from zero', async (_label, strongETag) => {
-    fixture.serveFile('/malformed-partial-validator.bin', { body: FULL, etag: '"v1"' });
-    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
-    const adapter = new DirectHttpAdapter(ledger);
-    const request = {
-      ...directRequest(baseUri, '/malformed-partial-validator.bin', FULL, {
-        effectId: 'effect-001',
-        attempt: 1,
-        retryLineage: {
-          effectId: effectIdOf('effect-001'),
-          targetId: targetIdOf('target-file-001'),
-        },
-      }),
-      resumeFrom: carriedPartial({ strongETag }, PREFIX),
-    };
+  ])(
+    'malformed partial strong validator (%s) safely restarts from zero',
+    async (_label, strongETag) => {
+      fixture.serveFile('/malformed-partial-validator.bin', { body: FULL, etag: '"v1"' });
+      const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+      const adapter = new DirectHttpAdapter(ledger);
+      const request = {
+        ...directRequest(baseUri, '/malformed-partial-validator.bin', FULL, {
+          effectId: 'effect-001',
+          attempt: 1,
+          retryLineage: {
+            effectId: effectIdOf('effect-001'),
+            targetId: targetIdOf('target-file-001'),
+          },
+        }),
+        resumeFrom: carriedPartial({ strongETag }, PREFIX),
+      };
 
-    const outcome = unwrapOrThrow(await adapter.acquire(request));
+      const outcome = unwrapOrThrow(await adapter.acquire(request));
 
-    expect(outcome.resumeDecision).toEqual({ kind: 'SAFE_RESTART', reason: 'NO_STRONG_VALIDATOR' });
-    expect(fixture.requests.at(-1)?.range).toBeUndefined();
-    expect(fixture.requests.at(-1)?.ifRange).toBeUndefined();
-    expect(outcome.bytes).toEqual(FULL);
-    expect(outcome.reason).toBe('COMPLETED');
-  });
+      expect(outcome.resumeDecision).toEqual({
+        kind: 'SAFE_RESTART',
+        reason: 'NO_STRONG_VALIDATOR',
+      });
+      expect(fixture.requests.at(-1)?.range).toBeUndefined();
+      expect(fixture.requests.at(-1)?.ifRange).toBeUndefined();
+      expect(outcome.bytes).toEqual(FULL);
+      expect(outcome.reason).toBe('COMPLETED');
+    },
+  );
 
   it('weak-only validator is not sufficient representation identity for append', async () => {
     fixture.serveFile('/weak.bin', { body: FULL, etag: 'W/"v1"' });

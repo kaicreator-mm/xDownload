@@ -5,6 +5,7 @@
  * on the T03 candidate, on the same Node process host and local fixture.
  */
 import { performance } from 'node:perf_hooks';
+import process from 'node:process';
 
 import { DirectHttpAdapter } from '../src/index.ts';
 import { InMemoryAuthoritativeLedger } from './helpers/ledger.ts';
@@ -90,7 +91,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+  const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`SAME_HOST_DIRECT_TRANSFER_BASELINE_FAILED ${detail}\n`);
   process.exitCode = 1;
 });
