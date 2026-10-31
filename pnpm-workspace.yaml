@@ -3,11 +3,15 @@ packages:
   - apps/*
 allowBuilds:
   esbuild: true
+  # T07: electron's postinstall fetches the exactly pinned Electron 45.1.0
+  # binary for the non-installed shell smoke (T14/T16 own packaged smokes).
+  electron: true
   # koffi's install script is a source-build fallback; the binary ships in the
   # @koromix/koffi-<platform> optional dependency and loads without it.
   koffi: false
 onlyBuiltDependencies:
   - esbuild
+  - electron
 overrides:
   '@kaicreator/domain-harness-build': file:packages/download-domain-app/vendor/sdk/kaicreator-domain-harness-build-0.10.2-rc.0.tgz
   '@kaicreator/domain-harness-contracts': file:packages/download-domain-app/vendor/sdk/kaicreator-domain-harness-contracts-0.10.2-rc.0.tgz
