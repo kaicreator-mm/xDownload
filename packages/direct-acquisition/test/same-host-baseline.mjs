@@ -56,7 +56,7 @@ async function main() {
         result.value.allApplicableValidationPassed !== true ||
         result.value.terminalResult.validationSummary.status !== 'PASSED'
       ) {
-        throw new Error('same-host baseline did not produce a fully validated complete transfer');
+        throw new Error('same-host baseline validation did not complete');
       }
       if (run >= WARMUP_RUNS) samplesMs.push(elapsedMs);
     }
@@ -86,6 +86,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(`SAME_HOST_DIRECT_TRANSFER_BASELINE_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+  process.stderr.write(`SAME_HOST_DIRECT_TRANSFER_BASELINE_FAILED ${detail}\n`);
   process.exitCode = 1;
 });
