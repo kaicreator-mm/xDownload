@@ -50,6 +50,17 @@ import { decodeS5PageGroupGesture, isS5PageGroupGesture } from './s5-group-inten
 import { decodeS5BatchMessage, isS5BatchMessageKind } from './s5-batch.ts';
 import { decodeS6CollectionGesture, isS6CollectionGesture } from './s6-collection-intent.ts';
 import { decodeS6BatchMessage, isS6BatchMessageKind } from './s6-collection-batch.ts';
+import {
+  decodeV02AddDownloadGesture,
+  decodeV02JobStatusQuery,
+  isV02AddDownloadGesture,
+  isV02JobStatusQuery,
+  runV02Status,
+  runV02Submit,
+  V02_LANE_REFUSALS,
+  type V02FrameAnswer,
+  type V02LanePorts,
+} from './v02-lane.ts';
 
 /**
  * Module-scoped ambient surface for the browser fetch used by the byte lane
@@ -1035,6 +1046,152 @@ async function s6RefreshStatus(contractId: string): Promise<void> {
   rememberS6Journey(journey);
 }
 
+// ------------------------------------------------------------- v0.2 journeys
+
+/**
+ * v0.2.1 T05 — the explicit Domain App v0.2 submission lane. The extension
+ * stays evidence/intent-only: the v0.2 send rides the SAME trusted Native
+ * Messaging boundary as every other journey, the T05 lane owns the ordered
+ * fail-closed decision, and the Core-owned READ_JOB_PROJECTION is the only
+ * status truth. No kernel is instantiated here (the K lives in the single
+ * Core process; a per-surface K is unrepresentable by construction).
+ */
+
+/** Restart-safe confirmed-intent identity (INTENT_FIELD_PATTERN grammar). */
+function newV02Identity(): { readonly requestId: string; readonly lineageId: string } {
+  const random = new Uint32Array(1);
+  crypto.getRandomValues(random);
+  const token = `${Date.now().toString(36)}-${random[0]!.toString(36)}`;
+  return { requestId: `req-${token}`, lineageId: `lineage-${token}` };
+}
+
+function newV02QueryRequestId(): string {
+  const random = new Uint32Array(1);
+  crypto.getRandomValues(random);
+  return `v02q-${Date.now().toString(36)}-${random[0]!.toString(36)}`;
+}
+
+const V02_PEER_IDENTITY_KEY = 'v02PeerIdentity';
+const V02_NM_TIMEOUT_MS = 15_000;
+
+/**
+ * Install-stable seam peer identity for this browser session (extension
+ * infrastructure; never derived from page data). Stored in the session
+ * store so every journey in one browser session presents the same peer.
+ */
+async function ensureV02RouteContext(): Promise<{
+  readonly installId: string;
+  readonly userId: string;
+}> {
+  try {
+    const stored = await chrome.storage.session.get(V02_PEER_IDENTITY_KEY);
+    const identity = stored[V02_PEER_IDENTITY_KEY];
+    if (
+      typeof identity === 'object' &&
+      identity !== null &&
+      typeof (identity as Record<string, unknown>)['installId'] === 'string' &&
+      typeof (identity as Record<string, unknown>)['userId'] === 'string'
+    ) {
+      const record = identity as Record<string, unknown>;
+      return { installId: record['installId'] as string, userId: record['userId'] as string };
+    }
+  } catch {
+    // Session storage unavailable — fall through to a fresh per-worker pair.
+  }
+  const random = new Uint32Array(2);
+  crypto.getRandomValues(random);
+  const fresh = {
+    installId: `xdext-${random[0]!.toString(36)}`,
+    userId: `user-${random[1]!.toString(36)}`,
+  };
+  try {
+    await chrome.storage.session.set({ [V02_PEER_IDENTITY_KEY]: fresh });
+  } catch {
+    // Best-effort persistence; the fresh pair is still honest for this worker.
+  }
+  return fresh;
+}
+
+/**
+ * One NM round trip for one v0.2 seam frame. The broker-level answer
+ * classes are classified (disconnect / timeout / typed broker rejection /
+ * raw frame) so the lane can refuse fail-closed with actionable codes.
+ */
+function v02NmRoundTrip(frame: unknown): Promise<V02FrameAnswer> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: V02FrameAnswer): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      try {
+        port.disconnect();
+      } catch {
+        // The host may already be gone with the port.
+      }
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish({ kind: 'TIMEOUT' }), V02_NM_TIMEOUT_MS);
+    let port: ReturnType<typeof chrome.runtime.connectNative>;
+    try {
+      port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
+    } catch {
+      finish({ kind: 'DISCONNECTED' });
+      return;
+    }
+    port.onDisconnect.addListener(() => finish({ kind: 'DISCONNECTED' }));
+    port.onMessage.addListener((message: unknown) => {
+      if (typeof message !== 'object' || message === null) {
+        return;
+      }
+      const record = message as Record<string, unknown>;
+      if (record['kind'] === 'REJECTED' && Array.isArray(record['reasons'])) {
+        finish({
+          kind: 'BROKER_REJECTION',
+          reasons: record['reasons'] as readonly unknown[],
+        });
+        return;
+      }
+      finish({ kind: 'FRAME', message });
+    });
+    port.postMessage(frame);
+  });
+}
+
+const v02LanePorts: V02LanePorts = {
+  ensureRouteContext: ensureV02RouteContext,
+  allocateIdentity: newV02Identity,
+  allocateRequestId: newV02QueryRequestId,
+  async getTabUrl(tabId: number): Promise<string | undefined> {
+    const tab = await chrome.tabs.get(tabId);
+    return tab.url;
+  },
+  grantedOrigins: async () => {
+    const all = await chrome.permissions.getAll();
+    return all.origins ?? [];
+  },
+  async requestOrigins(origins: readonly string[]): Promise<boolean> {
+    return chrome.permissions.request({ origins: [...origins] });
+  },
+  sendSeamFrame: v02NmRoundTrip,
+};
+
+/** SW-lifetime registry of lineages THIS worker admitted (bounded). */
+const v02KnownLineages = new Set<string>();
+
+function rememberV02Lineage(lineageId: string): void {
+  v02KnownLineages.add(lineageId);
+  while (v02KnownLineages.size > 64) {
+    const oldest = v02KnownLineages.values().next();
+    if (oldest.done === true) {
+      break;
+    }
+    v02KnownLineages.delete(oldest.value);
+  }
+}
+
 // ------------------------------------------------------------- entrypoints
 
 chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
@@ -1055,6 +1212,55 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     // Native Messaging — the frozen members, confirmation and per-member
     // terminal all come back as verbatim Core projection facts, never
     // derived here. Every phase fails closed when the carrier is absent.
+    // v0.2.1 T05: the explicit Domain App v0.2 submission lane. Same
+    // extension-internal boundary, same fail-closed discipline: the T05
+    // lane owns the ordered decision (origin authority → intent gate →
+    // permission decision → v0.2 envelope → trusted Host answer), and the
+    // worker only relays typed outcomes — never the confirmed intent.
+    if (isV02AddDownloadGesture(raw)) {
+      const decodedGesture = decodeV02AddDownloadGesture(raw);
+      if (!decodedGesture.ok) {
+        sendResponse({
+          outcome: 'REFUSED',
+          code: V02_LANE_REFUSALS.MESSAGE_MALFORMED,
+          detail: decodedGesture.detail,
+        });
+        return false;
+      }
+      void (async () => {
+        const submitted = await runV02Submit(decodedGesture.value, v02LanePorts);
+        if (submitted.outcome === 'ADMITTED') {
+          rememberV02Lineage(submitted.lineageId);
+        }
+        sendResponse(submitted);
+      })();
+      return true;
+    }
+    if (isV02JobStatusQuery(raw)) {
+      const decodedStatus = decodeV02JobStatusQuery(raw);
+      if (!decodedStatus.ok) {
+        sendResponse({
+          outcome: 'REFUSED',
+          code: V02_LANE_REFUSALS.MESSAGE_MALFORMED,
+          detail: decodedStatus.detail,
+        });
+        return false;
+      }
+      // Only lineages this worker admitted are pollable through the
+      // extension: no arbitrary lineage probing rides this boundary.
+      if (!v02KnownLineages.has(decodedStatus.value.lineageId)) {
+        sendResponse({
+          outcome: 'REFUSED',
+          code: 'V02_LINEAGE_UNKNOWN_TO_WORKER',
+          detail: 'this lineage was not admitted by this extension session',
+        });
+        return false;
+      }
+      void (async () => {
+        sendResponse(await runV02Status(decodedStatus.value.lineageId, v02LanePorts));
+      })();
+      return true;
+    }
     if (isS5PageGroupGesture(raw)) {
       const prepared = decodeS5PageGroupGesture(raw);
       if (!prepared.ok) {

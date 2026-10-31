@@ -134,6 +134,27 @@
         <div id="s6-batch-result" class="state UNKNOWN" aria-live="polite"></div>
       </div>
     </section>
+    <section id="v02-domain-app">
+      <h2>v0.2 download (Domain App route)</h2>
+      <p class="label">
+        The download is performed by your local trusted xDownload Host through the single local Core
+        authority — the browser requests no extra permission for it and never sees the transfer. The
+        target must be the opaque Host-issued handle for your selection (from the Host's own target
+        list): a raw URL is refused as a locator substitution, and every refusal is shown verbatim
+        with its typed code. This panel shows only the handle status and the Core-owned job
+        projection; no cookies or credentials ever leave the browser zone.
+      </p>
+      <label class="label"
+        >Host-issued target handle
+        <input id="v02-target-ref" type="text" placeholder="ref:your-host-target" />
+      </label>
+      <label class="label"
+        >Authorized output root (absolute path)
+        <input id="v02-output-root" type="text" placeholder="C:\Users\me\Downloads" />
+      </label>
+      <button id="v02-submit" type="button">Submit v0.2 download</button>
+      <div id="v02-result" class="state UNKNOWN" aria-live="polite"></div>
+    </section>
     <div id="state" class="state UNKNOWN">Scanning the current page…</div>
     <script src="popup.js"></script>
   </body>

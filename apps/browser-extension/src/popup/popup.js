@@ -1164,5 +1164,137 @@
     }
   }
 
+  // ---------------- v0.2 Domain App submission (v0.2.1 T05 cutover) ----------------
+  //
+  // The explicit v0.2 submission surface: the user names the Host-issued
+  // opaque target handle and the authorized output root; the service worker
+  // owns the ordered fail-closed lane (origin authority → intent gate →
+  // permission decision → v0.2 DOMAIN_APP_SEND → trusted Host answer). This
+  // panel renders the selected target, the typed refusals verbatim and the
+  // Core-owned job projection — it never fabricates status or progress.
+
+  const v02TargetRefInput = document.getElementById('v02-target-ref');
+  const v02OutputRootInput = document.getElementById('v02-output-root');
+  const v02SubmitButton = document.getElementById('v02-submit');
+  const v02ResultBox = document.getElementById('v02-result');
+  let v02Lineage = null;
+  let v02PollTimer = null;
+
+  function setV02State(kind, text) {
+    v02ResultBox.className = `state ${kind}`;
+    v02ResultBox.textContent = text;
+  }
+
+  function stopV02Polling() {
+    if (v02PollTimer !== null) {
+      clearInterval(v02PollTimer);
+      v02PollTimer = null;
+    }
+  }
+
+  function renderV02Projection(projection) {
+    const status = String(projection.status || 'UNKNOWN');
+    const owner = String(projection.owner || '');
+    let text = `Core-owned status: ${status} (owner: ${owner}).`;
+    const error = projection.error;
+    if (error && error.code) {
+      text += ` Error: ${String(error.code)} — ${String(error.message || error.code)}.`;
+    }
+    // Truthful progress only: rendered when Core reported a byte sample; the
+    // total size stays UNKNOWN unless Core says otherwise (never fabricated).
+    const progress = projection.progress;
+    if (progress && typeof progress.transferredBytes === 'number') {
+      text += ` Transferred: ${String(progress.transferredBytes)} bytes (total: UNKNOWN).`;
+    }
+    setV02State(status, text);
+    if (status !== 'RUNNING') {
+      stopV02Polling();
+    }
+  }
+
+  async function pollV02Status() {
+    if (v02Lineage === null) return;
+    let answer;
+    try {
+      answer = await chrome.runtime.sendMessage({ kind: 'V02_JOB_STATUS', lineageId: v02Lineage });
+    } catch {
+      setV02State('UNKNOWN', 'The service worker could not answer the status poll.');
+      return;
+    }
+    if (!answer || answer.outcome !== 'PROJECTION') {
+      const code = answer && answer.code ? String(answer.code) : 'UNKNOWN';
+      const detail = answer && answer.detail ? String(answer.detail) : '';
+      setV02State('FAILED', `Status unavailable (${code}). ${detail}`);
+      stopV02Polling();
+      return;
+    }
+    renderV02Projection(answer.projection);
+  }
+
+  v02SubmitButton.addEventListener('click', async () => {
+    const targetRef = String(v02TargetRefInput.value || '').trim();
+    const outputRoot = String(v02OutputRootInput.value || '').trim();
+    if (targetRef === '' || outputRoot === '') {
+      setV02State(
+        'UNKNOWN',
+        'Enter the Host-issued target handle and the authorized output root first.',
+      );
+      return;
+    }
+    const tab = await activeTab();
+    const tabId = tab && typeof tab.id === 'number' ? tab.id : -1;
+    const pageUrl = tab && typeof tab.url === 'string' ? tab.url : '';
+    if (tabId < 0 || !/^https?:\/\//i.test(pageUrl)) {
+      setV02State('FAILED', 'This action needs an active http(s) page tab (origin authority).');
+      return;
+    }
+    setV02State('RUNNING', 'Submitting the confirmed intent through the trusted local Host…');
+    let answer;
+    try {
+      answer = await chrome.runtime.sendMessage({
+        kind: 'V02_ADD_DOWNLOAD',
+        tabId,
+        pageUrl,
+        action: {
+          targetRef,
+          outputRootScope: outputRoot,
+          allowedOperation: 'acquisition.acquire',
+          slice: 'S1',
+          caller: { actor: 'browser-extension', sessionRef: 'popup-v02' },
+        },
+      });
+    } catch (error) {
+      setV02State(
+        'FAILED',
+        `The service worker refused the submission: ${String(error && error.message ? error.message : error)}`,
+      );
+      return;
+    }
+    if (!answer || answer.outcome !== 'ADMITTED') {
+      const code = answer && answer.code ? String(answer.code) : 'UNKNOWN';
+      const detail = answer && answer.detail ? String(answer.detail) : 'the submission was refused';
+      const diagnostics = answer && Array.isArray(answer.diagnostics) ? answer.diagnostics : [];
+      const codes = diagnostics
+        .map((entry) => String(entry && entry.code ? entry.code : ''))
+        .filter((entry) => entry !== '')
+        .join(', ');
+      setV02State(
+        'FAILED',
+        `Refused (${code}). ${detail}${codes !== '' ? ` Gate reasons: ${codes}.` : ''}`,
+      );
+      return;
+    }
+    v02Lineage = String(answer.lineageId);
+    setV02State(
+      'RUNNING',
+      `Accepted by Core (lineage ${v02Lineage}). Polling the Core-owned projection…`,
+    );
+    stopV02Polling();
+    v02PollTimer = setInterval(() => {
+      void pollV02Status();
+    }, 1000);
+    void pollV02Status();
+  });
+
   void s6RestoreActiveJourney();
 })();

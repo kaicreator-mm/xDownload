@@ -82,4 +82,13 @@ declare const chrome: {
       },
     ): Promise<string>;
   };
+  /** T05: explicit, action-scoped optional-permission decisions only. */
+  permissions: {
+    contains(details: { readonly origins?: readonly string[] }): Promise<boolean>;
+    request(details: { readonly origins?: readonly string[] }): Promise<boolean>;
+    getAll(): Promise<{
+      readonly origins?: readonly string[];
+      readonly permissions?: readonly string[];
+    }>;
+  };
 };
