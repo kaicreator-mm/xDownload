@@ -1,0 +1,35 @@
+schema: xdownload/execution-failure-matrix/v1
+task_id: v021-T06
+failures:
+  - id: F01
+    condition: S4 is passed through generic S3 intent or represented as S3 in result evidence
+    severity: P1
+    action: refuse; use a dedicated exact S4 selection contract or route an architecture contradiction
+  - id: F02
+    condition: missing/ambiguous variant defaults to first rendition
+    severity: P1
+    action: require exact explicit rendition selection and bind to observed master
+  - id: F03
+    condition: manifest/rendition/segment provenance or trusted origin is widened
+    severity: P1
+    action: refuse before the next network request
+  - id: F04
+    condition: live, DRM/encryption or unsupported topology is treated as supported
+    severity: P1
+    action: typed UNSUPPORTED/FAILED; no bypass
+  - id: F05
+    condition: second HLS engine, fetch stack or TransferBudget ledger is introduced
+    severity: P1
+    action: reuse existing HLS adapter and one authoritative budget
+  - id: F06
+    condition: permit mismatch or invalid intent can cause network/file effect
+    severity: P1
+    action: fail closed with zero effects
+  - id: F07
+    condition: assembled bytes lack final media validation/digest or escape output root
+    severity: P1
+    action: refuse; no accepted artifact
+  - id: F08
+    condition: unit/fake tests are reported as installed S4 release PASS
+    severity: P1
+    action: keep installed evidence NOT_PROVEN until T15/T16

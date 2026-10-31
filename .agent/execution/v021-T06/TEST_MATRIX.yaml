@@ -1,0 +1,46 @@
+schema: xdownload/execution-test-matrix/v1
+task_id: v021-T06
+required_environment:
+  node: "24.21.0"
+  pnpm: "12.8.1"
+  external_network: forbidden
+  fixture_network: loopback_only
+suites:
+  - id: T06-01
+    scope: K admission and Host permit
+    positive: one selected S4 intent obtains one permit bound to request/lineage/origins/budget
+    negative: missing/mismatched/forged permit refuses with zero network and file writes
+  - id: T06-02
+    scope: variant selection
+    positive: exact selected rendition from observed master is used
+    negative: missing/ambiguous/changed rendition refuses; no implicit first variant
+  - id: T06-03
+    scope: finite HLS VOD topology
+    positive: ENDLIST finite media playlist and supported single-track topology admitted
+    negative: live/no ENDLIST, encryption/DRM, alternate audio or unsupported topology refuses
+  - id: T06-04
+    scope: provenance and origin policy
+    positive: playlist-relative segments descend from the selected manifest and trusted origin graph
+    negative: off-policy CDN/origin or unrelated segment locator refuses before fetch
+  - id: T06-05
+    scope: existing HLS engine and budget
+    positive: manifest/playlist/segment work debits one canonical TransferBudget
+    negative: no second ledger, hidden retry or budget replenishment
+  - id: T06-06
+    scope: materialization and integrity
+    positive: real fixture bytes assembled, validated, digest-backed and written inside authorized root
+    negative: corrupt/partial output or validation failure leaves no accepted artifact
+  - id: T06-07
+    scope: refusal side effects
+    positive: valid finite HLS VOD completes under fixture lane
+    negative: unsupported/malformed inputs refuse with zero writes before admission
+commands:
+  scoped: "pnpm exec vitest run packages/hls-vod-adapter/test packages/download-domain-host/src/media packages/download-domain-app/src/integrations/s4-hls-vod.test.ts"
+  root: "pnpm run ci:verify"
+pass_rule:
+  - all scoped suites exit 0
+  - no external network or production loopback exception
+  - one K permit, one Host bridge, one HLS engine, one TransferBudget ledger
+  - exact selected variant and provenance are preserved
+  - real materialized fixture artifact and digest are verified
+  - installed Host/packaged release claims remain NOT_PROVEN until T15/T16
