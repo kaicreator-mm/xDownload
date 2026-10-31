@@ -108,7 +108,7 @@ describe('real temporary filesystem fixture', () => {
     await withTemporaryArtifactRoot(async (root) => {
       const artifact = await materializeFixtureAtomically(root, 'fixture.bin', bytes);
       assert.equal(existsSync(artifact.path), true);
-      assert.deepEqual(artifact.bytes, bytes);
+      assert.deepEqual(new Uint8Array(artifact.bytes), bytes);
       assert.match(artifact.sha256, /^[0-9a-f]{64}$/);
       assert.equal(existsSync(artifact.path + '.partial'), false);
     });
@@ -134,7 +134,7 @@ describe('real temporary filesystem fixture', () => {
         /fixture artifact collision/,
       );
 
-      assert.deepEqual(await readFile(finalPath), existing);
+      assert.deepEqual(new Uint8Array(await readFile(finalPath)), existing);
       assert.equal(existsSync(finalPath + '.partial'), false);
     });
   });
