@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
@@ -15,15 +18,25 @@ import {
   validateConfirmedS4HlsIntent,
 } from './s4-hls-vod-contract.ts';
 
-function confirmedIntent(outputRootScope: string): Record<string, unknown> {
+interface IntentOptions {
+  readonly manifestUri?: string;
+  readonly renditionUri?: string;
+  readonly targetRef?: string;
+  readonly digestAnchor?: string;
+}
+
+function confirmedIntent(
+  outputRootScope: string,
+  options: IntentOptions = {},
+): Record<string, unknown> {
   const tuple = {
     contractId: 'contract-s4-001',
     snapshotId: 'snapshot-s4-001',
     memberId: 'member-s4-001',
     previewId: 'preview-s4-001',
     renditionKey: 'rend-0',
-    renditionUri: 'https://cdn.example.test/vod/720p.m3u8',
-    manifestUri: 'https://cdn.example.test/vod/master.m3u8',
+    renditionUri: options.renditionUri ?? 'https://cdn.example.test/vod/720p.m3u8',
+    manifestUri: options.manifestUri ?? 'https://cdn.example.test/vod/master.m3u8',
     mediaProfileId: S4_HLS_MEDIA_PROFILE,
     bandwidth: 1_500_000,
     width: 1280,
@@ -33,7 +46,7 @@ function confirmedIntent(outputRootScope: string): Record<string, unknown> {
     requestId: 'req-s4-001',
     lineageId: 'lineage-s4-001',
     contractId: tuple.contractId,
-    targetRef: 'ref:s4-target-missing',
+    targetRef: options.targetRef ?? 'ref:s4-target-missing',
     outputRootScope,
     allowedOperation: S4_HLS_MEDIA_OPERATION,
     selection: {
@@ -50,7 +63,106 @@ function confirmedIntent(outputRootScope: string): Record<string, unknown> {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     },
     caller: { actor: 't06-test', sessionRef: 'session-s4-001' },
+    ...(options.digestAnchor === undefined ? {} : { digestAnchor: options.digestAnchor }),
   };
+}
+
+function budgetFixture(): Record<string, unknown> {
+  return {
+    discovery: { domain: 'discovery', maxGeneratedRequests: 100 },
+    transfer: {
+      domain: 'transfer',
+      maxBytes: 2_000_000,
+      maxSegments: 8,
+      maxRetryTransferRequests: 4,
+    },
+    globalSafety: { domain: 'global_safety', maxTotalGeneratedRequests: 1_000 },
+  };
+}
+
+function masterPlaylist(): string {
+  return [
+    '#EXTM3U',
+    '#EXT-X-VERSION:6',
+    '#EXT-X-STREAM-INF:BANDWIDTH=500000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
+    'media.m3u8',
+    '',
+  ].join('\n');
+}
+
+async function createRealHlsFixture(root: string): Promise<{
+  readonly fixtureDir: string;
+  readonly mediaPlaylist: string;
+  readonly segmentNames: readonly string[];
+  readonly segments: readonly Buffer[];
+}> {
+  const fixtureDir = join(root, 'fixture');
+  await mkdir(fixtureDir, { recursive: true });
+  const mediaPath = join(fixtureDir, 'media.m3u8');
+  const segmentPattern = join(fixtureDir, 'segment%03d.ts');
+  const generated = spawnSync('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc=size=160x90:rate=25:duration=4',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=1000:sample_rate=48000:duration=4',
+    '-t',
+    '4',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-tune',
+    'zerolatency',
+    '-profile:v',
+    'baseline',
+    '-level',
+    '3.0',
+    '-pix_fmt',
+    'yuv420p',
+    '-g',
+    '50',
+    '-keyint_min',
+    '50',
+    '-sc_threshold',
+    '0',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '64k',
+    '-force_key_frames',
+    'expr:gte(t,n_forced*2)',
+    '-f',
+    'hls',
+    '-hls_time',
+    '2',
+    '-hls_list_size',
+    '0',
+    '-hls_playlist_type',
+    'vod',
+    '-hls_flags',
+    'independent_segments',
+    '-hls_segment_filename',
+    segmentPattern,
+    mediaPath,
+  ], { encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true });
+  assert.equal(generated.error, undefined, `ffmpeg must be available for the real S4 fixture: ${generated.error?.message ?? ''}`);
+  assert.equal(generated.status, 0, `ffmpeg fixture generation failed: ${generated.stderr}`);
+  const mediaPlaylist = await readFile(mediaPath, 'utf8');
+  const segmentNames = mediaPlaylist
+    .split(/\r?\n/u)
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+  assert.ok(segmentNames.length >= 2, 'real S4 fixture must contain at least two independently probed TS segments');
+  assert.ok(segmentNames.every((name) => basename(name) === name), 'fixture playlist segment names must be basenames');
+  const segments = await Promise.all(segmentNames.map((name) => readFile(join(fixtureDir, name))));
+  return { fixtureDir, mediaPlaylist, segmentNames, segments };
 }
 
 describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
@@ -74,7 +186,7 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     }
   });
 
-  it('routes one valid S4 intent through K to the trusted Host pin and refuses an unknown target before media effects', async () => {
+  it('routes a valid S4 intent through K to the trusted Host pin and refuses an unknown target before media effects', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-runtime-'));
     try {
       const outputRoot = resolve(join(root, 'output'));
@@ -97,6 +209,128 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
         runtime.stop();
       }
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('re-reads an explicit selected variant, probes real H264/AAC TS segments, and materializes digest-backed output through K/Host', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-positive-'));
+    let runtime: Awaited<ReturnType<typeof assembleS4HlsRuntime>> | undefined;
+    let server: Server | undefined;
+    try {
+      const outputRoot = resolve(join(root, 'output'));
+      await mkdir(outputRoot, { recursive: true });
+      const fixture = await createRealHlsFixture(root);
+      const expectedBytes = Buffer.concat([...fixture.segments]);
+      const digestAnchor = createHash('sha256').update(expectedBytes).digest('hex');
+
+      const hits = new Map<string, number>();
+      const serverInstance = createServer((request, response) => {
+        const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+        hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+        if (pathname === '/master.m3u8') {
+          const body = masterPlaylist();
+          response.writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl', 'content-length': String(Buffer.byteLength(body)) });
+          response.end(body);
+          return;
+        }
+        if (pathname === '/media.m3u8') {
+          response.writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl', 'content-length': String(Buffer.byteLength(fixture.mediaPlaylist)) });
+          response.end(fixture.mediaPlaylist);
+          return;
+        }
+        const name = pathname.slice(1);
+        if (fixture.segmentNames.includes(name)) {
+          void readFile(join(fixture.fixtureDir, name)).then((bytes) => {
+            response.writeHead(200, { 'content-type': 'video/mp2t', 'content-length': String(bytes.length) });
+            response.end(bytes);
+          }).catch(() => {
+            response.writeHead(404);
+            response.end();
+          });
+          return;
+        }
+        response.writeHead(404);
+        response.end();
+      });
+      server = serverInstance;
+      await new Promise<void>((resolveListen, rejectListen) => {
+        serverInstance.once('error', rejectListen);
+        serverInstance.listen(0, '127.0.0.1', resolveListen);
+      });
+      const address = serverInstance.address();
+      if (address === null || typeof address === 'string') throw new Error('S4 fixture server did not bind a TCP port');
+      const origin = `http://127.0.0.1:${String(address.port)}`;
+      const manifestUri = origin + '/master.m3u8';
+      const renditionUri = origin + '/media.m3u8';
+      const targetRef = 'ref:s4-target-001';
+
+      runtime = await assembleS4HlsRuntime({
+        storePath: join(root, 'k-documents.json'),
+        mediaTargetRefs: [{
+          handle: targetRef,
+          record: {
+            protocol: 'HLS',
+            manifestUri,
+            selectedRenditionUri: renditionUri,
+            artifactFileName: 's4-positive.ts',
+            allowedManifestOrigins: [origin],
+            allowedSegmentOrigins: [origin],
+            budget: budgetFixture(),
+            fixtureLoopbackHttp: true,
+            manifestMaxBytes: 65_536,
+            segmentMaxBytes: 2_000_000,
+            timeoutMs: 10_000,
+          },
+        }],
+      });
+
+      const intent = confirmedIntent(outputRoot, {
+        manifestUri,
+        renditionUri,
+        targetRef,
+        digestAnchor,
+      });
+      const tuple = {
+        contractId: 'contract-s4-001',
+        snapshotId: 'snapshot-s4-001',
+        memberId: 'member-s4-001',
+        previewId: 'preview-s4-001',
+        renditionKey: 'rend-0',
+        renditionUri,
+        manifestUri,
+        mediaProfileId: S4_HLS_MEDIA_PROFILE,
+        bandwidth: 500_000,
+        width: 160,
+        height: 90,
+      };
+      const selection = (intent.selection as Record<string, unknown>);
+      selection.displayedTupleDigest = s4HlsSelectionTupleDigest(tuple);
+
+      const result = await submitConfirmedS4HlsVod(runtime, intent);
+      assert.equal(result.status, 'completed', result.message ?? result.code ?? 'S4 journey did not complete');
+      if (result.status !== 'completed') throw new Error('expected completed S4 journey');
+      assert.ok(result.evidence);
+      assert.equal(result.evidence.fileSha256, digestAnchor);
+      assert.equal(result.evidence.bytesWritten, expectedBytes.length);
+      assert.ok(result.evidence.artifactPath.startsWith(outputRoot));
+      assert.deepEqual(await readFile(result.evidence.artifactPath), expectedBytes);
+      assert.equal(result.summary?.segmentsTransferred, fixture.segmentNames.length);
+      assert.equal(runtime.pin.acquireCalls, 1);
+      assert.equal(runtime.pin.completedExecutions, 1);
+      assert.equal(runtime.pin.registryRefusals, 0);
+      assert.equal(hits.get('/master.m3u8'), 1);
+      assert.equal(hits.get('/media.m3u8'), 1);
+      for (const name of fixture.segmentNames) assert.equal(hits.get('/' + name), 1);
+      assert.equal(hits.size, fixture.segmentNames.length + 2);
+    } finally {
+      runtime?.stop();
+      if (server !== undefined) {
+        server.closeAllConnections();
+        await new Promise<void>((resolveClose, rejectClose) => {
+          server!.close((error) => (error ? rejectClose(error) : resolveClose()));
+        });
+      }
       await rm(root, { recursive: true, force: true });
     }
   });
