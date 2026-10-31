@@ -298,6 +298,33 @@ describe('T06 S4 HLS VOD confirmation and K/Host admission', () => {
     }
   });
 
+  it('rejects future-dated, expired and overlong confirmation windows before K send', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-expiry-'));
+    try {
+      const outputRoot = resolve(join(root, 'output'));
+      await mkdir(outputRoot, { recursive: true });
+      const future = confirmedIntent(outputRoot);
+      const futureSelection = future.selection as Record<string, unknown>;
+      futureSelection.confirmedAt = new Date(Date.now() + 1_000).toISOString();
+      futureSelection.expiresAt = new Date(Date.now() + 30_000).toISOString();
+      assert.equal(validateConfirmedS4HlsIntent(future).ok, false);
+
+      const expired = confirmedIntent(outputRoot);
+      const expiredSelection = expired.selection as Record<string, unknown>;
+      expiredSelection.confirmedAt = new Date(Date.now() - 61_000).toISOString();
+      expiredSelection.expiresAt = new Date(Date.now() - 1_000).toISOString();
+      assert.equal(validateConfirmedS4HlsIntent(expired).ok, false);
+
+      const overlong = confirmedIntent(outputRoot);
+      const overlongSelection = overlong.selection as Record<string, unknown>;
+      overlongSelection.confirmedAt = new Date(Date.now() - 1_000).toISOString();
+      overlongSelection.expiresAt = new Date(Date.now() + 60_000).toISOString();
+      assert.equal(validateConfirmedS4HlsIntent(overlong).ok, false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('refuses unknown S4 targets before media effects through K/Host', async () => {
     const root = await mkdtemp(join(tmpdir(), 'xdownload-v021-t06-s4-runtime-'));
     try {

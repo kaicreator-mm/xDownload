@@ -268,12 +268,21 @@ export function validateConfirmedS4HlsIntent(
   }
   const confirmedAt = Date.parse(selection.confirmedAt);
   const expiresAt = Date.parse(selection.expiresAt);
-  if (!Number.isFinite(confirmedAt) || !Number.isFinite(expiresAt) || expiresAt <= confirmedAt) {
+  const now = Date.now();
+  const maxConfirmationWindowMs = 60_000;
+  if (
+    !Number.isFinite(confirmedAt) ||
+    !Number.isFinite(expiresAt) ||
+    confirmedAt > now ||
+    expiresAt <= now ||
+    expiresAt <= confirmedAt ||
+    expiresAt - confirmedAt > maxConfirmationWindowMs
+  ) {
     return fail([
       diagnostic(
         'MALFORMED_REQUIRED_FIELD',
         'intent.selection.expiresAt',
-        'selection confirmation window is invalid',
+        'selection must be currently valid, not future-dated, and expire within 60 seconds of confirmation',
       ),
     ]);
   }
