@@ -107,7 +107,14 @@ describe('T008 transfer-level counterexample oracles', () => {
 
     const outcome = unwrapOrThrow(
       await adapter.acquire({
-        ...directRequest(baseUri, '/c13.bin', FULL, { effectId: 'effect-c13', attempt: 1 }),
+        ...directRequest(baseUri, '/c13.bin', FULL, {
+          effectId: 'effect-c13',
+          attempt: 1,
+          retryLineage: {
+            effectId: effectIdOf('effect-c13'),
+            targetId: targetIdOf('target-file-001'),
+          },
+        }),
         resumeFrom: {
           bytes: FULL.subarray(0, 40),
           receivedBytes: 40,

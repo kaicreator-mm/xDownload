@@ -60,6 +60,14 @@ export function validateTransfer(input: TransferValidationInput): ValidationLaye
       );
     }
     const declaredSliceBytes = range.end - range.start + 1;
+    const receivedSliceBytes = input.receivedBytes - input.resumeOffsetBytes;
+    if (receivedSliceBytes !== declaredSliceBytes) {
+      return failed(
+        'transfer',
+        'RANGE_LENGTH_MISMATCH',
+        `received slice length ${String(receivedSliceBytes)} does not match Content-Range span ${String(declaredSliceBytes)}`,
+      );
+    }
     if (declared !== undefined && declared !== declaredSliceBytes) {
       return failed(
         'transfer',

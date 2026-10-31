@@ -64,6 +64,10 @@ describe('strong-and-no-validators: validated resume via If-Range (U5)', () => {
       ...directRequest(baseUri, '/strong.bin', FULL, {
         effectId: 'effect-001',
         attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
         expectedTotalBytes: 100,
       }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
@@ -116,6 +120,10 @@ describe('strong-and-no-validators: no usable validator forbids append', () => {
       ...directRequest(baseUri, '/no-validator.bin', FULL, {
         effectId: 'effect-001',
         attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
       }),
       resumeFrom: carriedPartial({}, PREFIX),
     };
@@ -138,7 +146,14 @@ describe('strong-and-no-validators: no usable validator forbids append', () => {
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/weak.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/weak.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ weakETag: 'W/"v1"' }, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -197,7 +212,14 @@ describe('validator-change-and-range-support: change detection and range handlin
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/changed.bin', v2, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/changed.bin', v2, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, payload(40, 7)),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -212,13 +234,54 @@ describe('validator-change-and-range-support: change detection and range handlin
     expect(outcome.observedIdentity.strongETag).toBe('"v2"');
   });
 
+  it('rejects a 206 whose body length does not match its Content-Range span', async () => {
+    fixture.on('/range-span-mismatch.bin', (_request, response) => {
+      response.writeHead(206, {
+        'content-type': 'application/octet-stream',
+        'content-length': '60',
+        'content-range': 'bytes 40-98/100',
+        etag: '"v1"',
+      });
+      response.end(Buffer.from(FULL.subarray(40)));
+    });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const request = {
+      ...directRequest(baseUri, '/range-span-mismatch.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
+      resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
+    };
+
+    const outcome = unwrapOrThrow(await adapter.acquire(request));
+
+    expect(outcome.reason).toBe('TRUNCATED');
+    expect(outcome.validations.find((check) => check.layer === 'transfer')).toMatchObject({
+      passed: false,
+      code: 'RANGE_LENGTH_MISMATCH',
+    });
+    expect(outcome.terminalResult.selectionAcquisition).not.toBe('COMPLETE');
+  });
+
   it('range support change: server without ranges forces restart with the full representation', async () => {
     fixture.serveFile('/no-ranges.bin', { body: FULL, etag: '"v1"', acceptRanges: false });
     const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/no-ranges.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/no-ranges.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -236,7 +299,14 @@ describe('validator-change-and-range-support: change detection and range handlin
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/budgeted.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/budgeted.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -257,7 +327,14 @@ describe('safe-restart: restart stays in lineage without budget replenishment', 
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/restart.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/restart.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({}, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -276,7 +353,14 @@ describe('safe-restart: restart stays in lineage without budget replenishment', 
     const before = fixture.requests.length;
 
     const rejected = await adapter.acquire({
-      ...directRequest(baseUri, '/other-lineage.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/other-lineage.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: {
         bytes: PREFIX,
         receivedBytes: 40,
