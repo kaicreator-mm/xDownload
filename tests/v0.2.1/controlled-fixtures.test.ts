@@ -13,8 +13,7 @@ import {
   decodeDownloadProgressProjection,
   resolveLineageOwner,
 } from '@xdownload/domain-contracts';
-import { ControlledHttpFixture } from
-  '../../packages/direct-acquisition/test/helpers/fixture-server.ts';
+import { ControlledHttpFixture } from '../../packages/direct-acquisition/test/helpers/fixture-server.ts';
 import { payload } from '../../packages/direct-acquisition/test/helpers/fixtures.ts';
 import { startControlledHlsFixture, type ControlledHlsFixture } from './controlled-hls-fixture.ts';
 import { V021_SCENARIO_CORPUS } from './scenario-corpus.ts';
