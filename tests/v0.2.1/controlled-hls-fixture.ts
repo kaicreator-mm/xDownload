@@ -32,12 +32,10 @@ export async function startControlledHlsFixture(): Promise<ControlledHlsFixture>
     '#EXT-X-VERSION:4',
     '#EXT-X-TARGETDURATION:4',
     '#EXT-X-PLAYLIST-TYPE:VOD',
-    '#EXTINF:4,segment-0',
-    'segment-0.ts',
-    '#EXTINF:4,segment-1',
-    'segment-1.ts',
-    '#EXTINF:4,segment-2',
-    'segment-2.ts',
+    ...SEGMENT_DURATIONS.flatMap((duration, index) => [
+      '#EXTINF:' + String(duration) + ',segment-' + String(index),
+      'segment-' + String(index) + '.ts',
+    ]),
     '#EXT-X-ENDLIST',
     '',
   ].join('\n');

@@ -66,7 +66,7 @@ export const V021_SCENARIO_CORPUS: readonly V021ScenarioCase[] = [
     id: 'permission-and-disk-full-failure',
     required: true,
     classifications: ['INJECTED_FAILURE_FAKE'],
-    evidencePaths: ['packages/download-domain-host/src/direct/direct-acquisition-bridge.test.ts'],
+    evidencePaths: ['tests/v0.2.1/controlled-fixtures.test.ts'],
     expectedTruth: 'injected write/rename failure leaves no accepted artifact; real OS failure remains NOT_PROVEN',
     installedGate: 'NOT_PROVEN',
   },

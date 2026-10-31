@@ -1,6 +1,7 @@
+import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { after, before, describe, it } from 'node:test';
 import {
   auditValueContainsSentinel,
   clearSinkScrubSentinels,
@@ -20,20 +21,21 @@ import { materializeFixtureAtomically, withTemporaryArtifactRoot } from './tempo
 describe('v0.2.1 validation fixture corpus', () => {
   it('contains each required scenario exactly once and references existing evidence tests', () => {
     const ids = V021_SCENARIO_CORPUS.map((scenario) => scenario.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(11);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(ids.length, 11);
     for (const scenario of V021_SCENARIO_CORPUS) {
-      expect(scenario.required).toBe(true);
-      expect(scenario.evidencePaths.length).toBeGreaterThan(0);
+      assert.equal(scenario.required, true);
+      assert.ok(scenario.evidencePaths.length > 0);
       for (const path of scenario.evidencePaths) {
-        expect(existsSync(join(process.cwd(), path))).toBe(true);
+        assert.equal(existsSync(join(process.cwd(), path)), true, 'missing evidence path: ' + path);
       }
     }
     const permission = V021_SCENARIO_CORPUS.find(
       (scenario) => scenario.id === 'permission-and-disk-full-failure',
     );
-    expect(permission?.classifications).toContain('INJECTED_FAILURE_FAKE');
-    expect(permission?.installedGate).toBe('NOT_PROVEN');
+    assert.ok(permission?.classifications.includes('INJECTED_FAILURE_FAKE'));
+    assert.equal(permission?.installedGate, 'NOT_PROVEN');
+    assert.deepEqual(permission?.evidencePaths, ['tests/v0.2.1/controlled-fixtures.test.ts']);
   });
 });
 
@@ -41,54 +43,54 @@ describe('real controlled direct HTTP fixture', () => {
   let fixture: ControlledHttpFixture;
   let baseUri: string;
 
-  beforeAll(async () => {
+  before(async () => {
     fixture = new ControlledHttpFixture();
     baseUri = await fixture.start();
     fixture.serveFile('/direct.bin', { body: payload(128), etag: '"t11-direct-v1"' });
   });
 
-  afterAll(async () => {
+  after(async () => {
     await fixture.stop();
   });
 
   it('uses a real loopback socket and records the direct request', async () => {
     const response = await fetch(baseUri + '/direct.bin');
-    expect(response.status).toBe(200);
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(payload(128));
-    expect(fixture.requests).toHaveLength(1);
-    expect(fixture.requests[0]?.path).toBe('/direct.bin');
+    assert.equal(response.status, 200);
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), payload(128));
+    assert.equal(fixture.requests.length, 1);
+    assert.equal(fixture.requests[0]?.path, '/direct.bin');
   });
 });
 
 describe('real controlled HLS VOD fixture', () => {
   let fixture: ControlledHlsFixture;
 
-  beforeAll(async () => {
+  before(async () => {
     fixture = await startControlledHlsFixture();
   });
 
-  afterAll(async () => {
+  after(async () => {
     await fixture.stop();
   });
 
   it('serves one finite selected rendition and its real loopback segments', async () => {
     const masterResponse = await fetch(fixture.origin + '/master.m3u8');
-    expect(masterResponse.status).toBe(200);
+    assert.equal(masterResponse.status, 200);
     const master = await masterResponse.text();
-    expect(master).toContain('variant-720p.m3u8');
+    assert.ok(master.includes('variant-720p.m3u8'));
 
     const mediaResponse = await fetch(fixture.origin + '/variant-720p.m3u8');
-    expect(mediaResponse.status).toBe(200);
+    assert.equal(mediaResponse.status, 200);
     const media = await mediaResponse.text();
-    expect(media).toContain('#EXT-X-ENDLIST');
+    assert.ok(media.includes('#EXT-X-ENDLIST'));
 
     for (let index = 0; index < fixture.segmentBytes.length; index += 1) {
       const path = '/segment-' + String(index) + '.ts';
       const response = await fetch(fixture.origin + path);
-      expect(response.status).toBe(200);
-      expect(new Uint8Array(await response.arrayBuffer())).toEqual(fixture.segmentBytes[index]);
+      assert.equal(response.status, 200);
+      assert.deepEqual(new Uint8Array(await response.arrayBuffer()), fixture.segmentBytes[index]);
     }
-    expect(fixture.requests).toEqual([
+    assert.deepEqual(fixture.requests, [
       '/master.m3u8',
       '/variant-720p.m3u8',
       '/segment-0.ts',
@@ -103,18 +105,33 @@ describe('real temporary filesystem fixture', () => {
     const bytes = payload(4096);
     await withTemporaryArtifactRoot(async (root) => {
       const artifact = await materializeFixtureAtomically(root, 'fixture.bin', bytes);
-      expect(existsSync(artifact.path)).toBe(true);
-      expect(artifact.bytes).toEqual(bytes);
-      expect(artifact.sha256).toMatch(/^[0-9a-f]{64}$/);
-      expect(existsSync(artifact.path + '.partial')).toBe(false);
+      assert.equal(existsSync(artifact.path), true);
+      assert.deepEqual(artifact.bytes, bytes);
+      assert.match(artifact.sha256, /^[0-9a-f]{64}$/);
+      assert.equal(existsSync(artifact.path + '.partial'), false);
     });
   });
 
   it('rejects traversal-like fixture names before writing', async () => {
     await withTemporaryArtifactRoot(async (root) => {
-      await expect(materializeFixtureAtomically(root, '../escape.bin', payload(8))).rejects.toThrow(
-        'fixture filename must be one basename',
+      await assert.rejects(
+        materializeFixtureAtomically(root, '../escape.bin', payload(8)),
+        /fixture filename must be one basename/,
       );
+    });
+  });
+
+  it('labels injected permission and disk-full failures as FAKE and leaves no artifact', async () => {
+    await withTemporaryArtifactRoot(async (root) => {
+      for (const failure of ['PERMISSION_DENIED', 'DISK_FULL'] as const) {
+        const filename = failure.toLowerCase() + '.bin';
+        await assert.rejects(
+          materializeFixtureAtomically(root, filename, payload(128), { injectedFailure: failure }),
+          /INJECTED_FAILURE_FAKE/,
+        );
+        assert.equal(existsSync(join(root, filename)), false);
+        assert.equal(existsSync(join(root, filename + '.partial')), false);
+      }
     });
   });
 });
@@ -125,17 +142,17 @@ describe('pure contract and exit-sink fixture oracles', () => {
       transferredBytes: 120,
       totalBytes: { kind: 'UNKNOWN' },
     });
-    expect(progress.ok).toBe(true);
+    assert.equal(progress.ok, true);
     if (progress.ok) {
-      expect(progress.value.totalBytes).toEqual({ kind: 'UNKNOWN' });
+      assert.deepEqual(progress.value.totalBytes, { kind: 'UNKNOWN' });
     }
     const conflict = resolveLineageOwner({ oldCore: 'REGISTERED', newK: 'OWNED' });
     const ambiguous = resolveLineageOwner({ oldCore: 'UNKNOWN', newK: 'ABSENT' });
-    expect(conflict.ok && conflict.value).toEqual({
+    assert.deepEqual(conflict.ok && conflict.value, {
       status: 'REFUSED',
       reason: 'LINEAGE_OWNER_CONFLICT',
     });
-    expect(ambiguous.ok && ambiguous.value).toEqual({
+    assert.deepEqual(ambiguous.ok && ambiguous.value, {
       status: 'REFUSED',
       reason: 'LINEAGE_OWNER_AMBIGUOUS',
     });
@@ -152,10 +169,10 @@ describe('pure contract and exit-sink fixture oracles', () => {
       };
       const safe = redactForSink(input);
       const serialized = JSON.stringify(safe);
-      expect(serialized).not.toContain('raw-cookie');
-      expect(serialized).not.toContain('raw-token');
-      expect(serialized).not.toContain(sentinel);
-      expect(auditValueContainsSentinel(safe)).toBe(false);
+      assert.ok(!serialized.includes('raw-cookie'));
+      assert.ok(!serialized.includes('raw-token'));
+      assert.ok(!serialized.includes(sentinel));
+      assert.equal(auditValueContainsSentinel(safe), false);
     } finally {
       clearSinkScrubSentinels();
     }

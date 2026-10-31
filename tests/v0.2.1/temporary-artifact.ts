@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -28,6 +28,7 @@ export async function materializeFixtureAtomically(
   root: string,
   filename: string,
   bytes: Uint8Array,
+  options: { readonly injectedFailure?: 'PERMISSION_DENIED' | 'DISK_FULL' } = {},
 ): Promise<FixtureArtifact> {
   if (filename.length === 0 || basename(filename) !== filename || filename === '.' || filename === '..') {
     throw new Error('fixture filename must be one basename');
@@ -37,13 +38,39 @@ export async function materializeFixtureAtomically(
   if (!finalPath.startsWith(absoluteRoot + sep)) {
     throw new Error('fixture output escaped its temporary root');
   }
+  try {
+    await access(finalPath);
+    throw new Error('fixture artifact collision');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') throw error;
+    if (error instanceof Error && error.message === 'fixture artifact collision') throw error;
+  }
+
   const partialPath = finalPath + '.partial';
-  await writeFile(partialPath, bytes, { flag: 'wx' });
-  await rename(partialPath, finalPath);
-  const readBack = await readFile(finalPath);
-  return {
-    path: finalPath,
-    bytes: readBack,
-    sha256: createHash('sha256').update(readBack).digest('hex'),
-  };
+  let partialCreated = false;
+  try {
+    if (options.injectedFailure === 'PERMISSION_DENIED') {
+      throw new Error('INJECTED_FAILURE_FAKE: simulated EACCES before creating a partial artifact');
+    }
+    const staged = options.injectedFailure === 'DISK_FULL'
+      ? bytes.subarray(0, Math.floor(bytes.byteLength / 2))
+      : bytes;
+    await writeFile(partialPath, staged, { flag: 'wx', mode: 0o600 });
+    partialCreated = true;
+    if (options.injectedFailure === 'DISK_FULL') {
+      throw new Error('INJECTED_FAILURE_FAKE: simulated ENOSPC after a partial write');
+    }
+    await rename(partialPath, finalPath);
+    partialCreated = false;
+    const readBack = await readFile(finalPath);
+    return {
+      path: finalPath,
+      bytes: readBack,
+      sha256: createHash('sha256').update(readBack).digest('hex'),
+    };
+  } finally {
+    if (partialCreated) {
+      await rm(partialPath, { force: true });
+    }
+  }
 }

@@ -15,8 +15,8 @@ The corpus points to existing tests for restart, cancellation, duplicate, change
 
 Node 24.21.0 and pnpm 12.8.1:
 
-- Scoped: pnpm exec vitest run tests/v0.2.1
-- Root: pnpm run ci:verify
+- Scoped harness: node --test tests/v0.2.1/controlled-fixtures.test.ts
+- Root unit suite: pnpm run ci:verify
 
 All network fixtures bind only to 127.0.0.1. All file fixtures use unique temporary directories. No fixture uses credentials, public internet, real user directories or browser profiles.
 
