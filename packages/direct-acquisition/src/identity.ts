@@ -10,10 +10,20 @@
 
 import type { PartialTransferState, RepresentationIdentity, ResumeDecision } from './port.ts';
 
+/** A syntactically valid strong entity-tag; malformed/weak values never authorize append. */
+function isStrongEntityTag(value: string): boolean {
+  return /^"[!#-~]*"$/.test(value);
+}
+
+function isWeakEntityTag(value: string): boolean {
+  return /^W\/"[!#-~]*"$/.test(value);
+}
+
 /** Parse representation-identity headers into a typed identity record. */
 export function observeIdentity(headers: Headers): RepresentationIdentity {
   const etag = headerOrNull(headers, 'etag');
   const lastModified = headerOrNull(headers, 'last-modified');
+  const lastModifiedSafe = lastModified === undefined ? undefined : lastModified.trim();
   const contentLengthRaw = headerOrNull(headers, 'content-length');
   const parsedContentLength =
     contentLengthRaw !== undefined && /^\d+$/.test(contentLengthRaw)
@@ -24,9 +34,11 @@ export function observeIdentity(headers: Headers): RepresentationIdentity {
     Number.isSafeInteger(parsedContentLength) &&
     parsedContentLength >= 0;
   return {
-    strongETag: etag !== undefined && !etag.startsWith('W/') ? etag : undefined,
-    weakETag: etag !== undefined && etag.startsWith('W/') ? etag : undefined,
-    lastModified,
+    strongETag: etag !== undefined && isStrongEntityTag(etag) ? etag : undefined,
+    weakETag: etag !== undefined && isWeakEntityTag(etag) ? etag : undefined,
+    ...(lastModifiedSafe === undefined || lastModifiedSafe.length === 0
+      ? {}
+      : { lastModified: lastModifiedSafe }),
     ...(contentLengthValid ? { contentLength: parsedContentLength } : {}),
     ...(contentLengthRaw !== undefined && !contentLengthValid ? { invalidContentLength: true } : {}),
   };
@@ -46,7 +58,10 @@ export function planResume(partial: PartialTransferState | undefined): ResumeDec
   if (partial === undefined) {
     return { kind: 'FRESH_TRANSFER' };
   }
-  if (partial.identity.strongETag === undefined) {
+  if (
+    partial.identity.strongETag === undefined ||
+    !isStrongEntityTag(partial.identity.strongETag)
+  ) {
     return { kind: 'SAFE_RESTART', reason: 'NO_STRONG_VALIDATOR' };
   }
   return {

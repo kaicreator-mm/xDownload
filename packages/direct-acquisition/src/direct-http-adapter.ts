@@ -510,6 +510,10 @@ export class DirectHttpAdapter {
           // the boundary: that would receive uncharged bytes beyond budget.
           // A known exact total may complete; otherwise stop conservatively.
           if (expectedTotalBytes !== undefined && byteLengthOf(chunks) === expectedTotalBytes) {
+            // The declared byte total is complete, but this branch exits before
+            // reader.read() can observe EOF. Cancel explicitly so the response
+            // stream/socket is not left live after a budget-bound completion.
+            await reader.cancel('declared transfer total reached').catch(() => undefined);
             break;
           }
           await reader.cancel('budget exhausted').catch(() => undefined);
