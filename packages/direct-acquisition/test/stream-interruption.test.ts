@@ -20,7 +20,7 @@ describe('stream interruption without declared length', () => {
     await fixture.stop();
   });
 
-  it('never turns a reset after partial bytes into COMPLETE without Content-Length or digest anchor', async () => {
+  it('keeps a reset after partial bytes incomplete without a length or digest anchor', async () => {
     fixture.on('/reset-without-length.bin', (_request, response) => {
       response.writeHead(200, { 'content-type': 'application/octet-stream' });
       response.flushHeaders();
