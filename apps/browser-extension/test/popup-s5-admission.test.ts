@@ -94,6 +94,10 @@ function startPopup(
     's6-confirm',
     's6-execute',
     's6-batch-result',
+    'v02-target-ref',
+    'v02-output-root',
+    'v02-submit',
+    'v02-result',
   ];
   const nodes = Object.fromEntries(ids.map((id) => [id, makeNode()])) as Record<string, StubNode>;
   const links = LINKS;
@@ -385,6 +389,109 @@ describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
       expect(nodes['s6-prepare-result']!.textContent).toContain('fromPage must be 1');
     });
     expect(sent.some((message) => message.kind === 'S6_PREPARE_COLLECTION')).toBe(false);
+  });
+});
+
+describe('v0.2.1 T05 popup v0.2 submission panel', () => {
+  it('submits the bounded gesture with the tab-grounded page facts and no browser context', async () => {
+    const { nodes, sent } = startPopup({
+      respond: (message) =>
+        message.kind === 'V02_ADD_DOWNLOAD'
+          ? {
+              outcome: 'ADMITTED',
+              lineageId: 'lineage-v02-001',
+              requestId: 'req-v02-001',
+              acceptance: { requestId: 'req-v02-001', aggregateId: 'lineage-v02-001' },
+            }
+          : { outcome: 'REFUSED', code: 'V02_MESSAGE_MALFORMED', detail: 'unexpected poll' },
+    });
+    await ready(nodes);
+    nodes['v02-target-ref']!.value = 'ref:target-001';
+    nodes['v02-output-root']!.value = 'C:/tmp/authorized-root';
+    await nodes['v02-submit']!.handlers['click']!();
+    const gestures = sent.filter((message) => message.kind === 'V02_ADD_DOWNLOAD');
+    expect(gestures).toHaveLength(1);
+    const gesture = gestures[0]!;
+    expect(gesture['tabId']).toBe(42);
+    expect(gesture['pageUrl']).toBe('https://publisher.example.org/list.html');
+    const action = gesture['action'] as Record<string, unknown>;
+    expect(action['targetRef']).toBe('ref:target-001');
+    expect(action['outputRootScope']).toBe('C:/tmp/authorized-root');
+    expect(action['allowedOperation']).toBe('acquisition.acquire');
+    expect(action['slice']).toBe('S1');
+    // No browser context rides the gesture: the closed action interface has
+    // no field for cookies/tabs/page content, and the popup adds none.
+    expect(Object.keys(action).sort()).toEqual([
+      'allowedOperation',
+      'caller',
+      'outputRootScope',
+      'slice',
+      'targetRef',
+    ]);
+    await vi.waitFor(() => {
+      expect(nodes['v02-result']!.textContent).toContain('lineage-v02-001');
+    });
+  });
+
+  it('renders a typed refusal verbatim and never fabricates admission', async () => {
+    const { nodes, sent } = startPopup({
+      respond: (message) =>
+        message.kind === 'V02_ADD_DOWNLOAD'
+          ? {
+              outcome: 'REFUSED',
+              code: 'V02_HOST_ABSENT',
+              detail: 'the trusted local xDownload Host is not reachable',
+            }
+          : { outcome: 'REFUSED', code: 'V02_MESSAGE_MALFORMED', detail: 'unexpected poll' },
+    });
+    await ready(nodes);
+    nodes['v02-target-ref']!.value = 'ref:target-001';
+    nodes['v02-output-root']!.value = 'C:/tmp/authorized-root';
+    await nodes['v02-submit']!.handlers['click']!();
+    expect(sent.filter((message) => message.kind === 'V02_JOB_STATUS')).toHaveLength(0);
+    await vi.waitFor(() => {
+      expect(nodes['v02-result']!.textContent).toContain('V02_HOST_ABSENT');
+      expect(nodes['v02-result']!.textContent).toContain('not reachable');
+    });
+    expect(nodes['v02-result']!.className).toBe('state FAILED');
+  });
+
+  it('polls the Core-owned projection after admission and renders UNKNOWN truthfully', async () => {
+    const { nodes, sent } = startPopup({
+      respond: (message) => {
+        if (message.kind === 'V02_ADD_DOWNLOAD') {
+          return {
+            outcome: 'ADMITTED',
+            lineageId: 'lineage-v02-001',
+            requestId: 'req-v02-001',
+            acceptance: { requestId: 'req-v02-001', aggregateId: 'lineage-v02-001' },
+          };
+        }
+        if (message.kind === 'V02_JOB_STATUS') {
+          return {
+            outcome: 'PROJECTION',
+            projection: {
+              schemaIdentity: { schema: 'xdownload.domain-contracts', version: '1.0.0' },
+              lineageId: 'lineage-v02-001',
+              owner: 'new-k',
+              status: 'UNKNOWN',
+              attempts: [{ attemptId: 'attempt-1', sequence: 1, status: 'UNKNOWN' }],
+              currentAttemptId: 'attempt-1',
+            },
+          };
+        }
+        return { outcome: 'REFUSED', code: 'V02_MESSAGE_MALFORMED', detail: 'unexpected' };
+      },
+    });
+    await ready(nodes);
+    nodes['v02-target-ref']!.value = 'ref:target-001';
+    nodes['v02-output-root']!.value = 'C:/tmp/authorized-root';
+    await nodes['v02-submit']!.handlers['click']!();
+    await vi.waitFor(() => {
+      expect(nodes['v02-result']!.textContent).toContain('Core-owned status: UNKNOWN');
+      expect(nodes['v02-result']!.textContent).toContain('owner: new-k');
+    });
+    expect(sent.some((message) => message.kind === 'V02_JOB_STATUS')).toBe(true);
   });
 });
 
