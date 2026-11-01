@@ -36,7 +36,7 @@ cmd //c verify.cmd
 | node（驱动进程） | v24.21.0 |
 | 被测形态 | **安装组合产物 payload**（`payload/cli/xdownload-cli.js` + `payload/core/xdownload-core-host.js`，esbuild 打包，非源码直跑） |
 | 驱动 | `C:\xDev\kAiCreator\_tmp\v021\t12final\run-matrix-final.mjs`（纯 node 内建，零仓库写入；派生自 T12 干跑驱动 `_tmp/v021/t12/run-matrix.mjs`） |
-| 原始证据流 | 本目录 `matrix.ndjson`（每用例 cmd 全量/stdout 全文/stderr/exit/duration/JSON 可解析性），43 条记录（5 条 `_meta`/派生 + 31 用例 + 收尾） |
+| 原始证据流 | 本目录 `matrix.ndjson`（每用例 cmd 全量/stdout 全文/stderr/exit/duration/JSON 可解析性），43 条记录（4 条 `_meta` + 4 条 `_derived` + 3 条事件收尾 + 2 条 kill-fallback + 31 用例） |
 | 矩阵耗时 | 2026-11-01T07:24:06.900Z → 07:24:14.081Z（约 7.2 s，含双 Core 启动与 hang/cancel 段） |
 | Core 生命周期 | 两个 Core（TCP seam + 命名管道）由驱动持有，测试后 SIGTERM 收敛；两次 8s 未退出走了 `taskkill /F /T` 兜底（NDJSON `_core-kill-fallback`），复核 PID 53536 / 48076 已不存在、无 `xdownload-core-host` 孤儿进程、49611/49620 端口已回收 |
 
