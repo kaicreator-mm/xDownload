@@ -121,7 +121,23 @@ export const ARTIFACTS: readonly ArtifactSpec[] = [
     outDir: 'core',
     outFile: 'xdownload-core-host.js',
     platform: 'node',
-    allowlist: ['xdownload-core-host.js'],
+    // #287 T02-R1 (DAG_AMENDMENT_R2A): the packaged Core composes the one K
+    // Domain App at runtime and the frozen sealed K bytes are read from
+    // paths relative to the bundle file. The nine files are admitted by
+    // EXACT literal pattern only (no globs) — the same discipline as the
+    // vendored runtime declarations.
+    allowlist: [
+      'xdownload-core-host.js',
+      'payloads/dist/kernel-mechanism-v1.mjs',
+      'payloads/dist/standard-sdk-v1.mjs',
+      'payloads/dist/workflow-router.mjs',
+      'payloads/SHA256SUMS',
+      'business-download.mjs',
+      'capability-acquisition-stub.mjs',
+      's4-hls-vod-business.mjs',
+      's4-hls-vod-capability.mjs',
+      'generated/acorn.js',
+    ],
     withShebang: false,
   },
   {
