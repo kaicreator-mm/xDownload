@@ -7,7 +7,7 @@ triage_issue: 284
 successor_issue: 285
 source_baseline: version/v0.2.1@56f9e16d8d7afb29b2a493c07bdf4f886a0bf445
 amended_by: "owner direction (2026-11-01 session), recorded in #284 issuecomment-6553144081"
-frozen_reference: "docs/implementation/v0.2.1/TASK_DAG_R0.md + TASK_PACKS_R0.md @ planning/v0.2.1-user-release@1cffd6445308ac78fa2f9e4489af579f0deb32ef (blob c0cbed29ffa1a47cad5aed288aa262dd0dd549a8)"
+frozen_reference: "docs/implementation/v0.2.1/TASK_DAG_R0.md + TASK_PACKS_R0.md @ planning/v0.2.1-user-release@1cffd6445308ac78fa2f9e4489af579f0deb32ef (Task Packs blob c0cbed29ffa1a47cad5aed288aa262dd0dd549a8; same-commit DAG blob ecb2e31088c9e3895fad042401f737938c37628a)"
 frozen_files_edited: NONE
 tasks_added: 1
 tasks_reopened: 0
