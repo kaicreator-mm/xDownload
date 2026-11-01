@@ -112,6 +112,28 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
   // Evidence lives OUTSIDE the dist tree (as it does in the repo:
   // build/evidence next to, never inside, the emitted packages).
   const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xevid-'));
+  // #284/#285 T09-R1 desktop artifact: the fixture mirrors the composed
+  // Electron layout (renamed exe, resources/app bundles, vendored koffi
+  // anchored under resources/app/node_modules).
+  const desktopFixtureFiles: readonly [string, string][] = [
+    ['desktop/xdownload.exe', 'faux-electron-binary-bytes'],
+    ['desktop/version', '45.1.0\n'],
+    ['desktop/LICENSE', 'MIT-style license stub\n'],
+    ['desktop/LICENSES.chromium.html', '<html>licenses</html>\n'],
+    ['desktop/icudtl.dat', 'faux-icu-bytes'],
+    ['desktop/resources.pak', 'faux-pak-bytes'],
+    ['desktop/snapshot_blob.bin', 'faux-snapshot-bytes'],
+    ['desktop/v8_context_snapshot.bin', 'faux-snapshot-bytes'],
+    ['desktop/vk_swiftshader_icd.json', '{}\n'],
+    ['desktop/chrome_100_percent.pak', 'faux-pak-bytes'],
+    ['desktop/locales/en-US.pak', 'faux-locale-bytes'],
+    ['desktop/resources/app/package.json', '{"name":"@xdownload/desktop-shell"}\n'],
+    ['desktop/resources/app/main/main.cjs', BUNDLE_STUB],
+    ['desktop/resources/app/preload/preload.cjs', BUNDLE_STUB],
+    ['desktop/resources/app/renderer/renderer.js', BUNDLE_STUB],
+    ['desktop/resources/app/renderer/index.html', '<!doctype html>\n'],
+    ['desktop/resources/app/renderer/styles.css', 'html{}\n'],
+  ];
   const files: readonly [string, string][] = [
     ['cli/xdownload-cli.js', BUNDLE_STUB],
     ['cli/bin/xdownload', LAUNCHER_STUB],
@@ -127,6 +149,11 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
         relative.endsWith('.node') ? 'faux-binary-bytes' : `vendored stub ${relative}\n`,
       ]),
     ),
+    ...desktopFixtureFiles,
+    ...vendoredRuntimeDistPaths('desktop').map((relative): [string, string] => [
+      `desktop/${relative}`,
+      relative.endsWith('.node') ? 'faux-binary-bytes' : `vendored stub ${relative}\n`,
+    ]),
     [
       'extension/manifest.json',
       JSON.stringify({
@@ -163,7 +190,7 @@ function writeDistFixture(options: FixtureOptions = {}): { distRoot: string; evi
   );
   const identityDir = path.join(distRoot, 'identity');
   fs.mkdirSync(identityDir, { recursive: true });
-  for (const id of ['cli', 'core', 'extension', 'native-host']) {
+  for (const id of ['cli', 'core', 'desktop', 'extension', 'native-host']) {
     const identity = buildIdentity({
       artifact: id,
       artifactDir: path.join(distRoot, id),
@@ -338,6 +365,25 @@ describe('package-content audit over a fixture dist', () => {
         );
       },
       rule: 'markdown',
+    },
+    {
+      name: 'the unrenamed electron.exe ships in the desktop artifact',
+      mutate: (root) => {
+        fs.writeFileSync(path.join(root, 'desktop', 'electron.exe'), 'faux-binary-bytes', 'utf8');
+      },
+      rule: 'artifact-allowlist',
+    },
+    {
+      name: 'the default app asar ships in the desktop artifact',
+      mutate: (root) => {
+        fs.mkdirSync(path.join(root, 'desktop', 'resources'), { recursive: true });
+        fs.writeFileSync(
+          path.join(root, 'desktop', 'resources', 'default_app.asar'),
+          'faux-asar-bytes',
+          'utf8',
+        );
+      },
+      rule: 'artifact-allowlist',
     },
     {
       name: 'an identity is tampered with',

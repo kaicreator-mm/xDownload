@@ -55,6 +55,7 @@ import {
 } from '../build/identity.ts';
 import {
   ARTIFACTS,
+  CONTENT_VERSION,
   REPO_ROOT,
   captureToolchain,
   VENDORED_NATIVE_RUNTIME,
@@ -64,7 +65,9 @@ import esbuild from 'esbuild';
 
 /** The exact tuple this installer claims — never widened, never guessed. */
 export const INSTALLER_TUPLE = { os: 'windows', arch: 'x64' } as const;
-export const INSTALLER_CONTENT_VERSION = '0.2.1';
+// The shipped content version is the one shared declaration (build-config.ts)
+// so the installer version byte can never drift from the desktop app's.
+export const INSTALLER_CONTENT_VERSION = CONTENT_VERSION;
 
 const SCRIPTS_SOURCE_DIR = path.join(REPO_ROOT, 'scripts', 'install-host');
 const USER_SCRIPTS = ['install.cmd', 'uninstall.cmd', 'status.cmd', 'verify.cmd'] as const;
@@ -113,46 +116,64 @@ interface ZipEntry {
 }
 
 /**
- * Deterministic STORE-mode zip writer: entries sorted by name, fixed
+ * Deterministic STORE-mode zip writer core: entries sorted by name, fixed
  * timestamps, no extra fields, no data descriptors. Store mode keeps the
  * archive a transparent container of already-verified bytes (the payload is
  * hashed anyway; compression would only re-order bytes behind a second
  * codec).
+ *
+ * The desktop artifact makes the archive several hundred megabytes, so the
+ * shipped composition streams through a file descriptor sink; the in-memory
+ * export below reuses this exact core and stays byte-identical.
  */
-export function buildDeterministicZip(entries: readonly ZipEntry[]): Buffer {
-  const chunks: Buffer[] = [];
+/**
+ * One archive member: the name is known up front; the bytes are materialized
+ * lazily so a several-hundred-megabyte payload never holds more than one
+ * file buffer at a time.
+ */
+interface ZipEntrySource {
+  readonly name: string;
+  readBytes(): Buffer;
+}
+
+function writeDeterministicZip(
+  entries: readonly ZipEntrySource[],
+  sink: (bytes: Buffer) => void,
+): void {
+  const sorted = [...entries].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const central: Buffer[] = [];
   let offset = 0;
-  const sorted = [...entries].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   for (const entry of sorted) {
+    const entryBytes = entry.readBytes();
     const nameBytes = Buffer.from(entry.name, 'utf8');
-    const crc = crc32(entry.bytes);
+    const crc = crc32(entryBytes);
     const local = Buffer.alloc(30 + nameBytes.length);
     local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(20, 4);
     local.writeUInt16LE(0, 6);
     local.writeUInt16LE(0, 8);
     local.writeUInt16LE(DOS_TIME, 10);
     local.writeUInt16LE(DOS_DATE, 12);
     local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(entry.bytes.length, 18);
-    local.writeUInt32LE(entry.bytes.length, 22);
+    local.writeUInt32LE(entryBytes.length, 18);
+    local.writeUInt32LE(entryBytes.length, 22);
     local.writeUInt16LE(nameBytes.length, 26);
     local.writeUInt16LE(0, 28);
     nameBytes.copy(local, 30);
-    chunks.push(local, entry.bytes);
+    sink(local);
+    sink(entryBytes);
 
     const centralEntry = Buffer.alloc(46 + nameBytes.length);
     centralEntry.writeUInt32LE(0x02014b50, 0);
-    centralEntry.writeUInt16LE(20, 4);
-    centralEntry.writeUInt16LE(20, 6);
-    centralEntry.writeUInt16LE(0, 8);
+    centralEntry.writeUInt32LE(20, 4);
+    centralEntry.writeUInt32LE(20, 6);
+    centralEntry.writeUInt32LE(0, 8);
     centralEntry.writeUInt16LE(0, 10);
     centralEntry.writeUInt16LE(DOS_TIME, 12);
     centralEntry.writeUInt16LE(DOS_DATE, 14);
     centralEntry.writeUInt32LE(crc, 16);
-    centralEntry.writeUInt32LE(entry.bytes.length, 20);
-    centralEntry.writeUInt32LE(entry.bytes.length, 24);
+    centralEntry.writeUInt32LE(entryBytes.length, 20);
+    centralEntry.writeUInt32LE(entryBytes.length, 24);
     centralEntry.writeUInt16LE(nameBytes.length, 28);
     centralEntry.writeUInt16LE(0, 30);
     centralEntry.writeUInt16LE(0, 32);
@@ -163,7 +184,7 @@ export function buildDeterministicZip(entries: readonly ZipEntry[]): Buffer {
     nameBytes.copy(centralEntry, 46);
     central.push(centralEntry);
 
-    offset += local.length + entry.bytes.length;
+    offset += local.length + entryBytes.length;
   }
   const centralSize = central.reduce((total, entry) => total + entry.length, 0);
   const eocd = Buffer.alloc(22);
@@ -175,10 +196,66 @@ export function buildDeterministicZip(entries: readonly ZipEntry[]): Buffer {
   eocd.writeUInt32LE(centralSize, 12);
   eocd.writeUInt32LE(offset, 16);
   eocd.writeUInt16LE(0, 20);
-  return Buffer.concat([...chunks, ...central, eocd]);
+  for (const centralEntry of central) {
+    sink(centralEntry);
+  }
+  sink(eocd);
+}
+
+export function buildDeterministicZip(entries: readonly ZipEntry[]): Buffer {
+  const chunks: Buffer[] = [];
+  writeDeterministicZip(
+    entries.map((entry) => ({ name: entry.name, readBytes: () => entry.bytes })),
+    (bytes) => chunks.push(bytes),
+  );
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Stream the same deterministic archive straight to disk, reading one file
+ * at a time (the desktop payload is hundreds of megabytes); the emitted
+ * bytes are identical to buildDeterministicZip's.
+ */
+function writeDeterministicZipToFile(
+  entries: readonly { readonly name: string; readonly fullPath: string }[],
+  zipPath: string,
+): void {
+  const fd = fs.openSync(zipPath, 'w');
+  try {
+    writeDeterministicZip(
+      entries.map((entry) => ({
+        name: entry.name,
+        readBytes: () => fs.readFileSync(entry.fullPath),
+      })),
+      (bytes) => {
+        let written = 0;
+        while (written < bytes.length) {
+          written += fs.writeSync(fd, bytes, written);
+        }
+      },
+    );
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 // -------------------------------------------------------------- composition
+
+/** SHA-256 over a file read in bounded chunks (archives are hundreds of MB). */
+function sha256FileStreaming(full: string): string {
+  const hash = createHash('sha256');
+  const fd = fs.openSync(full, 'r');
+  try {
+    const buffer = Buffer.alloc(8 * 1024 * 1024);
+    let read: number;
+    while ((read = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+      hash.update(buffer.subarray(0, read));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest('hex');
+}
 
 function listFilesRecursive(root: string): readonly string[] {
   const found: string[] = [];
@@ -390,15 +467,17 @@ export function composeInstaller(options: ComposeOptions): ComposeResult {
 
   // Deterministic archive of the whole installer directory, wrapped in the
   // installer directory name so extraction yields exactly one folder.
+  // Written STREAMING, one file buffer at a time (the desktop payload is
+  // hundreds of megabytes); the byte set is identical to the in-memory
+  // writer's.
   const wrapPrefix = `${installerDirName(version)}/`;
-  const zipEntries: ZipEntry[] = listFilesRecursive(installerRoot).map((file) => ({
+  const zipSources = listFilesRecursive(installerRoot).map((file) => ({
     name: `${wrapPrefix}${path.relative(installerRoot, file).split(path.sep).join('/')}`,
-    bytes: fs.readFileSync(file),
+    fullPath: file,
   }));
   const zipPath = path.join(outDir, installerZipName(version));
-  const zipBytes = buildDeterministicZip(zipEntries);
-  fs.writeFileSync(zipPath, zipBytes);
-  const zipSha256 = createHash('sha256').update(zipBytes).digest('hex');
+  writeDeterministicZipToFile(zipSources, zipPath);
+  const zipSha256 = sha256FileStreaming(zipPath);
 
   return { installerRoot, zipPath, identity, payloadContentHashes, zipSha256 };
 }

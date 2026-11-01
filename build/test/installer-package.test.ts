@@ -133,6 +133,7 @@ describe.skipIf(!IS_WIN32)(
         expect(Object.keys(result.payloadContentHashes).sort()).toEqual([
           'cli',
           'core',
+          'desktop',
           'extension',
           'native-host',
         ]);
@@ -203,7 +204,7 @@ describe.skipIf(!IS_WIN32)(
           fs.readFileSync(path.join(INSTALLER_ROOT(), 'installer-identity.json'), 'utf8'),
         ) as { generatedAt: string };
         expect(identity.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/u);
-        for (const artifact of ['cli', 'core', 'extension', 'native-host']) {
+        for (const artifact of ['cli', 'core', 'desktop', 'extension', 'native-host']) {
           const sidecar = JSON.parse(
             fs.readFileSync(
               path.join(INSTALLER_ROOT(), 'payload', 'identity', `${artifact}.json`),

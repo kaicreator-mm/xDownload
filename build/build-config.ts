@@ -33,6 +33,13 @@ export const REPO_ROOT: string = path.resolve(import.meta.dirname, '..');
 /** Default build output directory (git-ignored). */
 export const DEFAULT_DIST_DIR = 'dist';
 
+/**
+ * The v0.2.1 content version shared by the installer and the packaged
+ * desktop app sidecar (`resources/app/package.json`). One declaration so the
+ * two shipped version bytes can never drift apart.
+ */
+export const CONTENT_VERSION = '0.2.1';
+
 /** Exact extension-origin pattern the broker itself enforces (T010). */
 export const EXTENSION_ORIGIN_PATTERN = /^chrome-extension:\/\/[a-p]{32}\/$/;
 
@@ -81,7 +88,7 @@ export const NATIVE_HOST_NAME = 'com.xdownload.broker';
 
 /** A shippable artifact: entry, output and the content rules it must obey. */
 export interface ArtifactSpec {
-  readonly id: 'cli' | 'core' | 'extension' | 'native-host';
+  readonly id: 'cli' | 'core' | 'desktop' | 'extension' | 'native-host';
   readonly entryPoint: string;
   readonly outDir: string;
   readonly outFile: string;
@@ -115,6 +122,34 @@ export const ARTIFACTS: readonly ArtifactSpec[] = [
     outFile: 'xdownload-core-host.js',
     platform: 'node',
     allowlist: ['xdownload-core-host.js'],
+    withShebang: false,
+  },
+  {
+    id: 'desktop',
+    // The desktop artifact is NOT a single-bundle artifact: package.ts owns a
+    // dedicated build path mirroring apps/desktop-shell/test/smoke/
+    // build-shell.mjs (CJS main/preload + IIFE renderer under
+    // resources/app/). The spec entry documents the main entry for identity
+    // provenance; allowlist patterns describe the composed Electron app
+    // layout relative to dist/desktop/.
+    entryPoint: 'apps/desktop-shell/src/main/main.ts',
+    outDir: 'desktop',
+    outFile: 'resources/app/main/main.cjs',
+    platform: 'node',
+    allowlist: [
+      'xdownload.exe',
+      '*.dll',
+      '*.pak',
+      'icudtl.dat',
+      'snapshot_blob.bin',
+      'v8_context_snapshot.bin',
+      'vk_swiftshader_icd.json',
+      'version',
+      'LICENSE',
+      'LICENSES.chromium.html',
+      'locales/*',
+      'resources/app/**',
+    ],
     withShebang: false,
   },
   {
@@ -178,7 +213,12 @@ export const DIST_TOP_LEVEL_ALLOWLIST: readonly string[] = [
  * node_modules sibling `@koromix/koffi-win32-x64`.
  */
 /** Node artifacts whose surface can exercise the Windows pipe transport. */
-const VENDORED_RUNTIME_ARTIFACTS: readonly ArtifactSpec['id'][] = ['cli', 'core', 'native-host'];
+const VENDORED_RUNTIME_ARTIFACTS: readonly ArtifactSpec['id'][] = [
+  'cli',
+  'core',
+  'desktop',
+  'native-host',
+];
 
 export const VENDORED_NATIVE_RUNTIME = {
   /** The only platform tuple whose native runtime is packaged (selected platform). */
@@ -206,6 +246,17 @@ export const VENDORED_NATIVE_RUNTIME = {
 } as const;
 
 /**
+ * Per-artifact anchor of the vendored node_modules tree, relative to the
+ * artifact outDir. The desktop artifact's runtime resolves `require('koffi')`
+ * from its bundled app dir (Electron's resources/app), so its vendored
+ * runtime anchors at resources/app/node_modules instead of <outDir>/
+ * node_modules.
+ */
+const VENDORED_RUNTIME_ROOTS: Readonly<Partial<Record<ArtifactSpec['id'], string>>> = {
+  desktop: 'resources/app',
+};
+
+/**
  * The exact dist-relative paths the vendored runtime occupies inside one
  * artifact. The audit admits exactly these — and nothing else under
  * node_modules — so emitted reality and declared content rules cannot drift.
@@ -214,10 +265,51 @@ export function vendoredRuntimeDistPaths(artifactId: ArtifactSpec['id']): readon
   if (!VENDORED_NATIVE_RUNTIME.artifacts.includes(artifactId)) {
     return [];
   }
+  const root = VENDORED_RUNTIME_ROOTS[artifactId];
+  const prefix = root === undefined ? '' : `${root}/`;
   return VENDORED_NATIVE_RUNTIME.packages.flatMap((pkg) =>
-    pkg.files.map((file) => `node_modules/${pkg.name}/${file}`),
+    pkg.files.map((file) => `${prefix}node_modules/${pkg.name}/${file}`),
   );
 }
+
+/**
+ * #284/#285 T09-R1 desktop artifact: the locked Electron runtime the packaged
+ * desktop shell executes on. The bytes are vendored VERBATIM from the
+ * installed `apps/desktop-shell` devDependency (`node_modules/electron/dist`)
+ * on the selected tuple only — never a second platform, never a guessed
+ * version. `version` must stay exactly equal to
+ * apps/desktop-shell/package.json devDependencies.electron; package.ts
+ * enforces that equality fail-closed before any byte is copied (a declared/
+ * installed drift refuses the build, same discipline as koffi above).
+ */
+export const VENDORED_ELECTRON_RUNTIME = {
+  /** The only platform tuple whose Electron runtime is packaged. */
+  platform: 'win32',
+  arch: 'x64',
+  /** Pinned to apps/desktop-shell devDependencies.electron; drift fails. */
+  version: '45.1.0',
+  /** The electron/dist entry is renamed to the product launcher at vendoring. */
+  executable: 'xdownload.exe',
+  /**
+   * Never shipped: electron/dist carries Chromium-wide license texts only as
+   * LICENSE / LICENSES.chromium.html (both admitted by the allowlist); the
+   * default app asar must not ship because it would shadow resources/app.
+   */
+  excludedDistPaths: ['resources/default_app.asar'],
+  /**
+   * Fail-closed presence check: a partial electron dist would boot-fail at
+   * runtime, so the vendoring refuses to emit anything when these are absent
+   * from the installed electron dist tree.
+   */
+  requiredDistPaths: [
+    'electron.exe',
+    'icudtl.dat',
+    'resources.pak',
+    'snapshot_blob.bin',
+    'v8_context_snapshot.bin',
+    'locales',
+  ],
+} as const;
 
 /** Global exclusion rules — development material that must never ship. */
 export const GLOBAL_DENYLIST: readonly string[] = [
