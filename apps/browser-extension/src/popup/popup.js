@@ -1296,5 +1296,34 @@
     void pollV02Status();
   });
 
+  // UI-only navigation. No permission request, worker command or Core change.
+  const modeTabs = Array.from(document.querySelectorAll('.mode-tab'));
+  const modePanels = Array.from(document.querySelectorAll('[data-mode-panel]'));
+  function showMode(mode, shouldFocus) {
+    const recognized = ['page', 'batch', 'collection', 'advanced'];
+    if (!recognized.includes(mode)) return;
+    for (const panel of modePanels) {
+      panel.hidden = panel.dataset.modePanel !== mode;
+    }
+    for (const tab of modeTabs) {
+      const selected = tab.dataset.mode === mode;
+      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && shouldFocus) tab.focus();
+    }
+  }
+  for (const tab of modeTabs) {
+    tab.addEventListener('click', () => showMode(tab.dataset.mode, false));
+    tab.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+      event.preventDefault();
+      const index = modeTabs.indexOf(tab);
+      const offset = event.key === 'ArrowRight' ? 1 : -1;
+      const next = modeTabs[(index + offset + modeTabs.length) % modeTabs.length];
+      if (next) showMode(next.dataset.mode, true);
+    });
+  }
+  showMode('page', false);
+
   void s6RestoreActiveJourney();
 })();
