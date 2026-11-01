@@ -13,21 +13,30 @@ claims: NONE
 
 ## Purpose (additive; the smallest completion of R2's admitted successor)
 
-T02-R1's implementation proved (#291 builder escalation, evidence on the
-issue): wiring `domainApp` into `build/core-host.ts` makes the packaged Core
-bundle read NINE frozen byte files RELATIVE TO THE BUNDLE at runtime — the
-DomainHarness K composition loads its sealed mechanism bytes from the
-workspace tree (`payloads/dist/{kernel-mechanism-v1,standard-sdk-v1,
+T02-R1's implementation proved (#291 builder escalation, recorded verbatim on
+the issue as issuecomment-6554472528, controller decision included): wiring
+`domainApp` into `build/core-host.ts` makes the packaged Core bundle read NINE
+frozen byte files RELATIVE TO THE BUNDLE at runtime — the DomainHarness K
+composition loads its sealed mechanism bytes from the installed tree
+(`payloads/dist/{kernel-mechanism-v1,standard-sdk-v1,
 workflow-router}.mjs`, `payloads/SHA256SUMS`, `business-download.mjs`,
 `capability-acquisition-stub.mjs`, `s4-hls-vod-business.mjs`,
 `s4-hls-vod-capability.mjs`, `generated/acorn.js`). In-process tests resolve
-them inside `packages/**`, so the seam was invisible until the installed-path
+them inside the workspace, so the seam was invisible until the installed-path
 smoke; the packaged `dist/core` lacks them and the Core fails to boot with
 `CORE_COMPOSITION_FAILED` (ENOENT), making #287's acceptance unreachable and
 turning the packaged-core suites (`build/test/real-path-s2.test.ts` et al.)
 red. Shipping frozen bytes the K already self-verifies (SHA256SUMS) is
 packaging work, not a semantic change; R2's write set
 (`build/core-host.ts; build/test/**`) cannot express it.
+
+Source-of-record for the nine files (fail-closed resolution targets): eight
+are git-tracked under `packages/download-domain-app/src/{business,integrations}
+/**`; the ninth, `generated/acorn.js`, resolves from the lockfile-pinned
+vendored SDK install `packages/download-domain-app/node_modules/
+@kaicreator/domain-harness-build/dist/generated/acorn.js` (the SDK tarball's
+own dist; sha256 pinned by the K's BUILD_PARSER_PIN self-check) — the same
+installed-tree vendoring class as koffi/Electron.
 
 ## Write-set completion
 
@@ -53,6 +62,9 @@ unit suite (including the packaged-core suites) is green.
 ## Amendment rules
 
 Merges to `version/v0.2.1` BEFORE the packaging-side source write. The T02-R1
-claim (issuecomment-6553877360) covers the completed write set; no new claim
-is required, but the builder must record this amendment in the delivery.
-Frozen Product/L2/DAG untouched; any further change needs a new amendment.
+claim (issuecomment-6553877360) was taken against R2's scope; THIS amendment
+is the recorded additive completion of that scope, authorized by the
+escalation + controller decision recorded on #291 (issuecomment-6554472528)
+under the #287 admission lineage — no new claim key is opened, and the
+builder must cite this amendment in the delivery. Frozen Product/L2/DAG
+untouched; any further change needs a new amendment.
