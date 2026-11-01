@@ -1297,8 +1297,8 @@
   });
 
   // UI-only navigation. No permission request, worker command or Core change.
-  const modeTabs = Array.from(document.querySelectorAll('.mode-tab'));
-  const modePanels = Array.from(document.querySelectorAll('[data-mode-panel]'));
+  const modeTabs = typeof document.querySelectorAll === 'function' ? Array.from(document.querySelectorAll('.mode-tab')) : [];
+  const modePanels = typeof document.querySelectorAll === 'function' ? Array.from(document.querySelectorAll('[data-mode-panel]')) : [];
   function showMode(mode, shouldFocus) {
     const recognized = ['page', 'batch', 'collection', 'advanced'];
     if (!recognized.includes(mode)) return;
