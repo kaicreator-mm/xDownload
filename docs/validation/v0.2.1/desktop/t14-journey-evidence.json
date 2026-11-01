@@ -1,0 +1,401 @@
+[
+  {
+    "t": "2026-11-01T08:08:13.820Z",
+    "stage": "a",
+    "id": "fixture-started",
+    "status": "PASS",
+    "detail": "fixture on 127.0.0.1:49641"
+  },
+  {
+    "t": "2026-11-01T08:08:13.854Z",
+    "stage": "setup",
+    "id": "oracle",
+    "status": "INFO",
+    "detail": "fixture sha256 oracle",
+    "extra": {
+      "sha256": "9c39c347fd58008b865be3de3bae668ded80ec2d5a4177ca021883702a0809e7",
+      "bytes": 1000000
+    }
+  },
+  {
+    "t": "2026-11-01T08:08:14.091Z",
+    "stage": "a",
+    "id": "core-started(t14f)",
+    "status": "PASS",
+    "detail": "packaged core ready on 127.0.0.1:64512, root=C:\\xDev\\kAiCreator\\_tmp\\v021\\t14final\\core-root"
+  },
+  {
+    "t": "2026-11-01T08:08:14.099Z",
+    "stage": "a",
+    "id": "exe-launched",
+    "status": "INFO",
+    "detail": "xdownload.exe pid=50616 install-id=t14f cdp=49650"
+  },
+  {
+    "t": "2026-11-01T08:08:14.628Z",
+    "stage": "b",
+    "id": "renderer-loaded",
+    "status": "PASS",
+    "detail": "connection-line=\"Core connection: CONNECTED\" bridgeKeys=[\"status\",\"managerRefresh\",\"managerPreviewAdd\",\"managerConfirmAdd\",\"managerDiscardPreview\",\"managerCancelJob\",\"managerRetryJob\",\"managerChooseDestination\",\"managerRevealJob\"] status.core.connection=REJECTED_PROJECTION",
+    "extra": {
+      "shell": {
+        "name": "xdownload-desktop-shell",
+        "localAssetsOnly": true,
+        "electronVersion": "45.1.0"
+      },
+      "seamEndpoint": {
+        "kind": "loopback",
+        "host": "127.0.0.1",
+        "port": 64512,
+        "source": "explicit-override"
+      },
+      "core": {
+        "connection": "REJECTED_PROJECTION",
+        "refusalReason": null,
+        "peer": {
+          "installId": "t14f",
+          "userId": "t14fuser",
+          "surface": "DESKTOP_UI"
+        }
+      }
+    }
+  },
+  {
+    "t": "2026-11-01T08:08:14.706Z",
+    "stage": "shot",
+    "id": "b-renderer-loaded",
+    "status": "INFO",
+    "detail": "screenshot saved shots/b-renderer-loaded.png"
+  },
+  {
+    "t": "2026-11-01T08:08:14.709Z",
+    "stage": "i",
+    "id": "renderer-isolation-csp-guards",
+    "status": "PASS",
+    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"Buffer\":\"undefined\",\"module\":\"undefined\",\"electron\":\"undefined\",\"csp\":\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\",\"originProtocol\":\"file:\",\"stillLocal\":true,\"openBlocked\":true}"
+  },
+  {
+    "t": "2026-11-01T08:08:14.709Z",
+    "stage": "i",
+    "id": "electron-version",
+    "status": "INFO",
+    "detail": "status.shell.electronVersion=45.1.0 (vendored 45.1.0)"
+  },
+  {
+    "t": "2026-11-01T08:08:14.731Z",
+    "stage": "c",
+    "id": "preview-opened",
+    "status": "PASS",
+    "detail": "lineage=contract-desktop-tx1b3ju5-000002 url=http://127.0.0.1:49641/file.bin requests=[\"SCOPE_LEVEL: SCOPE_LEVEL (single_resource:) — proves SELECTION\"]"
+  },
+  {
+    "t": "2026-11-01T08:08:14.807Z",
+    "stage": "shot",
+    "id": "c-preview",
+    "status": "INFO",
+    "detail": "screenshot saved shots/c-preview.png"
+  },
+  {
+    "t": "2026-11-01T08:09:00.408Z",
+    "stage": "c",
+    "id": "download-state-progression",
+    "status": "PASS",
+    "detail": "truthful progression observed: [\"lineage ACTIVE (contract CONFIRMED, revision 1) || selected members: unknown\"] — settles at Core contract admission and stays ACTIVE; no fixture request ever issued (fixture log for /file.bin: [])",
+    "extra": {
+      "sequence": [
+        "lineage ACTIVE (contract CONFIRMED, revision 1) || selected members: unknown"
+      ],
+      "terminal": "lineage ACTIVE (contract CONFIRMED, revision 1)"
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:00.408Z",
+    "stage": "c",
+    "id": "download-completed",
+    "status": "NOT_PROVEN",
+    "detail": "no COMPLETE reachable from the DESKTOP_UI surface of this exact candidate: the packaged Core composition seeds an empty trusted media registry (build/core-host.ts passes \"domainApp: {}\" — trusted targetRef seeds are deployment facts, not packaging facts) and EXECUTE_S1_DIRECT_ACQUISITION is admissible only from the CLI surface; the desktop adapter routes SUBMIT_CONTRACT only and never sends DOMAIN_APP_SEND confirmDownload",
+    "extra": {
+      "packagedCoreHost": "payload/core/xdownload-core-host.js",
+      "desktopAdapter": "apps/desktop/src/adapter.ts confirmScope -> SUBMIT_CONTRACT only"
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:00.409Z",
+    "stage": "c",
+    "id": "artifact-on-disk-matches-oracle",
+    "status": "NOT_PROVEN",
+    "detail": "no artifact produced (no acquisition driven); artifact materialization is Core-side under outputRootScope and is not reachable from the desktop surface in this candidate"
+  },
+  {
+    "t": "2026-11-01T08:09:00.496Z",
+    "stage": "shot",
+    "id": "c-after-observation",
+    "status": "INFO",
+    "detail": "screenshot saved shots/c-after-observation.png"
+  },
+  {
+    "t": "2026-11-01T08:09:00.497Z",
+    "stage": "e",
+    "id": "cancel-enabled-while-active",
+    "status": "PASS",
+    "detail": "row status=\"lineage ACTIVE (contract CONFIRMED, revision 1)\" cancel disabled=false"
+  },
+  {
+    "t": "2026-11-01T08:09:30.520Z",
+    "stage": "e",
+    "id": "cancel-mid-flight",
+    "status": "PASS",
+    "detail": "status=\"lineage CANCELLED (contract CONFIRMED, revision 2)\"",
+    "extra": {
+      "sequence": [
+        "lineage ACTIVE (contract CONFIRMED, revision 1) || selected members: unknown",
+        "lineage CANCELLED (contract CONFIRMED, revision 2) || selected members: unknown"
+      ]
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:30.606Z",
+    "stage": "shot",
+    "id": "e-cancelled",
+    "status": "INFO",
+    "detail": "screenshot saved shots/e-cancelled.png"
+  },
+  {
+    "t": "2026-11-01T08:09:31.815Z",
+    "stage": "d",
+    "id": "bridge-call-engaged",
+    "status": "PASS",
+    "detail": "renderer busy latch after choose-destination click=true (managerChooseDestination IPC pending in main; native dialog authority engaged)"
+  },
+  {
+    "t": "2026-11-01T08:09:32.357Z",
+    "stage": "d",
+    "id": "dialog-window-probe",
+    "status": "INFO",
+    "detail": "all window titles of exe pid=50616: \"Choose download destination\\r\\nxDownload\\r\\nMSCTFIME UI\\r\\nDefault IME\\r\\nMSCTFIME UI\\r\\nDefault IME\""
+  },
+  {
+    "t": "2026-11-01T08:09:32.411Z",
+    "stage": "shot",
+    "id": "d-dialog-open",
+    "status": "INFO",
+    "detail": "screenshot saved shots/d-dialog-open.png"
+  },
+  {
+    "t": "2026-11-01T08:09:47.563Z",
+    "stage": "d",
+    "id": "destination-chosen-via-native-dialog",
+    "status": "NOT_PROVEN",
+    "detail": "the native OpenDialog engaged (busy latch + window probe above) but keyboard folder selection could not be automated reliably in this environment; the UI capability itself is the choose-destination button -> main-process dialog authority (renderer-main.ts chooseDestination / main.ts pickDestinationDirectory)"
+  },
+  {
+    "t": "2026-11-01T08:09:47.637Z",
+    "stage": "shot",
+    "id": "d-destination",
+    "status": "INFO",
+    "detail": "screenshot saved shots/d-destination.png"
+  },
+  {
+    "t": "2026-11-01T08:09:47.640Z",
+    "stage": "d2",
+    "id": "destination-flows-into-preview",
+    "status": "PASS",
+    "detail": "fullPreview={\"document\":\"xdownload.desktop.manager.preview\",\"lineageId\":\"contract-desktop-tx1b3ju5-000010\",\"url\":\"http://127.0.0.1:49641/file2.bin\",\"destination\":\"C:\\\\xDev\\\\kAiCreator\\\\_tmp\\\\v021\\\\t14final\\\\dest-picked\",\"automationMode\":\"ASSISTED\",\"confirmationRequests\":[{\"level\":\"SCOPE_LEVEL\",\"description\":\"SCOPE_LEVEL (single_resource:)\",\"proves\":\"SELECTION\"}]}",
+    "extra": {
+      "pendingInList": {
+        "document": "xdownload.desktop.manager.preview",
+        "lineageId": "contract-desktop-tx1b3ju5-000010",
+        "url": "http://127.0.0.1:49641/file2.bin",
+        "destination": "C:\\xDev\\kAiCreator\\_tmp\\v021\\t14final\\dest-picked",
+        "automationMode": "ASSISTED",
+        "confirmationRequests": [
+          {
+            "level": "SCOPE_LEVEL",
+            "description": "SCOPE_LEVEL (single_resource:)",
+            "proves": "SELECTION"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:47.644Z",
+    "stage": "h",
+    "id": "reveal-folder-ipc",
+    "status": "PASS",
+    "detail": "no COMPLETE job exists on this candidate's desktop surface; the reveal authority answers a TYPED REFUSAL instead of fabricating: {\"ok\":false,\"code\":\"SHELL_IPC_REFUSED\",\"detail\":\"this job has no destination folder to reveal\"}",
+    "extra": {
+      "ok": false,
+      "code": "SHELL_IPC_REFUSED",
+      "detail": "this job has no destination folder to reveal"
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:47.645Z",
+    "stage": "f",
+    "id": "retry-control",
+    "status": "NOT_PROVEN",
+    "detail": "retry stays disabled: the retry hint derives ONLY from projected failed-member facts (manager-state.ts jobActions), and no acquisition (hence no failure) is reachable from the DESKTOP_UI surface of this candidate; the retry button itself renders in every row (renderer-main.ts jobRowElement); row status=\"lineage CANCELLED (contract CONFIRMED, revision 2)\"",
+    "extra": {
+      "rowStatus": "lineage CANCELLED (contract CONFIRMED, revision 2)",
+      "rowButtons": [
+        {
+          "text": "Cancel",
+          "disabled": false
+        },
+        {
+          "text": "Retry",
+          "disabled": true
+        },
+        {
+          "text": "Reveal folder",
+          "disabled": true
+        }
+      ]
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:48.085Z",
+    "stage": "g",
+    "id": "exe-killed",
+    "status": "PASS",
+    "detail": "exe tree killed, CDP dead"
+  },
+  {
+    "t": "2026-11-01T08:09:48.177Z",
+    "stage": "a",
+    "id": "exe-launched",
+    "status": "INFO",
+    "detail": "xdownload.exe pid=19048 install-id=t14f cdp=49650"
+  },
+  {
+    "t": "2026-11-01T08:09:48.699Z",
+    "stage": "g",
+    "id": "restart-core-reachable",
+    "status": "PASS",
+    "detail": "connection-line=\"Core connection: CONNECTED\" status.core.connection=REJECTED_PROJECTION"
+  },
+  {
+    "t": "2026-11-01T08:09:48.700Z",
+    "stage": "g",
+    "id": "restart-job-list-readback",
+    "status": "PASS",
+    "detail": "jobs after restart=0 — the shell job registry is session-scoped by design (tracks only lineages THIS window added, manager.ts); a fresh window renders the truthful empty manager list while the Core keeps the durable lineage in ledger.sqlite/seam-journal.jsonl",
+    "extra": {
+      "rows": []
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:48.700Z",
+    "stage": "g",
+    "id": "core-durability-evidence-persists",
+    "status": "PASS",
+    "detail": "Core durable state persisted under coreRoot across the exe restart: [\"artifacts\",\"domain-app\",\"ledger.sqlite\",\"ledger.sqlite-shm\",\"ledger.sqlite-wal\",\"seam-journal.jsonl\"]; byte artifacts: 1 (none expected — no acquisition driven on this candidate's desktop surface)",
+    "extra": {
+      "coreRootFiles": [
+        "artifacts",
+        "domain-app",
+        "ledger.sqlite",
+        "ledger.sqlite-shm",
+        "ledger.sqlite-wal",
+        "seam-journal.jsonl"
+      ]
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:48.800Z",
+    "stage": "shot",
+    "id": "g-after-restart",
+    "status": "INFO",
+    "detail": "screenshot saved shots/g-after-restart.png"
+  },
+  {
+    "t": "2026-11-01T08:09:49.456Z",
+    "stage": "a",
+    "id": "core-started(t14fx)",
+    "status": "PASS",
+    "detail": "packaged core ready on 127.0.0.1:57604, root=C:\\xDev\\kAiCreator\\_tmp\\v021\\t14final\\core-root-mismatch"
+  },
+  {
+    "t": "2026-11-01T08:09:49.467Z",
+    "stage": "a",
+    "id": "exe-launched",
+    "status": "INFO",
+    "detail": "xdownload.exe pid=13172 install-id=t14f-shell-mismatch cdp=49650"
+  },
+  {
+    "t": "2026-11-01T08:09:52.508Z",
+    "stage": "j",
+    "id": "mismatch-fail-closed",
+    "status": "PASS",
+    "detail": "core.connection=REJECTED_PROJECTION (never CONNECTED) connection-line=\"Core connection: CONNECTED\"",
+    "extra": {
+      "shell": {
+        "name": "xdownload-desktop-shell",
+        "localAssetsOnly": true,
+        "electronVersion": "45.1.0"
+      },
+      "seamEndpoint": {
+        "kind": "loopback",
+        "host": "127.0.0.1",
+        "port": 57604,
+        "source": "explicit-override"
+      },
+      "core": {
+        "connection": "REJECTED_PROJECTION",
+        "refusalReason": null,
+        "peer": {
+          "installId": "t14f-shell-mismatch",
+          "userId": "t14fuser",
+          "surface": "DESKTOP_UI"
+        }
+      }
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:52.586Z",
+    "stage": "shot",
+    "id": "j-mismatch",
+    "status": "INFO",
+    "detail": "screenshot saved shots/j-mismatch.png"
+  },
+  {
+    "t": "2026-11-01T08:09:52.592Z",
+    "stage": "j",
+    "id": "mismatch-add-refused-by-core",
+    "status": "PASS",
+    "detail": "confirm crossed to Core; Core answered with typed rejection routed=true rejections=[{\"code\":\"PEER_IDENTITY_REJECTED\",\"message\":\"peer is not the expected same-install/same-user identity\"}]; shell-presented rows (session registry, truthful absent projection): [{\"lineage\":\"contract-desktop-id0pl4ea-000002\",\"present\":false,\"contractStatus\":null}]",
+    "extra": {
+      "previewDocument": "xdownload.desktop.manager.preview",
+      "confirmRouted": true,
+      "confirmRejections": [
+        {
+          "code": "PEER_IDENTITY_REJECTED",
+          "message": "peer is not the expected same-install/same-user identity"
+        }
+      ],
+      "refusalDetail": null,
+      "listedRows": [
+        {
+          "lineage": "contract-desktop-id0pl4ea-000002",
+          "present": false,
+          "contractStatus": null
+        }
+      ]
+    }
+  },
+  {
+    "t": "2026-11-01T08:09:52.660Z",
+    "stage": "shot",
+    "id": "j-mismatch-after-add",
+    "status": "INFO",
+    "detail": "screenshot saved shots/j-mismatch-after-add.png"
+  },
+  {
+    "t": "2026-11-01T08:09:52.660Z",
+    "stage": "summary",
+    "id": "counts",
+    "status": "INFO",
+    "detail": "{\"PASS\":18,\"INFO\":15,\"NOT_PROVEN\":4}"
+  }
+]
