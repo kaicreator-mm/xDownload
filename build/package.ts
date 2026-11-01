@@ -227,6 +227,122 @@ function resolveVendoredSources(): Record<string, VendoredSource> {
 }
 
 /**
+ * #287 T02-R1 (DAG_AMENDMENT_R2A): the packaged Core composes the one K
+ * Domain App at runtime, and the frozen sealed K/S/B/C bytes plus the pinned
+ * vendored SDK parser are read from paths relative to the BUNDLE file. The
+ * sources are the git-tracked sealed tree of `packages/download-domain-app`
+ * (eight files) and the lockfile-pinned `@kaicreator/domain-harness-build`
+ * install (the emitted `dist/generated/acorn.js` artifact — the parser self-
+ * checks these exact bytes at runtime, so only the installed package's own
+ * file may ship). Every copy is byte-verbatim; copies happen before identity
+ * hashing, so every vendored byte is covered by the artifact content hash.
+ */
+const SEALED_DOMAIN_APP_SOURCE_ROOT = path.join(REPO_ROOT, 'packages', 'download-domain-app');
+const SEALED_DOMAIN_APP_FROZEN_FILES: readonly {
+  readonly source: string;
+  readonly target: string;
+}[] = [
+  {
+    source: 'src/business/payloads/dist/kernel-mechanism-v1.mjs',
+    target: 'payloads/dist/kernel-mechanism-v1.mjs',
+  },
+  {
+    source: 'src/business/payloads/dist/standard-sdk-v1.mjs',
+    target: 'payloads/dist/standard-sdk-v1.mjs',
+  },
+  {
+    source: 'src/business/payloads/dist/workflow-router.mjs',
+    target: 'payloads/dist/workflow-router.mjs',
+  },
+  {
+    source: 'src/business/payloads/SHA256SUMS',
+    target: 'payloads/SHA256SUMS',
+  },
+  {
+    source: 'src/business/business-download.mjs',
+    target: 'business-download.mjs',
+  },
+  {
+    source: 'src/business/capability-acquisition-stub.mjs',
+    target: 'capability-acquisition-stub.mjs',
+  },
+  {
+    source: 'src/integrations/s4-hls-vod-business.mjs',
+    target: 's4-hls-vod-business.mjs',
+  },
+  {
+    source: 'src/integrations/s4-hls-vod-capability.mjs',
+    target: 's4-hls-vod-capability.mjs',
+  },
+];
+
+/**
+ * Resolve the installed `@kaicreator/domain-harness-build` package the frozen
+ * composition consumes, fail-closed: the declared dependency of
+ * `packages/download-domain-app` and the installed package version must be
+ * exactly equal (same drift discipline as the koffi/electron vendoring), and
+ * the emitted parser artifact must physically exist — the pin is meaningless
+ * without the build.
+ */
+function resolveVendoredParserPath(): string {
+  const domainAppPackage = JSON.parse(
+    fs.readFileSync(path.join(SEALED_DOMAIN_APP_SOURCE_ROOT, 'package.json'), 'utf8'),
+  ) as { dependencies?: Record<string, unknown> };
+  const declared = domainAppPackage.dependencies?.['@kaicreator/domain-harness-build'];
+  const buildPackageDir = path.join(
+    SEALED_DOMAIN_APP_SOURCE_ROOT,
+    'node_modules',
+    '@kaicreator',
+    'domain-harness-build',
+  );
+  const buildPackage = JSON.parse(
+    fs.readFileSync(path.join(buildPackageDir, 'package.json'), 'utf8'),
+  ) as { version?: unknown };
+  if (declared === undefined || buildPackage.version !== declared) {
+    throw new Error(
+      `sealed Domain App runtime drift: @kaicreator/domain-harness-build installed ${String(buildPackage.version)} != declared ${String(declared)} in packages/download-domain-app; re-install from the lockfile before packaging`,
+    );
+  }
+  const parserPath = path.join(buildPackageDir, 'dist', 'generated', 'acorn.js');
+  if (!fs.existsSync(parserPath)) {
+    throw new Error(
+      `sealed Domain App runtime drift: emitted Acorn bytes not found at ${parserPath}; the vendored SDK build is incomplete — re-install from the lockfile before packaging`,
+    );
+  }
+  return parserPath;
+}
+
+function vendorSealedDomainAppRuntime(distDir: string): void {
+  const coreDir = path.join(distDir, 'core');
+  const vendored: string[] = [];
+  for (const file of SEALED_DOMAIN_APP_FROZEN_FILES) {
+    const source = path.join(SEALED_DOMAIN_APP_SOURCE_ROOT, file.source);
+    if (!fs.existsSync(source)) {
+      throw new Error(
+        `sealed Domain App runtime source missing: ${path.join('packages', 'download-domain-app', file.source)}; the frozen sealed tree is incomplete — refusing to package a Core whose K composition would boot-fail`,
+      );
+    }
+    const destination = path.join(coreDir, file.target);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(source, destination);
+    vendored.push(`core/${file.target}`);
+  }
+  const parserTarget = path.join(coreDir, 'generated', 'acorn.js');
+  fs.mkdirSync(path.dirname(parserTarget), { recursive: true });
+  fs.copyFileSync(resolveVendoredParserPath(), parserTarget);
+  vendored.push('core/generated/acorn.js');
+  // Fail closed on any declared-but-absent path after the copy pass.
+  for (const relative of vendored) {
+    if (!fs.existsSync(path.join(distDir, relative))) {
+      throw new Error(`sealed Domain App runtime file missing after copy: ${relative}`);
+    }
+  }
+  process.stdout.write(
+    `package: vendored sealed Domain App runtime (${String(vendored.length)} frozen files) into core\n`,
+  );
+}
+
+/**
  * Vendor the minimal Windows native runtime (koffi + its win32-x64 prebuilt,
  * license included) verbatim into every node artifact that can exercise the
  * named-pipe transport. Files are the exact VENDORED_NATIVE_RUNTIME
@@ -468,6 +584,9 @@ export async function runPackageBuild(distDir: string): Promise<{
   await bundleArtifacts(distDir);
   writeStaticAssets(distDir);
   vendorNativeRuntime(distDir);
+  // #287 T02-R1 (DAG_AMENDMENT_R2A): before the desktop composition so every
+  // vendored byte is in place before the artifact identities are hashed.
+  vendorSealedDomainAppRuntime(distDir);
   await bundleDesktopArtifact(distDir);
   vendorElectronRuntime(distDir);
   const sourceRevision = currentSourceRevision(REPO_ROOT);
