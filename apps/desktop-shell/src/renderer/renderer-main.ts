@@ -48,7 +48,7 @@ let selectedLineage: string | null = null;
 let addOpen = false;
 
 function verifiedComplete(row: ManagerJobRowDocument): boolean {
-  return row.present && row.terminal?.requestFulfillment === 'COMPLETE' &&
+  return row.present && row.terminal !== null && row.terminal.requestFulfillment === 'COMPLETE' &&
     row.terminal.validationSummary.status === 'ALL_PASSED';
 }
 
