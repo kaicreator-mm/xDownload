@@ -1,6 +1,6 @@
 {
-  "matrixVersion": "t019-packaged-windows-pipe-1",
-  "note": "T018 support/NOT_PROVEN matrix (durable data, TEST_MATRIX required output 5), extended by the #T019 packaged-windows-pipe repair: the packages now vendor the minimal koffi win32-x64 runtime and the named-pipe surface is smoke-proven. Statuses: BUILT_AND_SMOKED only where the artifact was actually built AND smoke-proven on the recorded real host with cited PASS evidence; everything else is NOT_PROVEN or BLOCKED — a platform blocker is BLOCKED, never an invented PASS. Platform qualification is owned by T023 on the exact T019 candidate; no entry here implies it. claimType vocabulary: built-and-smoked-on-host | not-proven | blocked.",
+  "matrixVersion": "t09r1-desktop-artifact-1",
+  "note": "T018 support/NOT_PROVEN matrix (durable data, TEST_MATRIX required output 5), extended by the #T019 packaged-windows-pipe repair and the #284/#285 T09-R1 desktop artifact: the packages now vendor the minimal koffi win32-x64 runtime, and the desktop artifact vendors the locked Electron 45.1.0 win32-x64 runtime (electron.exe renamed xdownload.exe) and was smoke-proven as the packaged exe against the packaged Core. Statuses: BUILT_AND_SMOKED only where the artifact was actually built AND smoke-proven on the recorded real host with cited PASS evidence; everything else is NOT_PROVEN or BLOCKED — a platform blocker is BLOCKED, never an invented PASS. Platform qualification is owned by T023 on the exact T019 candidate; no entry here implies it. claimType vocabulary: built-and-smoked-on-host | not-proven | blocked.",
   "exercisedBuildHost": {
     "platform": "win32",
     "form": "windows-11-x64 (Build Host of record for this task)",
@@ -68,18 +68,19 @@
       "claim": "No registration-in-production claim. allowed_origins stays the platform-enforced boundary; unregistered hosts degrade by refusing the session, never simulating one."
     },
     {
-      "id": "desktop-windows-x64-shell-unselected",
+      "id": "desktop-windows-x64-electron-shell",
       "tuple": {
         "os": "windows",
         "arch": "x64",
-        "shell": "none installed",
+        "shell": "electron 45.1.0",
         "surface": "Desktop UI"
       },
-      "artifact": "none",
-      "status": "NOT_PROVEN",
-      "claimType": "not-proven",
-      "reason": "No concrete desktop shell is installed or wired by T018. Per Frozen L2 §6.9/ADR-012/U9 the desktop shell remains replaceable; the desktop adapter is consumed source-pure, no desktop artifact/installer/launcher was produced, and none is claimed.",
-      "claim": "No desktop platform or installer claim."
+      "artifact": "desktop",
+      "status": "BUILT_AND_SMOKED",
+      "claimType": "built-and-smoked-on-host",
+      "evidence": ["windows-desktop-packaged-smoke.json"],
+      "claim": "#284/#285 T09-R1: the desktop artifact packages the frozen T07/T08 shell (zero runtime-source change) under resources/app with the locked Electron 45.1.0 win32-x64 runtime vendored verbatim (electron.exe renamed xdownload.exe, resources/default_app.asar dropped, every vendored byte inside the artifact identity hash) and was smoke-proven on this Windows host from the COMPOSED installer payload only: the packaged exe booted the shell (renderer load, closed frozen IPC bridge, sandboxed isolation, restrictive CSP), connected to the REAL packaged Core host over the loopback seam as a DESKTOP_UI peer (core.connection=REJECTED_PROJECTION, the designed answered-and-refused liveness proof), degraded truthfully to DISCONNECTED with no Core (no crash, no fabricated success), and never claimed CONNECTED against a Core that refused its peer identity (the same-install/same-user PEER_IDENTITY_REJECTED refusal proven at the seam wire).",
+      "scopeNote": "Concern-level evidence only. The exe was exercised through the shell's own --xdownload-smoke verdict channel (hidden window); interactive human use of the visible window, code signing, an updater and per-user shortcut/Start-menu wiring are NOT claimed. The install-binding pipe path (payload install.cmd registration) is covered by the native-host tuple; the desktop smoke used the explicit loopback override, so the exe-over-installed-pipe path is structural (same seam client) but not separately exercised."
     },
     {
       "id": "cli-linux-x64",

@@ -9,8 +9,9 @@ architecture or browser is claimed by this package.
 
 Contents
 --------
-  payload/                     audited build output (cli, core, extension,
-                               native-host, identity/, support-matrix.json)
+  payload/                     audited build output (cli, core, desktop,
+                               extension, native-host, identity/,
+                               support-matrix.json)
   install.cmd                  per-user install (HKCU Native Messaging
                                registration; never elevated, never overwrites)
   uninstall.cmd                per-user uninstall (registration + install files)
@@ -40,6 +41,16 @@ The single Core (one authority per install)
   \\\\.\\pipe\\xdownload-core-<install-id>. The browser native host relays
   both the legacy v1 lanes and the explicit v0.2 seam route
   (DOMAIN_APP_SEND / READ_JOB_PROJECTION) to that same Core.
+
+Desktop (packaged Electron shell)
+---------------------------------
+  After the single Core is running (above), double-click
+  payload\desktop\xdownload.exe to start the desktop shell. It connects to the
+  SAME Core over the install binding's canonical pipe as a DESKTOP_UI peer;
+  it needs no registration and install.cmd does not touch it. Without a
+  running Core the shell still opens and truthfully shows the disconnected
+  state. The packaged runtime is Electron 45.1.0 (Windows x64), renamed from
+  electron.exe; every shipped byte is listed in SHA256SUMS.
 
 Upgrade
 -------
