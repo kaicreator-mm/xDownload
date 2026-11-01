@@ -233,8 +233,17 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
   // REOPENED from durable truth only (fact log + seam journal replay +
   // ledger recovery + S1 intent reconcile), never re-initialized — a second
   // launch over the same root that clobbered durable truth would destroy
-  // exactly the recovery evidence this host exists to protect.
-  const existing = existsSync(join(options.rootDir, 'seam-journal.jsonl'));
+  // exactly the recovery evidence this host exists to protect. Any one of
+  // the layout's durable stores evidences an initialized root; the v0.2
+  // Domain App route log qualifies on its own because a Core that served
+  // only v0.2 traffic never writes the legacy seam journal.
+  const durableEvidence = [
+    'seam-journal.jsonl',
+    'control-facts.jsonl',
+    'ledger.sqlite',
+    'domain-app-route.jsonl',
+  ];
+  const existing = durableEvidence.some((name) => existsSync(join(options.rootDir, name)));
   // #101 R1/F03: Core-internal S1 drive faults surface live on stderr as
   // structured diagnostics (bounded retries, degraded/exhausted health) —
   // a failed driver never disappears into a silent void.
@@ -257,6 +266,15 @@ export async function startCoreHost(options: CoreHostOptions): Promise<StartedCo
     // like S1/S3/S4/S5; injected here because the driver lives in
     // browser-collection-workflow, which depends on core-runtime).
     s6Collection: createS6CollectionDriver(),
+    // #287: the packaged Core IS the single-K Domain App host — the frozen
+    // T02 domainApp option (all defaults: K doc store + route fact log under
+    // the durable rootDir layout, empty trusted media registry) is passed on
+    // BOTH the create and the reopen branch, so v0.2 seam commands reach the
+    // K composition and READ_JOB_PROJECTION serves the real job projection
+    // instead of the T01 fail-closed stubs. Trusted media targetRef seeds are
+    // deployment facts, not packaging facts; an unseeded targetRef settles
+    // as the K's own typed CONTRACT_BINDING_MISMATCH refusal.
+    domainApp: {},
   };
   // The CLI's explicit --pipe-name can only connect when this SAME installed
   // Core hosts the matching OS-verified listener. Enforce platform before
