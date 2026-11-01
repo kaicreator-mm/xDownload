@@ -48,11 +48,19 @@ of the frozen candidate, merge-base verified during the T18 review).
 
 ## 3. Evidence currency
 
-- All PRs' Woodpecker runs executed at their exact heads on the local Docker
-  agent (Node 24.21.0 / pnpm 12.8.1). Known CI incidents and their
+- Every gate's Woodpecker evidence is a SUCCESS run at the gate's FINAL
+  delivered head on the local Docker agent (Node 24.21.0 / pnpm 12.8.1);
+  where an earlier pin existed it is listed (T10: #114 ran at the pre-review
+  head, #115 at the final af146aed). Known CI incidents and their
   resolutions: #117 (prettier on 2 test files), #120/#121 (raw-log EOF blank
   line vs `git diff --check`), #127 (transient suite flake; restart #128
   green). No gate was marked PASS on a failed pipeline.
+- Disclosure: the repository's GitHub Actions `ci:verify` workflow has never
+  been green on this lineage (baseline prettier failures across 21 src
+  files predating v0.2.1; its `pull_request` trigger also only targets
+  version/v0.1.0, so PR checks are push-event echoes). Per project policy
+  GitHub Actions is not a gate for v0.2.1 — the authoritative CI is the
+  local Docker Woodpecker exact-SHA evidence above. Carried to T21.
 - Auditability note (from the T18 review): the local Woodpecker backend does
   not retain logs after completion; the durable audit chain is the in-repo
   EVIDENCE documents + PR merge commits + pipeline status records cited in
