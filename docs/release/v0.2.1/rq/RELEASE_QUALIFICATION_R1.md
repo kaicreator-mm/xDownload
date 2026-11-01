@@ -24,7 +24,7 @@ the stated conditions. No release-blocking P0/P1 is open.
   gate (T12–T16), the packaged-exe smoke, and the hidden runs bind to these
   exact hashes.
 - Freeze integrity re-read: CANDIDATE_FREEZE_R1.md (d8e9ccd lineage) lists
-  the same values; closure VERSION_CLOSURE_R1.md reconciles 16 rows; the
+  the same values; closure VERSION_CLOSURE_R1.md reconciles the task/PR/CI ledger; the
   never-green GitHub Actions baseline is disclosed and is not a gate
   (project policy: local Docker Woodpecker exact-SHA evidence).
 - Hidden validation: HIDDEN_VALIDATION_R1.md — 9/9 adversarial case groups
@@ -70,7 +70,9 @@ the stated conditions. No release-blocking P0/P1 is open.
 2. **T13 popup-level allow-permission positive** (owner click, ≈15 min,
    browser/EVIDENCE.md §9.1) — the single remaining browser-surface gap.
 3. Optional (not READY-blocking, tracked): #289 uninstall cleanliness fix in
-   a successor candidate; T19 hardening notes.
+   a successor candidate; T19 hardening notes; T09-R1 review P2 residuals
+   (packaged-tree debug.log hygiene, zip-header shorthand, cross-platform
+   zip-equality unit test).
 
 ## 4. Not claimed (explicit)
 
