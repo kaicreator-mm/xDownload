@@ -128,6 +128,26 @@ function closeAdd(): void {
   byId('new-download').focus();
 }
 
+/** Keep keyboard focus inside a visible permission/confirmation dialog. */
+function trapDialogTab(event: KeyboardEvent, root: HTMLElement): void {
+  if (event.key !== 'Tab') return;
+  const controls = [...root.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled])',
+  )].filter((element) => !element.hasAttribute('hidden'));
+  if (controls.length === 0) return;
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement;
+  if (event.shiftKey && (active === first || !root.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (active === last || !root.contains(active))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function renderDetails(): void {
   const panel = byId('job-details');
   const current = state.jobs.find((row) => row.lineageId === selectedLineage);
@@ -493,6 +513,7 @@ function wire(): void {
     });
   }
   byId('add-dialog').addEventListener('keydown', (event) => {
+    trapDialogTab(event as KeyboardEvent, byId('add-dialog'));
     if ((event as KeyboardEvent).key === 'Escape' && !state.busy) {
       event.preventDefault();
       closeAdd();
@@ -503,6 +524,7 @@ function wire(): void {
   byId('preview-confirm').addEventListener('click', () => void confirmPreview());
   byId('preview-discard').addEventListener('click', () => void discardPreview());
   byId('preview').addEventListener('keydown', (event) => {
+    trapDialogTab(event as KeyboardEvent, byId('preview'));
     if ((event as KeyboardEvent).key === 'Escape') {
       event.preventDefault();
       void discardPreview();
