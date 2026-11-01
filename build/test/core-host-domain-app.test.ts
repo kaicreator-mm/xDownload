@@ -110,8 +110,7 @@ function confirmedIntent(outputRootScope: string, requestId: string): Record<str
       mediaProfileId: 'BASIC_HLS_VOD_MPEGTS_H264_AAC_V1',
       renditionKey: 'rend-0',
       renditionUri: 'https://media.example.com/vod/media.m3u8',
-      displayedTupleDigest:
-        '0da7cf3f8e1a4f3e9b2c5d6a7f8e9d0c1b2a3948576f5e4d3c2b1a0968574736',
+      displayedTupleDigest: '0da7cf3f8e1a4f3e9b2c5d6a7f8e9d0c1b2a3948576f5e4d3c2b1a0968574736',
       confirmedAt: new Date(now - 1_000).toISOString(),
       expiresAt: new Date(now + 120_000).toISOString(),
     },
@@ -127,7 +126,10 @@ async function waitForTerminalProjection(
   const deadline = Date.now() + timeoutMs;
   let last: SeamFrameResponse | undefined;
   while (Date.now() < deadline) {
-    const response = await roundTrip(host, v02JobQueryFrame(`req-proj-${String(Date.now())}`, lineageId));
+    const response = await roundTrip(
+      host,
+      v02JobQueryFrame(`req-proj-${String(Date.now())}`, lineageId),
+    );
     last = response;
     const status = response.projection?.status;
     if (response.outcome === 'PROJECTION' && (status === 'SUCCEEDED' || status === 'FAILED')) {
@@ -158,7 +160,10 @@ describe('core-host Domain App route (#287 packaged wiring)', () => {
     // ---- create branch: the packaged composition exposes the v0.2 route.
     const host = await startCoreHost(hostOptions(dataRoot));
     try {
-      const send = await roundTrip(host, v02SendFrame('req-host-v02-001', confirmedIntent(outputRoot, 'req-host-v02-001')));
+      const send = await roundTrip(
+        host,
+        v02SendFrame('req-host-v02-001', confirmedIntent(outputRoot, 'req-host-v02-001')),
+      );
       // T01 validation passed (never V02_INTENT_VALIDATOR_UNAVAILABLE) and
       // the route admitted the send into the one K.
       expect(send.outcome).toBe('ACCEPTED');
@@ -176,7 +181,10 @@ describe('core-host Domain App route (#287 packaged wiring)', () => {
 
       // An unclaimed lineage is the truthful typed refusal of the INSTALLED
       // projection provider — not the uninstalled-provider stub.
-      const unknown = await roundTrip(host, v02JobQueryFrame('req-host-v02-unknown', 'lineage-never-claimed'));
+      const unknown = await roundTrip(
+        host,
+        v02JobQueryFrame('req-host-v02-unknown', 'lineage-never-claimed'),
+      );
       expect(unknown.outcome).toBe('REJECTED');
       expect(unknown.diagnostics?.[0]?.code).toBe('JOB_PROJECTION_UNAVAILABLE');
     } finally {
@@ -187,7 +195,10 @@ describe('core-host Domain App route (#287 packaged wiring)', () => {
     const reopened = await startCoreHost(hostOptions(dataRoot));
     try {
       // The durable route facts survive: owner new-k, settled FAILED outcome.
-      const projection = await roundTrip(reopened, v02JobQueryFrame('req-host-v02-reopen', LINEAGE_ID));
+      const projection = await roundTrip(
+        reopened,
+        v02JobQueryFrame('req-host-v02-reopen', LINEAGE_ID),
+      );
       expect(projection.outcome).toBe('PROJECTION');
       expect(projection.projection?.owner).toBe('new-k');
       expect(projection.projection?.status).toBe('FAILED');

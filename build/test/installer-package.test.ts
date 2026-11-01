@@ -166,9 +166,7 @@ describe.skipIf(!IS_WIN32)(
         // (The sealed K composition ships its own frozen checksums manifest
         // at payload/core/payloads/SHA256SUMS — a different apparatus, listed
         // like any other payload byte; #287 T02-R1, DAG_AMENDMENT_R2A.)
-        const subjects = lines.map(
-          (line) => (/^([0-9a-f]{64}) {2}(.+)$/u.exec(line) ?? [])[2],
-        );
+        const subjects = lines.map((line) => (/^([0-9a-f]{64}) {2}(.+)$/u.exec(line) ?? [])[2]);
         expect(subjects).not.toContain('SHA256SUMS');
         expect(subjects).not.toContain('installer-identity.json');
       });
