@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <title>xDownload S2</title>
+    <title>xDownload · 浏览器下载助手</title>
     <style>
       :root { font-family:"Segoe UI",system-ui,sans-serif; font-size:13px; color:#23384f; color-scheme:light; }
       * { box-sizing:border-box; } [hidden] { display:none!important; }
@@ -52,79 +52,68 @@
       <ul id="attachments"></ul></section>
     <section class="mode-panel" data-mode-panel="batch" role="tabpanel" aria-label="批量下载" hidden><h2>批量下载</h2><p class="lead">从当前页面获取经过 Core 冻结的候选文件，选择需要的条目并确认后再启动。若当前页面不支持此流程，按钮不会出现。</p><section id="s5-group" hidden>
       <p class="label">
-        S5 current-page batch: request the Core-frozen member snapshot, pick the batch subset,
-        confirm it, and Core itself downloads every member with truthful per-member and aggregate
-        terminal states (S2 byte delivery is never used for the batch).
+        先从 Core 获取本页可批量处理的候选快照，再勾选所需文件并确认。批量任务的结果由 Core 独立判定。
       </p>
-      <button id="s5-preview" type="button">Preview selected page members</button>
-      <button id="s5-prepare" type="button">Request S5 group admission</button>
+      <button id="s5-preview" type="button">预览本页候选文件</button>
+      <button id="s5-prepare" type="button">准备批量任务</button>
       <div id="s5-preview-result" class="state UNKNOWN" aria-live="polite"></div>
       <div id="s5-batch" hidden>
         <p class="label">
-          Core-frozen members (verbatim Core identities; uncheck any member you do not want).
+          以下是 Core 已确认的候选；可以取消不需要的文件。
         </p>
         <ul id="s5-frozen"></ul>
-        <button id="s5-confirm" type="button">Confirm selected batch members</button>
-        <button id="s5-execute" type="button" disabled>Download confirmed batch</button>
+        <button id="s5-confirm" type="button">确认所选文件</button>
+        <button id="s5-execute" type="button" disabled>下载已确认的文件</button>
         <div id="s5-batch-result" class="state UNKNOWN" aria-live="polite"></div>
       </div>
     </section></section>
     <section class="mode-panel" data-mode-panel="collection" role="tabpanel" aria-label="合集与分页任务" hidden><h2>合集与分页任务</h2><p class="lead">限定合集页码范围，按页面预览并确认最终成员。不会超出用户指定的页面范围。</p><section id="s6-collection" hidden>
       <p class="label">
-        S6 explicit playlist/gallery: name the collection, confirm the exact finite page range, let
-        Core freeze the admission, walk only the declared pages, and confirm the members for the
-        Core batch download. Core itself downloads every confirmed member and renders a truthful
-        coverage terminal (the declared range is the only navigation bound; budget exhaustion is
-        never called a complete collection).
+        填写合集名称与明确的页码范围。系统只处理指定范围，所有文件由 Core 冻结并经用户再次确认；未遍历完整范围时不会误报完成。
       </p>
       <label class="label"
-        >Collection identity (e.g. playlist/my-list)
+        >合集标识（例如 playlist/my-list）
         <input id="s6-identity" type="text" placeholder="playlist/my-list" />
       </label>
       <label class="label"
-        >Kind
+        >合集类型
         <select id="s6-kind">
-          <option value="playlist">playlist</option>
-          <option value="gallery">gallery</option>
+          <option value="playlist">播放列表</option>
+          <option value="gallery">图片合集</option>
         </select>
       </label>
       <label class="label"
-        >Page range (1-based, inclusive; from ≤ to)
+        >页码范围（包含起止页，从 1 开始）
         <input id="s6-from" type="text" value="1" />
         <input id="s6-to" type="text" value="1" />
       </label>
-      <button id="s6-prepare" type="button">Prepare S6 collection admission</button>
+      <button id="s6-prepare" type="button">预览合集范围</button>
       <div id="s6-prepare-result" class="state UNKNOWN" aria-live="polite"></div>
       <div id="s6-walk" hidden>
         <p class="label">
-          Core-frozen page members (verbatim Core identities; uncheck any member you do not want).
+          以下是 Core 确认的候选文件；可取消不需要的成员。
         </p>
         <ul id="s6-members"></ul>
-        <button id="s6-next-page" type="button">Admit &amp; walk next declared page</button>
-        <button id="s6-confirm" type="button">Confirm selected collection members</button>
-        <button id="s6-execute" type="button" disabled>Download confirmed collection</button>
+        <button id="s6-next-page" type="button">继续下一指定页面</button>
+        <button id="s6-confirm" type="button">确认所选合集成员</button>
+        <button id="s6-execute" type="button" disabled>下载已确认的合集</button>
         <div id="s6-batch-result" class="state UNKNOWN" aria-live="polite"></div>
       </div>
     </section></section>
     <section class="mode-panel" data-mode-panel="advanced" role="tabpanel" aria-label="高级：Host 授权下载" hidden><h2>高级：Host 授权下载</h2><p class="lead">仅适用于已由可信本地 Host 提供目标句柄的高级流程。普通用户可使用「当前页面」直接选择文件。</p><section id="v02-domain-app"><p class="advanced-warning">这里不会自动生成 Host 句柄或本机目录权限。请勿填写来自不可信网页的任意标识。</p>
-      <h2>v0.2 download (Domain App route)</h2>
+      <h3>可信 Host 目标提交</h3>
       <p class="label">
-        The download is performed by your local trusted xDownload Host through the single local Core
-        authority — the browser requests no extra permission for it and never sees the transfer. The
-        target must be the opaque Host-issued handle for your selection (from the Host's own target
-        list): a raw URL is refused as a locator substitution, and every refusal is shown verbatim
-        with its typed code. This panel shows only the handle status and the Core-owned job
-        projection; no cookies or credentials ever leave the browser zone.
+        本操作由本地 Core 执行，必须填写可信 Host 已签发的目标句柄和获授权的输出根目录，不能以网页 URL 替代句柄。拒绝原因和状态均由 Core 提供。
       </p>
       <label class="label"
-        >Host-issued target handle
+        >Host 签发的目标句柄
         <input id="v02-target-ref" type="text" placeholder="ref:your-host-target" />
       </label>
       <label class="label"
-        >Authorized output root (absolute path)
+        >已获授权的保存目录（绝对路径）
         <input id="v02-output-root" type="text" placeholder="C:\Users\me\Downloads" />
       </label>
-      <button id="v02-submit" type="button">Submit v0.2 download</button>
+      <button id="v02-submit" type="button">提交已授权的目标</button>
       <div id="v02-result" class="state UNKNOWN" aria-live="polite"></div>
     </section></section>
     </main><div class="footer"><strong>当前操作状态</strong><div id="state" class="state UNKNOWN" role="status" aria-live="polite">正在检查当前页面…</div><p>所有任务结果以本地 Core 为准；授权只发生在明确的用户操作之后。</p></div>
