@@ -229,82 +229,102 @@ function renderPreview(): void {
 }
 
 function renderJobs(): void {
-  const emptyState = byId('empty-state');
+  const rows = state.jobs;
+  const allCount = rows.length;
+  const activeCount = rows.filter(isActive).length;
+  const completeCount = rows.filter(verifiedComplete).length;
+  const failedCount = rows.filter(isFailed).length;
+  for (const [id, count] of [
+    ['count-all', allCount], ['count-active', activeCount], ['count-complete', completeCount],
+    ['count-failed', failedCount], ['summary-all', allCount], ['summary-active', activeCount],
+    ['summary-complete', completeCount],
+  ] as const) {
+    byId(id).textContent = String(count);
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.nav-item[data-filter]')) {
+    const selected = button.dataset.filter === taskFilter;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+  const matching = rows.filter((row) => {
+    if (taskFilter === 'active' && !isActive(row)) return false;
+    if (taskFilter === 'complete' && !verifiedComplete(row)) return false;
+    if (taskFilter === 'failed' && !isFailed(row)) return false;
+    const query = searchTerm.toLocaleLowerCase();
+    return query === '' ||
+      [row.lineageId, row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? '']
+        .some((field) => field.toLocaleLowerCase().includes(query));
+  });
+  const empty = byId('empty-state');
+  const filterEmpty = byId('filter-empty');
   const table = byId('jobs-table');
   const body = byId('jobs-body');
   body.textContent = '';
-  if (state.jobs.length === 0) {
-    emptyState.hidden = false;
-    table.hidden = true;
-    return;
-  }
-  emptyState.hidden = true;
-  table.hidden = false;
-  for (const row of state.jobs) {
-    body.appendChild(jobRowElement(row));
-  }
+  empty.hidden = allCount !== 0;
+  filterEmpty.hidden = allCount === 0 || matching.length !== 0;
+  table.hidden = matching.length === 0;
+  for (const row of matching) body.appendChild(jobRowElement(row));
+  renderDetails();
 }
 
 function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   const tr = document.createElement('tr');
   const lineage = document.createElement('th');
   lineage.scope = 'row';
-  lineage.textContent = row.lineageId;
+  const title = document.createElement('button');
+  title.type = 'button';
+  title.className = 'link-button';
+  title.textContent = '查看任务详情';
+  title.setAttribute('aria-label', '查看任务 ' + row.lineageId + ' 的详情');
+  title.addEventListener('click', () => {
+    selectedLineage = row.lineageId;
+    renderDetails();
+  });
+  const id = document.createElement('span');
+  id.className = 'job-id';
+  id.textContent = row.lineageId.slice(-16);
+  lineage.append(title, id);
   tr.appendChild(lineage);
 
   const status = document.createElement('td');
-  status.textContent = jobStatusText(row);
+  const tag = document.createElement('span');
+  tag.className = 'status-tag ' +
+    (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : !row.present ? 'unknown' : '');
+  tag.textContent = statusLabel(row);
+  tag.title = jobStatusText(row);
+  status.appendChild(tag);
   tr.appendChild(status);
 
   const progress = document.createElement('td');
-  progress.textContent = jobProgressText(row);
+  progress.textContent = verifiedComplete(row) ? '已验证完成' :
+    row.terminal === null ? '暂无可靠字节进度' : jobProgressText(row);
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
-  destination.textContent = row.destination === null ? 'not chosen' : row.destination;
+  destination.textContent = row.destination === null ? '未指定' : row.destination;
   tr.appendChild(destination);
 
   const actions = document.createElement('td');
+  const group = document.createElement('div');
+  group.className = 'row-actions';
   const availability = jobActions(row);
-  actions.appendChild(
-    actionButton(
-      'Cancel',
-      row.lineageId,
-      availability.cancelEnabled,
-      () => void runControl('cancel', row.lineageId),
-    ),
+  group.append(
+    actionButton('取消', row.lineageId, availability.cancelEnabled, () => void runControl('cancel', row.lineageId)),
+    actionButton('重试', row.lineageId, availability.retryEnabled, () => void runControl('retry', row.lineageId)),
+    actionButton('打开目录', row.lineageId, availability.revealEnabled, () => void runReveal(row.lineageId)),
   );
-  actions.appendChild(
-    actionButton(
-      'Retry',
-      row.lineageId,
-      availability.retryEnabled,
-      () => void runControl('retry', row.lineageId),
-    ),
-  );
-  actions.appendChild(
-    actionButton(
-      'Reveal folder',
-      row.lineageId,
-      availability.revealEnabled,
-      () => void runReveal(row.lineageId),
-    ),
-  );
+  actions.appendChild(group);
   tr.appendChild(actions);
   return tr;
 }
 
-function actionButton(
-  label: string,
-  lineageId: string,
-  enabled: boolean,
-  onClick: () => void,
-): HTMLButtonElement {
+function actionButton(label: string, lineageId: string, enabled: boolean, onClick: () => void): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = label;
   button.dataset.lineage = lineageId;
   button.disabled = !enabled || state.busy;
+  if (!enabled) button.title = 'Core 当前未证明此操作可用';
   button.addEventListener('click', onClick);
   return button;
 }
