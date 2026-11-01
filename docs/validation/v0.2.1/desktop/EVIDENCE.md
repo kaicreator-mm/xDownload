@@ -80,7 +80,7 @@ CDP 页内实测：`typeof require/process/Buffer/module/electron` 全部 `undef
 
 ### d. destination 选择 — 分层证据（调用接入 PASS；键盘选目录 NOT_PROVEN）
 - 点 `#choose-destination` 后 renderer busy latch 生效（全部动作按钮禁用）→ **PASS**：`managerChooseDestination` IPC 已跨进 main，原生对话框权威被唤起（renderer-main.ts `chooseDestination()` / main.ts `pickDestinationDirectory()`）。
-- EnumWindows 按 exe pid 枚举顶层窗口：`Choose download destination` + `xDownload` → 原生 OpenDialog **确实打开**（Win11 文件对话框不接受"键入路径+Enter"作为选定，键盘自动化两轮未成功；ESC 关闭释放 busy）。
+- EnumWindows 按 exe pid 枚举顶层窗口：`Choose download destination` + `xDownload` → 原生 OpenDialog **确实打开**。键盘自动化在 Win11 对话框上"键入路径+Enter"未形成对目标目录的选定，但两轮中的后一轮实际接受了默认目录并返回（`d-destination.png`：renderer notice 显示 `destination folder: C:\Users\15549\Downloads`）——目标目录未达成记为 NOT_PROVEN；对话框打开、返回值流入 preview、busy 释放均为 PASS。
 - 结论：UI 能力存在且接通到 main 进程权威；**目录选定这一步在本环境无法自动化，记 NOT_PROVEN**（非产品缺陷）。截图 `d-dialog-open.png`。
 
 ### d2. destination 进入 add preview — PASS
@@ -102,8 +102,8 @@ Retry 按钮每行都渲染，但 `retryEnabled` 只由投影的 failed-member �
 
 ### j. Host/Core identity mismatch fail-closed — PASS（两项，exe 级再证）
 以错误身份（shell 侧 `t14f-shell-mismatch`）对 install-id=`t14fx` 的 Core：
-1. `status().core.connection=REJECTED_PROJECTION`，**从未 CONNECTED**（连接行 UI 如实显示）。
-2. add/confirm 真实跨过 seam，Core 以 typed `PEER_IDENTITY_REJECTED`（"peer is not the expected same-install/same-user identity"）回答；shell 呈现的会话行 `present=false`（拒绝 Core 不提供投影，行如实渲染"无投影"，无缓存状态伪造）。截图 `j-mismatch.png`、`j-mismatch-after-add.png`。
+1. `status().core.connection=REJECTED_PROJECTION`，**从未 CONNECTED**——判定依据是 status 文档本身；渲染器连接行文字在空列表时初始硬编码 `CONNECTED`、仅反映行读新鲜度，不反映拒绝态（独立审核指出 `j-mismatch.png` 与空列表截图字节相同，连接行不构成拒绝证据，特此修正表述）。
+2. add/confirm 真实跨过 seam，Core 以 typed `PEER_IDENTITY_REJECTED`（"peer is not the expected same-install/same-user identity"）回答；会话行 `present=false` 在**数据层**由 journey-evidence JSON 充分佐证（拒绝 Core 不提供投影，无缓存状态伪造）。渲染层未捕获"无投影"行：`j-mismatch-after-add.png` 摄于 confirm 返回后 68ms，早于 renderer 2s 刷新间隔的首个 tick，DOM 尚未重渲染（该图与空列表截图字节相同）；渲染层 absent-row 语义由源码设计（manager.ts）支撑，非运行时截图实证。
 
 ## 5. 基线与旅程汇总
 
