@@ -24,8 +24,8 @@ Examples derived from the current source grammar (placeholders MUST be replaced;
 
 ~~~text
 node dist/cli/xdownload-cli.js status --contract <contract-id> --install-id <install-id> --user-id <user-id> --port <core-port>
-node dist/cli/xdownload-cli.js --route v0.2 status --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
-node dist/cli/xdownload-cli.js --route v0.2 wait --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js status --route v0.2 --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js wait --route v0.2 --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
 ~~~
 
 An actual Windows --pipe-name may replace the local --port only when its install namespace exactly matches the Core; never fall back from a rejected pipe to TCP. Explicit --route v0.2 admits argv verbs submit, status, wait, cancel and batch; it rejects download/media/hls/confirm/retry. **An admitted verb does not promise that Core admits its intent**: the currently implemented K route can refuse direct, cancel or other unsupported operations. Do not retry on the legacy route to hide refusal. For submit, supply an already trusted, bounded confirmed intent via --file/--stdin; do not invent authorization facts.

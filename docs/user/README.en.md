@@ -45,8 +45,8 @@ Replace all placeholders; the actual Core identity and local port or Windows --p
 
 ~~~text
 node dist/cli/xdownload-cli.js status --contract <contract-id> --install-id <install-id> --user-id <user-id> --port <core-port>
-node dist/cli/xdownload-cli.js --route v0.2 status --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
-node dist/cli/xdownload-cli.js --route v0.2 wait --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js status --route v0.2 --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js wait --route v0.2 --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
 ~~~
 
 Explicit --route v0.2 accepts argv verbs submit/status/wait/cancel/batch but **does not** accept download/media/hls/confirm/retry. Core can refuse an otherwise valid command and that typed refusal must be shown. Windows pipe failure does not trigger automatic TCP fallback.

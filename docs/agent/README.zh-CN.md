@@ -23,8 +23,8 @@ node dist/cli/xdownload-cli.js help
 下面是源码参数核对后的候选示例，**尚未获得最终安装包实际执行的 T12 EXIT 证据**：
 
 ~~~text
-node dist/cli/xdownload-cli.js --route v0.2 status --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
-node dist/cli/xdownload-cli.js --route v0.2 wait --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js status --route v0.2 --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js wait --route v0.2 --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
 ~~~
 
 仅显式 --route v0.2 使用新 K 路由：语法允许 submit/status/wait/cancel/batch；download/media/hls/confirm/retry 在此路由返回 USAGE。合法 argv 的对应 Core 意图仍可能拒绝（当前 direct/cancel 不是完整生产功能），不得悄悄改走 v1 以伪装成功。Windows 使用准确的 --pipe-name 时，不得在失败后降级 TCP。

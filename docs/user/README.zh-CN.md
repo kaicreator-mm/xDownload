@@ -50,8 +50,8 @@ node installers/compose-installer.ts --version 0.2.1
 
 ~~~text
 node dist/cli/xdownload-cli.js status --contract <contract-id> --install-id <install-id> --user-id <user-id> --port <core-port>
-node dist/cli/xdownload-cli.js --route v0.2 status --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
-node dist/cli/xdownload-cli.js --route v0.2 wait --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js status --route v0.2 --lineage <lineage-id> --install-id <install-id> --user-id <user-id> --port <core-port>
+node dist/cli/xdownload-cli.js wait --route v0.2 --lineage <lineage-id> --timeout-ms 30000 --poll-ms 200 --install-id <install-id> --user-id <user-id> --port <core-port>
 ~~~
 
 这些是**对照源代码的候选示例，不是已执行的安装包测试**；T12 必须使用最终候选包运行并记录 EXIT。新路由 --route v0.2 对 download/media/hls/confirm/retry 返回用法错误；不要自动删掉 --route 绕过拒绝。legacy 路由下 HLS/媒体还需要实际可用的 Windows 命名管道和交互式终端确认。
