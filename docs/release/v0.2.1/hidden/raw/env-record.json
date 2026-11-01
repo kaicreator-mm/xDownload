@@ -1,0 +1,27 @@
+{
+  "node": "v24.21.0",
+  "platform": "win32",
+  "arch": "x64",
+  "installId": "t19h",
+  "userId": "15549",
+  "pipe": "\\\\.\\pipe\\xdownload-core-t19h",
+  "portBase": 49651,
+  "payload": "C:/xDev/kAiCreator/xDownload/xd-v021-finalval/out/installer/xdownload-v0.2.1-windows-x64/payload",
+  "zipNote": "xdownload-v0.2.1-windows-x64.zip 9ea81169...(controller-recorded)",
+  "capturedAt": "2026-11-01T10:29:27.968Z",
+  "teardown": {
+    "coreKilledByPidFile": 48876,
+    "fixtureTaskStopped": true,
+    "desktopExeStopped": true,
+    "portsFree": [
+      49651,
+      49652,
+      49661
+    ],
+    "verifiedCleanAt": "2026-11-01T11:23:36.743Z"
+  },
+  "evidence": {
+    "runsNdjsonLines": 225,
+    "fixtureRequests": 23
+  }
+}
