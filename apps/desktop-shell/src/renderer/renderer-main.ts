@@ -47,13 +47,18 @@ let taskFilter: TaskFilter = 'all';
 let searchTerm = '';
 let selectedLineage: string | null = null;
 let addOpen = false;
+const taskDisplayNames = new Map<string, string>();
 
 function verifiedComplete(row: ManagerJobRowDocument): boolean {
+  const terminal = row.terminal;
   return (
     row.present &&
-    row.terminal !== null &&
-    row.terminal.requestFulfillment === 'COMPLETE' &&
-    row.terminal.validationSummary.status === 'ALL_PASSED'
+    terminal !== null &&
+    terminal.targetResolution === 'RESOLVED' &&
+    terminal.selectionAcquisition === 'ACQUIRED' &&
+    terminal.coverage === 'VERIFIED_COMPLETE' &&
+    terminal.requestFulfillment === 'COMPLETE' &&
+    terminal.validationSummary.status === 'ALL_PASSED'
   );
 }
 
@@ -69,8 +74,50 @@ function statusLabel(row: ManagerJobRowDocument): string {
   if (!row.present) return '状态未知';
   if (verifiedComplete(row)) return '已完成';
   if (isFailed(row)) return '已结束 · 未完成';
-  if (isActive(row)) return '已提交 · 处理中';
+  if (isActive(row)) return '已提交 · 未结束';
   return '等待 Core 状态';
+}
+
+/** Display only the user-entered URL origin/path; never expose query strings or credentials. */
+function taskLabelFromUrl(raw: string): string {
+  try {
+    const parsed = new URL(raw);
+    const lastSegment = parsed.pathname.split('/').filter(Boolean).at(-1) ?? '';
+    let safePath = lastSegment;
+    try {
+      safePath = decodeURIComponent(lastSegment);
+    } catch {
+      // Keep the encoded path segment if it is not valid percent-encoding.
+    }
+    const shortened = safePath.length > 48 ? '…' + safePath.slice(-47) : safePath;
+    return shortened === ''
+      ? '链接来源 · ' + parsed.host
+      : '链接来源 · ' + parsed.host + ' / ' + shortened;
+  } catch {
+    return '下载任务';
+  }
+}
+
+function taskLabel(row: ManagerJobRowDocument): string {
+  return taskDisplayNames.get(row.lineageId) ?? '下载任务';
+}
+
+function progressSummary(row: ManagerJobRowDocument): string {
+  if (!row.present) return 'Core 尚未返回可验证的任务状态';
+  if (row.terminal === null) {
+    return row.selectedMemberCount === null
+      ? '尚未获得终态 · 暂无可靠字节进度'
+      : 'Core 已记录 ' + row.selectedMemberCount + ' 个目标 · 尚未获得终态 · 暂无可靠字节进度';
+  }
+  const validation = row.terminal.validationSummary;
+  const validationLabel =
+    validation.status === 'ALL_PASSED'
+      ? '全部通过'
+      : validation.status === 'NONE_PASSED'
+        ? '全部未通过'
+        : validation.status;
+  return '校验：' + validationLabel +
+    '（通过 ' + validation.passedCount + ' 项，失败 ' + validation.failedCount + ' 项）';
 }
 
 function renderFormFields(): void {
@@ -168,8 +215,9 @@ function renderDetails(): void {
     return;
   }
   panel.hidden = false;
+  byId('details-title').textContent = taskLabel(current);
   byId('details-status').textContent = statusLabel(current);
-  byId('details-progress').textContent = jobProgressText(current);
+  byId('details-progress').textContent = progressSummary(current);
   byId('details-destination').textContent = current.destination ?? '未指定';
   byId('details-lineage').textContent = current.lineageId;
   byId('details-revision').textContent =
@@ -240,7 +288,7 @@ function renderPreview(): void {
   preview.dataset.open = 'true';
   byId('preview-url').textContent = pending.url;
   byId('preview-destination').textContent =
-    pending.destination === null ? 'no destination folder chosen' : pending.destination;
+    pending.destination === null ? '未指定保存目录' : pending.destination;
   const requests = byId('preview-requests');
   requests.textContent = '';
   for (const request of pending.confirmationRequests) {
@@ -291,7 +339,7 @@ function renderJobs(): void {
     const query = searchTerm.toLocaleLowerCase();
     return (
       query === '' ||
-      [row.lineageId, row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? ''].some(
+      [taskLabel(row), row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? ''].some(
         (field) => field.toLocaleLowerCase().includes(query),
       )
     );
@@ -315,16 +363,13 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   const title = document.createElement('button');
   title.type = 'button';
   title.className = 'link-button';
-  title.textContent = '查看任务详情';
-  title.setAttribute('aria-label', '查看任务 ' + row.lineageId + ' 的详情');
+  title.textContent = taskLabel(row);
+  title.setAttribute('aria-label', '查看' + taskLabel(row) + '详情');
   title.addEventListener('click', () => {
     selectedLineage = row.lineageId;
     renderDetails();
   });
-  const id = document.createElement('span');
-  id.className = 'job-id';
-  id.textContent = row.lineageId.slice(-16);
-  lineage.append(title, id);
+  lineage.append(title);
   tr.appendChild(lineage);
 
   const status = document.createElement('td');
@@ -340,9 +385,7 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   const progress = document.createElement('td');
   progress.textContent = verifiedComplete(row)
     ? '已验证完成'
-    : row.terminal === null
-      ? '暂无可靠字节进度'
-      : jobProgressText(row);
+    : progressSummary(row);
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
@@ -429,13 +472,13 @@ async function runReveal(lineageId: string): Promise<void> {
   render();
   const answer = await BRIDGE.managerRevealJob({ lineageId });
   if (answer.ok === false) {
-    state = noticeShown(state, { kind: 'error', text: `reveal refused: ${answer.detail}` });
+    state = noticeShown(state, { kind: 'error', text: `打开保存目录失败：${answer.detail}` });
   } else if (answer.document !== 'xdownload.desktop.manager.reveal') {
-    state = noticeShown(state, { kind: 'error', text: 'reveal refused: unexpected document' });
+    state = noticeShown(state, { kind: 'error', text: '打开保存目录失败：Core 返回了无法识别的结果' });
   } else {
     state = noticeShown(state, {
       kind: 'info',
-      text: `revealed the destination folder for ${answer.lineageId}`,
+      text: '已打开任务的保存目录',
     });
   }
   state = setBusy(state, false);
@@ -474,7 +517,18 @@ async function confirmPreview(): Promise<void> {
   }
   state = setBusy(state, true);
   render();
+  const pending = state.pendingPreview;
   const answer = await BRIDGE.managerConfirmAdd();
+  if (
+    pending !== null &&
+    answer.ok === true &&
+    answer.document === 'xdownload.desktop.manager.action' &&
+    answer.action === 'add' &&
+    answer.routed &&
+    answer.lineageId !== null
+  ) {
+    taskDisplayNames.set(answer.lineageId, taskLabelFromUrl(pending.url));
+  }
   state = applyAction(state, answer);
   if (state.pendingPreview === null) addOpen = false;
   render();
@@ -507,20 +561,20 @@ async function chooseDestination(): Promise<void> {
   if (answer.ok === false) {
     state = noticeShown(state, {
       kind: 'error',
-      text: `destination refused: ${answer.detail}`,
+      text: `选择保存目录失败：${answer.detail}`,
     });
   } else if (answer.document !== 'xdownload.desktop.manager.destination') {
     state = noticeShown(state, {
       kind: 'error',
-      text: 'destination refused: unexpected document',
+      text: '选择保存目录失败：Core 返回了无法识别的结果',
     });
   } else if (answer.destination === null) {
-    state = noticeShown(state, { kind: 'info', text: 'no destination folder chosen' });
+    state = noticeShown(state, { kind: 'info', text: '未选择保存目录' });
   } else {
     chosenDestination = answer.destination;
     state = noticeShown(state, {
       kind: 'info',
-      text: `destination folder: ${answer.destination}`,
+      text: `保存目录：${answer.destination}`,
     });
   }
   state = setBusy(state, false);
