@@ -109,6 +109,6 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain('function localizeNotice');
     expect(renderer).toContain('Core 拒绝了');
     expect(renderer).toContain('m[3]');
+    expect(renderer).toContain('Core 原始状态：');
   });
-
 });
