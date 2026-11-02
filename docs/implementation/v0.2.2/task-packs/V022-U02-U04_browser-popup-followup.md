@@ -1,6 +1,6 @@
 # Task Pack — v022-U02-U04-BROWSER-POPUP-01
 
-> **TASK_PACK_STATE:** OWNER_APPROVED_BOUNDED_PLANNING_CONTRACT / NOT_EXECUTION_PACK
+> **TASK_PACK_STATE:** FROZEN_PLANNING_CONTRACT / NOT_EXECUTION_PACK / NOT_SOURCE_CLAIM
 > **Parent:** [#305](https://github.com/kaicreator-mm/xDownload/issues/305)
 > **Source proposal:** [#328](https://github.com/kaicreator-mm/xDownload/issues/328), Owner approval comment #6585001449
 > **Canonical lane map:** [#327](https://github.com/kaicreator-mm/xDownload/issues/327), Owner approval/correction comment #6584999871
