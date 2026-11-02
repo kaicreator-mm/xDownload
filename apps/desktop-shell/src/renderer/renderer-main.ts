@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
 /**
  * T08 download-manager renderer page binding — the thin DOM layer over the
  * pure state machine (`manager-state.ts`).
@@ -48,8 +49,12 @@ let selectedLineage: string | null = null;
 let addOpen = false;
 
 function verifiedComplete(row: ManagerJobRowDocument): boolean {
-  return row.present && row.terminal !== null && row.terminal.requestFulfillment === 'COMPLETE' &&
-    row.terminal.validationSummary.status === 'ALL_PASSED';
+  return (
+    row.present &&
+    row.terminal !== null &&
+    row.terminal.requestFulfillment === 'COMPLETE' &&
+    row.terminal.validationSummary.status === 'ALL_PASSED'
+  );
 }
 
 function isActive(row: ManagerJobRowDocument): boolean {
@@ -70,7 +75,11 @@ function statusLabel(row: ManagerJobRowDocument): string {
 
 function renderFormFields(): void {
   const descriptor = getFormDescriptor('url-preview');
-  if (descriptor === null || descriptor.schemaVersion !== 1 || !descriptor.requiresCoreConfirmation) {
+  if (
+    descriptor === null ||
+    descriptor.schemaVersion !== 1 ||
+    !descriptor.requiresCoreConfirmation
+  ) {
     throw new Error('unsupported local form descriptor');
   }
   const host = byId('form-fields');
@@ -131,9 +140,11 @@ function closeAdd(): void {
 /** Keep keyboard focus inside a visible permission/confirmation dialog. */
 function trapDialogTab(event: KeyboardEvent, root: HTMLElement): void {
   if (event.key !== 'Tab') return;
-  const controls = [...root.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), input:not([disabled]), select:not([disabled])',
-  )].filter((element) => !element.hasAttribute('hidden'));
+  const controls = [
+    ...root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled])',
+    ),
+  ].filter((element) => !element.hasAttribute('hidden'));
   if (controls.length === 0) return;
   const first = controls[0];
   const last = controls[controls.length - 1];
@@ -161,7 +172,8 @@ function renderDetails(): void {
   byId('details-progress').textContent = jobProgressText(current);
   byId('details-destination').textContent = current.destination ?? '未指定';
   byId('details-lineage').textContent = current.lineageId;
-  byId('details-revision').textContent = current.revision === null ? '未知' : String(current.revision);
+  byId('details-revision').textContent =
+    current.revision === null ? '未知' : String(current.revision);
   byId('details-reason').textContent = current.terminal?.stopReason ?? '暂无';
 }
 
@@ -193,14 +205,16 @@ function render(): void {
 
   const connectionLine = byId('connection-line');
   const connected = state.connection === 'CONNECTED';
-  connectionLine.textContent = connected ? 'Core 已连接' :
-    state.connection === null ? '正在连接 Core…' : 'Core 状态：' + state.connection;
+  connectionLine.textContent = connected
+    ? 'Core 已连接'
+    : state.connection === null
+      ? '正在连接 Core…'
+      : 'Core 状态：' + state.connection;
   connectionLine.dataset.status = connected ? 'connected' : 'disconnected';
   byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
 
   const destinationLabel = byId('destination-label');
-  destinationLabel.textContent =
-    chosenDestination === null ? '未指定保存目录' : chosenDestination;
+  destinationLabel.textContent = chosenDestination === null ? '未指定保存目录' : chosenDestination;
   const addSubmit = byId('add-submit') as HTMLButtonElement;
   const chooseDestination = byId('choose-destination') as HTMLButtonElement;
   addSubmit.disabled = state.busy || state.pendingPreview !== null;
@@ -255,8 +269,12 @@ function renderJobs(): void {
   const completeCount = rows.filter(verifiedComplete).length;
   const failedCount = rows.filter(isFailed).length;
   for (const [id, count] of [
-    ['count-all', allCount], ['count-active', activeCount], ['count-complete', completeCount],
-    ['count-failed', failedCount], ['summary-all', allCount], ['summary-active', activeCount],
+    ['count-all', allCount],
+    ['count-active', activeCount],
+    ['count-complete', completeCount],
+    ['count-failed', failedCount],
+    ['summary-all', allCount],
+    ['summary-active', activeCount],
     ['summary-complete', completeCount],
   ] as const) {
     byId(id).textContent = String(count);
@@ -271,9 +289,12 @@ function renderJobs(): void {
     if (taskFilter === 'complete' && !verifiedComplete(row)) return false;
     if (taskFilter === 'failed' && !isFailed(row)) return false;
     const query = searchTerm.toLocaleLowerCase();
-    return query === '' ||
-      [row.lineageId, row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? '']
-        .some((field) => field.toLocaleLowerCase().includes(query));
+    return (
+      query === '' ||
+      [row.lineageId, row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? ''].some(
+        (field) => field.toLocaleLowerCase().includes(query),
+      )
+    );
   });
   const empty = byId('empty-state');
   const filterEmpty = byId('filter-empty');
@@ -308,7 +329,8 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
 
   const status = document.createElement('td');
   const tag = document.createElement('span');
-  tag.className = 'status-tag ' +
+  tag.className =
+    'status-tag ' +
     (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : !row.present ? 'unknown' : '');
   tag.textContent = statusLabel(row);
   tag.title = jobStatusText(row);
@@ -316,8 +338,11 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   tr.appendChild(status);
 
   const progress = document.createElement('td');
-  progress.textContent = verifiedComplete(row) ? '已验证完成' :
-    row.terminal === null ? '暂无可靠字节进度' : jobProgressText(row);
+  progress.textContent = verifiedComplete(row)
+    ? '已验证完成'
+    : row.terminal === null
+      ? '暂无可靠字节进度'
+      : jobProgressText(row);
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
@@ -329,16 +354,36 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   group.className = 'row-actions';
   const availability = jobActions(row);
   group.append(
-    actionButton('取消', row.lineageId, availability.cancelEnabled, () => void runControl('cancel', row.lineageId)),
-    actionButton('重试', row.lineageId, availability.retryEnabled, () => void runControl('retry', row.lineageId)),
-    actionButton('打开目录', row.lineageId, availability.revealEnabled, () => void runReveal(row.lineageId)),
+    actionButton(
+      '取消',
+      row.lineageId,
+      availability.cancelEnabled,
+      () => void runControl('cancel', row.lineageId),
+    ),
+    actionButton(
+      '重试',
+      row.lineageId,
+      availability.retryEnabled,
+      () => void runControl('retry', row.lineageId),
+    ),
+    actionButton(
+      '打开目录',
+      row.lineageId,
+      availability.revealEnabled,
+      () => void runReveal(row.lineageId),
+    ),
   );
   actions.appendChild(group);
   tr.appendChild(actions);
   return tr;
 }
 
-function actionButton(label: string, lineageId: string, enabled: boolean, onClick: () => void): HTMLButtonElement {
+function actionButton(
+  label: string,
+  lineageId: string,
+  enabled: boolean,
+  onClick: () => void,
+): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
   button.textContent = label;

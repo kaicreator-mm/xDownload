@@ -20,8 +20,14 @@ describe('UI R0 trusted dynamic form descriptor', () => {
   });
 
   it('rejects unsafe URL shapes locally without authorizing a command', () => {
-    for (const raw of ['', '  https://example.test/a', 'ftp://example.test/a',
-      'https://name:secret@example.test/private', 'bad url', 'https://example.test/' + 'a'.repeat(8192)]) {
+    for (const raw of [
+      '',
+      '  https://example.test/a',
+      'ftp://example.test/a',
+      'https://name:secret@example.test/private',
+      'bad url',
+      'https://example.test/' + 'a'.repeat(8192),
+    ]) {
       expect(validatePreviewUrl(raw).ok, raw.slice(0, 50)).toBe(false);
     }
     expect(validatePreviewUrl('https://example.test/download.zip').ok).toBe(true);
@@ -31,8 +37,16 @@ describe('UI R0 trusted dynamic form descriptor', () => {
 
 describe('UI R0 renderer containment and user navigation', () => {
   it('keeps existing IPC bridge, Core preview and destructive confirmation split', () => {
-    for (const method of ['managerRefresh', 'managerPreviewAdd', 'managerConfirmAdd',
-      'managerDiscardPreview', 'managerCancelJob', 'managerRetryJob', 'managerChooseDestination', 'managerRevealJob']) {
+    for (const method of [
+      'managerRefresh',
+      'managerPreviewAdd',
+      'managerConfirmAdd',
+      'managerDiscardPreview',
+      'managerCancelJob',
+      'managerRetryJob',
+      'managerChooseDestination',
+      'managerRevealJob',
+    ]) {
       expect(renderer).toContain('BRIDGE.' + method);
     }
     expect(renderer).toContain('window.xdownloadShell');
@@ -41,9 +55,21 @@ describe('UI R0 renderer containment and user navigation', () => {
   });
   it('exposes user-familiar navigation with accessible localized state and no fake bytes', () => {
     expect(html).toContain('lang="zh-CN"');
-    for (const id of ['app', 'new-download', 'job-search', 'empty-state', 'filter-empty',
-      'add-dialog', 'preview', 'job-details', 'jobs-table', 'jobs-body', 'form-fields',
-      'connection-line', 'bridge-missing']) {
+    for (const id of [
+      'app',
+      'new-download',
+      'job-search',
+      'empty-state',
+      'filter-empty',
+      'add-dialog',
+      'preview',
+      'job-details',
+      'jobs-table',
+      'jobs-body',
+      'form-fields',
+      'connection-line',
+      'bridge-missing',
+    ]) {
       expect(html).toContain('id="' + id + '"');
     }
     expect(html).toContain("default-src 'none'");

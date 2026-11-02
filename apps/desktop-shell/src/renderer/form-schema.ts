@@ -5,8 +5,21 @@
  * Host/Core keep the final admission and scope decision; no renderer grant.
  */
 export type FormField =
-  | { readonly id: 'url'; readonly kind: 'url'; readonly label: string; readonly placeholder: string; readonly help: string; readonly required: true }
-  | { readonly id: 'destination'; readonly kind: 'directory-choice'; readonly label: string; readonly help: string; readonly required: false };
+  | {
+      readonly id: 'url';
+      readonly kind: 'url';
+      readonly label: string;
+      readonly placeholder: string;
+      readonly help: string;
+      readonly required: true;
+    }
+  | {
+      readonly id: 'destination';
+      readonly kind: 'directory-choice';
+      readonly label: string;
+      readonly help: string;
+      readonly required: false;
+    };
 
 export interface LocalFormDescriptor {
   readonly schemaVersion: 1;
@@ -48,13 +61,20 @@ export function getFormDescriptor(operation: string): LocalFormDescriptor | null
 }
 
 /** Friendly local feedback only — the Core independently revalidates every input. */
-export function validatePreviewUrl(raw: string): { readonly ok: boolean; readonly reason: string | null } {
+export function validatePreviewUrl(raw: string): {
+  readonly ok: boolean;
+  readonly reason: string | null;
+} {
   if (raw.trim() !== raw || raw.length === 0 || raw.length > 8192) {
     return { ok: false, reason: '链接不能为空，也不能包含首尾空格或超过长度限制。' };
   }
   try {
     const parsed = new URL(raw);
-    if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.username !== '' || parsed.password !== '') {
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.username !== '' ||
+      parsed.password !== ''
+    ) {
       return { ok: false, reason: '请输入不包含账号或密码的 http/https 链接。' };
     }
     return { ok: true, reason: null };
