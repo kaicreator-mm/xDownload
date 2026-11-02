@@ -406,7 +406,7 @@ describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
     // truthfully BEFORE any RECORD reaches Core — a truncated page can never
     // become a full requested-scope or VERIFIED_COMPLETE claim.
     await vi.waitFor(() => {
-      expect(nodes['s6-batch-result']!.textContent).toContain('truncated');
+      expect(nodes['s6-batch-result']!.textContent).toContain('当前扫描只读取了');
     });
     expect(sent.some((message) => message.kind === 'S6_PAGE_RECORD')).toBe(false);
   });
