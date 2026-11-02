@@ -1,0 +1,42 @@
+pack_id: "v022-U02-U04-BROWSER-POPUP-01@9e3ccd382311619e60b8d2a7373e8a7d34733334"
+task_id: "v022-U02-U04-BROWSER-POPUP-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+base_sha: "9e3ccd382311619e60b8d2a7373e8a7d34733334"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U02-U04_browser-popup-followup.md@planning/v0.2.2-ui-r0@45321c31cf554590ee7c98ffc41c69f292e4b430#blob:f5f0a98186c741667f860b9a5989dcfeb92bb923"
+branch: "task/v0.2.2-u02-u04-browser-popup-followup"
+parent_issue: "#329"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+generated_by: "chatgpt-web:xdownload-v022-u02-u04-controller"
+generated_at: "2026-11-03T02:22:00+08:00"
+dependency_completion: []
+execution_context_requirements_ref: null
+dependency_toolchain_profile_ref: null
+material_paths:
+  - "apps/browser-extension/src/popup/popup.html"
+  - "apps/browser-extension/src/popup/popup.js"
+  - "apps/browser-extension/test/popup-s5-admission.test.ts"
+  - "apps/browser-extension/manifest.json"
+  - "apps/browser-extension/src/background/**"
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "vitest.config.ts"
+  - ".woodpecker/xd-ui-r0-verify.yaml"
+core_artifacts:
+  - "MANIFEST.yaml"
+  - "EXECUTION_CONTRACT.md"
+  - "TEST_MATRIX.yaml"
+  - "FAILURE_MATRIX.yaml"
+  - "IMPLEMENTATION_MAP.md"
+  - "REVIEW_CHECKLIST.md"
+optional_artifacts: []
+retention: "durable"
+package_excluded: true
+pack_state_at_generation: "PACK_CURRENT"
+intent_assumption_refs:
+  - "xDownload#305"
+  - "xDownload#327"
+  - "xDownload#328"
+skill_metadata_refs: []
+dispatch_admission: "BLOCKED_PROFILE_CONFLICT_PENDING_CONFORMING_WEB_BUILDER_PROFILE"
