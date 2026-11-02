@@ -51,6 +51,7 @@ function verifiedComplete(row: ManagerJobRowDocument): boolean {
   const terminal = row.terminal;
   return (
     row.present &&
+    row.lineageStatus === 'TERMINAL' &&
     terminal !== null &&
     terminal.targetResolution === 'RESOLVED' &&
     terminal.selectionAcquisition === 'COMPLETE' &&
@@ -75,8 +76,8 @@ function isFailed(row: ManagerJobRowDocument): boolean {
 
 function statusLabel(row: ManagerJobRowDocument): string {
   if (!row.present) return '状态未知';
-  if (verifiedComplete(row)) return '已完成';
   if (row.lineageStatus === 'CANCELLED') return '已取消';
+  if (verifiedComplete(row)) return '已完成';
   if (row.terminal !== null) return '已结束 · 未完成';
   if (row.lineageStatus === 'ACTIVE') return '已提交 · 未结束';
   if (row.lineageStatus === 'TERMINAL') return '已结束 · 终态明细缺失';
