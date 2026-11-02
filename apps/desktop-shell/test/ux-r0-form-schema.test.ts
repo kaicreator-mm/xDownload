@@ -78,4 +78,27 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain('row.terminal.validationSummary.status');
     expect(renderer).not.toContain('innerHTML');
   });
+  it('creates one destination picker from the trusted descriptor, not duplicate static markup', () => {
+    expect(html).not.toContain('id="destination-label"');
+    expect(html).not.toContain('id="choose-destination"');
+    expect(renderer).toContain("destination.id = 'destination-label'");
+    expect(renderer).toContain("browse.id = 'choose-destination'");
+  });
+
+  it('hides lineage IDs from the ordinary list and requires every Core completion dimension', () => {
+    expect(renderer).not.toContain('row.lineageId.slice');
+    expect(renderer).toContain("byId('details-lineage').textContent = current.lineageId");
+    for (const marker of [
+      "terminal.targetResolution === 'RESOLVED'",
+      "terminal.selectionAcquisition === 'ACQUIRED'",
+      "terminal.coverage === 'VERIFIED_COMPLETE'",
+      "terminal.requestFulfillment === 'COMPLETE'",
+      "terminal.validationSummary.status === 'ALL_PASSED'",
+    ]) {
+      expect(renderer).toContain(marker);
+    }
+    expect(html).toContain('未结束');
+    expect(renderer).toContain('已提交 · 未结束');
+  });
+
 });
