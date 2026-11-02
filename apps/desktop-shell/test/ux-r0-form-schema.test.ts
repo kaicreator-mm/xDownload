@@ -90,7 +90,7 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain("byId('details-lineage').textContent = current.lineageId");
     for (const marker of [
       "terminal.targetResolution === 'RESOLVED'",
-      "terminal.selectionAcquisition === 'ACQUIRED'",
+      "terminal.selectionAcquisition === 'COMPLETE'",
       "terminal.coverage === 'VERIFIED_COMPLETE'",
       "terminal.requestFulfillment === 'COMPLETE'",
       "terminal.validationSummary.status === 'ALL_PASSED'",
@@ -99,6 +99,9 @@ describe('UI R0 renderer containment and user navigation', () => {
     }
     expect(html).toContain('未结束');
     expect(renderer).toContain('已提交 · 未结束');
+    expect(renderer).toContain("row.lineageStatus === 'ACTIVE'");
+    expect(renderer).toContain("row.lineageStatus === 'CANCELLED'");
+    expect(renderer).toContain("row.lineageStatus === 'TERMINAL'");
     expect(renderer).toContain("availability.revealEnabled && verifiedComplete(row)");
   });
 
