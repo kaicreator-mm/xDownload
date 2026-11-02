@@ -1,68 +1,211 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <!--
-      T08 download manager — a packaged LOCAL asset only (frozen L2 §4).
-      The CSP is restrictive by construction: nothing may load, fetch, embed
-      or submit. Renderer->main communication happens exclusively through the
-      typed contextBridge preload API, which no CSP directive governs.
-    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- All privileged actions remain inside the frozen typed Electron preload bridge. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     />
-    <title>xDownload</title>
+    <title>xDownload · 下载管理</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <h1>xDownload</h1>
-    <p id="bridge-missing" hidden>
-      shell bridge unavailable (fail closed: no renderer authority exists)
+    <p id="bridge-missing" class="fatal-state" hidden>
+      无法连接到安全的桌面桥接，操作已停止。请重新安装或检查本机 Core。
     </p>
-    <p id="loading">loading…</p>
-    <div id="app" hidden>
-      <p id="connection-line" aria-live="polite">Core connection: unknown</p>
-
-      <form id="add-form">
-        <h2>Add download</h2>
-        <label for="url">Download URL (http/https)</label>
-        <input id="url" name="url" type="url" autocomplete="off" spellcheck="false" required />
-        <button id="choose-destination" type="button">Choose destination folder…</button>
-        <span id="destination-label">no destination folder chosen</span>
-        <button id="add-submit" type="submit">Preview download</button>
-      </form>
-
-      <p id="notice" role="status" aria-live="polite"></p>
-
-      <section id="preview" role="dialog" aria-modal="true" aria-labelledby="preview-title" hidden>
-        <h2 id="preview-title">Confirm download</h2>
-        <p>Target: <span id="preview-url"></span></p>
-        <p>Destination: <span id="preview-destination"></span></p>
-        <h3>Confirmation required by the Core-produced plan</h3>
-        <ul id="preview-requests"></ul>
-        <button id="preview-confirm" type="button">Confirm and add</button>
-        <button id="preview-discard" type="button">Discard (Escape)</button>
-      </section>
-
-      <section aria-labelledby="jobs-title">
-        <h2 id="jobs-title">Downloads</h2>
-        <p id="empty-state" hidden>no downloads yet — add a URL above to begin</p>
-        <table id="jobs-table" hidden>
-          <caption>
-            Download jobs (status and progress are the Core's projection, re-read live)
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Lineage</th>
-              <th scope="col">Status</th>
-              <th scope="col">Progress</th>
-              <th scope="col">Destination</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="jobs-body"></tbody>
-        </table>
+    <p id="loading" class="initial-loading">正在读取下载任务…</p>
+    <div id="app" class="app-shell" hidden>
+      <aside class="sidebar" aria-label="主导航">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">↓</span>
+          <div><strong>xDownload</strong><small>下载管理器</small></div>
+        </div>
+        <div class="nav-caption">任务</div>
+        <nav class="navigation" aria-label="任务筛选">
+          <button type="button" class="nav-item selected" data-filter="all" aria-pressed="true">
+            <span aria-hidden="true">▦</span> 全部任务 <b id="count-all">0</b>
+          </button>
+          <button type="button" class="nav-item" data-filter="active" aria-pressed="false">
+            <span aria-hidden="true">◷</span> 进行中 <b id="count-active">0</b>
+          </button>
+          <button type="button" class="nav-item" data-filter="complete" aria-pressed="false">
+            <span aria-hidden="true">✓</span> 已完成 <b id="count-complete">0</b>
+          </button>
+          <button type="button" class="nav-item" data-filter="failed" aria-pressed="false">
+            <span aria-hidden="true">!</span> 未完成 <b id="count-failed">0</b>
+          </button>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="scope-note">仅展示本窗口会话已添加的任务</span>
+          <p>任务状态以 Core 返回为准</p>
+        </div>
+      </aside>
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">工作台 / 下载任务</p>
+            <h1>下载管理</h1>
+          </div>
+          <div class="top-actions">
+            <span id="connection-line" class="connection-pill" aria-live="polite"
+              >正在连接 Core…</span
+            ><button id="new-download" type="button" class="button primary">
+              <span aria-hidden="true">＋</span> 新建下载
+            </button>
+          </div>
+        </header>
+        <section class="overview" aria-label="本次会话统计">
+          <div class="overview-cell">
+            <span>会话任务</span><strong id="summary-all">0</strong><small>仅当前窗口</small>
+          </div>
+          <div class="overview-cell">
+            <span>进行中</span><strong id="summary-active">0</strong><small>不等于已开始传输</small>
+          </div>
+          <div class="overview-cell">
+            <span>已完成</span><strong id="summary-complete">0</strong
+            ><small>以 Core 完成判定为准</small>
+          </div>
+        </section>
+        <section class="task-panel" aria-labelledby="jobs-title">
+          <div class="task-toolbar">
+            <div>
+              <h2 id="jobs-title">下载任务</h2>
+              <p>管理已提交的任务及结果</p>
+            </div>
+            <label class="search-control"
+              ><span class="sr-only">搜索会话任务</span><span aria-hidden="true">⌕</span
+              ><input
+                id="job-search"
+                type="search"
+                autocomplete="off"
+                placeholder="搜索任务编号、状态或目录"
+            /></label>
+          </div>
+          <p id="notice" class="notice" role="status" aria-live="polite"></p>
+          <div id="empty-state" class="empty-state" hidden>
+            <span class="empty-illustration" aria-hidden="true">↓</span>
+            <h3>这里还没有任务</h3>
+            <p>点击右上角「新建下载」，先预览目标和权限范围，再确认提交。</p>
+            <button id="empty-add" type="button" class="button outline">新建下载</button>
+          </div>
+          <div id="filter-empty" class="empty-state" hidden>
+            <h3>没有匹配的任务</h3>
+            <p>试试调整筛选条件，或清空搜索内容。</p>
+          </div>
+          <div class="table-scroll">
+            <table id="jobs-table" hidden>
+              <caption class="sr-only">
+                Core 实时任务投影（仅本次窗口会话任务）
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">任务</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">进度 / 结果</th>
+                  <th scope="col">保存位置</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <p class="bottom-notice">
+          显示的任务和进度必须经过 Core 验证；无权威字节数据时不估算速度、百分比或剩余时间。
+        </p>
+      </main>
+      <aside id="job-details" class="detail-panel" aria-labelledby="details-title" hidden>
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">下载详情</p>
+            <h2 id="details-title">任务信息</h2>
+          </div>
+          <button id="details-close" class="icon-button" type="button" aria-label="关闭任务详情">
+            ×
+          </button>
+        </div>
+        <div class="detail-block"><span>当前状态</span><strong id="details-status">—</strong></div>
+        <div class="detail-block">
+          <span>验证与进度</span>
+          <p id="details-progress">—</p>
+        </div>
+        <div class="detail-block">
+          <span>保存位置</span>
+          <p id="details-destination">—</p>
+        </div>
+        <details class="technical-info">
+          <summary>技术详情</summary>
+          <dl>
+            <dt>任务标识</dt>
+            <dd id="details-lineage">—</dd>
+            <dt>Core 修订</dt>
+            <dd id="details-revision">—</dd>
+            <dt>停止原因</dt>
+            <dd id="details-reason">—</dd>
+          </dl>
+        </details>
+      </aside>
+      <div id="add-dialog" class="drawer-backdrop" hidden>
+        <section class="add-dialog" role="dialog" aria-modal="true" aria-labelledby="add-title">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">新建任务</p>
+              <h2 id="add-title">添加下载链接</h2>
+            </div>
+            <button id="add-close" type="button" class="icon-button" aria-label="关闭新建下载">
+              ×
+            </button>
+          </div>
+          <p class="form-hint">输入链接，选择保存目录。提交前会由 Core 给出需要确认的范围。</p>
+          <form id="add-form">
+            <div id="form-fields" class="field-stack"></div>
+            <div class="field-stack">
+              <label for="destination-label">保存到</label>
+              <div class="folder-picker">
+                <span id="destination-label">未指定保存目录</span
+                ><button id="choose-destination" type="button" class="button subtle">浏览…</button>
+              </div>
+            </div>
+            <details class="advanced-form">
+              <summary>安全与高级说明</summary>
+              <p>
+                只能提交经过允许的 http/https 链接。此处不会自动下载，也不会扩大 Core 的权限范围。
+              </p>
+              <p>当前桌面入口不支持在此直接选择 HLS 或批量模式。</p>
+            </details>
+            <div class="drawer-footer">
+              <button id="add-cancel" type="button" class="button outline">取消</button
+              ><button id="add-submit" type="submit" class="button primary">预览并继续</button>
+            </div>
+          </form>
+        </section>
+      </div>
+      <section
+        id="preview"
+        class="preview-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="preview-title"
+        hidden
+      >
+        <div class="preview-card">
+          <p class="eyebrow">最后一步 · 需要确认</p>
+          <h2 id="preview-title">确认任务范围</h2>
+          <p>下载目标</p>
+          <strong id="preview-url" class="value-break">—</strong>
+          <p>保存目录</p>
+          <strong id="preview-destination" class="value-break">—</strong>
+          <h3>Core 要求确认的事项</h3>
+          <ul id="preview-requests"></ul>
+          <p class="form-hint">确认表示同意所展示的范围，实际结果仍由 Core 判定。</p>
+          <div class="dialog-actions">
+            <button id="preview-discard" type="button" class="button outline">
+              返回修改（Escape）</button
+            ><button id="preview-confirm" type="button" class="button primary">确认并添加</button>
+          </div>
+        </div>
       </section>
     </div>
     <script src="renderer.js"></script>

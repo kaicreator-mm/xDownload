@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
 /**
  * T08 download-manager renderer page binding — the thin DOM layer over the
  * pure state machine (`manager-state.ts`).
@@ -20,6 +21,7 @@
 /* global window, document */
 
 import type { ManagerJobRowDocument } from '../main/shell-contract.ts';
+import { getFormDescriptor, validatePreviewUrl } from './form-schema.ts';
 import {
   applyAction,
   applyList,
@@ -40,6 +42,140 @@ const REFRESH_INTERVAL_MS = 2000;
 let state: ManagerRendererState = initialManagerState();
 let chosenDestination: string | null = null;
 let refreshTimer = 0;
+type TaskFilter = 'all' | 'active' | 'complete' | 'failed';
+let taskFilter: TaskFilter = 'all';
+let searchTerm = '';
+let selectedLineage: string | null = null;
+let addOpen = false;
+
+function verifiedComplete(row: ManagerJobRowDocument): boolean {
+  return (
+    row.present &&
+    row.terminal !== null &&
+    row.terminal.requestFulfillment === 'COMPLETE' &&
+    row.terminal.validationSummary.status === 'ALL_PASSED'
+  );
+}
+
+function isActive(row: ManagerJobRowDocument): boolean {
+  return row.present && row.terminal === null;
+}
+
+function isFailed(row: ManagerJobRowDocument): boolean {
+  return row.present && row.terminal !== null && !verifiedComplete(row);
+}
+
+function statusLabel(row: ManagerJobRowDocument): string {
+  if (!row.present) return '状态未知';
+  if (verifiedComplete(row)) return '已完成';
+  if (isFailed(row)) return '已结束 · 未完成';
+  if (isActive(row)) return '已提交 · 处理中';
+  return '等待 Core 状态';
+}
+
+function renderFormFields(): void {
+  const descriptor = getFormDescriptor('url-preview');
+  if (
+    descriptor === null ||
+    descriptor.schemaVersion !== 1 ||
+    !descriptor.requiresCoreConfirmation
+  ) {
+    throw new Error('unsupported local form descriptor');
+  }
+  const host = byId('form-fields');
+  host.textContent = '';
+  for (const field of descriptor.fields) {
+    const group = document.createElement('div');
+    group.className = 'field-stack';
+    const label = document.createElement('label');
+    label.textContent = field.label;
+    if (field.kind === 'url') {
+      label.htmlFor = field.id;
+      const input = document.createElement('input');
+      input.id = 'url';
+      input.name = field.id;
+      input.type = 'url';
+      input.required = field.required;
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.placeholder = field.placeholder;
+      input.addEventListener('input', () => input.setCustomValidity(''));
+      const hint = document.createElement('small');
+      hint.textContent = field.help;
+      group.append(label, input, hint);
+    } else if (field.kind === 'directory-choice') {
+      label.htmlFor = 'choose-destination';
+      const picker = document.createElement('div');
+      picker.className = 'folder-picker';
+      const destination = document.createElement('span');
+      destination.id = 'destination-label';
+      destination.textContent = '未指定保存目录';
+      const browse = document.createElement('button');
+      browse.id = 'choose-destination';
+      browse.type = 'button';
+      browse.className = 'button subtle';
+      browse.textContent = '浏览…';
+      picker.append(destination, browse);
+      const hint = document.createElement('small');
+      hint.textContent = field.help;
+      group.append(label, picker, hint);
+    }
+    host.appendChild(group);
+  }
+}
+
+function openAdd(): void {
+  addOpen = true;
+  render();
+  (byId('url') as HTMLInputElement).focus();
+}
+
+function closeAdd(): void {
+  if (state.busy || state.pendingPreview !== null) return;
+  addOpen = false;
+  render();
+  byId('new-download').focus();
+}
+
+/** Keep keyboard focus inside a visible permission/confirmation dialog. */
+function trapDialogTab(event: KeyboardEvent, root: HTMLElement): void {
+  if (event.key !== 'Tab') return;
+  const controls = [
+    ...root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled])',
+    ),
+  ].filter((element) => !element.hasAttribute('hidden'));
+  if (controls.length === 0) return;
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (!first || !last) return;
+  const active = document.activeElement;
+  if (event.shiftKey && (active === first || !root.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (active === last || !root.contains(active))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function renderDetails(): void {
+  const panel = byId('job-details');
+  const current = state.jobs.find((row) => row.lineageId === selectedLineage);
+  if (current === undefined) {
+    selectedLineage = null;
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  byId('details-status').textContent = statusLabel(current);
+  byId('details-progress').textContent = jobProgressText(current);
+  byId('details-destination').textContent = current.destination ?? '未指定';
+  byId('details-lineage').textContent = current.lineageId;
+  byId('details-revision').textContent =
+    current.revision === null ? '未知' : String(current.revision);
+  byId('details-reason').textContent = current.terminal?.stopReason ?? '暂无';
+}
 
 function byId(id: string): HTMLElement {
   const element = document.getElementById(id);
@@ -68,12 +204,17 @@ function render(): void {
   notice.dataset.kind = state.notice === null ? 'none' : state.notice.kind;
 
   const connectionLine = byId('connection-line');
-  connectionLine.textContent =
-    state.connection === null ? 'Core connection: unknown' : `Core connection: ${state.connection}`;
+  const connected = state.connection === 'CONNECTED';
+  connectionLine.textContent = connected
+    ? 'Core 已连接'
+    : state.connection === null
+      ? '正在连接 Core…'
+      : 'Core 状态：' + state.connection;
+  connectionLine.dataset.status = connected ? 'connected' : 'disconnected';
+  byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
 
   const destinationLabel = byId('destination-label');
-  destinationLabel.textContent =
-    chosenDestination === null ? 'no destination folder chosen' : chosenDestination;
+  destinationLabel.textContent = chosenDestination === null ? '未指定保存目录' : chosenDestination;
   const addSubmit = byId('add-submit') as HTMLButtonElement;
   const chooseDestination = byId('choose-destination') as HTMLButtonElement;
   addSubmit.disabled = state.busy || state.pendingPreview !== null;
@@ -122,67 +263,117 @@ function renderPreview(): void {
 }
 
 function renderJobs(): void {
-  const emptyState = byId('empty-state');
+  const rows = state.jobs;
+  const allCount = rows.length;
+  const activeCount = rows.filter(isActive).length;
+  const completeCount = rows.filter(verifiedComplete).length;
+  const failedCount = rows.filter(isFailed).length;
+  for (const [id, count] of [
+    ['count-all', allCount],
+    ['count-active', activeCount],
+    ['count-complete', completeCount],
+    ['count-failed', failedCount],
+    ['summary-all', allCount],
+    ['summary-active', activeCount],
+    ['summary-complete', completeCount],
+  ] as const) {
+    byId(id).textContent = String(count);
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.nav-item[data-filter]')) {
+    const selected = button.dataset.filter === taskFilter;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+  const matching = rows.filter((row) => {
+    if (taskFilter === 'active' && !isActive(row)) return false;
+    if (taskFilter === 'complete' && !verifiedComplete(row)) return false;
+    if (taskFilter === 'failed' && !isFailed(row)) return false;
+    const query = searchTerm.toLocaleLowerCase();
+    return (
+      query === '' ||
+      [row.lineageId, row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? ''].some(
+        (field) => field.toLocaleLowerCase().includes(query),
+      )
+    );
+  });
+  const empty = byId('empty-state');
+  const filterEmpty = byId('filter-empty');
   const table = byId('jobs-table');
   const body = byId('jobs-body');
   body.textContent = '';
-  if (state.jobs.length === 0) {
-    emptyState.hidden = false;
-    table.hidden = true;
-    return;
-  }
-  emptyState.hidden = true;
-  table.hidden = false;
-  for (const row of state.jobs) {
-    body.appendChild(jobRowElement(row));
-  }
+  empty.hidden = allCount !== 0;
+  filterEmpty.hidden = allCount === 0 || matching.length !== 0;
+  table.hidden = matching.length === 0;
+  for (const row of matching) body.appendChild(jobRowElement(row));
+  renderDetails();
 }
 
 function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   const tr = document.createElement('tr');
   const lineage = document.createElement('th');
   lineage.scope = 'row';
-  lineage.textContent = row.lineageId;
+  const title = document.createElement('button');
+  title.type = 'button';
+  title.className = 'link-button';
+  title.textContent = '查看任务详情';
+  title.setAttribute('aria-label', '查看任务 ' + row.lineageId + ' 的详情');
+  title.addEventListener('click', () => {
+    selectedLineage = row.lineageId;
+    renderDetails();
+  });
+  const id = document.createElement('span');
+  id.className = 'job-id';
+  id.textContent = row.lineageId.slice(-16);
+  lineage.append(title, id);
   tr.appendChild(lineage);
 
   const status = document.createElement('td');
-  status.textContent = jobStatusText(row);
+  const tag = document.createElement('span');
+  tag.className =
+    'status-tag ' +
+    (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : !row.present ? 'unknown' : '');
+  tag.textContent = statusLabel(row);
+  tag.title = jobStatusText(row);
+  status.appendChild(tag);
   tr.appendChild(status);
 
   const progress = document.createElement('td');
-  progress.textContent = jobProgressText(row);
+  progress.textContent = verifiedComplete(row)
+    ? '已验证完成'
+    : row.terminal === null
+      ? '暂无可靠字节进度'
+      : jobProgressText(row);
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
-  destination.textContent = row.destination === null ? 'not chosen' : row.destination;
+  destination.textContent = row.destination === null ? '未指定' : row.destination;
   tr.appendChild(destination);
 
   const actions = document.createElement('td');
+  const group = document.createElement('div');
+  group.className = 'row-actions';
   const availability = jobActions(row);
-  actions.appendChild(
+  group.append(
     actionButton(
-      'Cancel',
+      '取消',
       row.lineageId,
       availability.cancelEnabled,
       () => void runControl('cancel', row.lineageId),
     ),
-  );
-  actions.appendChild(
     actionButton(
-      'Retry',
+      '重试',
       row.lineageId,
       availability.retryEnabled,
       () => void runControl('retry', row.lineageId),
     ),
-  );
-  actions.appendChild(
     actionButton(
-      'Reveal folder',
+      '打开目录',
       row.lineageId,
       availability.revealEnabled,
       () => void runReveal(row.lineageId),
     ),
   );
+  actions.appendChild(group);
   tr.appendChild(actions);
   return tr;
 }
@@ -198,6 +389,7 @@ function actionButton(
   button.textContent = label;
   button.dataset.lineage = lineageId;
   button.disabled = !enabled || state.busy;
+  if (!enabled) button.title = 'Core 当前未证明此操作可用';
   button.addEventListener('click', onClick);
   return button;
 }
@@ -259,6 +451,13 @@ async function submitPreview(event: Event): Promise<void> {
   }
   const input = byId('url') as HTMLInputElement;
   const url = input.value;
+  const checked = validatePreviewUrl(url);
+  if (!checked.ok) {
+    input.setCustomValidity(checked.reason ?? '链接格式无效');
+    input.reportValidity();
+    return;
+  }
+  input.setCustomValidity('');
   state = setBusy(state, true);
   render();
   const answer =
@@ -277,10 +476,12 @@ async function confirmPreview(): Promise<void> {
   render();
   const answer = await BRIDGE.managerConfirmAdd();
   state = applyAction(state, answer);
+  if (state.pendingPreview === null) addOpen = false;
   render();
   const input = byId('url') as HTMLInputElement;
   input.value = '';
-  input.focus();
+  if (addOpen) input.focus();
+  else byId('new-download').focus();
 }
 
 async function discardPreview(): Promise<void> {
@@ -329,16 +530,46 @@ async function chooseDestination(): Promise<void> {
 // ---- wiring -----------------------------------------------------------------
 
 function wire(): void {
+  renderFormFields();
   if (BRIDGE === undefined || BRIDGE === null) {
     state = bridgeMissing(state);
     render();
     return;
   }
+  byId('new-download').addEventListener('click', openAdd);
+  byId('empty-add').addEventListener('click', openAdd);
+  byId('add-close').addEventListener('click', closeAdd);
+  byId('add-cancel').addEventListener('click', closeAdd);
+  byId('details-close').addEventListener('click', () => {
+    selectedLineage = null;
+    renderDetails();
+  });
+  byId('job-search').addEventListener('input', () => {
+    searchTerm = (byId('job-search') as HTMLInputElement).value.trim();
+    renderJobs();
+  });
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.nav-item[data-filter]')) {
+    button.addEventListener('click', () => {
+      const next = button.dataset.filter;
+      if (next === 'all' || next === 'active' || next === 'complete' || next === 'failed') {
+        taskFilter = next;
+        renderJobs();
+      }
+    });
+  }
+  byId('add-dialog').addEventListener('keydown', (event) => {
+    trapDialogTab(event as KeyboardEvent, byId('add-dialog'));
+    if ((event as KeyboardEvent).key === 'Escape' && !state.busy) {
+      event.preventDefault();
+      closeAdd();
+    }
+  });
   byId('add-form').addEventListener('submit', (event) => void submitPreview(event));
   byId('choose-destination').addEventListener('click', () => void chooseDestination());
   byId('preview-confirm').addEventListener('click', () => void confirmPreview());
   byId('preview-discard').addEventListener('click', () => void discardPreview());
   byId('preview').addEventListener('keydown', (event) => {
+    trapDialogTab(event as KeyboardEvent, byId('preview'));
     if ((event as KeyboardEvent).key === 'Escape') {
       event.preventDefault();
       void discardPreview();
