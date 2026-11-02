@@ -35,9 +35,20 @@
   let s5ObservedTab = null;
   let s5ObservedComplete = false;
 
-  /** Localize renderer-authored copy; keep Core diagnostics and terminal data verbatim. */
+  /** Localize renderer-authored copy; never rewrite Core-owned diagnostic values or raw terminal JSON. */
   function localizeUiMessage(value) {
     let text = String(value);
+    const rawTerminalMarkers = [
+      ['Core terminal projection (verbatim):', 'Core 原始终态（原样）：'],
+      ['Core aggregate terminal (verbatim):', 'Core 汇总终态（原样）：'],
+    ];
+    for (const [source, localized] of rawTerminalMarkers) {
+      const index = text.indexOf(source);
+      if (index >= 0) {
+        return text.slice(0, index) + localized + text.slice(index + source.length);
+      }
+    }
+
     const exact = new Map([
       ['Journey accepted; the service worker is acquiring…', '任务已受理，服务工作线程正在处理…'],
       ['the journey is unknown to the service worker (fresh worker or invalid id)', '服务工作线程中没有此任务记录（可能刚重启或任务标识无效）'],
@@ -60,6 +71,8 @@
     ]);
     if (exact.has(text)) return exact.get(text);
     const patterns = [
+      [/^journey status unreadable \(service worker may have restarted\): /, '无法读取任务状态（服务工作线程可能已重启）：'],
+      [/^journey status unreadable: /, '无法读取任务状态：'],
       [/^journey status unreadable/, '无法读取任务状态'],
       [/^Running the S2 journey \(([^)]+)\)…$/, '正在执行单项下载（$1）…'],
       [/^selection rejected: /, '文件选择被拒绝：'],
@@ -73,7 +86,6 @@
       [/^S5 admission failed without downloading: /, 'S5 准备失败，未开始下载：'],
       [/^S5 preview failed without any acquisition: /, 'S5 预览失败，未执行获取：'],
       [/^S5 refused: /, 'S5 已拒绝：'],
-      [/^journey status unreadable: /, '无法读取任务状态：'],
       [/^batch failed: /, '批量任务失败：'],
       [/^Core is downloading the batch \(([^)]+)\)… per-member status so far:\n/, 'Core 正在处理批量任务（$1）…各文件状态：\n'],
       [/^Core durably confirmed (.+) members \(group (.+)\)\. Start the batch download when ready\.$/, 'Core 已确认 $1 个成员（组 $2）。准备就绪后可开始批量下载。'],
@@ -97,13 +109,7 @@
     for (const [pattern, replacement] of patterns) {
       text = text.replace(pattern, replacement);
     }
-    return text
-      .replaceAll('Core terminal projection (verbatim):', 'Core 原始终态（原样）：')
-      .replaceAll('Core aggregate terminal (verbatim):', 'Core 汇总终态（原样）：')
-      .replaceAll('Core-owned status:', 'Core 任务状态：')
-      .replaceAll(' Error:', ' 错误：')
-      .replaceAll(' Transferred:', ' 已传输：')
-      .replaceAll(' bytes (total: UNKNOWN).', ' 字节（总量未知）。');
+    return text;
   }
 
   function setState(kind, text) {
@@ -1260,16 +1266,16 @@
   function renderV02Projection(projection) {
     const status = String(projection.status || 'UNKNOWN');
     const owner = String(projection.owner || '');
-    let text = `Core-owned status: ${status} (owner: ${owner}).`;
+    let text = 'Core 任务状态：' + status + '（所有者：' + owner + '）。';
     const error = projection.error;
     if (error && error.code) {
-      text += ` Error: ${String(error.code)} — ${String(error.message || error.code)}.`;
+      text += ' 错误：' + String(error.code) + ' — ' + String(error.message || error.code) + '。';
     }
     // Truthful progress only: rendered when Core reported a byte sample; the
-    // total size stays UNKNOWN unless Core says otherwise (never fabricated).
+    // total size stays unknown unless Core says otherwise (never fabricated).
     const progress = projection.progress;
     if (progress && typeof progress.transferredBytes === 'number') {
-      text += ` Transferred: ${String(progress.transferredBytes)} bytes (total: UNKNOWN).`;
+      text += ' 已传输：' + String(progress.transferredBytes) + ' 字节（总量未知）。';
     }
     setV02State(status, text);
     if (status !== 'RUNNING') {
