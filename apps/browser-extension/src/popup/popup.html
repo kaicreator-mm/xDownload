@@ -1,161 +1,409 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <title>xDownload S2</title>
+    <title>xDownload · 浏览器下载助手</title>
     <style>
-      body {
-        font-family: system-ui, sans-serif;
+      :root {
+        font-family: 'Segoe UI', system-ui, sans-serif;
         font-size: 13px;
-        width: 380px;
-        margin: 8px;
+        color: #23384f;
+        color-scheme: light;
       }
-      h1 {
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      body {
+        width: 392px;
+        max-height: 620px;
+        margin: 0;
+        background: #f6f8fc;
+        overflow: auto;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.46;
+        cursor: not-allowed;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 2px solid #1b90c8;
+        outline-offset: 2px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 17px 17px 13px;
+        background: #122239;
+        color: #fff;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .logo-mark {
+        display: grid;
+        place-items: center;
+        background: #1eacd2;
+        color: #fff;
+        font-size: 22px;
+        font-weight: 800;
+        border-radius: 9px;
+        width: 31px;
+        height: 31px;
+      }
+      .logo strong {
+        font-size: 16px;
+        letter-spacing: -0.3px;
+      }
+      .logo small {
+        display: block;
+        font-size: 10px;
+        margin-top: 2px;
+        color: #b6c9da;
+      }
+      .hint-badge {
+        border: 1px solid #36516b;
+        border-radius: 20px;
+        padding: 4px 8px;
+        font-size: 10px;
+        color: #c5d8e8;
+      }
+      nav {
+        display: flex;
+        gap: 4px;
+        padding: 9px 12px;
+        background: #fff;
+        border-bottom: 1px solid #e4ebf4;
+      }
+      .mode-tab {
+        border: 0;
+        background: transparent;
+        color: #77869a;
+        font-weight: 650;
+        font-size: 11px;
+        border-radius: 8px;
+        padding: 8px 11px;
+        flex: 1;
+        white-space: nowrap;
+      }
+      .mode-tab:hover {
+        background: #ecf6fb;
+      }
+      .mode-tab[aria-selected='true'] {
+        color: #127caa;
+        background: #e8f5fc;
+      }
+      main {
+        padding: 15px;
+      }
+      .mode-panel {
+        background: #fff;
+        border: 1px solid #e4ecf5;
+        border-radius: 11px;
+        padding: 15px;
+      }
+      h2 {
         font-size: 14px;
-        margin: 4px 0 8px;
+        margin: 0 0 8px;
+      }
+      h3 {
+        font-size: 12px;
+        margin: 13px 0 8px;
+      }
+      .lead {
+        margin: 0 0 13px;
+        font-size: 11px;
+        color: #6c8197;
+        line-height: 1.55;
+      }
+      .label {
+        color: #657c95;
+        font-size: 11px;
+        line-height: 1.55;
       }
       ul {
         list-style: none;
         margin: 0;
         padding: 0;
-        max-height: 220px;
-        overflow-y: auto;
+        max-height: 250px;
+        overflow: auto;
       }
       li {
-        margin: 6px 0;
-        padding: 6px;
-        border: 1px solid #ccc;
-        border-radius: 6px;
+        margin: 7px 0;
+        padding: 10px;
+        background: #f8fafc;
+        border: 1px solid #e8edf3;
+        border-radius: 8px;
       }
       .link {
         word-break: break-all;
-        margin-bottom: 4px;
+        margin-bottom: 6px;
+        font-weight: 600;
+        color: #263f56;
       }
-      .label {
-        color: #555;
-      }
-      input[type='text'] {
+      input[type='text'],
+      select {
+        display: block;
         width: 100%;
-        box-sizing: border-box;
-        margin: 3px 0;
-        font-family: monospace;
-        font-size: 11px;
+        margin: 5px 0 10px;
+        border: 1px solid #d5e2ee;
+        border-radius: 7px;
+        padding: 8px;
+        background: #fff;
+        color: #23384f;
+        font-family: inherit;
+        font-size: 12px;
       }
-      button {
-        padding: 3px 10px;
+      button:not(.mode-tab) {
+        border: 1px solid #b6d2e7;
+        color: #146d98;
+        background: #ecf6fc;
+        border-radius: 7px;
+        padding: 7px 10px;
+        font-weight: 650;
+      }
+      button:not(.mode-tab):hover:not(:disabled) {
+        background: #d8effb;
       }
       .state {
-        margin: 8px 0 0;
-        padding: 6px;
-        border-radius: 6px;
+        margin: 11px 0 0;
+        padding: 9px 10px;
+        border-radius: 8px;
         white-space: pre-wrap;
+        word-break: break-word;
+        color: #435b75;
+        background: #eef3f8;
+        font-size: 11px;
+        line-height: 1.5;
       }
       .state.RUNNING {
-        background: #eef;
+        color: #185c91;
+        background: #e8f2ff;
       }
       .state.COMPLETE {
-        background: #efe;
+        color: #167251;
+        background: #e6f7ed;
       }
       .state.PARTIAL {
-        background: #ffd;
+        color: #8e691a;
+        background: #fff5dc;
       }
-      .state.FAILED {
-        background: #fee;
-      }
-      .state.UNKNOWN {
-        background: #f2f2f2;
-      }
+      .state.FAILED,
       .error {
-        color: #b00;
+        color: #b13941;
+        background: #fff0f1;
+      }
+      #s5-batch,
+      #s6-walk {
+        border-top: 1px solid #e5edf4;
+        margin-top: 12px;
+        padding-top: 12px;
+      }
+      .footer {
+        padding: 0 15px 14px;
+        font-size: 10px;
+        color: #788b9f;
+        line-height: 1.5;
+      }
+      .footer strong {
+        color: #526a82;
+      }
+      .mode-panel section > p:first-child {
+        margin-top: 0;
+      }
+      .advanced-warning {
+        background: #fff5e6;
+        border-radius: 8px;
+        padding: 10px;
+        color: #845c21;
+        font-size: 11px;
+        margin-bottom: 12px;
+        line-height: 1.55;
       }
     </style>
   </head>
   <body>
-    <h1>xDownload — explicit current-page attachment (S2)</h1>
-    <p class="label">
-      Your explicit selection on this page is the target anchor Core validates against (PRD §28
-      S2/§31 CJ-02). If the page published a SHA-256 you may enter it to strengthen verification —
-      it is never required.
-    </p>
-    <ul id="attachments"></ul>
-    <section id="s5-group" hidden>
-      <p class="label">
-        S5 current-page batch: request the Core-frozen member snapshot, pick the batch subset,
-        confirm it, and Core itself downloads every member with truthful per-member and aggregate
-        terminal states (S2 byte delivery is never used for the batch).
-      </p>
-      <button id="s5-preview" type="button">Preview selected page members</button>
-      <button id="s5-prepare" type="button">Request S5 group admission</button>
-      <div id="s5-preview-result" class="state UNKNOWN" aria-live="polite"></div>
-      <div id="s5-batch" hidden>
-        <p class="label">
-          Core-frozen members (verbatim Core identities; uncheck any member you do not want).
-        </p>
-        <ul id="s5-frozen"></ul>
-        <button id="s5-confirm" type="button">Confirm selected batch members</button>
-        <button id="s5-execute" type="button" disabled>Download confirmed batch</button>
-        <div id="s5-batch-result" class="state UNKNOWN" aria-live="polite"></div>
+    <header class="header">
+      <div class="logo">
+        <span class="logo-mark" aria-hidden="true">↓</span>
+        <div><strong>xDownload</strong><small>浏览器下载助手</small></div>
       </div>
-    </section>
-    <section id="s6-collection" hidden>
-      <p class="label">
-        S6 explicit playlist/gallery: name the collection, confirm the exact finite page range, let
-        Core freeze the admission, walk only the declared pages, and confirm the members for the
-        Core batch download. Core itself downloads every confirmed member and renders a truthful
-        coverage terminal (the declared range is the only navigation bound; budget exhaustion is
-        never called a complete collection).
-      </p>
-      <label class="label"
-        >Collection identity (e.g. playlist/my-list)
-        <input id="s6-identity" type="text" placeholder="playlist/my-list" />
-      </label>
-      <label class="label"
-        >Kind
-        <select id="s6-kind">
-          <option value="playlist">playlist</option>
-          <option value="gallery">gallery</option>
-        </select>
-      </label>
-      <label class="label"
-        >Page range (1-based, inclusive; from ≤ to)
-        <input id="s6-from" type="text" value="1" />
-        <input id="s6-to" type="text" value="1" />
-      </label>
-      <button id="s6-prepare" type="button">Prepare S6 collection admission</button>
-      <div id="s6-prepare-result" class="state UNKNOWN" aria-live="polite"></div>
-      <div id="s6-walk" hidden>
-        <p class="label">
-          Core-frozen page members (verbatim Core identities; uncheck any member you do not want).
+      <span class="hint-badge">本机 Core</span>
+    </header>
+    <nav role="tablist" aria-label="下载模式">
+      <button
+        type="button"
+        class="mode-tab"
+        data-mode="page"
+        role="tab"
+        aria-selected="true"
+        tabindex="0"
+      >
+        当前页面
+      </button>
+      <button
+        type="button"
+        class="mode-tab"
+        data-mode="batch"
+        role="tab"
+        aria-selected="false"
+        tabindex="-1"
+      >
+        批量
+      </button>
+      <button
+        type="button"
+        class="mode-tab"
+        data-mode="collection"
+        role="tab"
+        aria-selected="false"
+        tabindex="-1"
+      >
+        合集
+      </button>
+      <button
+        type="button"
+        class="mode-tab"
+        data-mode="advanced"
+        role="tab"
+        aria-selected="false"
+        tabindex="-1"
+      >
+        高级
+      </button>
+    </nav>
+    <main>
+      <section class="mode-panel" data-mode-panel="page" role="tabpanel" aria-label="当前页面">
+        <h2>选择当前页面的文件</h2>
+        <p class="lead">
+          仅显示在当前网页观察到的链接。选择要下载的文件后，按需要确认网站权限；不会自动读取凭据或下载。
         </p>
-        <ul id="s6-members"></ul>
-        <button id="s6-next-page" type="button">Admit &amp; walk next declared page</button>
-        <button id="s6-confirm" type="button">Confirm selected collection members</button>
-        <button id="s6-execute" type="button" disabled>Download confirmed collection</button>
-        <div id="s6-batch-result" class="state UNKNOWN" aria-live="polite"></div>
-      </div>
-    </section>
-    <section id="v02-domain-app">
-      <h2>v0.2 download (Domain App route)</h2>
-      <p class="label">
-        The download is performed by your local trusted xDownload Host through the single local Core
-        authority — the browser requests no extra permission for it and never sees the transfer. The
-        target must be the opaque Host-issued handle for your selection (from the Host's own target
-        list): a raw URL is refused as a locator substitution, and every refusal is shown verbatim
-        with its typed code. This panel shows only the handle status and the Core-owned job
-        projection; no cookies or credentials ever leave the browser zone.
-      </p>
-      <label class="label"
-        >Host-issued target handle
-        <input id="v02-target-ref" type="text" placeholder="ref:your-host-target" />
-      </label>
-      <label class="label"
-        >Authorized output root (absolute path)
-        <input id="v02-output-root" type="text" placeholder="C:\Users\me\Downloads" />
-      </label>
-      <button id="v02-submit" type="button">Submit v0.2 download</button>
-      <div id="v02-result" class="state UNKNOWN" aria-live="polite"></div>
-    </section>
-    <div id="state" class="state UNKNOWN">Scanning the current page…</div>
+        <ul id="attachments"></ul>
+      </section>
+      <section
+        class="mode-panel"
+        data-mode-panel="batch"
+        role="tabpanel"
+        aria-label="批量下载"
+        hidden
+      >
+        <h2>批量下载</h2>
+        <p class="lead">
+          从当前页面获取经过 Core
+          冻结的候选文件，选择需要的条目并确认后再启动。若当前页面不支持此流程，按钮不会出现。
+        </p>
+        <section id="s5-group" hidden>
+          <p class="label">
+            先从 Core 获取本页可批量处理的候选快照，再勾选所需文件并确认。批量任务的结果由 Core
+            独立判定。
+          </p>
+          <button id="s5-preview" type="button">预览本页候选文件</button>
+          <button id="s5-prepare" type="button">准备批量任务</button>
+          <div id="s5-preview-result" class="state UNKNOWN" aria-live="polite"></div>
+          <div id="s5-batch" hidden>
+            <p class="label">以下是 Core 已确认的候选；可以取消不需要的文件。</p>
+            <ul id="s5-frozen"></ul>
+            <button id="s5-confirm" type="button">确认所选文件</button>
+            <button id="s5-execute" type="button" disabled>下载已确认的文件</button>
+            <div id="s5-batch-result" class="state UNKNOWN" aria-live="polite"></div>
+          </div>
+        </section>
+      </section>
+      <section
+        class="mode-panel"
+        data-mode-panel="collection"
+        role="tabpanel"
+        aria-label="合集与分页任务"
+        hidden
+      >
+        <h2>合集与分页任务</h2>
+        <p class="lead">限定合集页码范围，按页面预览并确认最终成员。不会超出用户指定的页面范围。</p>
+        <section id="s6-collection" hidden>
+          <p class="label">
+            填写合集名称与明确的页码范围。系统只处理指定范围，所有文件由 Core
+            冻结并经用户再次确认；未遍历完整范围时不会误报完成。
+          </p>
+          <label class="label"
+            >合集标识（例如 playlist/my-list）
+            <input id="s6-identity" type="text" placeholder="playlist/my-list" />
+          </label>
+          <label class="label"
+            >合集类型
+            <select id="s6-kind">
+              <option value="playlist">播放列表</option>
+              <option value="gallery">图片合集</option>
+            </select>
+          </label>
+          <label class="label"
+            >页码范围（包含起止页，从 1 开始）
+            <input id="s6-from" type="text" value="1" />
+            <input id="s6-to" type="text" value="1" />
+          </label>
+          <button id="s6-prepare" type="button">预览合集范围</button>
+          <div id="s6-prepare-result" class="state UNKNOWN" aria-live="polite"></div>
+          <div id="s6-walk" hidden>
+            <p class="label">以下是 Core 确认的候选文件；可取消不需要的成员。</p>
+            <ul id="s6-members"></ul>
+            <button id="s6-next-page" type="button">继续下一指定页面</button>
+            <button id="s6-confirm" type="button">确认所选合集成员</button>
+            <button id="s6-execute" type="button" disabled>下载已确认的合集</button>
+            <div id="s6-batch-result" class="state UNKNOWN" aria-live="polite"></div>
+          </div>
+        </section>
+      </section>
+      <section
+        class="mode-panel"
+        data-mode-panel="advanced"
+        role="tabpanel"
+        aria-label="高级：Host 授权下载"
+        hidden
+      >
+        <h2>高级：Host 授权下载</h2>
+        <p class="lead">
+          仅适用于已由可信本地 Host 提供目标句柄的高级流程。普通用户可使用「当前页面」直接选择文件。
+        </p>
+        <section id="v02-domain-app">
+          <p class="advanced-warning">
+            这里不会自动生成 Host 句柄或本机目录权限。请勿填写来自不可信网页的任意标识。
+          </p>
+          <h3>可信 Host 目标提交</h3>
+          <p class="label">
+            本操作由本地 Core 执行，必须填写可信 Host
+            已签发的目标句柄和获授权的输出根目录，不能以网页 URL 替代句柄。拒绝原因和状态均由 Core
+            提供。
+          </p>
+          <label class="label"
+            >Host 签发的目标句柄
+            <input id="v02-target-ref" type="text" placeholder="ref:your-host-target" />
+          </label>
+          <label class="label"
+            >已获授权的保存目录（绝对路径）
+            <input id="v02-output-root" type="text" placeholder="C:\Users\me\Downloads" />
+          </label>
+          <button id="v02-submit" type="button">提交已授权的目标</button>
+          <div id="v02-result" class="state UNKNOWN" aria-live="polite"></div>
+        </section>
+      </section>
+    </main>
+    <div class="footer">
+      <strong>当前操作状态</strong>
+      <div id="state" class="state UNKNOWN" role="status" aria-live="polite">正在检查当前页面…</div>
+      <p>所有任务结果以本地 Core 为准；授权只发生在明确的用户操作之后。</p>
+    </div>
     <script src="popup.js"></script>
   </body>
 </html>
