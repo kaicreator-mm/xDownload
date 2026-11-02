@@ -76,7 +76,7 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain('row.terminal.validationSummary.status');
     expect(renderer).not.toContain('innerHTML');
   });
-  it('creates one destination picker from the trusted descriptor, not duplicate static markup', () => {
+  it('keeps unsupported destination selection and reveal controls out of the renderer', () => {
     expect(html).not.toContain('id="destination-label"');
     expect(html).not.toContain('id="choose-destination"');
     expect(renderer).not.toContain('choose-destination');
@@ -109,6 +109,9 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).not.toContain('managerRevealJob');
     expect(renderer).not.toContain('managerChooseDestination');
     expect(renderer).toContain('由 Core 配置管理（实际路径尚未提供）');
+    expect(html).toContain('输出位置由 Core 安装配置管理');
+    expect(html).toContain('单任务自定义目录');
+    expect(html).not.toContain('打开目录');
   });
 
   it('uses only the source host as a friendly label and keeps Core diagnostics intact', () => {
