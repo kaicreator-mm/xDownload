@@ -76,6 +76,12 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain('row.terminal.validationSummary.status');
     expect(renderer).not.toContain('innerHTML');
   });
+  it('describes only the fields that the task search actually indexes', () => {
+    expect(html).toContain('placeholder="搜索来源、状态或失败原因"');
+    expect(html).not.toContain('placeholder="搜索链接来源、状态或目录"');
+    expect(renderer).toContain('[taskLabel(row), statusLabel(row), row.terminal?.stopReason ?? \'\']');
+  });
+
   it('keeps unsupported destination selection and reveal controls out of the renderer', () => {
     expect(html).not.toContain('id="destination-label"');
     expect(html).not.toContain('id="choose-destination"');
