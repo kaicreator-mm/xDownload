@@ -28,7 +28,6 @@ import {
   bridgeMissing,
   initialManagerState,
   jobActions,
-  jobProgressText,
   jobStatusText,
   noticeShown,
   previewOpened,
@@ -82,7 +81,8 @@ function statusLabel(row: ManagerJobRowDocument): string {
 function taskLabelFromUrl(raw: string): string {
   try {
     const parsed = new URL(raw);
-    const lastSegment = parsed.pathname.split('/').filter(Boolean).at(-1) ?? '';
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const lastSegment = segments.length === 0 ? '' : (segments[segments.length - 1] ?? '');
     let safePath = lastSegment;
     try {
       safePath = decodeURIComponent(lastSegment);
