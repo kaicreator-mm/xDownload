@@ -54,7 +54,7 @@ function verifiedComplete(row: ManagerJobRowDocument): boolean {
     row.present &&
     terminal !== null &&
     terminal.targetResolution === 'RESOLVED' &&
-    terminal.selectionAcquisition === 'ACQUIRED' &&
+    terminal.selectionAcquisition === 'COMPLETE' &&
     terminal.coverage === 'VERIFIED_COMPLETE' &&
     terminal.requestFulfillment === 'COMPLETE' &&
     terminal.validationSummary.status === 'ALL_PASSED'
@@ -62,19 +62,26 @@ function verifiedComplete(row: ManagerJobRowDocument): boolean {
 }
 
 function isActive(row: ManagerJobRowDocument): boolean {
-  return row.present && row.terminal === null;
+  return row.present && row.lineageStatus === 'ACTIVE' && row.terminal === null;
 }
 
 function isFailed(row: ManagerJobRowDocument): boolean {
-  return row.present && row.terminal !== null && !verifiedComplete(row);
+  return (
+    row.present &&
+    (row.lineageStatus === 'CANCELLED' ||
+      (row.terminal !== null && !verifiedComplete(row)) ||
+      (row.lineageStatus === 'TERMINAL' && row.terminal === null))
+  );
 }
 
 function statusLabel(row: ManagerJobRowDocument): string {
   if (!row.present) return '状态未知';
   if (verifiedComplete(row)) return '已完成';
-  if (isFailed(row)) return '已结束 · 未完成';
-  if (isActive(row)) return '已提交 · 未结束';
-  return '等待 Core 状态';
+  if (row.lineageStatus === 'CANCELLED') return '已取消';
+  if (row.terminal !== null) return '已结束 · 未完成';
+  if (row.lineageStatus === 'ACTIVE') return '已提交 · 未结束';
+  if (row.lineageStatus === 'TERMINAL') return '已结束 · 终态明细缺失';
+  return '状态待核实';
 }
 
 /** Display only the user-entered origin; never expose URL paths, query strings or credentials. */
@@ -94,6 +101,8 @@ function taskLabel(row: ManagerJobRowDocument): string {
 function progressSummary(row: ManagerJobRowDocument): string {
   if (!row.present) return 'Core 尚未返回可验证的任务状态';
   if (row.terminal === null) {
+    if (row.lineageStatus === 'CANCELLED') return 'Core 已标记取消 · 终态明细尚未返回';
+    if (row.lineageStatus === 'TERMINAL') return 'Core 已标记终结 · 终态明细缺失';
     return row.selectedMemberCount === null
       ? '尚未获得终态 · 暂无可靠字节进度'
       : 'Core 已记录 ' + row.selectedMemberCount + ' 个目标 · 尚未获得终态 · 暂无可靠字节进度';
