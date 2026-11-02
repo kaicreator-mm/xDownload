@@ -193,7 +193,7 @@ describe('#152 packaged S5 popup -> worker gesture (Core carrier absent)', () =>
       await ready(nodes);
       await nodes['s5-prepare']!.handlers['click']!();
       expect(s5Gestures(sent)).toHaveLength(0);
-      expect(nodes['s5-preview-result']!.textContent).toMatch(/refused|changed/iu);
+      expect(nodes['s5-preview-result']!.textContent).toMatch(/拒绝|变化/iu);
     }
   });
 });
@@ -313,7 +313,7 @@ describe('#152 packaged S5 popup -> installed batch flow', () => {
       return [a];
     };
     await nodes['s5-confirm']!.handlers['click']!();
-    expect(nodes['s5-batch-result']!.textContent).toContain('Core refused the confirmation');
+    expect(nodes['s5-batch-result']!.textContent).toContain('Core 拒绝了确认');
     expect(nodes['s5-execute']!.disabled).toBe(true);
   });
 });
@@ -386,7 +386,7 @@ describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
     nodes['s6-to']!.value = '3';
     await nodes['s6-prepare']!.handlers['click']!();
     await vi.waitFor(() => {
-      expect(nodes['s6-prepare-result']!.textContent).toContain('fromPage must be 1');
+      expect(nodes['s6-prepare-result']!.textContent).toContain('fromPage 必须为 1');
     });
     expect(sent.some((message) => message.kind === 'S6_PREPARE_COLLECTION')).toBe(false);
   });
@@ -488,7 +488,7 @@ describe('v0.2.1 T05 popup v0.2 submission panel', () => {
     nodes['v02-output-root']!.value = 'C:/tmp/authorized-root';
     await nodes['v02-submit']!.handlers['click']!();
     await vi.waitFor(() => {
-      expect(nodes['v02-result']!.textContent).toContain('Core-owned status: UNKNOWN');
+      expect(nodes['v02-result']!.textContent).toContain('Core 任务状态：UNKNOWN');
       expect(nodes['v02-result']!.textContent).toContain('owner: new-k');
     });
     expect(sent.some((message) => message.kind === 'V02_JOB_STATUS')).toBe(true);
@@ -533,7 +533,7 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     });
     await ready(nodes);
     await vi.waitFor(() => {
-      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey');
+      expect(nodes['s6-prepare-result']!.textContent).toContain('已从 Core 恢复 S6 任务');
       expect(nodes['s6-next-page']!.disabled).toBe(false);
     });
     expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
@@ -555,7 +555,7 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     });
     await ready(nodes);
     await vi.waitFor(() =>
-      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey'),
+      expect(nodes['s6-prepare-result']!.textContent).toContain('已从 Core 恢复 S6 任务'),
     );
     expect(nodes['s6-next-page']!.disabled).toBe(true);
     expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
