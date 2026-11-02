@@ -182,22 +182,20 @@ function renderFormFields(): void {
     const group = document.createElement('div');
     group.className = 'field-stack';
     const label = document.createElement('label');
+    label.htmlFor = field.id;
     label.textContent = field.label;
-    if (field.kind === 'url') {
-      label.htmlFor = field.id;
-      const input = document.createElement('input');
-      input.id = 'url';
-      input.name = field.id;
-      input.type = 'url';
-      input.required = field.required;
-      input.autocomplete = 'off';
-      input.spellcheck = false;
-      input.placeholder = field.placeholder;
-      input.addEventListener('input', () => input.setCustomValidity(''));
-      const hint = document.createElement('small');
-      hint.textContent = field.help;
-      group.append(label, input, hint);
-    }
+    const input = document.createElement('input');
+    input.id = field.id;
+    input.name = field.id;
+    input.type = field.kind;
+    input.required = field.required;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.placeholder = field.placeholder;
+    input.addEventListener('input', () => input.setCustomValidity(''));
+    const hint = document.createElement('small');
+    hint.textContent = field.help;
+    group.append(label, input, hint);
     host.appendChild(group);
   }
 }
