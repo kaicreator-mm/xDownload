@@ -8,7 +8,7 @@
         font-family: 'Segoe UI', system-ui, sans-serif;
         font-size: 13px;
         color: #23384f;
-        color-scheme: light;
+        color-scheme: light dark;
       }
       * {
         box-sizing: border-box;
@@ -233,6 +233,152 @@
         font-size: 11px;
         margin-bottom: 12px;
         line-height: 1.55;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          color: #e8edf3;
+          background: #141d2b;
+        }
+        body {
+          color: #e8edf3;
+          background: #141d2b;
+        }
+        nav {
+          background: #1e2a3d;
+          border-color: #35465a;
+        }
+        .mode-tab {
+          color: #b8c5d7;
+        }
+        .mode-tab:hover {
+          background: #293950;
+        }
+        .mode-tab[aria-selected='true'] {
+          color: #b6def7;
+          background: #263e57;
+        }
+        .mode-panel {
+          background: #1e2a3d;
+          border-color: #35465a;
+        }
+        .lead,
+        .label,
+        .footer {
+          color: #a2b1c6;
+        }
+        .footer strong {
+          color: #d2deeb;
+        }
+        li {
+          background: #24354b;
+          border-color: #3b4c63;
+        }
+        .link {
+          color: #e8f2fe;
+        }
+        input[type='text'],
+        select {
+          color: #e7edf5;
+          background: #25354b;
+          border-color: #4a6078;
+        }
+        button:not(.mode-tab) {
+          color: #d7e7f7;
+          background: #293950;
+          border-color: #4e6078;
+        }
+        button:not(.mode-tab):hover:not(:disabled) {
+          background: #354c68;
+        }
+        .state {
+          color: #c4d8ed;
+          background: #253a52;
+        }
+        .state.RUNNING {
+          color: #b9dafa;
+          background: #263e57;
+        }
+        .state.COMPLETE {
+          color: #b3e9cc;
+          background: #20493b;
+        }
+        .state.PARTIAL {
+          color: #f4d9a3;
+          background: #514324;
+        }
+        .state.FAILED,
+        .error {
+          color: #ffd4cf;
+          background: #4a3036;
+        }
+        #s5-batch,
+        #s6-walk {
+          border-color: #35465a;
+        }
+        .advanced-warning {
+          color: #f2d5a2;
+          background: #4b3b27;
+        }
+        .hint-badge {
+          color: #d2dfec;
+          border-color: #49617a;
+        }
+      }
+      @media (forced-colors: active) {
+        :root,
+        body {
+          color: CanvasText;
+          background: Canvas;
+          color-scheme: light dark;
+        }
+        .header {
+          color: Canvas;
+          background: CanvasText;
+          forced-color-adjust: none;
+        }
+        .logo-mark {
+          color: HighlightText;
+          background: Highlight;
+          forced-color-adjust: none;
+        }
+        .mode-tab[aria-selected='true'] {
+          color: Highlight;
+          outline: 1px solid Highlight;
+        }
+        button,
+        input,
+        select,
+        .mode-panel,
+        li,
+        .state,
+        .advanced-warning {
+          border: 1px solid ButtonText;
+        }
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        .mode-tab:focus-visible {
+          outline: 2px solid Highlight;
+          outline-offset: 2px;
+        }
+        .state.RUNNING,
+        .state.COMPLETE,
+        .state.PARTIAL,
+        .state.FAILED {
+          color: CanvasText;
+          background: Canvas;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
       }
     </style>
   </head>
