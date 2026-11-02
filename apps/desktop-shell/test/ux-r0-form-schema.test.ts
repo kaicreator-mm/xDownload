@@ -102,6 +102,9 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain("row.lineageStatus === 'ACTIVE'");
     expect(renderer).toContain("row.lineageStatus === 'CANCELLED'");
     expect(renderer).toContain("row.lineageStatus === 'TERMINAL'");
+    expect(renderer).toContain("validation.status === 'FAILED'");
+    expect(renderer).toContain("validation.status === 'INSUFFICIENT_EVIDENCE'");
+    expect(renderer).not.toContain("terminal.selectionAcquisition === 'ACQUIRED'");
     expect(renderer).toContain("availability.revealEnabled && verifiedComplete(row)");
   });
 
