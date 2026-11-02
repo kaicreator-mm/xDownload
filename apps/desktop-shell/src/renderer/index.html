@@ -28,7 +28,7 @@
             <span aria-hidden="true">▦</span> 全部任务 <b id="count-all">0</b>
           </button>
           <button type="button" class="nav-item" data-filter="active" aria-pressed="false">
-            <span aria-hidden="true">◷</span> 进行中 <b id="count-active">0</b>
+            <span aria-hidden="true">◷</span> 未结束 <b id="count-active">0</b>
           </button>
           <button type="button" class="nav-item" data-filter="complete" aria-pressed="false">
             <span aria-hidden="true">✓</span> 已完成 <b id="count-complete">0</b>
@@ -61,7 +61,8 @@
             <span>会话任务</span><strong id="summary-all">0</strong><small>仅当前窗口</small>
           </div>
           <div class="overview-cell">
-            <span>进行中</span><strong id="summary-active">0</strong><small>不等于已开始传输</small>
+            <span>未结束</span><strong id="summary-active">0</strong
+            ><small>尚未获得终态，不代表正在传输</small>
           </div>
           <div class="overview-cell">
             <span>已完成</span><strong id="summary-complete">0</strong
@@ -80,7 +81,7 @@
                 id="job-search"
                 type="search"
                 autocomplete="off"
-                placeholder="搜索任务编号、状态或目录"
+                placeholder="搜索来源、状态或失败原因"
             /></label>
           </div>
           <p id="notice" class="notice" role="status" aria-live="polite"></p>
@@ -101,10 +102,10 @@
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">任务</th>
+                  <th scope="col">链接来源</th>
                   <th scope="col">状态</th>
                   <th scope="col">进度 / 结果</th>
-                  <th scope="col">保存位置</th>
+                  <th scope="col">输出位置</th>
                   <th scope="col">操作</th>
                 </tr>
               </thead>
@@ -132,7 +133,7 @@
           <p id="details-progress">—</p>
         </div>
         <div class="detail-block">
-          <span>保存位置</span>
+          <span>输出位置</span>
           <p id="details-destination">—</p>
         </div>
         <details class="technical-info">
@@ -158,16 +159,12 @@
               ×
             </button>
           </div>
-          <p class="form-hint">输入链接，选择保存目录。提交前会由 Core 给出需要确认的范围。</p>
+          <p class="form-hint">
+            输入链接并预览 Core 确认范围后提交。输出位置由 Core
+            安装配置管理；当前不支持按任务自定义目录。
+          </p>
           <form id="add-form">
             <div id="form-fields" class="field-stack"></div>
-            <div class="field-stack">
-              <label for="destination-label">保存到</label>
-              <div class="folder-picker">
-                <span id="destination-label">未指定保存目录</span
-                ><button id="choose-destination" type="button" class="button subtle">浏览…</button>
-              </div>
-            </div>
             <details class="advanced-form">
               <summary>安全与高级说明</summary>
               <p>
@@ -195,7 +192,7 @@
           <h2 id="preview-title">确认任务范围</h2>
           <p>下载目标</p>
           <strong id="preview-url" class="value-break">—</strong>
-          <p>保存目录</p>
+          <p>Core 输出位置</p>
           <strong id="preview-destination" class="value-break">—</strong>
           <h3>Core 要求确认的事项</h3>
           <ul id="preview-requests"></ul>

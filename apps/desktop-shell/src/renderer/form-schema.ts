@@ -4,23 +4,14 @@
  * displayed only when the existing typed preload bridge already supports it.
  * Host/Core keep the final admission and scope decision; no renderer grant.
  */
-export type FormField =
-  | {
-      readonly id: 'url';
-      readonly kind: 'url';
-      readonly label: string;
-      readonly placeholder: string;
-      readonly help: string;
-      readonly required: true;
-    }
-  | {
-      readonly id: 'destination';
-      readonly kind: 'directory-choice';
-      readonly label: string;
-      readonly help: string;
-      readonly required: false;
-    };
-
+export type FormField = {
+  readonly id: 'url';
+  readonly kind: 'url';
+  readonly label: string;
+  readonly placeholder: string;
+  readonly help: string;
+  readonly required: true;
+};
 export interface LocalFormDescriptor {
   readonly schemaVersion: 1;
   readonly operation: 'url-preview';
@@ -34,7 +25,8 @@ const URL_PREVIEW_FORM: LocalFormDescriptor = Object.freeze({
   schemaVersion: 1,
   operation: 'url-preview',
   title: '添加下载链接',
-  description: '仅构造预览输入；实际目标和权限需要 Core 明确确认。',
+  description:
+    '仅构造预览输入；实际目标和权限由 Core 确认。输出目录由 Core 安装配置管理，当前不支持单任务自定义目录。',
   requiresCoreConfirmation: true,
   fields: Object.freeze([
     Object.freeze({
@@ -44,13 +36,6 @@ const URL_PREVIEW_FORM: LocalFormDescriptor = Object.freeze({
       placeholder: 'https://example.com/file.zip',
       help: '仅支持 http:// 或 https:// 链接；粘贴后先预览再确认。',
       required: true,
-    }),
-    Object.freeze({
-      id: 'destination',
-      kind: 'directory-choice',
-      label: '保存位置',
-      help: '由系统文件夹选择器选择，不能让网页路径直接获得文件权限。',
-      required: false,
     }),
   ]),
 });

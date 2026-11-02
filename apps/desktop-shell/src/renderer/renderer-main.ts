@@ -10,8 +10,8 @@
  *   import, no eval, no inline handlers, no HTML-injection API: every text
  *   node is written with `textContent`, every listener with
  *   `addEventListener`.
- * - The page never derives status: it renders the shell's verbatim Core
- *   projection documents and re-polls the allowlisted refresh channel.
+ * - The page never invents transfer progress or output paths. Friendly status
+ *   labels are conservative mappings of explicit Core projection dimensions.
  *
  * Accessibility: the add flow is fully keyboard-operable (Enter submits the
  * form, Escape discards the preview dialog, all actions are native buttons);
@@ -28,9 +28,7 @@ import {
   bridgeMissing,
   initialManagerState,
   jobActions,
-  jobProgressText,
   jobStatusText,
-  noticeShown,
   previewOpened,
   setBusy,
   type ManagerRendererState,
@@ -40,37 +38,147 @@ const BRIDGE = window.xdownloadShell;
 const REFRESH_INTERVAL_MS = 2000;
 
 let state: ManagerRendererState = initialManagerState();
-let chosenDestination: string | null = null;
 let refreshTimer = 0;
 type TaskFilter = 'all' | 'active' | 'complete' | 'failed';
 let taskFilter: TaskFilter = 'all';
 let searchTerm = '';
 let selectedLineage: string | null = null;
 let addOpen = false;
+const taskDisplayNames = new Map<string, string>();
 
 function verifiedComplete(row: ManagerJobRowDocument): boolean {
+  const terminal = row.terminal;
   return (
     row.present &&
-    row.terminal !== null &&
-    row.terminal.requestFulfillment === 'COMPLETE' &&
-    row.terminal.validationSummary.status === 'ALL_PASSED'
+    row.lineageStatus === 'TERMINAL' &&
+    terminal !== null &&
+    terminal.targetResolution === 'RESOLVED' &&
+    terminal.selectionAcquisition === 'COMPLETE' &&
+    terminal.coverage === 'VERIFIED_COMPLETE' &&
+    terminal.requestFulfillment === 'COMPLETE' &&
+    terminal.validationSummary.status === 'ALL_PASSED'
   );
 }
 
 function isActive(row: ManagerJobRowDocument): boolean {
-  return row.present && row.terminal === null;
+  return row.present && row.lineageStatus === 'ACTIVE' && row.terminal === null;
 }
 
 function isFailed(row: ManagerJobRowDocument): boolean {
-  return row.present && row.terminal !== null && !verifiedComplete(row);
+  return (
+    row.present &&
+    (row.lineageStatus === 'CANCELLED' ||
+      (row.terminal !== null && !verifiedComplete(row)) ||
+      (row.lineageStatus === 'TERMINAL' && row.terminal === null))
+  );
 }
 
 function statusLabel(row: ManagerJobRowDocument): string {
   if (!row.present) return '状态未知';
+  if (row.lineageStatus === 'CANCELLED') return '已取消';
   if (verifiedComplete(row)) return '已完成';
-  if (isFailed(row)) return '已结束 · 未完成';
-  if (isActive(row)) return '已提交 · 处理中';
-  return '等待 Core 状态';
+  if (row.terminal !== null) return '已结束 · 未完成';
+  if (row.lineageStatus === 'ACTIVE') return '已提交 · 未结束';
+  if (row.lineageStatus === 'TERMINAL') return '已结束 · 终态明细缺失';
+  return '状态待核实';
+}
+
+/** Display only the user-entered origin; never expose URL paths, query strings or credentials. */
+function taskLabelFromUrl(raw: string): string {
+  try {
+    const parsed = new URL(raw);
+    return '来源站点 · ' + parsed.host;
+  } catch {
+    return '下载任务';
+  }
+}
+
+function taskLabel(row: ManagerJobRowDocument): string {
+  return taskDisplayNames.get(row.lineageId) ?? '下载任务';
+}
+
+function progressSummary(row: ManagerJobRowDocument): string {
+  if (!row.present) return 'Core 尚未返回可验证的任务状态';
+  if (row.terminal === null) {
+    if (row.lineageStatus === 'CANCELLED') return 'Core 已标记取消 · 终态明细尚未返回';
+    if (row.lineageStatus === 'TERMINAL') return 'Core 已标记终结 · 终态明细缺失';
+    if (row.lineageStatus !== 'ACTIVE') return 'Core 尚未确认任务状态';
+    return row.selectedMemberCount === null
+      ? '尚未获得终态 · 暂无可靠字节进度'
+      : 'Core 已记录 ' + row.selectedMemberCount + ' 个目标 · 尚未获得终态 · 暂无可靠字节进度';
+  }
+  const validation = row.terminal.validationSummary;
+  const validationLabel =
+    validation.status === 'ALL_PASSED'
+      ? '全部通过'
+      : validation.status === 'PARTIAL'
+        ? '部分通过'
+        : validation.status === 'FAILED'
+          ? '未通过'
+          : validation.status === 'INSUFFICIENT_EVIDENCE'
+            ? '证据不足'
+            : validation.status === 'NOT_PERFORMED'
+              ? '尚未执行'
+              : validation.status;
+  const coverageLabel =
+    row.terminal.coverage === 'VERIFIED_COMPLETE' ? '范围已验证完成' : row.terminal.coverage;
+  return (
+    '覆盖：' +
+    coverageLabel +
+    ' · 校验：' +
+    validationLabel +
+    '（通过 ' +
+    validation.passedCount +
+    ' 项，失败 ' +
+    validation.failedCount +
+    ' 项）'
+  );
+}
+
+/** Translate renderer-authored phrases; preserve Core refusal details verbatim. */
+function localizeNotice(text: string): string {
+  const fixed: Record<string, string> = {
+    'refresh refused: unexpected document': '刷新失败：Core 返回了无法识别的任务列表',
+    'preview refused: unexpected document': '预览失败：Core 返回了无法识别的预览结果',
+    'action refused: unexpected document': '操作失败：Core 返回了无法识别的操作结果',
+    "the add was accepted by the Core (admission — the job list below shows the Core's projection)":
+      '任务已提交至 Core（仅表示已受理，实际状态以任务列表为准）',
+    "the cancel was accepted by the Core (admission — the job list below shows the Core's projection)":
+      '取消请求已提交至 Core（实际结果以任务列表为准）',
+    "the retry was accepted by the Core (admission — the job list below shows the Core's projection)":
+      '重试请求已提交至 Core（实际结果以任务列表为准）',
+  };
+  const exact = fixed[text];
+  if (exact !== undefined) return exact;
+  const patterns: readonly [RegExp, (match: RegExpMatchArray) => string][] = [
+    [/^refresh refused: (.*)$/u, (m) => '刷新失败：' + m[1]],
+    [/^preview refused: (.*)$/u, (m) => '预览失败：' + m[1]],
+    [/^action refused: (.*)$/u, (m) => '操作失败：' + m[1]],
+    [
+      /^the Core refused the (add|cancel|retry) \(([^)]+)\): (.*)$/u,
+      (m) =>
+        'Core 拒绝了' +
+        ({ add: '添加任务', cancel: '取消任务', retry: '重试任务' }[m[1] ?? ''] ?? '操作') +
+        '（' +
+        m[2] +
+        '）：' +
+        m[3],
+    ],
+    [
+      /^the (add|cancel|retry) was not routed: (.*)$/u,
+      (m) => {
+        const action =
+          { add: '添加任务', cancel: '取消任务', retry: '重试任务' }[m[1] ?? ''] ?? '操作';
+        const detail = m[2] === 'refused' ? 'Core 未确认受理' : m[2];
+        return action + '未提交：' + detail;
+      },
+    ],
+  ];
+  for (const [pattern, translate] of patterns) {
+    const match = text.match(pattern);
+    if (match !== null) return translate(match);
+  }
+  return text;
 }
 
 function renderFormFields(): void {
@@ -88,38 +196,20 @@ function renderFormFields(): void {
     const group = document.createElement('div');
     group.className = 'field-stack';
     const label = document.createElement('label');
+    label.htmlFor = field.id;
     label.textContent = field.label;
-    if (field.kind === 'url') {
-      label.htmlFor = field.id;
-      const input = document.createElement('input');
-      input.id = 'url';
-      input.name = field.id;
-      input.type = 'url';
-      input.required = field.required;
-      input.autocomplete = 'off';
-      input.spellcheck = false;
-      input.placeholder = field.placeholder;
-      input.addEventListener('input', () => input.setCustomValidity(''));
-      const hint = document.createElement('small');
-      hint.textContent = field.help;
-      group.append(label, input, hint);
-    } else if (field.kind === 'directory-choice') {
-      label.htmlFor = 'choose-destination';
-      const picker = document.createElement('div');
-      picker.className = 'folder-picker';
-      const destination = document.createElement('span');
-      destination.id = 'destination-label';
-      destination.textContent = '未指定保存目录';
-      const browse = document.createElement('button');
-      browse.id = 'choose-destination';
-      browse.type = 'button';
-      browse.className = 'button subtle';
-      browse.textContent = '浏览…';
-      picker.append(destination, browse);
-      const hint = document.createElement('small');
-      hint.textContent = field.help;
-      group.append(label, picker, hint);
-    }
+    const input = document.createElement('input');
+    input.id = field.id;
+    input.name = field.id;
+    input.type = field.kind;
+    input.required = field.required;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.placeholder = field.placeholder;
+    input.addEventListener('input', () => input.setCustomValidity(''));
+    const hint = document.createElement('small');
+    hint.textContent = field.help;
+    group.append(label, input, hint);
     host.appendChild(group);
   }
 }
@@ -168,9 +258,10 @@ function renderDetails(): void {
     return;
   }
   panel.hidden = false;
+  byId('details-title').textContent = taskLabel(current);
   byId('details-status').textContent = statusLabel(current);
-  byId('details-progress').textContent = jobProgressText(current);
-  byId('details-destination').textContent = current.destination ?? '未指定';
+  byId('details-progress').textContent = progressSummary(current);
+  byId('details-destination').textContent = '由 Core 配置管理（实际路径尚未提供）';
   byId('details-lineage').textContent = current.lineageId;
   byId('details-revision').textContent =
     current.revision === null ? '未知' : String(current.revision);
@@ -200,7 +291,7 @@ function render(): void {
   app.hidden = state.phase === 'loading';
 
   const notice = byId('notice');
-  notice.textContent = state.notice === null ? '' : state.notice.text;
+  notice.textContent = state.notice === null ? '' : localizeNotice(state.notice.text);
   notice.dataset.kind = state.notice === null ? 'none' : state.notice.kind;
 
   const connectionLine = byId('connection-line');
@@ -213,12 +304,8 @@ function render(): void {
   connectionLine.dataset.status = connected ? 'connected' : 'disconnected';
   byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
 
-  const destinationLabel = byId('destination-label');
-  destinationLabel.textContent = chosenDestination === null ? '未指定保存目录' : chosenDestination;
   const addSubmit = byId('add-submit') as HTMLButtonElement;
-  const chooseDestination = byId('choose-destination') as HTMLButtonElement;
   addSubmit.disabled = state.busy || state.pendingPreview !== null;
-  chooseDestination.disabled = state.busy;
 
   const urlInput = byId('url') as HTMLInputElement;
   urlInput.disabled = state.busy || state.pendingPreview !== null;
@@ -239,8 +326,7 @@ function renderPreview(): void {
   preview.hidden = false;
   preview.dataset.open = 'true';
   byId('preview-url').textContent = pending.url;
-  byId('preview-destination').textContent =
-    pending.destination === null ? 'no destination folder chosen' : pending.destination;
+  byId('preview-destination').textContent = '由 Core 配置管理（实际路径尚未提供）';
   const requests = byId('preview-requests');
   requests.textContent = '';
   for (const request of pending.confirmationRequests) {
@@ -291,8 +377,8 @@ function renderJobs(): void {
     const query = searchTerm.toLocaleLowerCase();
     return (
       query === '' ||
-      [row.lineageId, row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? ''].some(
-        (field) => field.toLocaleLowerCase().includes(query),
+      [taskLabel(row), statusLabel(row), row.terminal?.stopReason ?? ''].some((field) =>
+        field.toLocaleLowerCase().includes(query),
       )
     );
   });
@@ -315,16 +401,13 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   const title = document.createElement('button');
   title.type = 'button';
   title.className = 'link-button';
-  title.textContent = '查看任务详情';
-  title.setAttribute('aria-label', '查看任务 ' + row.lineageId + ' 的详情');
+  title.textContent = taskLabel(row);
+  title.setAttribute('aria-label', '查看' + taskLabel(row) + '详情');
   title.addEventListener('click', () => {
     selectedLineage = row.lineageId;
     renderDetails();
   });
-  const id = document.createElement('span');
-  id.className = 'job-id';
-  id.textContent = row.lineageId.slice(-16);
-  lineage.append(title, id);
+  lineage.append(title);
   tr.appendChild(lineage);
 
   const status = document.createElement('td');
@@ -333,20 +416,16 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
     'status-tag ' +
     (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : !row.present ? 'unknown' : '');
   tag.textContent = statusLabel(row);
-  tag.title = jobStatusText(row);
+  tag.title = 'Core 原始状态：' + jobStatusText(row);
   status.appendChild(tag);
   tr.appendChild(status);
 
   const progress = document.createElement('td');
-  progress.textContent = verifiedComplete(row)
-    ? '已验证完成'
-    : row.terminal === null
-      ? '暂无可靠字节进度'
-      : jobProgressText(row);
+  progress.textContent = verifiedComplete(row) ? '已验证完成' : progressSummary(row);
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
-  destination.textContent = row.destination === null ? '未指定' : row.destination;
+  destination.textContent = '由 Core 配置管理（实际路径尚未提供）';
   tr.appendChild(destination);
 
   const actions = document.createElement('td');
@@ -365,12 +444,6 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
       row.lineageId,
       availability.retryEnabled,
       () => void runControl('retry', row.lineageId),
-    ),
-    actionButton(
-      '打开目录',
-      row.lineageId,
-      availability.revealEnabled,
-      () => void runReveal(row.lineageId),
     ),
   );
   actions.appendChild(group);
@@ -421,27 +494,6 @@ async function runControl(action: 'cancel' | 'retry', lineageId: string): Promis
   render();
 }
 
-async function runReveal(lineageId: string): Promise<void> {
-  if (BRIDGE === undefined || BRIDGE === null) {
-    return;
-  }
-  state = setBusy(state, true);
-  render();
-  const answer = await BRIDGE.managerRevealJob({ lineageId });
-  if (answer.ok === false) {
-    state = noticeShown(state, { kind: 'error', text: `reveal refused: ${answer.detail}` });
-  } else if (answer.document !== 'xdownload.desktop.manager.reveal') {
-    state = noticeShown(state, { kind: 'error', text: 'reveal refused: unexpected document' });
-  } else {
-    state = noticeShown(state, {
-      kind: 'info',
-      text: `revealed the destination folder for ${answer.lineageId}`,
-    });
-  }
-  state = setBusy(state, false);
-  render();
-}
-
 async function submitPreview(event: Event): Promise<void> {
   event.preventDefault();
   if (BRIDGE === undefined || BRIDGE === null) {
@@ -460,10 +512,7 @@ async function submitPreview(event: Event): Promise<void> {
   input.setCustomValidity('');
   state = setBusy(state, true);
   render();
-  const answer =
-    chosenDestination === null
-      ? await BRIDGE.managerPreviewAdd({ url })
-      : await BRIDGE.managerPreviewAdd({ url, destination: chosenDestination });
+  const answer = await BRIDGE.managerPreviewAdd({ url });
   state = previewOpened(state, answer);
   render();
 }
@@ -474,7 +523,18 @@ async function confirmPreview(): Promise<void> {
   }
   state = setBusy(state, true);
   render();
+  const pending = state.pendingPreview;
   const answer = await BRIDGE.managerConfirmAdd();
+  if (
+    pending !== null &&
+    answer.ok === true &&
+    answer.document === 'xdownload.desktop.manager.action' &&
+    answer.action === 'add' &&
+    answer.routed &&
+    answer.lineageId !== null
+  ) {
+    taskDisplayNames.set(answer.lineageId, taskLabelFromUrl(pending.url));
+  }
   state = applyAction(state, answer);
   if (state.pendingPreview === null) addOpen = false;
   render();
@@ -495,36 +555,6 @@ async function discardPreview(): Promise<void> {
   render();
   const input = byId('url') as HTMLInputElement;
   input.focus();
-}
-
-async function chooseDestination(): Promise<void> {
-  if (BRIDGE === undefined || BRIDGE === null) {
-    return;
-  }
-  state = setBusy(state, true);
-  render();
-  const answer = await BRIDGE.managerChooseDestination();
-  if (answer.ok === false) {
-    state = noticeShown(state, {
-      kind: 'error',
-      text: `destination refused: ${answer.detail}`,
-    });
-  } else if (answer.document !== 'xdownload.desktop.manager.destination') {
-    state = noticeShown(state, {
-      kind: 'error',
-      text: 'destination refused: unexpected document',
-    });
-  } else if (answer.destination === null) {
-    state = noticeShown(state, { kind: 'info', text: 'no destination folder chosen' });
-  } else {
-    chosenDestination = answer.destination;
-    state = noticeShown(state, {
-      kind: 'info',
-      text: `destination folder: ${answer.destination}`,
-    });
-  }
-  state = setBusy(state, false);
-  render();
 }
 
 // ---- wiring -----------------------------------------------------------------
@@ -565,7 +595,6 @@ function wire(): void {
     }
   });
   byId('add-form').addEventListener('submit', (event) => void submitPreview(event));
-  byId('choose-destination').addEventListener('click', () => void chooseDestination());
   byId('preview-confirm').addEventListener('click', () => void confirmPreview());
   byId('preview-discard').addEventListener('click', () => void discardPreview());
   byId('preview').addEventListener('keydown', (event) => {
