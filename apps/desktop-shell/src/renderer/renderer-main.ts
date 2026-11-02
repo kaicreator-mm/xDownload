@@ -197,6 +197,7 @@ function renderFormFields(): void {
       const hint = document.createElement('small');
       hint.textContent = field.help;
       group.append(label, input, hint);
+    }
     host.appendChild(group);
   }
 }
