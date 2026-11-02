@@ -305,7 +305,7 @@
       checkbox.dataset.memberId = String(member.memberId);
       label.appendChild(checkbox);
       label.appendChild(
-        document.createTextNode(` ${member.text || '(untitled)'} — ${member.href}`),
+        document.createTextNode(` ${member.text || '（未命名）'} — ${member.href}`),
       );
       li.appendChild(label);
       s5FrozenList.appendChild(li);
@@ -381,7 +381,7 @@
       renderFrozenMembers(response.facts || {});
       s5BatchBox.hidden = false;
       s5ExecuteButton.disabled = true;
-      s5PreviewResult.textContent = `Core froze ${String(
+      s5PreviewResult.textContent = `Core 已冻结 ${String(
         (response.facts &&
           Array.isArray(response.facts.members) &&
           response.facts.members.length) ||
@@ -868,11 +868,11 @@
       };
       s6WalkBox.hidden = false;
       s6ExecuteButton.disabled = true;
-      s6PrepareResult.textContent = `${scopedNote ? `${scopedNote} ` : ''}Core froze the collection admission for ${identity} pages ${String(
+      s6PrepareResult.textContent = `${scopedNote ? `${scopedNote} ` : ''}Core 已冻结合集任务： ${identity}，页码范围 ${String(
         fromPage,
-      )}..${String(toPage)} (digest ${String(
+      )}..${String(toPage)}（摘要 ${String(
         (response.facts && response.facts.observedTupleDigest) || '',
-      ).slice(0, 16)}…). The declared range is now the only navigation bound.`;
+      ).slice(0, 16)}…）。指定范围是唯一允许的导航边界。`;
       // Page 1 is the already-open current page: record it (no navigation).
       const recorded = await s6RecordPage(1);
       if (recorded && s6Prepared.toPage === 1) {
@@ -1167,11 +1167,11 @@
     s6NextPageButton.disabled = true; // Re-enabled only after a fresh bound page scan.
     s6PrepareResult.textContent = `已从 Core 恢复 S6 任务 ${String(
       journey.contractId,
-    )} from Core (admission ${s6Prepared.prepareId}; ${String(s6MemberAccum.size)} frozen members across ${String(
+    )}（准入 ${s6Prepared.prepareId}; ${String(s6MemberAccum.size)} 个成员，分布在 ${String(
       pages.length,
     )} walked page(s)). The declared range ${String(s6Prepared.fromPage)}..${String(
       s6Prepared.toPage,
-    )} stays the only navigation bound.`;
+    )} 仍是唯一允许的导航边界。`;
     setS6State(
       'RUNNING',
       `Restored from Core: ${String(s6MemberAccum.size)} frozen members on ${String(pages.length)} declared page(s) walked so far. ${
