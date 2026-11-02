@@ -246,9 +246,11 @@
     </header>
     <nav role="tablist" aria-label="下载模式">
       <button
+        id="tab-page"
         type="button"
         class="mode-tab"
         data-mode="page"
+        aria-controls="panel-page"
         role="tab"
         aria-selected="true"
         tabindex="0"
@@ -256,9 +258,11 @@
         当前页面
       </button>
       <button
+        id="tab-batch"
         type="button"
         class="mode-tab"
         data-mode="batch"
+        aria-controls="panel-batch"
         role="tab"
         aria-selected="false"
         tabindex="-1"
@@ -266,9 +270,11 @@
         批量
       </button>
       <button
+        id="tab-collection"
         type="button"
         class="mode-tab"
         data-mode="collection"
+        aria-controls="panel-collection"
         role="tab"
         aria-selected="false"
         tabindex="-1"
@@ -276,9 +282,11 @@
         合集
       </button>
       <button
+        id="tab-advanced"
         type="button"
         class="mode-tab"
         data-mode="advanced"
+        aria-controls="panel-advanced"
         role="tab"
         aria-selected="false"
         tabindex="-1"
@@ -287,7 +295,7 @@
       </button>
     </nav>
     <main>
-      <section class="mode-panel" data-mode-panel="page" role="tabpanel" aria-label="当前页面">
+      <section id="panel-page" class="mode-panel" data-mode-panel="page" role="tabpanel" aria-label="当前页面" aria-labelledby="tab-page" tabindex="0">
         <h2>选择当前页面的文件</h2>
         <p class="lead">
           仅显示在当前网页观察到的链接。选择要下载的文件后，按需要确认网站权限；不会自动读取凭据或下载。
@@ -296,9 +304,12 @@
       </section>
       <section
         class="mode-panel"
+        id="panel-batch"
         data-mode-panel="batch"
         role="tabpanel"
         aria-label="批量下载"
+        aria-labelledby="tab-batch"
+        tabindex="0"
         hidden
       >
         <h2>批量下载</h2>
@@ -325,9 +336,12 @@
       </section>
       <section
         class="mode-panel"
+        id="panel-collection"
         data-mode-panel="collection"
         role="tabpanel"
         aria-label="合集与分页任务"
+        aria-labelledby="tab-collection"
+        tabindex="0"
         hidden
       >
         <h2>合集与分页任务</h2>
@@ -367,9 +381,12 @@
       </section>
       <section
         class="mode-panel"
+        id="panel-advanced"
         data-mode-panel="advanced"
         role="tabpanel"
         aria-label="高级：Host 授权下载"
+        aria-labelledby="tab-advanced"
+        tabindex="0"
         hidden
       >
         <h2>高级：Host 授权下载</h2>
