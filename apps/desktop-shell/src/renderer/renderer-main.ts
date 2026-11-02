@@ -39,7 +39,6 @@ const BRIDGE = window.xdownloadShell;
 const REFRESH_INTERVAL_MS = 2000;
 
 let state: ManagerRendererState = initialManagerState();
-let chosenDestination: string | null = null;
 let refreshTimer = 0;
 type TaskFilter = 'all' | 'active' | 'complete' | 'failed';
 let taskFilter: TaskFilter = 'all';
@@ -197,23 +196,6 @@ function renderFormFields(): void {
       const hint = document.createElement('small');
       hint.textContent = field.help;
       group.append(label, input, hint);
-    } else if (field.kind === 'directory-choice') {
-      label.htmlFor = 'choose-destination';
-      const picker = document.createElement('div');
-      picker.className = 'folder-picker';
-      const destination = document.createElement('span');
-      destination.id = 'destination-label';
-      destination.textContent = '未指定保存目录';
-      const browse = document.createElement('button');
-      browse.id = 'choose-destination';
-      browse.type = 'button';
-      browse.className = 'button subtle';
-      browse.textContent = '浏览…';
-      picker.append(destination, browse);
-      const hint = document.createElement('small');
-      hint.textContent = field.help;
-      group.append(label, picker, hint);
-    }
     host.appendChild(group);
   }
 }
@@ -265,7 +247,7 @@ function renderDetails(): void {
   byId('details-title').textContent = taskLabel(current);
   byId('details-status').textContent = statusLabel(current);
   byId('details-progress').textContent = progressSummary(current);
-  byId('details-destination').textContent = current.destination ?? '未指定';
+  byId('details-destination').textContent = '由 Core 配置管理（实际路径尚未提供）';
   byId('details-lineage').textContent = current.lineageId;
   byId('details-revision').textContent =
     current.revision === null ? '未知' : String(current.revision);
@@ -308,12 +290,8 @@ function render(): void {
   connectionLine.dataset.status = connected ? 'connected' : 'disconnected';
   byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
 
-  const destinationLabel = byId('destination-label');
-  destinationLabel.textContent = chosenDestination === null ? '未指定保存目录' : chosenDestination;
   const addSubmit = byId('add-submit') as HTMLButtonElement;
-  const chooseDestination = byId('choose-destination') as HTMLButtonElement;
   addSubmit.disabled = state.busy || state.pendingPreview !== null;
-  chooseDestination.disabled = state.busy;
 
   const urlInput = byId('url') as HTMLInputElement;
   urlInput.disabled = state.busy || state.pendingPreview !== null;
@@ -334,8 +312,7 @@ function renderPreview(): void {
   preview.hidden = false;
   preview.dataset.open = 'true';
   byId('preview-url').textContent = pending.url;
-  byId('preview-destination').textContent =
-    pending.destination === null ? '未指定保存目录' : pending.destination;
+  byId('preview-destination').textContent = '由 Core 配置管理（实际路径尚未提供）';
   const requests = byId('preview-requests');
   requests.textContent = '';
   for (const request of pending.confirmationRequests) {
@@ -386,7 +363,7 @@ function renderJobs(): void {
     const query = searchTerm.toLocaleLowerCase();
     return (
       query === '' ||
-      [taskLabel(row), row.destination ?? '', statusLabel(row), row.terminal?.stopReason ?? ''].some(
+      [taskLabel(row), statusLabel(row), row.terminal?.stopReason ?? ''].some(
         (field) => field.toLocaleLowerCase().includes(query),
       )
     );
@@ -434,7 +411,7 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
-  destination.textContent = row.destination === null ? '未指定' : row.destination;
+  destination.textContent = '由 Core 配置管理（实际路径尚未提供）';
   tr.appendChild(destination);
 
   const actions = document.createElement('td');
@@ -442,24 +419,8 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   group.className = 'row-actions';
   const availability = jobActions(row);
   group.append(
-    actionButton(
-      '取消',
-      row.lineageId,
-      availability.cancelEnabled,
-      () => void runControl('cancel', row.lineageId),
-    ),
-    actionButton(
-      '重试',
-      row.lineageId,
-      availability.retryEnabled,
-      () => void runControl('retry', row.lineageId),
-    ),
-    actionButton(
-      '打开目录',
-      row.lineageId,
-      availability.revealEnabled && verifiedComplete(row),
-      () => void runReveal(row.lineageId),
-    ),
+    actionButton('取消', row.lineageId, availability.cancelEnabled, () => void runControl('cancel', row.lineageId)),
+    actionButton('重试', row.lineageId, availability.retryEnabled, () => void runControl('retry', row.lineageId)),
   );
   actions.appendChild(group);
   tr.appendChild(actions);
@@ -509,27 +470,6 @@ async function runControl(action: 'cancel' | 'retry', lineageId: string): Promis
   render();
 }
 
-async function runReveal(lineageId: string): Promise<void> {
-  if (BRIDGE === undefined || BRIDGE === null) {
-    return;
-  }
-  state = setBusy(state, true);
-  render();
-  const answer = await BRIDGE.managerRevealJob({ lineageId });
-  if (answer.ok === false) {
-    state = noticeShown(state, { kind: 'error', text: `打开保存目录失败：${answer.detail}` });
-  } else if (answer.document !== 'xdownload.desktop.manager.reveal') {
-    state = noticeShown(state, { kind: 'error', text: '打开保存目录失败：Core 返回了无法识别的结果' });
-  } else {
-    state = noticeShown(state, {
-      kind: 'info',
-      text: '已打开任务的保存目录',
-    });
-  }
-  state = setBusy(state, false);
-  render();
-}
-
 async function submitPreview(event: Event): Promise<void> {
   event.preventDefault();
   if (BRIDGE === undefined || BRIDGE === null) {
@@ -548,10 +488,7 @@ async function submitPreview(event: Event): Promise<void> {
   input.setCustomValidity('');
   state = setBusy(state, true);
   render();
-  const answer =
-    chosenDestination === null
-      ? await BRIDGE.managerPreviewAdd({ url })
-      : await BRIDGE.managerPreviewAdd({ url, destination: chosenDestination });
+  const answer = await BRIDGE.managerPreviewAdd({ url });
   state = previewOpened(state, answer);
   render();
 }
@@ -596,35 +533,6 @@ async function discardPreview(): Promise<void> {
   input.focus();
 }
 
-async function chooseDestination(): Promise<void> {
-  if (BRIDGE === undefined || BRIDGE === null) {
-    return;
-  }
-  state = setBusy(state, true);
-  render();
-  const answer = await BRIDGE.managerChooseDestination();
-  if (answer.ok === false) {
-    state = noticeShown(state, {
-      kind: 'error',
-      text: `选择保存目录失败：${answer.detail}`,
-    });
-  } else if (answer.document !== 'xdownload.desktop.manager.destination') {
-    state = noticeShown(state, {
-      kind: 'error',
-      text: '选择保存目录失败：Core 返回了无法识别的结果',
-    });
-  } else if (answer.destination === null) {
-    state = noticeShown(state, { kind: 'info', text: '未选择保存目录' });
-  } else {
-    chosenDestination = answer.destination;
-    state = noticeShown(state, {
-      kind: 'info',
-      text: `保存目录：${answer.destination}`,
-    });
-  }
-  state = setBusy(state, false);
-  render();
-}
 
 // ---- wiring -----------------------------------------------------------------
 
@@ -664,7 +572,6 @@ function wire(): void {
     }
   });
   byId('add-form').addEventListener('submit', (event) => void submitPreview(event));
-  byId('choose-destination').addEventListener('click', () => void chooseDestination());
   byId('preview-confirm').addEventListener('click', () => void confirmPreview());
   byId('preview-discard').addEventListener('click', () => void discardPreview());
   byId('preview').addEventListener('keydown', (event) => {
