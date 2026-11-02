@@ -17,9 +17,11 @@ This document is subordinate to Task Pack #329. It narrows the exact-base execut
 
 **No source mutation is permitted until a current accepted Builder `DISPATCH_CLAIMED` is durably recorded for #329.**
 
-The pinned ADS v4.18.0 revision is `2c395c55569fe2edf3f4135f12d3d069e526d0b7`. Its canonical `schemas/dispatch.schema.json` requires `execution_profile` and accepts only `LOCAL_BUILDER`, `LOCAL_VALIDATOR`, `WEB_REVIEWER`, `PLATFORM_VALIDATOR`, and `CLOSURE_VALIDATOR`. It does not accept a `WEB_BUILDER` profile. A Web source Builder cannot truthfully be represented as `LOCAL_BUILDER` or `WEB_REVIEWER`.
+The pinned ADS v4.18.0 revision is `2c395c55569fe2edf3f4135f12d3d069e526d0b7`. Its canonical `schemas/dispatch.schema.json` accepts `LOCAL_BUILDER` with `role=builder` and the derived `execution_environment=LOCAL`; it does not accept `WEB_BUILDER`.
 
-Therefore dispatch admission is currently **BLOCKED** by the profile mismatch also tracked in ADS #1353. Do not fabricate an event, omit a required dispatch field, use a non-schema profile, or relabel the Web Builder as Local. This is a governance blocker, not a source defect. The Task Pack and this exact-base Execution Pack may be retained as preparation; no implementation execution starts until a conforming dispatch path is authorized under the pinned standard.
+Owner authorization is recorded on xDownload #329 comment [#6586284595](https://github.com/kaicreator-mm/xDownload/issues/329#issuecomment-6586284595). For this exact Task only, the Owner authorizes the Local Agent to act as `role=builder`, `execution_profile=LOCAL_BUILDER`, `execution_environment=LOCAL`. This is truthful only when the actual source executor runs locally. It supersedes the earlier validation-only routing sentence; it does not change the frozen Task Pack write set, acceptance, Review Policy or forbidden scope.
+
+**Admission is READY FOR A LOCAL BUILDER CLAIM, not yet claimed.** The Local Agent must re-read current GitHub facts and publish a schema-conforming `DISPATCH_CLAIMED` under the pinned ADS v4.18.0 contract before any source mutation. Do not fabricate the claim on behalf of the Local Agent, represent a Web executor as Local, omit required fields or use the not-yet-published v4.19 profile.
 
 ## Implementation constraints after lawful admission
 
