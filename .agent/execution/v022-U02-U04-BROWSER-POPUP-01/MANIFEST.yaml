@@ -9,7 +9,7 @@ parent_issue: "#329"
 agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
 pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
 generated_by: "chatgpt-web:xdownload-v022-u02-u04-controller"
-generated_at: "2026-11-03T02:22:00+08:00"
+generated_at: "2026-11-03"
 dependency_completion: []
 execution_context_requirements_ref: null
 dependency_toolchain_profile_ref: null
@@ -39,4 +39,7 @@ intent_assumption_refs:
   - "xDownload#327"
   - "xDownload#328"
 skill_metadata_refs: []
-dispatch_admission: "BLOCKED_PROFILE_CONFLICT_PENDING_CONFORMING_WEB_BUILDER_PROFILE"
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+owner_authorization_ref: "xDownload#329@6586284595"
+dispatch_admission: "OWNER_AUTHORIZED_LOCAL_BUILDER_PENDING_CLAIM"
