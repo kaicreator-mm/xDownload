@@ -128,5 +128,6 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain('Core 拒绝了');
     expect(renderer).toContain('m[3]');
     expect(renderer).toContain('Core 原始状态：');
+    expect(renderer).toContain("m[2] === 'refused' ? 'Core 未确认受理' : m[2]");
   });
 });
