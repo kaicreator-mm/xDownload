@@ -25,7 +25,8 @@ const URL_PREVIEW_FORM: LocalFormDescriptor = Object.freeze({
   schemaVersion: 1,
   operation: 'url-preview',
   title: '添加下载链接',
-  description: '仅构造预览输入；实际目标和权限由 Core 确认。输出目录由 Core 安装配置管理，当前不支持单任务自定义目录。',
+  description:
+    '仅构造预览输入；实际目标和权限由 Core 确认。输出目录由 Core 安装配置管理，当前不支持单任务自定义目录。',
   requiresCoreConfirmation: true,
   fields: Object.freeze([
     Object.freeze({

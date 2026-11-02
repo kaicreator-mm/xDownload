@@ -122,8 +122,17 @@ function progressSummary(row: ManagerJobRowDocument): string {
               : validation.status;
   const coverageLabel =
     row.terminal.coverage === 'VERIFIED_COMPLETE' ? '范围已验证完成' : row.terminal.coverage;
-  return '覆盖：' + coverageLabel + ' · 校验：' + validationLabel +
-    '（通过 ' + validation.passedCount + ' 项，失败 ' + validation.failedCount + ' 项）';
+  return (
+    '覆盖：' +
+    coverageLabel +
+    ' · 校验：' +
+    validationLabel +
+    '（通过 ' +
+    validation.passedCount +
+    ' 项，失败 ' +
+    validation.failedCount +
+    ' 项）'
+  );
 }
 
 /** Translate renderer-authored phrases; preserve Core refusal details verbatim. */
@@ -150,13 +159,17 @@ function localizeNotice(text: string): string {
       (m) =>
         'Core 拒绝了' +
         ({ add: '添加任务', cancel: '取消任务', retry: '重试任务' }[m[1] ?? ''] ?? '操作') +
-        '（' + m[2] + '）：' + m[3],
+        '（' +
+        m[2] +
+        '）：' +
+        m[3],
     ],
     [
       /^the (add|cancel|retry) was not routed: (.*)$/u,
       (m) =>
-        ({ add: '添加任务', cancel: '取消任务', retry: '重试任务' }[m[1] ?? ''] ?? '操作') +
-        '未提交：' + m[2],
+        (({ add: '添加任务', cancel: '取消任务', retry: '重试任务' })[m[1] ?? ''] ?? '操作') +
+        '未提交：' +
+        m[2],
     ],
   ];
   for (const [pattern, translate] of patterns) {
@@ -362,8 +375,8 @@ function renderJobs(): void {
     const query = searchTerm.toLocaleLowerCase();
     return (
       query === '' ||
-      [taskLabel(row), statusLabel(row), row.terminal?.stopReason ?? ''].some(
-        (field) => field.toLocaleLowerCase().includes(query),
+      [taskLabel(row), statusLabel(row), row.terminal?.stopReason ?? ''].some((field) =>
+        field.toLocaleLowerCase().includes(query),
       )
     );
   });
@@ -418,8 +431,18 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   group.className = 'row-actions';
   const availability = jobActions(row);
   group.append(
-    actionButton('取消', row.lineageId, availability.cancelEnabled, () => void runControl('cancel', row.lineageId)),
-    actionButton('重试', row.lineageId, availability.retryEnabled, () => void runControl('retry', row.lineageId)),
+    actionButton(
+      '取消',
+      row.lineageId,
+      availability.cancelEnabled,
+      () => void runControl('cancel', row.lineageId),
+    ),
+    actionButton(
+      '重试',
+      row.lineageId,
+      availability.retryEnabled,
+      () => void runControl('retry', row.lineageId),
+    ),
   );
   actions.appendChild(group);
   tr.appendChild(actions);
@@ -531,7 +554,6 @@ async function discardPreview(): Promise<void> {
   const input = byId('url') as HTMLInputElement;
   input.focus();
 }
-
 
 // ---- wiring -----------------------------------------------------------------
 
