@@ -609,7 +609,7 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     expect(manifest.permissions).toContain('storage');
   });
   it('localizes renderer-owned labels without rewriting Core terminal JSON or error details', () => {
-    const match = popupSource.match(/function localizeUiMessage\(value\) \{[\s\S]*?\n  \}/u);
+    const match = popupSource.match(/function localizeUiMessage\(value\) \{[\s\S]*?\n {2}\}/u);
     expect(match).not.toBeNull();
     const localize = runInNewContext('(' + match![0] + ')') as (value: string) => string;
     const rawTerminal = JSON.stringify({
