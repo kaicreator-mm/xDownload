@@ -722,7 +722,7 @@
       label.appendChild(checkbox);
       label.appendChild(
         document.createTextNode(
-          ` [p${String(member.page)}] ${member.text || '(untitled)'} — ${member.href}`,
+          ` [p${String(member.page)}] ${member.text || '（未命名）'} — ${member.href}`,
         ),
       );
       li.appendChild(label);
@@ -741,7 +741,7 @@
     if (!observed || !Array.isArray(observed.links) || observed.links.length === 0) {
       setS6State(
         'FAILED',
-        `S6 page ${String(pageNumber)} scan produced no member anchors; the declared walk stopped truthfully (nothing was widened).`,
+        `S6 第 ${String(pageNumber)} 页没有发现文件链接；已停止遍历，未扩大范围。`,
       );
       return false;
     }
@@ -752,7 +752,7 @@
     if (Number(observed.observedCount) > observed.links.length) {
       setS6State(
         'FAILED',
-        `S6 page ${String(pageNumber)} carries ${String(observed.observedCount)} member anchors and the shipped scan admits only ${String(observed.links.length)}; recording a truncated page could fabricate coverage, so the declared walk stopped truthfully before Core froze anything from this page.`,
+        `S6 第 ${String(pageNumber)} 页观察到 ${String(observed.observedCount)} 个文件链接，但当前扫描只读取了 ${String(observed.links.length)} 个；为避免不完整页面造成虚假覆盖，已停止遍历，Core 未冻结该页。`,
       );
       return false;
     }
@@ -785,7 +785,7 @@
           Array.isArray(response.facts.memberIds) &&
           response.facts.memberIds.length) ||
           0,
-      )} members. Uncheck any member you do not want; then walk the next declared page or confirm.`,
+      )} 个成员。取消不需要的成员，然后继续下一指定页或确认。`,
     );
     return true;
   }
