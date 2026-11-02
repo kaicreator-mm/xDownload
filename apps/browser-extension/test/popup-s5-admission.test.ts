@@ -608,6 +608,8 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     const match = popupSource.match(/function localizeUiMessage\(value\) \{[\s\S]*?\n {2}\}/u);
     expect(match).not.toBeNull();
     const localize = runInNewContext('(' + match![0] + ')') as (value: string) => string;
+    expect(localize('selection rejected: unknown error')).toBe('文件选择被拒绝：未知错误');
+    expect(localize('batch failed: unknown failure')).toBe('批量任务失败：未知原因');
     const rawTerminal = JSON.stringify({
       detail: ' Error: preserve exactly',
       transferred: 'Transferred:',
