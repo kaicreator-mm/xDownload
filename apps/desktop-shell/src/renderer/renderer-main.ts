@@ -103,6 +103,7 @@ function progressSummary(row: ManagerJobRowDocument): string {
   if (row.terminal === null) {
     if (row.lineageStatus === 'CANCELLED') return 'Core 已标记取消 · 终态明细尚未返回';
     if (row.lineageStatus === 'TERMINAL') return 'Core 已标记终结 · 终态明细缺失';
+    if (row.lineageStatus !== 'ACTIVE') return 'Core 尚未确认任务状态';
     return row.selectedMemberCount === null
       ? '尚未获得终态 · 暂无可靠字节进度'
       : 'Core 已记录 ' + row.selectedMemberCount + ' 个目标 · 尚未获得终态 · 暂无可靠字节进度';
@@ -111,9 +112,15 @@ function progressSummary(row: ManagerJobRowDocument): string {
   const validationLabel =
     validation.status === 'ALL_PASSED'
       ? '全部通过'
-      : validation.status === 'NONE_PASSED'
-        ? '全部未通过'
-        : validation.status;
+      : validation.status === 'PARTIAL'
+        ? '部分通过'
+        : validation.status === 'FAILED'
+          ? '未通过'
+          : validation.status === 'INSUFFICIENT_EVIDENCE'
+            ? '证据不足'
+            : validation.status === 'NOT_PERFORMED'
+              ? '尚未执行'
+              : validation.status;
   const coverageLabel =
     row.terminal.coverage === 'VERIFIED_COMPLETE' ? '范围已验证完成' : row.terminal.coverage;
   return '覆盖：' + coverageLabel + ' · 校验：' + validationLabel +
