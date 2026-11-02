@@ -40,6 +40,7 @@
     let text = String(value);
     const rawTerminalMarkers = [
       ['Core terminal projection (verbatim):', 'Core 原始终态（原样）：'],
+      ['Core terminal:', 'Core 原始终态：'],
       ['Core aggregate terminal (verbatim):', 'Core 汇总终态（原样）：'],
     ];
     for (const [source, localized] of rawTerminalMarkers) {
@@ -173,11 +174,11 @@
         );
         return;
       }
-      const failure = journey.failure || { stage: 'FAILED', detail: 'unknown failure' };
+      const failure = journey.failure || { stage: 'FAILED', detail: '未知错误' };
       const terminalText = journey.terminal
         ? `\nCore terminal: ${JSON.stringify(journey.terminal)}`
         : '';
-      setState('FAILED', `${failure.stage}: ${failure.detail}${terminalText}`);
+      setState('FAILED', `任务失败（阶段：${failure.stage}）：${failure.detail}${terminalText}`);
     }, 300);
   }
 
@@ -1343,7 +1344,7 @@
     }
     if (!answer || answer.outcome !== 'ADMITTED') {
       const code = answer && answer.code ? String(answer.code) : 'UNKNOWN';
-      const detail = answer && answer.detail ? String(answer.detail) : 'the submission was refused';
+      const detail = answer && answer.detail ? String(answer.detail) : '提交被拒绝';
       const diagnostics = answer && Array.isArray(answer.diagnostics) ? answer.diagnostics : [];
       const codes = diagnostics
         .map((entry) => String(entry && entry.code ? entry.code : ''))
