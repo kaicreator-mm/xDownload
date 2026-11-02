@@ -10,8 +10,8 @@
  *   import, no eval, no inline handlers, no HTML-injection API: every text
  *   node is written with `textContent`, every listener with
  *   `addEventListener`.
- * - The page never derives status: it renders the shell's verbatim Core
- *   projection documents and re-polls the allowlisted refresh channel.
+ * - The page never invents transfer progress or output paths. Friendly status
+ *   labels are conservative mappings of explicit Core projection dimensions.
  *
  * Accessibility: the add flow is fully keyboard-operable (Enter submits the
  * form, Escape discards the preview dialog, all actions are native buttons);
