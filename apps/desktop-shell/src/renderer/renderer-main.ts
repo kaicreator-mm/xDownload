@@ -166,10 +166,12 @@ function localizeNotice(text: string): string {
     ],
     [
       /^the (add|cancel|retry) was not routed: (.*)$/u,
-      (m) =>
-        (({ add: '添加任务', cancel: '取消任务', retry: '重试任务' })[m[1] ?? ''] ?? '操作') +
-        '未提交：' +
-        m[2],
+      (m) => {
+        const action =
+          ({ add: '添加任务', cancel: '取消任务', retry: '重试任务' })[m[1] ?? ''] ?? '操作';
+        const detail = m[2] === 'refused' ? 'Core 未确认受理' : m[2];
+        return action + '未提交：' + detail;
+      },
     ],
   ];
   for (const [pattern, translate] of patterns) {
