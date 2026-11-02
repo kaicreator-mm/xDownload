@@ -51,6 +51,8 @@
     }
 
     const exact = new Map([
+      ['selection rejected: unknown error', '文件选择被拒绝：未知错误'],
+      ['batch failed: unknown failure', '批量任务失败：未知原因'],
       ['Journey accepted; the service worker is acquiring…', '任务已受理，服务工作线程正在处理…'],
       [
         'the journey is unknown to the service worker (fresh worker or invalid id)',
