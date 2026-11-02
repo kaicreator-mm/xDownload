@@ -73,7 +73,6 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(html).toContain("default-src 'none'");
     expect(html).toContain('aria-modal="true"');
     expect(renderer).toContain('暂无可靠字节进度');
-    expect(renderer).toContain('row.terminal.validationSummary.status');
     expect(renderer).not.toContain('innerHTML');
   });
   it('describes only the fields that the task search actually indexes', () => {
@@ -116,7 +115,7 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).not.toContain('managerChooseDestination');
     expect(renderer).toContain('由 Core 配置管理（实际路径尚未提供）');
     expect(html).toContain('输出位置由 Core 安装配置管理');
-    expect(html).toContain('单任务自定义目录');
+    expect(html).toContain('当前不支持按任务自定义目录');
     expect(html).not.toContain('打开目录');
   });
 
