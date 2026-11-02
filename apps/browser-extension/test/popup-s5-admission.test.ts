@@ -668,6 +668,17 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     expect(sideEffects.permissionRequests).toBe(beforePermissions);
   });
 
+  it('respects system dark theme, forced colors and reduced motion preferences', () => {
+    expect(popupHtml).toContain('color-scheme: light dark;');
+    expect(popupHtml).toContain('@media (prefers-color-scheme: dark)');
+    expect(popupHtml).toContain('@media (forced-colors: active)');
+    expect(popupHtml).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(popupHtml).toContain('background: Canvas;');
+    expect(popupHtml).toContain('outline: 2px solid Highlight;');
+    expect(popupHtml).toContain('transition: none !important;');
+    expect(popupHtml).toContain('.state.FAILED');
+  });
+
   it('declares an accessible tab/tabpanel relationship and keyboard navigation', () => {
     expect(popupHtml).toContain('lang="zh-CN"');
     for (const mode of ['page', 'batch', 'collection', 'advanced']) {
