@@ -15,9 +15,19 @@ type StubNode = {
   className: string;
   value: string;
   appendChild(child: StubNode): void;
-  addEventListener(type: string, handler: () => Promise<void> | void): void;
+  addEventListener(
+    type: string,
+    handler: (event?: { key?: string; preventDefault?: () => void }) => Promise<void> | void,
+  ): void;
   children: StubNode[];
-  handlers: Record<string, () => Promise<void> | void>;
+  handlers: Record<
+    string,
+    (event?: { key?: string; preventDefault?: () => void }) => Promise<void> | void
+  >;
+  attributes: Record<string, string>;
+  tabIndex: number;
+  focused: boolean;
+  focus(): void;
   querySelectorAll(selector: string): StubNode[];
   setAttribute(name: string, value: string): void;
 };
@@ -33,6 +43,12 @@ function makeNode(): StubNode {
     value: '',
     children: [],
     handlers: {},
+    attributes: {},
+    tabIndex: 0,
+    focused: false,
+    focus() {
+      this.focused = true;
+    },
     appendChild(child) {
       this.children.push(child);
     },
@@ -42,7 +58,9 @@ function makeNode(): StubNode {
     querySelectorAll() {
       return [];
     },
-    setAttribute() {},
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
   };
 }
 
@@ -101,9 +119,20 @@ function startPopup(
     'v02-result',
   ];
   const nodes = Object.fromEntries(ids.map((id) => [id, makeNode()])) as Record<string, StubNode>;
+  const modeTabs = ['page', 'batch', 'collection', 'advanced'].map((mode) => {
+    const node = makeNode();
+    node.dataset.mode = mode;
+    return node;
+  });
+  const modePanels = ['page', 'batch', 'collection', 'advanced'].map((mode) => {
+    const node = makeNode();
+    node.dataset.modePanel = mode;
+    return node;
+  });
   const links = LINKS;
   const tab = { id: 42, url: 'https://publisher.example.org/list.html' };
   const sent: { kind: string; [key: string]: unknown }[] = [];
+  const sideEffects = { permissionRequests: 0 };
   let scans = 0;
   const respond =
     options.respond ?? (() => ({ ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' }));
@@ -113,6 +142,12 @@ function startPopup(
     clearInterval,
     document: {
       getElementById: (id: string) => nodes[id],
+      querySelectorAll: (selector: string) =>
+        selector === '.mode-tab'
+          ? modeTabs
+          : selector === '[data-mode-panel]'
+            ? modePanels
+            : [],
       createElement: () => makeNode(),
       createTextNode: (text: string) => ({ textContent: text }),
     },
@@ -158,10 +193,15 @@ function startPopup(
           return respond(payload);
         },
       },
-      permissions: { request: async () => false },
+      permissions: {
+        request: async () => {
+          sideEffects.permissionRequests += 1;
+          return false;
+        },
+      },
     },
   });
-  return { nodes, sent, links };
+  return { nodes, sent, links, modeTabs, modePanels, sideEffects };
 }
 
 async function ready(nodes: Record<string, StubNode>) {
@@ -568,6 +608,59 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     const manifest = JSON.parse(manifestText) as { permissions?: string[] };
     expect(manifest.permissions).toContain('storage');
   });
+  it('localizes renderer-owned labels without rewriting Core terminal JSON or error details', () => {
+    const match = popupSource.match(/function localizeUiMessage\\(value\\) \\{[\\s\\S]*?\\n  \\}/u);
+    expect(match).not.toBeNull();
+    const localize = runInNewContext('(' + match![0] + ')') as (value: string) => string;
+    const rawTerminal = JSON.stringify({
+      detail: ' Error: preserve exactly',
+      transferred: 'Transferred:',
+    });
+    expect(localize('Core terminal projection (verbatim):\\n' + rawTerminal)).toBe(
+      'Core 原始终态（原样）：\\n' + rawTerminal,
+    );
+    expect(localize('Core aggregate terminal (verbatim):\\n' + rawTerminal)).toBe(
+      'Core 汇总终态（原样）：\\n' + rawTerminal,
+    );
+    expect(localize('Core refused the confirmation: CODE: Error: original detail')).toBe(
+      'Core 拒绝了确认：CODE: Error: original detail',
+    );
+    expect(
+      localize('journey status unreadable (service worker may have restarted): ERR: exact detail'),
+    ).toBe('无法读取任务状态（服务工作线程可能已重启）：ERR: exact detail');
+  });
+
+  it('changes popup panels with click and keyboard only, without worker or permission side effects', async () => {
+    const { nodes, sent, modeTabs, modePanels, sideEffects } = startPopup();
+    await ready(nodes);
+    const beforeMessages = sent.length;
+    const beforePermissions = sideEffects.permissionRequests;
+
+    modeTabs[1]!.handlers['click']!();
+    expect(modePanels[1]!.hidden).toBe(false);
+    expect(modePanels[0]!.hidden).toBe(true);
+    expect(modeTabs[1]!.attributes['aria-selected']).toBe('true');
+    expect(modeTabs[1]!.tabIndex).toBe(0);
+
+    let prevented = false;
+    modeTabs[1]!.handlers['keydown']!({
+      key: 'End',
+      preventDefault: () => {
+        prevented = true;
+      },
+    });
+    expect(prevented).toBe(true);
+    expect(modePanels[3]!.hidden).toBe(false);
+    expect(modeTabs[3]!.focused).toBe(true);
+    expect(modeTabs[3]!.attributes['aria-selected']).toBe('true');
+
+    modeTabs[3]!.handlers['keydown']!({ key: 'Home', preventDefault() {} });
+    expect(modePanels[0]!.hidden).toBe(false);
+    expect(modeTabs[0]!.focused).toBe(true);
+    expect(sent).toHaveLength(beforeMessages);
+    expect(sideEffects.permissionRequests).toBe(beforePermissions);
+  });
+
   it('declares an accessible tab/tabpanel relationship and keyboard navigation', () => {
     expect(popupHtml).toContain('lang="zh-CN"');
     for (const mode of ['page', 'batch', 'collection', 'advanced']) {
