@@ -3,7 +3,7 @@
 ## Identity and exact baseline
 
 - Task: xDownload #329
-- Task Pack: `docs/implementation/v0.2.2/task-packs/V022-U02-U04_browser-popup-followup.md` blob `f5f0a98186c741667f860b9a5989dcfeb92bb923`
+- Task Pack: `docs/implementation/v0.2.2/task-packs/V022-U02-U04_browser-popup-followup.md` blob `784a0060dd99a333df981c7211db3f2be121dc71`
 - Integration branch: `wip/v0.2.2-ui-rebuild-r0`
 - Exact base: `9e3ccd382311619e60b8d2a7373e8a7d34733334`
 - Base tree: `ba48b805697ad19c36a6eb3a5e54b6d601b36120`
