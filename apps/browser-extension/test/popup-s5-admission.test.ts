@@ -143,11 +143,7 @@ function startPopup(
     document: {
       getElementById: (id: string) => nodes[id],
       querySelectorAll: (selector: string) =>
-        selector === '.mode-tab'
-          ? modeTabs
-          : selector === '[data-mode-panel]'
-            ? modePanels
-            : [],
+        selector === '.mode-tab' ? modeTabs : selector === '[data-mode-panel]' ? modePanels : [],
       createElement: () => makeNode(),
       createTextNode: (text: string) => ({ textContent: text }),
     },
@@ -692,5 +688,4 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     expect(popupSource).toContain("event.key === 'Home'");
     expect(popupSource).toContain("event.key === 'End'");
   });
-
 });

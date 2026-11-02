@@ -52,32 +52,74 @@
 
     const exact = new Map([
       ['Journey accepted; the service worker is acquiring…', '任务已受理，服务工作线程正在处理…'],
-      ['the journey is unknown to the service worker (fresh worker or invalid id)', '服务工作线程中没有此任务记录（可能刚重启或任务标识无效）'],
+      [
+        'the journey is unknown to the service worker (fresh worker or invalid id)',
+        '服务工作线程中没有此任务记录（可能刚重启或任务标识无效）',
+      ],
       ['no active tab', '没有活动标签页'],
-      ['no http(s) attachment links found on the current page', '当前页面没有发现 http/https 文件链接'],
-      ['Awaiting your batch confirmation — nothing is downloaded yet.', '等待你确认批量任务，尚未开始下载。'],
-      ['No frozen Core group; request S5 group admission first.', 'Core 尚未冻结批量候选，请先准备批量任务。'],
+      [
+        'no http(s) attachment links found on the current page',
+        '当前页面没有发现 http/https 文件链接',
+      ],
+      [
+        'Awaiting your batch confirmation — nothing is downloaded yet.',
+        '等待你确认批量任务，尚未开始下载。',
+      ],
+      [
+        'No frozen Core group; request S5 group admission first.',
+        'Core 尚未冻结批量候选，请先准备批量任务。',
+      ],
       ['Select at least one frozen member for the batch.', '请至少选择一个已冻结的文件。'],
       ['Confirm the batch with Core before downloading.', '请先向 Core 确认批量任务，再开始下载。'],
       ['The service worker could not answer the status poll.', '服务工作线程无法返回任务状态。'],
-      ['Enter the Host-issued target handle and the authorized output root first.', '请先填写 Host 签发的目标句柄和已授权的保存目录。'],
-      ['This action needs an active http(s) page tab (origin authority).', '此操作需要活动的 http/https 页面标签（用于验证来源）。'],
-      ['Submitting the confirmed intent through the trusted local Host…', '正在通过可信本地 Host 提交已确认的操作…'],
-      ['No frozen Core collection; request S6 collection admission first.', 'Core 尚未冻结合集，请先准备合集任务。'],
-      ['Select at least one frozen member for the collection batch.', '请至少选择一个已冻结的合集成员。'],
-      ['Confirm the collection with Core before downloading.', '请先向 Core 确认合集任务，再开始下载。'],
-      ['The declared range is fully walked; Core will never treat extra pages as part of this collection.', '指定范围已完整遍历；Core 不会把额外页面计入本合集。'],
-      ['The page declares no next-page edge; the declared walk stopped truthfully. You may still confirm the recorded members.', '当前页面没有声明下一页链接，遍历已如实停止。你仍可确认已记录的成员。'],
+      [
+        'Enter the Host-issued target handle and the authorized output root first.',
+        '请先填写 Host 签发的目标句柄和已授权的保存目录。',
+      ],
+      [
+        'This action needs an active http(s) page tab (origin authority).',
+        '此操作需要活动的 http/https 页面标签（用于验证来源）。',
+      ],
+      [
+        'Submitting the confirmed intent through the trusted local Host…',
+        '正在通过可信本地 Host 提交已确认的操作…',
+      ],
+      [
+        'No frozen Core collection; request S6 collection admission first.',
+        'Core 尚未冻结合集，请先准备合集任务。',
+      ],
+      [
+        'Select at least one frozen member for the collection batch.',
+        '请至少选择一个已冻结的合集成员。',
+      ],
+      [
+        'Confirm the collection with Core before downloading.',
+        '请先向 Core 确认合集任务，再开始下载。',
+      ],
+      [
+        'The declared range is fully walked; Core will never treat extra pages as part of this collection.',
+        '指定范围已完整遍历；Core 不会把额外页面计入本合集。',
+      ],
+      [
+        'The page declares no next-page edge; the declared walk stopped truthfully. You may still confirm the recorded members.',
+        '当前页面没有声明下一页链接，遍历已如实停止。你仍可确认已记录的成员。',
+      ],
       ['S6 page walk refused: no active tab to navigate.', 'S6 已拒绝：没有可供导航的活动标签页。'],
     ]);
     if (exact.has(text)) return exact.get(text);
     const patterns = [
-      [/^journey status unreadable \(service worker may have restarted\): /, '无法读取任务状态（服务工作线程可能已重启）：'],
+      [
+        /^journey status unreadable \(service worker may have restarted\): /,
+        '无法读取任务状态（服务工作线程可能已重启）：',
+      ],
       [/^journey status unreadable: /, '无法读取任务状态：'],
       [/^journey status unreadable/, '无法读取任务状态'],
       [/^Running the S2 journey \(([^)]+)\)…$/, '正在执行单项下载（$1）…'],
       [/^selection rejected: /, '文件选择被拒绝：'],
-      [/^scoped host permission for (.+) was not granted; the cross-origin attachment was not acquired$/, '未获准访问跨域来源 $1；未获取该文件。'],
+      [
+        /^scoped host permission for (.+) was not granted; the cross-origin attachment was not acquired$/,
+        '未获准访问跨域来源 $1；未获取该文件。',
+      ],
       [/^scoped host permission request failed: /, '申请来源权限失败：'],
       [/^Core refused the confirmation: /, 'Core 拒绝了确认：'],
       [/^Core refused the execution: /, 'Core 拒绝执行：'],
@@ -88,24 +130,45 @@
       [/^S5 preview failed without any acquisition: /, 'S5 预览失败，未执行获取：'],
       [/^S5 refused: /, 'S5 已拒绝：'],
       [/^batch failed: /, '批量任务失败：'],
-      [/^Core is downloading the batch \(([^)]+)\)… per-member status so far:\n/, 'Core 正在处理批量任务（$1）…各文件状态：\n'],
-      [/^Core durably confirmed (.+) members \(group (.+)\)\. Start the batch download when ready\.$/, 'Core 已确认 $1 个成员（组 $2）。准备就绪后可开始批量下载。'],
+      [
+        /^Core is downloading the batch \(([^)]+)\)… per-member status so far:\n/,
+        'Core 正在处理批量任务（$1）…各文件状态：\n',
+      ],
+      [
+        /^Core durably confirmed (.+) members \(group (.+)\)\. Start the batch download when ready\.$/,
+        'Core 已确认 $1 个成员（组 $2）。准备就绪后可开始批量下载。',
+      ],
       [/^S6 page (\d+) scan produced no member anchors; /, 'S6 第$1页扫描未发现文件链接；'],
-      [/^S6 page (\d+) carries (\d+) member anchors and the shipped scan admits only (\d+); recording a truncated page could fabricate coverage, so the declared walk stopped truthfully before Core froze anything from this page\.$/, 'S6 第$1页观察到 $2 个文件链接，但当前扫描只读取了 $3 个；为避免把不完整页面误报为完整覆盖，已停止遍历，Core 未冻结该页。'],
+      [
+        /^S6 page (\d+) carries (\d+) member anchors and the shipped scan admits only (\d+); recording a truncated page could fabricate coverage, so the declared walk stopped truthfully before Core froze anything from this page\.$/,
+        'S6 第$1页观察到 $2 个文件链接，但当前扫描只读取了 $3 个；为避免把不完整页面误报为完整覆盖，已停止遍历，Core 未冻结该页。',
+      ],
       [/^Core refused the page (\d+) observation: /, 'Core 拒绝记录 S6 第$1页：'],
       [/^Core refused the page (\d+) navigation admit: /, 'Core 拒绝 S6 第$1页的导航准入：'],
-      [/^S6 page (\d+) navigation timed out; the walk stopped\.$/, 'S6 第$1页加载超时，已停止遍历。'],
+      [
+        /^S6 page (\d+) navigation timed out; the walk stopped\.$/,
+        'S6 第$1页加载超时，已停止遍历。',
+      ],
       [/^S6 page walk failed: /, 'S6 页面遍历失败：'],
       [/^S6 admission refused without navigating: /, 'S6 准入被拒绝，未执行页面跳转：'],
       [/^S6 preparation failed without navigating: /, 'S6 准备失败，未执行页面跳转：'],
       [/^Core froze page (\d+) with (\d+) members\. /, 'Core 已冻结第$1页的 $2 个成员。'],
-      [/^Core durably confirmed (.+) members \(group (.+)\)\. Start the collection download when ready\.$/, 'Core 已确认 $1 个成员（组 $2）。准备就绪后可开始合集下载。'],
-      [/^Core is downloading the collection \(([^)]+)\)… per-member status so far:\n/, 'Core 正在处理合集任务（$1）…各文件状态：\n'],
+      [
+        /^Core durably confirmed (.+) members \(group (.+)\)\. Start the collection download when ready\.$/,
+        'Core 已确认 $1 个成员（组 $2）。准备就绪后可开始合集下载。',
+      ],
+      [
+        /^Core is downloading the collection \(([^)]+)\)… per-member status so far:\n/,
+        'Core 正在处理合集任务（$1）…各文件状态：\n',
+      ],
       [/^collection failed: /, '合集任务失败：'],
       [/^The service worker refused the submission: /, '服务工作线程拒绝了提交：'],
       [/^Status unavailable \(([^)]+)\)\. /, '状态不可用（$1）。'],
       [/^Refused \(([^)]+)\)\. /, '已拒绝（$1）。'],
-      [/^Accepted by Core \(lineage (.+)\)\. Polling the Core-owned projection…$/, 'Core 已受理（任务标识 $1），正在读取 Core 状态…'],
+      [
+        /^Accepted by Core \(lineage (.+)\)\. Polling the Core-owned projection…$/,
+        'Core 已受理（任务标识 $1），正在读取 Core 状态…',
+      ],
     ];
     for (const [pattern, replacement] of patterns) {
       text = text.replace(pattern, replacement);
@@ -234,8 +297,7 @@
 
     const contentType = document.createElement('input');
     contentType.type = 'text';
-    contentType.placeholder =
-      '预期内容类型前缀（可选，例如 application/octet-stream）';
+    contentType.placeholder = '预期内容类型前缀（可选，例如 application/octet-stream）';
     li.appendChild(contentType);
 
     const button = document.createElement('button');
@@ -245,10 +307,7 @@
       // journey never requires it (F01).
       const value = digest.value.trim().toLowerCase();
       if (value !== '' && !/^[0-9a-f]{64}$/.test(value)) {
-        setState(
-          'FAILED',
-          '填写的 SHA-256 必须是 64 位十六进制字符串；不填写也可以。',
-        );
+        setState('FAILED', '填写的 SHA-256 必须是 64 位十六进制字符串；不填写也可以。');
         return;
       }
       // F03: a cross-origin selected member needs the scoped host permission
@@ -359,13 +418,11 @@
             item.href !== s5ObservedRows[index].href || item.text !== s5ObservedRows[index].text,
         )
       ) {
-        s5PreviewResult.textContent =
-          'S5 已拒绝：观察后页面成员发生变化；请重新打开弹窗重新扫描。';
+        s5PreviewResult.textContent = 'S5 已拒绝：观察后页面成员发生变化；请重新打开弹窗重新扫描。';
         return;
       }
       if (new Set(observed.links.map((item) => item.href)).size !== observed.links.length) {
-        s5PreviewResult.textContent =
-          'S5 已拒绝：重复资源地址需要可信且不同的成员标识。';
+        s5PreviewResult.textContent = 'S5 已拒绝：重复资源地址需要可信且不同的成员标识。';
         return;
       }
       const response = await chrome.runtime.sendMessage({
@@ -552,8 +609,7 @@
       }
       const uniqueHrefs = new Set(selected.map((row) => row.href));
       if (uniqueHrefs.size !== selected.length) {
-        s5PreviewResult.textContent =
-          '重复资源地址需要不同的可信成员标识；未确认任何批量任务。';
+        s5PreviewResult.textContent = '重复资源地址需要不同的可信成员标识；未确认任何批量任务。';
         return;
       }
       const subset = selected.length !== s5ObservedRows.length;
@@ -847,8 +903,7 @@
         const origin = new URL(currentTab.url).origin;
         const scopedGranted = await chrome.permissions.request({ origins: [`${origin}/*`] });
         if (!scopedGranted) {
-          scopedNote =
-            'S6：未获准访问合集来源；只能遍历扩展已具备访问权限的页面。';
+          scopedNote = 'S6：未获准访问合集来源；只能遍历扩展已具备访问权限的页面。';
         }
       } catch (error) {
         scopedNote = `S6：无法请求来源权限（${String(error)}）；只能遍历扩展已具备访问权限的页面。`;
@@ -883,10 +938,7 @@
       // Page 1 is the already-open current page: record it (no navigation).
       const recorded = await s6RecordPage(1);
       if (recorded && s6Prepared.toPage === 1) {
-        setS6State(
-          'RUNNING',
-          '指定范围只有一页，已完成扫描。请取消不需要的成员，然后确认。',
-        );
+        setS6State('RUNNING', '指定范围只有一页，已完成扫描。请取消不需要的成员，然后确认。');
       }
     } catch (error) {
       s6PrepareResult.textContent = `S6 准备失败，未执行页面跳转：${String(error)}`;
