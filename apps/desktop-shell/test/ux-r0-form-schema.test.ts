@@ -99,6 +99,16 @@ describe('UI R0 renderer containment and user navigation', () => {
     }
     expect(html).toContain('未结束');
     expect(renderer).toContain('已提交 · 未结束');
+    expect(renderer).toContain("availability.revealEnabled && verifiedComplete(row)");
+  });
+
+  it('uses only the source host as a friendly label and keeps Core diagnostics intact', () => {
+    expect(renderer).toContain("return '来源站点 · ' + parsed.host");
+    expect(renderer).not.toContain('parsed.pathname');
+    expect(renderer).not.toContain('parsed.search');
+    expect(renderer).toContain('function localizeNotice');
+    expect(renderer).toContain('Core 拒绝了');
+    expect(renderer).toContain('m[3]');
   });
 
 });
