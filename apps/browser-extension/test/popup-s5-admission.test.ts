@@ -530,7 +530,7 @@ describe('v0.2.1 T05 popup v0.2 submission panel', () => {
     await nodes['v02-submit']!.handlers['click']!();
     await vi.waitFor(() => {
       expect(nodes['v02-result']!.textContent).toContain('Core 任务状态：UNKNOWN');
-      expect(nodes['v02-result']!.textContent).toContain('owner: new-k');
+      expect(nodes['v02-result']!.textContent).toContain('所有者：new-k');
     });
     expect(sent.some((message) => message.kind === 'V02_JOB_STATUS')).toBe(true);
   });
@@ -609,18 +609,18 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     expect(manifest.permissions).toContain('storage');
   });
   it('localizes renderer-owned labels without rewriting Core terminal JSON or error details', () => {
-    const match = popupSource.match(/function localizeUiMessage\\(value\\) \\{[\\s\\S]*?\\n  \\}/u);
+    const match = popupSource.match(/function localizeUiMessage\(value\) \{[\s\S]*?\n  \}/u);
     expect(match).not.toBeNull();
     const localize = runInNewContext('(' + match![0] + ')') as (value: string) => string;
     const rawTerminal = JSON.stringify({
       detail: ' Error: preserve exactly',
       transferred: 'Transferred:',
     });
-    expect(localize('Core terminal projection (verbatim):\\n' + rawTerminal)).toBe(
-      'Core 原始终态（原样）：\\n' + rawTerminal,
+    expect(localize('Core terminal projection (verbatim):\n' + rawTerminal)).toBe(
+      'Core 原始终态（原样）：\n' + rawTerminal,
     );
-    expect(localize('Core aggregate terminal (verbatim):\\n' + rawTerminal)).toBe(
-      'Core 汇总终态（原样）：\\n' + rawTerminal,
+    expect(localize('Core aggregate terminal (verbatim):\n' + rawTerminal)).toBe(
+      'Core 汇总终态（原样）：\n' + rawTerminal,
     );
     expect(localize('Core refused the confirmation: CODE: Error: original detail')).toBe(
       'Core 拒绝了确认：CODE: Error: original detail',
