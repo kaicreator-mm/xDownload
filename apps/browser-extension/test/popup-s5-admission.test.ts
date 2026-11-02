@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { decodeS5PageGroupGesture } from '../src/background/s5-group-intent.ts';
 
 const popupSource = readFileSync(new URL('../src/popup/popup.js', import.meta.url), 'utf8');
+const popupHtml = readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8');
 
 type StubNode = {
   dataset: Record<string, string>;
@@ -14,9 +15,19 @@ type StubNode = {
   className: string;
   value: string;
   appendChild(child: StubNode): void;
-  addEventListener(type: string, handler: () => Promise<void> | void): void;
+  addEventListener(
+    type: string,
+    handler: (event?: { key?: string; preventDefault?: () => void }) => Promise<void> | void,
+  ): void;
   children: StubNode[];
-  handlers: Record<string, () => Promise<void> | void>;
+  handlers: Record<
+    string,
+    (event?: { key?: string; preventDefault?: () => void }) => Promise<void> | void
+  >;
+  attributes: Record<string, string>;
+  tabIndex: number;
+  focused: boolean;
+  focus(): void;
   querySelectorAll(selector: string): StubNode[];
   setAttribute(name: string, value: string): void;
 };
@@ -32,6 +43,12 @@ function makeNode(): StubNode {
     value: '',
     children: [],
     handlers: {},
+    attributes: {},
+    tabIndex: 0,
+    focused: false,
+    focus() {
+      this.focused = true;
+    },
     appendChild(child) {
       this.children.push(child);
     },
@@ -41,7 +58,9 @@ function makeNode(): StubNode {
     querySelectorAll() {
       return [];
     },
-    setAttribute() {},
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
   };
 }
 
@@ -100,9 +119,20 @@ function startPopup(
     'v02-result',
   ];
   const nodes = Object.fromEntries(ids.map((id) => [id, makeNode()])) as Record<string, StubNode>;
+  const modeTabs = ['page', 'batch', 'collection', 'advanced'].map((mode) => {
+    const node = makeNode();
+    node.dataset.mode = mode;
+    return node;
+  });
+  const modePanels = ['page', 'batch', 'collection', 'advanced'].map((mode) => {
+    const node = makeNode();
+    node.dataset.modePanel = mode;
+    return node;
+  });
   const links = LINKS;
   const tab = { id: 42, url: 'https://publisher.example.org/list.html' };
   const sent: { kind: string; [key: string]: unknown }[] = [];
+  const sideEffects = { permissionRequests: 0 };
   let scans = 0;
   const respond =
     options.respond ?? (() => ({ ok: false, error: 'S5_CORE_CARRIER_NOT_INSTALLED' }));
@@ -112,6 +142,8 @@ function startPopup(
     clearInterval,
     document: {
       getElementById: (id: string) => nodes[id],
+      querySelectorAll: (selector: string) =>
+        selector === '.mode-tab' ? modeTabs : selector === '[data-mode-panel]' ? modePanels : [],
       createElement: () => makeNode(),
       createTextNode: (text: string) => ({ textContent: text }),
     },
@@ -157,10 +189,15 @@ function startPopup(
           return respond(payload);
         },
       },
-      permissions: { request: async () => false },
+      permissions: {
+        request: async () => {
+          sideEffects.permissionRequests += 1;
+          return false;
+        },
+      },
     },
   });
-  return { nodes, sent, links };
+  return { nodes, sent, links, modeTabs, modePanels, sideEffects };
 }
 
 async function ready(nodes: Record<string, StubNode>) {
@@ -193,7 +230,7 @@ describe('#152 packaged S5 popup -> worker gesture (Core carrier absent)', () =>
       await ready(nodes);
       await nodes['s5-prepare']!.handlers['click']!();
       expect(s5Gestures(sent)).toHaveLength(0);
-      expect(nodes['s5-preview-result']!.textContent).toMatch(/refused|changed/iu);
+      expect(nodes['s5-preview-result']!.textContent).toMatch(/拒绝|变化/iu);
     }
   });
 });
@@ -313,7 +350,7 @@ describe('#152 packaged S5 popup -> installed batch flow', () => {
       return [a];
     };
     await nodes['s5-confirm']!.handlers['click']!();
-    expect(nodes['s5-batch-result']!.textContent).toContain('Core refused the confirmation');
+    expect(nodes['s5-batch-result']!.textContent).toContain('Core 拒绝了确认');
     expect(nodes['s5-execute']!.disabled).toBe(true);
   });
 });
@@ -365,7 +402,7 @@ describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
     // truthfully BEFORE any RECORD reaches Core — a truncated page can never
     // become a full requested-scope or VERIFIED_COMPLETE claim.
     await vi.waitFor(() => {
-      expect(nodes['s6-batch-result']!.textContent).toContain('truncated');
+      expect(nodes['s6-batch-result']!.textContent).toContain('当前扫描只读取了');
     });
     expect(sent.some((message) => message.kind === 'S6_PAGE_RECORD')).toBe(false);
   });
@@ -386,7 +423,7 @@ describe('#154 S6 popup truncation guard (R1 P1-02)', () => {
     nodes['s6-to']!.value = '3';
     await nodes['s6-prepare']!.handlers['click']!();
     await vi.waitFor(() => {
-      expect(nodes['s6-prepare-result']!.textContent).toContain('fromPage must be 1');
+      expect(nodes['s6-prepare-result']!.textContent).toContain('fromPage 必须为 1');
     });
     expect(sent.some((message) => message.kind === 'S6_PREPARE_COLLECTION')).toBe(false);
   });
@@ -488,8 +525,8 @@ describe('v0.2.1 T05 popup v0.2 submission panel', () => {
     nodes['v02-output-root']!.value = 'C:/tmp/authorized-root';
     await nodes['v02-submit']!.handlers['click']!();
     await vi.waitFor(() => {
-      expect(nodes['v02-result']!.textContent).toContain('Core-owned status: UNKNOWN');
-      expect(nodes['v02-result']!.textContent).toContain('owner: new-k');
+      expect(nodes['v02-result']!.textContent).toContain('Core 任务状态：UNKNOWN');
+      expect(nodes['v02-result']!.textContent).toContain('所有者：new-k');
     });
     expect(sent.some((message) => message.kind === 'V02_JOB_STATUS')).toBe(true);
   });
@@ -533,7 +570,7 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     });
     await ready(nodes);
     await vi.waitFor(() => {
-      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey');
+      expect(nodes['s6-prepare-result']!.textContent).toContain('已从 Core 恢复 S6 任务');
       expect(nodes['s6-next-page']!.disabled).toBe(false);
     });
     expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
@@ -555,7 +592,7 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     });
     await ready(nodes);
     await vi.waitFor(() =>
-      expect(nodes['s6-prepare-result']!.textContent).toContain('Restored the active S6 journey'),
+      expect(nodes['s6-prepare-result']!.textContent).toContain('已从 Core 恢复 S6 任务'),
     );
     expect(nodes['s6-next-page']!.disabled).toBe(true);
     expect(sent.some((message) => message.kind === 'S6_PAGE_ADMIT')).toBe(false);
@@ -566,5 +603,91 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     const manifestText = readFileSync(manifestPath, 'utf8');
     const manifest = JSON.parse(manifestText) as { permissions?: string[] };
     expect(manifest.permissions).toContain('storage');
+  });
+  it('localizes renderer-owned labels without rewriting Core terminal JSON or error details', () => {
+    const match = popupSource.match(/function localizeUiMessage\(value\) \{[\s\S]*?\n {2}\}/u);
+    expect(match).not.toBeNull();
+    const localize = runInNewContext('(' + match![0] + ')') as (value: string) => string;
+    expect(localize('selection rejected: unknown error')).toBe('文件选择被拒绝：未知错误');
+    expect(localize('batch failed: unknown failure')).toBe('批量任务失败：未知原因');
+    const rawTerminal = JSON.stringify({
+      detail: ' Error: preserve exactly',
+      transferred: 'Transferred:',
+    });
+    expect(localize('Core terminal projection (verbatim):\n' + rawTerminal)).toBe(
+      'Core 原始终态（原样）：\n' + rawTerminal,
+    );
+    expect(localize('Core aggregate terminal (verbatim):\n' + rawTerminal)).toBe(
+      'Core 汇总终态（原样）：\n' + rawTerminal,
+    );
+    expect(localize('Core refused the confirmation: CODE: Error: original detail')).toBe(
+      'Core 拒绝了确认：CODE: Error: original detail',
+    );
+    expect(
+      localize('journey status unreadable (service worker may have restarted): ERR: exact detail'),
+    ).toBe('无法读取任务状态（服务工作线程可能已重启）：ERR: exact detail');
+  });
+
+  it('changes popup panels with click and keyboard only, without worker or permission side effects', async () => {
+    const { nodes, sent, modeTabs, modePanels, sideEffects } = startPopup();
+    await ready(nodes);
+    const beforeMessages = sent.length;
+    const beforePermissions = sideEffects.permissionRequests;
+
+    modeTabs[1]!.handlers['click']!();
+    expect(modePanels[1]!.hidden).toBe(false);
+    expect(modePanels[0]!.hidden).toBe(true);
+    expect(modeTabs[1]!.attributes['aria-selected']).toBe('true');
+    expect(modeTabs[1]!.tabIndex).toBe(0);
+
+    let prevented = false;
+    modeTabs[1]!.handlers['keydown']!({
+      key: 'End',
+      preventDefault: () => {
+        prevented = true;
+      },
+    });
+    expect(prevented).toBe(true);
+    expect(modePanels[3]!.hidden).toBe(false);
+    expect(modeTabs[3]!.focused).toBe(true);
+    expect(modeTabs[3]!.attributes['aria-selected']).toBe('true');
+
+    modeTabs[3]!.handlers['keydown']!({ key: 'ArrowLeft', preventDefault() {} });
+    expect(modePanels[2]!.hidden).toBe(false);
+    expect(modeTabs[2]!.focused).toBe(true);
+    modeTabs[2]!.handlers['keydown']!({ key: 'ArrowRight', preventDefault() {} });
+    expect(modePanels[3]!.hidden).toBe(false);
+    expect(modeTabs[3]!.focused).toBe(true);
+
+    modeTabs[3]!.handlers['keydown']!({ key: 'Home', preventDefault() {} });
+    expect(modePanels[0]!.hidden).toBe(false);
+    expect(modeTabs[0]!.focused).toBe(true);
+    expect(sent).toHaveLength(beforeMessages);
+    expect(sideEffects.permissionRequests).toBe(beforePermissions);
+  });
+
+  it('respects system dark theme, forced colors and reduced motion preferences', () => {
+    expect(popupHtml).toContain('color-scheme: light dark;');
+    expect(popupHtml).toContain('@media (prefers-color-scheme: dark)');
+    expect(popupHtml).toContain('@media (forced-colors: active)');
+    expect(popupHtml).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(popupHtml).toContain('background: Canvas;');
+    expect(popupHtml).toContain('outline: 2px solid Highlight;');
+    expect(popupHtml).toContain('transition: none !important;');
+    expect(popupHtml).toContain('.state.FAILED');
+  });
+
+  it('declares an accessible tab/tabpanel relationship and keyboard navigation', () => {
+    expect(popupHtml).toContain('lang="zh-CN"');
+    for (const mode of ['page', 'batch', 'collection', 'advanced']) {
+      expect(popupHtml).toContain('id="tab-' + mode + '"');
+      expect(popupHtml).toContain('aria-controls="panel-' + mode + '"');
+      expect(popupHtml).toContain('id="panel-' + mode + '"');
+      expect(popupHtml).toContain('aria-labelledby="tab-' + mode + '"');
+    }
+    expect(popupSource).toContain("event.key === 'ArrowRight'");
+    expect(popupSource).toContain("event.key === 'ArrowLeft'");
+    expect(popupSource).toContain("event.key === 'Home'");
+    expect(popupSource).toContain("event.key === 'End'");
   });
 });

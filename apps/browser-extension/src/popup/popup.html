@@ -8,7 +8,7 @@
         font-family: 'Segoe UI', system-ui, sans-serif;
         font-size: 13px;
         color: #23384f;
-        color-scheme: light;
+        color-scheme: light dark;
       }
       * {
         box-sizing: border-box;
@@ -234,6 +234,152 @@
         margin-bottom: 12px;
         line-height: 1.55;
       }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          color: #e8edf3;
+          background: #141d2b;
+        }
+        body {
+          color: #e8edf3;
+          background: #141d2b;
+        }
+        nav {
+          background: #1e2a3d;
+          border-color: #35465a;
+        }
+        .mode-tab {
+          color: #b8c5d7;
+        }
+        .mode-tab:hover {
+          background: #293950;
+        }
+        .mode-tab[aria-selected='true'] {
+          color: #b6def7;
+          background: #263e57;
+        }
+        .mode-panel {
+          background: #1e2a3d;
+          border-color: #35465a;
+        }
+        .lead,
+        .label,
+        .footer {
+          color: #a2b1c6;
+        }
+        .footer strong {
+          color: #d2deeb;
+        }
+        li {
+          background: #24354b;
+          border-color: #3b4c63;
+        }
+        .link {
+          color: #e8f2fe;
+        }
+        input[type='text'],
+        select {
+          color: #e7edf5;
+          background: #25354b;
+          border-color: #4a6078;
+        }
+        button:not(.mode-tab) {
+          color: #d7e7f7;
+          background: #293950;
+          border-color: #4e6078;
+        }
+        button:not(.mode-tab):hover:not(:disabled) {
+          background: #354c68;
+        }
+        .state {
+          color: #c4d8ed;
+          background: #253a52;
+        }
+        .state.RUNNING {
+          color: #b9dafa;
+          background: #263e57;
+        }
+        .state.COMPLETE {
+          color: #b3e9cc;
+          background: #20493b;
+        }
+        .state.PARTIAL {
+          color: #f4d9a3;
+          background: #514324;
+        }
+        .state.FAILED,
+        .error {
+          color: #ffd4cf;
+          background: #4a3036;
+        }
+        #s5-batch,
+        #s6-walk {
+          border-color: #35465a;
+        }
+        .advanced-warning {
+          color: #f2d5a2;
+          background: #4b3b27;
+        }
+        .hint-badge {
+          color: #d2dfec;
+          border-color: #49617a;
+        }
+      }
+      @media (forced-colors: active) {
+        :root,
+        body {
+          color: CanvasText;
+          background: Canvas;
+          color-scheme: light dark;
+        }
+        .header {
+          color: Canvas;
+          background: CanvasText;
+          forced-color-adjust: none;
+        }
+        .logo-mark {
+          color: HighlightText;
+          background: Highlight;
+          forced-color-adjust: none;
+        }
+        .mode-tab[aria-selected='true'] {
+          color: Highlight;
+          outline: 1px solid Highlight;
+        }
+        button,
+        input,
+        select,
+        .mode-panel,
+        li,
+        .state,
+        .advanced-warning {
+          border: 1px solid ButtonText;
+        }
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        .mode-tab:focus-visible {
+          outline: 2px solid Highlight;
+          outline-offset: 2px;
+        }
+        .state.RUNNING,
+        .state.COMPLETE,
+        .state.PARTIAL,
+        .state.FAILED {
+          color: CanvasText;
+          background: Canvas;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
     </style>
   </head>
   <body>
@@ -246,9 +392,11 @@
     </header>
     <nav role="tablist" aria-label="下载模式">
       <button
+        id="tab-page"
         type="button"
         class="mode-tab"
         data-mode="page"
+        aria-controls="panel-page"
         role="tab"
         aria-selected="true"
         tabindex="0"
@@ -256,9 +404,11 @@
         当前页面
       </button>
       <button
+        id="tab-batch"
         type="button"
         class="mode-tab"
         data-mode="batch"
+        aria-controls="panel-batch"
         role="tab"
         aria-selected="false"
         tabindex="-1"
@@ -266,9 +416,11 @@
         批量
       </button>
       <button
+        id="tab-collection"
         type="button"
         class="mode-tab"
         data-mode="collection"
+        aria-controls="panel-collection"
         role="tab"
         aria-selected="false"
         tabindex="-1"
@@ -276,9 +428,11 @@
         合集
       </button>
       <button
+        id="tab-advanced"
         type="button"
         class="mode-tab"
         data-mode="advanced"
+        aria-controls="panel-advanced"
         role="tab"
         aria-selected="false"
         tabindex="-1"
@@ -287,7 +441,15 @@
       </button>
     </nav>
     <main>
-      <section class="mode-panel" data-mode-panel="page" role="tabpanel" aria-label="当前页面">
+      <section
+        id="panel-page"
+        class="mode-panel"
+        data-mode-panel="page"
+        role="tabpanel"
+        aria-label="当前页面"
+        aria-labelledby="tab-page"
+        tabindex="0"
+      >
         <h2>选择当前页面的文件</h2>
         <p class="lead">
           仅显示在当前网页观察到的链接。选择要下载的文件后，按需要确认网站权限；不会自动读取凭据或下载。
@@ -296,9 +458,12 @@
       </section>
       <section
         class="mode-panel"
+        id="panel-batch"
         data-mode-panel="batch"
         role="tabpanel"
         aria-label="批量下载"
+        aria-labelledby="tab-batch"
+        tabindex="0"
         hidden
       >
         <h2>批量下载</h2>
@@ -325,9 +490,12 @@
       </section>
       <section
         class="mode-panel"
+        id="panel-collection"
         data-mode-panel="collection"
         role="tabpanel"
         aria-label="合集与分页任务"
+        aria-labelledby="tab-collection"
+        tabindex="0"
         hidden
       >
         <h2>合集与分页任务</h2>
@@ -367,9 +535,12 @@
       </section>
       <section
         class="mode-panel"
+        id="panel-advanced"
         data-mode-panel="advanced"
         role="tabpanel"
         aria-label="高级：Host 授权下载"
+        aria-labelledby="tab-advanced"
+        tabindex="0"
         hidden
       >
         <h2>高级：Host 授权下载</h2>
