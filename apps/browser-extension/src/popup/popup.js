@@ -35,9 +35,75 @@
   let s5ObservedTab = null;
   let s5ObservedComplete = false;
 
+  /** Localize renderer-authored copy; keep Core diagnostics and terminal data verbatim. */
+  function localizeUiMessage(value) {
+    let text = String(value);
+    const exact = new Map([
+      ['Journey accepted; the service worker is acquiring…', '任务已受理，服务工作线程正在处理…'],
+      ['the journey is unknown to the service worker (fresh worker or invalid id)', '服务工作线程中没有此任务记录（可能刚重启或任务标识无效）'],
+      ['no active tab', '没有活动标签页'],
+      ['no http(s) attachment links found on the current page', '当前页面没有发现 http/https 文件链接'],
+      ['Awaiting your batch confirmation — nothing is downloaded yet.', '等待你确认批量任务，尚未开始下载。'],
+      ['No frozen Core group; request S5 group admission first.', 'Core 尚未冻结批量候选，请先准备批量任务。'],
+      ['Select at least one frozen member for the batch.', '请至少选择一个已冻结的文件。'],
+      ['Confirm the batch with Core before downloading.', '请先向 Core 确认批量任务，再开始下载。'],
+      ['The service worker could not answer the status poll.', '服务工作线程无法返回任务状态。'],
+      ['Enter the Host-issued target handle and the authorized output root first.', '请先填写 Host 签发的目标句柄和已授权的保存目录。'],
+      ['This action needs an active http(s) page tab (origin authority).', '此操作需要活动的 http/https 页面标签（用于验证来源）。'],
+      ['Submitting the confirmed intent through the trusted local Host…', '正在通过可信本地 Host 提交已确认的操作…'],
+    ]);
+    if (exact.has(text)) return exact.get(text);
+    const patterns = [
+      [/^journey status unreadable/, '无法读取任务状态'],
+      [/^Running the S2 journey \(([^)]+)\)…$/, '正在执行单项下载（$1）…'],
+      [/^selection rejected: /, '文件选择被拒绝：'],
+      [/^scoped host permission for (.+) was not granted; the cross-origin attachment was not acquired$/, '未获准访问跨域来源 $1；未获取该文件。'],
+      [/^scoped host permission request failed: /, '申请来源权限失败：'],
+      [/^Core refused the confirmation: /, 'Core 拒绝了确认：'],
+      [/^Core refused the execution: /, 'Core 拒绝执行：'],
+      [/^Confirmation failed: /, '确认失败：'],
+      [/^Execution failed: /, '执行失败：'],
+      [/^S5 admission refused without downloading: /, 'S5 准入被拒绝，未开始下载：'],
+      [/^S5 admission failed without downloading: /, 'S5 准备失败，未开始下载：'],
+      [/^S5 preview failed without any acquisition: /, 'S5 预览失败，未执行获取：'],
+      [/^S5 refused: /, 'S5 已拒绝：'],
+      [/^journey status unreadable: /, '无法读取任务状态：'],
+      [/^batch failed: /, '批量任务失败：'],
+      [/^Core is downloading the batch \(([^)]+)\)… per-member status so far:\n/, 'Core 正在处理批量任务（$1）…各文件状态：\n'],
+      [/^S6 page (\d+) scan produced no member anchors; /, 'S6 第$1页扫描未发现文件链接；'],
+      [/^S6 page (\d+) carries /, 'S6 第$1页包含 '],
+      [/^Core refused the page (\d+) observation: /, 'Core 拒绝记录 S6 第$1页：'],
+      [/^Core refused the page (\d+) navigation admit: /, 'Core 拒绝 S6 第$1页的导航准入：'],
+      [/^S6 page (\d+) navigation timed out; the walk stopped\.$/, 'S6 第$1页加载超时，已停止遍历。'],
+      [/^S6 page walk failed: /, 'S6 页面遍历失败：'],
+      [/^Core refused the confirmation: /, 'Core 拒绝了确认：'],
+      [/^No frozen Core collection; request S6 collection admission first\.$/, 'Core 尚未冻结合集，请先准备合集任务。'],
+      [/^Select at least one frozen member for the collection batch\.$/, '请至少选择一个已冻结的合集成员。'],
+      [/^Confirm the collection with Core before downloading\.$/, '请先向 Core 确认合集任务，再开始下载。'],
+      [/^collection failed: /, '合集任务失败：'],
+      [/^Core is downloading the collection \(([^)]+)\)… per-member status so far:\n/, 'Core 正在处理合集任务（$1）…各文件状态：\n'],
+      [/^S6 admission refused without navigating: /, 'S6 准入被拒绝，未执行页面跳转：'],
+      [/^S6 preparation failed without navigating: /, 'S6 准备失败，未执行页面跳转：'],
+      [/^The service worker refused the submission: /, '服务工作线程拒绝了提交：'],
+      [/^Status unavailable \(([^)]+)\)\. /, '状态不可用（$1）。'],
+      [/^Refused \(([^)]+)\)\. /, '已拒绝（$1）。'],
+      [/^Accepted by Core \(lineage (.+)\)\. Polling the Core-owned projection…$/, 'Core 已受理（任务标识 $1），正在读取 Core 状态…'],
+    ];
+    for (const [pattern, replacement] of patterns) {
+      text = text.replace(pattern, replacement);
+    }
+    return text
+      .replaceAll('Core terminal projection (verbatim):', 'Core 原始终态（原样）：')
+      .replaceAll('Core aggregate terminal (verbatim):', 'Core 汇总终态（原样）：')
+      .replaceAll('Core-owned status:', 'Core 任务状态：')
+      .replaceAll(' Error:', ' 错误：')
+      .replaceAll(' Transferred:', ' 已传输：')
+      .replaceAll(' bytes (total: UNKNOWN).', ' 字节（总量未知）。');
+  }
+
   function setState(kind, text) {
     stateBox.className = `state ${kind}`;
-    stateBox.textContent = text;
+    stateBox.textContent = localizeUiMessage(text);
   }
 
   /** Injected into the page (self-contained; returns plain data only). */
@@ -219,7 +285,7 @@
 
   function setS5State(kind, text) {
     s5BatchResult.className = `state ${kind}`;
-    s5BatchResult.textContent = text;
+    s5BatchResult.textContent = localizeUiMessage(text);
   }
 
   function renderFrozenMembers(facts) {
@@ -562,7 +628,7 @@
 
   function setS6State(kind, text) {
     s6BatchResult.className = `state ${kind}`;
-    s6BatchResult.textContent = text;
+    s6BatchResult.textContent = localizeUiMessage(text);
   }
 
   /** Injected into the page (self-contained; returns plain data only). */
@@ -1182,7 +1248,7 @@
 
   function setV02State(kind, text) {
     v02ResultBox.className = `state ${kind}`;
-    v02ResultBox.textContent = text;
+    v02ResultBox.textContent = localizeUiMessage(text);
   }
 
   function stopV02Polling() {
