@@ -1321,11 +1321,21 @@
   for (const tab of modeTabs) {
     tab.addEventListener('click', () => showMode(tab.dataset.mode, false));
     tab.addEventListener('keydown', (event) => {
-      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
-      event.preventDefault();
       const index = modeTabs.indexOf(tab);
-      const offset = event.key === 'ArrowRight' ? 1 : -1;
-      const next = modeTabs[(index + offset + modeTabs.length) % modeTabs.length];
+      let nextIndex = null;
+      if (event.key === 'ArrowRight') {
+        nextIndex = (index + 1) % modeTabs.length;
+      } else if (event.key === 'ArrowLeft') {
+        nextIndex = (index - 1 + modeTabs.length) % modeTabs.length;
+      } else if (event.key === 'Home') {
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        nextIndex = modeTabs.length - 1;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      const next = modeTabs[nextIndex];
       if (next) showMode(next.dataset.mode, true);
     });
   }
