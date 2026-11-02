@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { decodeS5PageGroupGesture } from '../src/background/s5-group-intent.ts';
 
 const popupSource = readFileSync(new URL('../src/popup/popup.js', import.meta.url), 'utf8');
+const popupHtml = readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8');
 
 type StubNode = {
   dataset: Record<string, string>;
@@ -567,4 +568,18 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     const manifest = JSON.parse(manifestText) as { permissions?: string[] };
     expect(manifest.permissions).toContain('storage');
   });
+  it('declares an accessible tab/tabpanel relationship and keyboard navigation', () => {
+    expect(popupHtml).toContain('lang="zh-CN"');
+    for (const mode of ['page', 'batch', 'collection', 'advanced']) {
+      expect(popupHtml).toContain('id="tab-' + mode + '"');
+      expect(popupHtml).toContain('aria-controls="panel-' + mode + '"');
+      expect(popupHtml).toContain('id="panel-' + mode + '"');
+      expect(popupHtml).toContain('aria-labelledby="tab-' + mode + '"');
+    }
+    expect(popupSource).toContain("event.key === 'ArrowRight'");
+    expect(popupSource).toContain("event.key === 'ArrowLeft'");
+    expect(popupSource).toContain("event.key === 'Home'");
+    expect(popupSource).toContain("event.key === 'End'");
+  });
+
 });
