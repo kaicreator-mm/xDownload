@@ -654,6 +654,13 @@ describe('#154 S6 reopened popup recovery (R2 P1)', () => {
     expect(modeTabs[3]!.focused).toBe(true);
     expect(modeTabs[3]!.attributes['aria-selected']).toBe('true');
 
+    modeTabs[3]!.handlers['keydown']!({ key: 'ArrowLeft', preventDefault() {} });
+    expect(modePanels[2]!.hidden).toBe(false);
+    expect(modeTabs[2]!.focused).toBe(true);
+    modeTabs[2]!.handlers['keydown']!({ key: 'ArrowRight', preventDefault() {} });
+    expect(modePanels[3]!.hidden).toBe(false);
+    expect(modeTabs[3]!.focused).toBe(true);
+
     modeTabs[3]!.handlers['keydown']!({ key: 'Home', preventDefault() {} });
     expect(modePanels[0]!.hidden).toBe(false);
     expect(modeTabs[0]!.focused).toBe(true);
