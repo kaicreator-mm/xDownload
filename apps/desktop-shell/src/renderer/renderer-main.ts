@@ -29,7 +29,6 @@ import {
   initialManagerState,
   jobActions,
   jobStatusText,
-  noticeShown,
   previewOpened,
   setBusy,
   type ManagerRendererState,
