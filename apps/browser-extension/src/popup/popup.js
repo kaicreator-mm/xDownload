@@ -1167,17 +1167,15 @@
     s6NextPageButton.disabled = true; // Re-enabled only after a fresh bound page scan.
     s6PrepareResult.textContent = `已从 Core 恢复 S6 任务 ${String(
       journey.contractId,
-    )}（准入 ${s6Prepared.prepareId}; ${String(s6MemberAccum.size)} 个成员，分布在 ${String(
-      pages.length,
-    )} walked page(s)). The declared range ${String(s6Prepared.fromPage)}..${String(
+    )}（准入 ${s6Prepared.prepareId}；共冻结 ${String(s6MemberAccum.size)} 个成员，已遍历 ${String(pages.length)} 页。指定范围 ${String(s6Prepared.fromPage)}..${String(
       s6Prepared.toPage,
-    )} 仍是唯一允许的导航边界。`;
+    )} 是唯一允许的导航边界。`;
     setS6State(
       'RUNNING',
-      `Restored from Core: ${String(s6MemberAccum.size)} frozen members on ${String(pages.length)} declared page(s) walked so far. ${
+      `已从 Core 恢复：已遍历 ${String(pages.length)} 个指定页面，冻结 ${String(s6MemberAccum.size)} 个成员。${
         s6Confirmed
-          ? 'The subset is already confirmed — you can start the collection download.'
-          : 'Uncheck any member you do not want, then confirm; or continue the declared walk.'
+          ? '所选成员已确认，可以开始下载合集。'
+          : '请取消不需要的成员后确认，或继续遍历指定范围。'
       }`,
     );
     // R1 P2-02 continuation: the dismissed-mid-walk case leaves the browser
