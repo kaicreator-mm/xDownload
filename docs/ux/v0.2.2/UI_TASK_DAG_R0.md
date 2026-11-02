@@ -13,3 +13,36 @@
 | U06 | 独立审查、候选冻结、发布资格与版本限定合并 | docs/release/** | U05 | Gate |
 
 当前 WIP：U01 和 U02 源码草稿已经提交且同属一个不可自动合并的后继集成目标，未运行 Node24 / Woodpecker / 真实 Electron / Chrome，可见 UI 审核 NOT_RUN。未经 Owner 审核/批准冻结，不得将草稿表当成已批准 DAG。
+
+
+## Owner-approved canonical U00–U06 responsibility map (2026-11-03)
+
+> Approval: project Owner comment on #327, comment #6584999871. This approves the lane definitions and historical mapping below only. The full UI DAG remains `CANDIDATE_NOT_FROZEN`; it does not approve every candidate Task, dependency edge, Product/L2 change, release or merge.
+
+| Canonical lane | Responsibility | Existing work / evidence mapping |
+|---|---|---|
+| U00 | Installed-surface UX audit, screenshots and industry workflow comparison | #305 UX baseline; screenshot/evidence inputs in #311 Attempt-08. |
+| U01 | Desktop information architecture and design-system decisions | Planning responsibility captured by #305; consumed by the Desktop renderer. No separate implementation Task is invented. |
+| U02 | Trusted, versioned schema/capability-driven dynamic forms | #324 Browser structured-input gap; Desktop form-schema work is part of the historical #306/#307 implementation; current Browser follow-up is #328. |
+| U03 | Desktop renderer replacement and correctness/hardening | #306 initial Desktop renderer Task, #307 implementation, #312 hardening and PR #313. |
+| U04 | Browser Popup workflows, progressive disclosure, localization, accessibility and browser-specific correctness | #308 / PR #309; #314 / PR #315; findings #323/#325; bounded follow-up #328. |
+| U05 | Product capability remediation in Core/adapter/Host | #310 only. This remains separately scoped and is NOT authorized by the UI lane-map or #328 approval. |
+| U06 | Integration, Windows Node24 / Chrome / Electron validation, screenshots/accessibility, Woodpecker and independent review | #311, #326 and `.woodpecker/xd-ui-r0-verify.yaml` / Build #4. |
+
+### Historical identifier reconciliation
+
+- Historical issue titles and append-only comments are not rewritten. A former lane label in an issue title is a historical alias, not a second current lane definition.
+- #306/#307 are mapped to canonical U03 based on their actual Desktop renderer deliverable, not U01.
+- #312/#313 are also U03 Desktop renderer hardening.
+- #308/#309 and #314/#315 are U04 Browser Popup work.
+- #324 is the U02 Browser schema-form gap; #323 and #325 are U04 Browser workflow correctness findings. #328 is a single-writer pack spanning U02 and U04 because its three-file write set overlaps.
+- #311 and #326 provide U06 validation/harness evidence. U00 UX observations may be reused from #311 only where the actual screenshot/scenario evidence exists; validation is not silently relabelled as a completed UX audit.
+- #310 remains U05 and requires its own Product/L2 authority; it is not included in #328.
+
+### Current approved bounded Task
+
+- Task Pack proposal: #328, Owner-approved comment #6585001449.
+- Formal Task Issue and exact Task Pack reference will be linked after materialization.
+- Exact approved write set: `apps/browser-extension/src/popup/popup.html`, `apps/browser-extension/src/popup/popup.js`, `apps/browser-extension/test/popup-s5-admission.test.ts`.
+- One Writer only; the three findings #323/#324/#325 must not be dispatched as parallel source writers.
+- The UI DAG remains `CANDIDATE_NOT_FROZEN`. No other lane is implicitly dispatched by this Task.
