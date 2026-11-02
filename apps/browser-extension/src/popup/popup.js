@@ -204,30 +204,30 @@
 
     const link = document.createElement('div');
     link.className = 'link';
-    link.textContent = `${item.text || '(untitled link)'} — ${item.href}`;
+    link.textContent = `${item.text || '（未命名链接）'} — ${item.href}`;
     li.appendChild(link);
 
     // A checked row is only a local, explicitly selected S5 PREVIEW member.
     // It NEVER starts individual S2 acquisition or commits group Core truth.
     const groupCheckbox = document.createElement('input');
     groupCheckbox.type = 'checkbox';
-    groupCheckbox.setAttribute('aria-label', 'Include this observed link in S5 preview');
+    groupCheckbox.setAttribute('aria-label', '将此链接加入 S5 批量预览');
     li.appendChild(groupCheckbox);
     s5ObservedRows.push({ checkbox: groupCheckbox, href: item.href, text: item.text });
 
     const digest = document.createElement('input');
     digest.type = 'text';
-    digest.placeholder = 'known SHA-256 (optional — strengthens target verification)';
+    digest.placeholder = '已知 SHA-256（可选，用于加强目标校验）';
     li.appendChild(digest);
 
     const contentType = document.createElement('input');
     contentType.type = 'text';
     contentType.placeholder =
-      'expected content-type prefix (optional, e.g. application/octet-stream)';
+      '预期内容类型前缀（可选，例如 application/octet-stream）';
     li.appendChild(contentType);
 
     const button = document.createElement('button');
-    button.textContent = 'Download with xDownload';
+    button.textContent = '使用 xDownload 下载';
     button.addEventListener('click', async () => {
       // Optional digest: when entered it must be a canonical SHA-256; the
       // journey never requires it (F01).
@@ -235,7 +235,7 @@
       if (value !== '' && !/^[0-9a-f]{64}$/.test(value)) {
         setState(
           'FAILED',
-          'the declared SHA-256, when entered, must be 64 hex chars (or leave the field empty)',
+          '填写的 SHA-256 必须是 64 位十六进制字符串；不填写也可以。',
         );
         return;
       }
@@ -324,12 +324,12 @@
         (currentTab.url || '') !== s5ObservedTab.url
       ) {
         s5PreviewResult.textContent =
-          'S5 refused: tab changed since observation; rescan the page before group confirmation.';
+          'S5 已拒绝：观察后标签页发生变化；请重新扫描页面再确认批量任务。';
         return;
       }
       if (!s5ObservedComplete) {
         s5PreviewResult.textContent =
-          'S5 refused: the page has more than 20 observed links; partial membership cannot be called a whole current-page group.';
+          'S5 已拒绝：页面链接超过 20 个，当前扫描不完整，不能将部分链接视为整个页面的批量范围。';
         return;
       }
       const latest = await chrome.scripting.executeScript({
@@ -348,12 +348,12 @@
         )
       ) {
         s5PreviewResult.textContent =
-          'S5 refused: the page membership changed since observation; reopen the popup.';
+          'S5 已拒绝：观察后页面成员发生变化；请重新打开弹窗重新扫描。';
         return;
       }
       if (new Set(observed.links.map((item) => item.href)).size !== observed.links.length) {
         s5PreviewResult.textContent =
-          'S5 refused: duplicate resource locators require trusted distinct member identities.';
+          'S5 已拒绝：重复资源地址需要可信且不同的成员标识。';
         return;
       }
       const response = await chrome.runtime.sendMessage({
@@ -364,9 +364,7 @@
         members: observed.links.map((item) => ({ href: item.href, text: item.text })),
       });
       if (!response || response.ok !== true) {
-        s5PreviewResult.textContent = `S5 admission refused without downloading: ${
-          (response && response.error) || 'UNKNOWN'
-        }`;
+        s5PreviewResult.textContent = `S5 准入被拒绝，未开始下载：${(response && response.error) || 'UNKNOWN'}`;
         return;
       }
       s5Prepared = {
@@ -383,10 +381,10 @@
           Array.isArray(response.facts.members) &&
           response.facts.members.length) ||
           0,
-      )} members (digest ${String(s5Prepared.digest).slice(0, 16)}…). Pick the batch subset and confirm.`;
+      )} 个成员（摘要 ${String(s5Prepared.digest).slice(0, 16)}…）。请勾选批量文件并确认。`;
       setS5State('RUNNING', 'Awaiting your batch confirmation — nothing is downloaded yet.');
     } catch (error) {
-      s5PreviewResult.textContent = `S5 admission failed without downloading: ${String(error)}`;
+      s5PreviewResult.textContent = `S5 准备失败，未开始下载：${String(error)}`;
     } finally {
       s5PrepareButton.disabled = false;
     }
@@ -532,30 +530,30 @@
         (currentTab.url || '') !== s5ObservedTab.url
       ) {
         s5PreviewResult.textContent =
-          'Page changed since scanning; reopen xDownload to get a fresh member snapshot.';
+          '扫描后页面已发生变化；请重新打开 xDownload 获取新的候选快照。';
         return;
       }
       const selected = s5ObservedRows.filter((row) => row.checkbox.checked);
       if (selected.length === 0) {
-        s5PreviewResult.textContent = 'Select at least one observed member to preview.';
+        s5PreviewResult.textContent = '请至少选择一个已观察到的文件进行预览。';
         return;
       }
       const uniqueHrefs = new Set(selected.map((row) => row.href));
       if (uniqueHrefs.size !== selected.length) {
         s5PreviewResult.textContent =
-          'Duplicate member locators need distinct verified identities; no group was confirmed.';
+          '重复资源地址需要不同的可信成员标识；未确认任何批量任务。';
         return;
       }
       const subset = selected.length !== s5ObservedRows.length;
       s5PreviewResult.textContent = [
-        `S5 preview only: ${selected.length} selected of ${s5ObservedRows.length} observed links.`,
+        `S5 仅预览：已选择 ${selected.length} 个 / 观察到 ${s5ObservedRows.length} 个链接。`,
         subset
-          ? 'This subset requires a separately confirmed selected_collection_members successor scope.'
-          : 'Current-page membership is only observed; continuation scope would be NONE.',
-        'No Core snapshot, download, Coverage or COMPLETE terminal has been created.',
+          ? '该子集需要单独确认 selected_collection_members 后继范围。'
+          : '当前页面成员仅为观察结果；续传范围为 NONE。',
+        '尚未创建 Core 快照或下载任务，也没有 Coverage 或 COMPLETE 终态。',
       ].join(' ');
     } catch (error) {
-      s5PreviewResult.textContent = `S5 preview failed without any acquisition: ${String(error)}`;
+      s5PreviewResult.textContent = `S5 预览失败，未执行获取：${String(error)}`;
     }
   });
 
@@ -586,18 +584,18 @@
       s5Group.hidden = false;
       if (!s5ObservedComplete) {
         s5PreviewResult.textContent =
-          'Only the first 20 page links were scanned; complete S5 current-page membership is unavailable.';
+          '只扫描了页面前 20 个链接；无法确认完整的 S5 当前页面成员范围。';
       }
       setState(
         'RUNNING',
-        'Select an S2 attachment to Download, or preview an S5 page group without acquisition.',
+        '选择一个文件开始单项下载，或预览当前页面的 S5 批量任务（不会自动下载）。',
       );
       const s6SectionEl = document.getElementById('s6-collection');
       if (s6SectionEl !== null) {
         s6SectionEl.hidden = false;
       }
     } catch (error) {
-      setState('FAILED', `page scan failed: ${String(error)}`);
+      setState('FAILED', `页面扫描失败：${String(error)}`);
     }
   })();
 
@@ -795,7 +793,7 @@
       const toPage = Number(s6ToInput.value.trim());
       if (!/^[A-Za-z0-9_./:-]{1,256}$/u.test(identity) || identity.includes('//')) {
         s6PrepareResult.textContent =
-          'S6 refused: the collection identity must be a bounded identity path (e.g. playlist/my-list).';
+          'S6 已拒绝：合集标识必须是长度受限的路径（例如 playlist/my-list）。';
         return;
       }
       if (
@@ -806,7 +804,7 @@
         toPage > 10000
       ) {
         s6PrepareResult.textContent =
-          'S6 refused: the page range must be a bounded 1-based inclusive range with fromPage <= toPage.';
+          'S6 已拒绝：页码范围必须是有上限的闭区间，且从 1 开始并满足起始页不大于结束页。';
         return;
       }
       // R1 P2-01: the shipped v0.1 installed lane binds declared-range page 1
@@ -816,12 +814,12 @@
       // unreachable selection.
       if (fromPage !== 1) {
         s6PrepareResult.textContent =
-          'S6 refused: the shipped v0.1 lane starts a declared range only at the currently open page (fromPage must be 1). Open the page you want to start from and declare the range from there; a later start requires opening that page first.';
+          'S6 已拒绝：当前版本只能从已打开的页面开始遍历（fromPage 必须为 1）。请先打开目标起始页，再设置页码范围。';
         return;
       }
       const currentTab = await activeTab();
       if (!currentTab || currentTab.id === undefined) {
-        s6PrepareResult.textContent = 'S6 refused: no active tab; reopen the popup.';
+        s6PrepareResult.textContent = 'S6 已拒绝：没有活动标签页；请重新打开弹窗。';
         return;
       }
       // The declared walk navigates the collection origin's own pages. The
@@ -838,10 +836,10 @@
         const scopedGranted = await chrome.permissions.request({ origins: [`${origin}/*`] });
         if (!scopedGranted) {
           scopedNote =
-            'S6: the scoped collection-origin permission was not granted; only already-scannable pages can be walked.';
+            'S6：未获准访问合集来源；只能遍历扩展已具备访问权限的页面。';
         }
       } catch (error) {
-        scopedNote = `S6: the scoped permission request could not run (${String(error)}); walking proceeds only on already-scannable pages.`;
+        scopedNote = `S6：无法请求来源权限（${String(error)}）；只能遍历扩展已具备访问权限的页面。`;
       }
       const response = await chrome.runtime.sendMessage({
         kind: 'S6_PREPARE_COLLECTION',
@@ -853,9 +851,7 @@
         toPage,
       });
       if (!response || response.ok !== true) {
-        s6PrepareResult.textContent = `S6 admission refused without navigating: ${
-          (response && response.error) || 'UNKNOWN'
-        } (verbatim response: ${JSON.stringify(response)})`;
+        s6PrepareResult.textContent = `S6 准入被拒绝，未执行页面跳转：${(response && response.error) || 'UNKNOWN'}（原始响应：${JSON.stringify(response)}）`;
         return;
       }
       s6Prepared = {
@@ -877,11 +873,11 @@
       if (recorded && s6Prepared.toPage === 1) {
         setS6State(
           'RUNNING',
-          'Declared range fully walked (single page). Uncheck members you do not want and confirm.',
+          '指定范围只有一页，已完成扫描。请取消不需要的成员，然后确认。',
         );
       }
     } catch (error) {
-      s6PrepareResult.textContent = `S6 preparation failed without navigating: ${String(error)}`;
+      s6PrepareResult.textContent = `S6 准备失败，未执行页面跳转：${String(error)}`;
     } finally {
       s6PrepareButton.disabled = false;
     }
@@ -1164,7 +1160,7 @@
     }
     renderS6Accum();
     s6NextPageButton.disabled = true; // Re-enabled only after a fresh bound page scan.
-    s6PrepareResult.textContent = `Restored the active S6 journey ${String(
+    s6PrepareResult.textContent = `已从 Core 恢复 S6 任务 ${String(
       journey.contractId,
     )} from Core (admission ${s6Prepared.prepareId}; ${String(s6MemberAccum.size)} frozen members across ${String(
       pages.length,
