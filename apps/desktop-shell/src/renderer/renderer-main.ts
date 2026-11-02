@@ -77,22 +77,11 @@ function statusLabel(row: ManagerJobRowDocument): string {
   return '等待 Core 状态';
 }
 
-/** Display only the user-entered URL origin/path; never expose query strings or credentials. */
+/** Display only the user-entered origin; never expose URL paths, query strings or credentials. */
 function taskLabelFromUrl(raw: string): string {
   try {
     const parsed = new URL(raw);
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    const lastSegment = segments.length === 0 ? '' : (segments[segments.length - 1] ?? '');
-    let safePath = lastSegment;
-    try {
-      safePath = decodeURIComponent(lastSegment);
-    } catch {
-      // Keep the encoded path segment if it is not valid percent-encoding.
-    }
-    const shortened = safePath.length > 48 ? '…' + safePath.slice(-47) : safePath;
-    return shortened === ''
-      ? '链接来源 · ' + parsed.host
-      : '链接来源 · ' + parsed.host + ' / ' + shortened;
+    return '来源站点 · ' + parsed.host;
   } catch {
     return '下载任务';
   }
@@ -116,8 +105,50 @@ function progressSummary(row: ManagerJobRowDocument): string {
       : validation.status === 'NONE_PASSED'
         ? '全部未通过'
         : validation.status;
-  return '校验：' + validationLabel +
+  const coverageLabel =
+    row.terminal.coverage === 'VERIFIED_COMPLETE' ? '范围已验证完成' : row.terminal.coverage;
+  return '覆盖：' + coverageLabel + ' · 校验：' + validationLabel +
     '（通过 ' + validation.passedCount + ' 项，失败 ' + validation.failedCount + ' 项）';
+}
+
+/** Translate renderer-authored phrases; preserve Core refusal details verbatim. */
+function localizeNotice(text: string): string {
+  const fixed: Record<string, string> = {
+    'refresh refused: unexpected document': '刷新失败：Core 返回了无法识别的任务列表',
+    'preview refused: unexpected document': '预览失败：Core 返回了无法识别的预览结果',
+    'action refused: unexpected document': '操作失败：Core 返回了无法识别的操作结果',
+    "the add was accepted by the Core (admission — the job list below shows the Core's projection)":
+      '任务已提交至 Core（仅表示已受理，实际状态以任务列表为准）',
+    "the cancel was accepted by the Core (admission — the job list below shows the Core's projection)":
+      '取消请求已提交至 Core（实际结果以任务列表为准）',
+    "the retry was accepted by the Core (admission — the job list below shows the Core's projection)":
+      '重试请求已提交至 Core（实际结果以任务列表为准）',
+  };
+  const exact = fixed[text];
+  if (exact !== undefined) return exact;
+  const patterns: readonly [RegExp, (match: RegExpMatchArray) => string][] = [
+    [/^refresh refused: (.*)$/u, (m) => '刷新失败：' + m[1]],
+    [/^preview refused: (.*)$/u, (m) => '预览失败：' + m[1]],
+    [/^action refused: (.*)$/u, (m) => '操作失败：' + m[1]],
+    [
+      /^the Core refused the (add|cancel|retry) \(([^)]+)\): (.*)$/u,
+      (m) =>
+        'Core 拒绝了' +
+        ({ add: '添加任务', cancel: '取消任务', retry: '重试任务' }[m[1] ?? ''] ?? '操作') +
+        '（' + m[2] + '）：' + m[3],
+    ],
+    [
+      /^the (add|cancel|retry) was not routed: (.*)$/u,
+      (m) =>
+        ({ add: '添加任务', cancel: '取消任务', retry: '重试任务' }[m[1] ?? ''] ?? '操作') +
+        '未提交：' + m[2],
+    ],
+  ];
+  for (const [pattern, translate] of patterns) {
+    const match = text.match(pattern);
+    if (match !== null) return translate(match);
+  }
+  return text;
 }
 
 function renderFormFields(): void {
@@ -248,7 +279,7 @@ function render(): void {
   app.hidden = state.phase === 'loading';
 
   const notice = byId('notice');
-  notice.textContent = state.notice === null ? '' : state.notice.text;
+  notice.textContent = state.notice === null ? '' : localizeNotice(state.notice.text);
   notice.dataset.kind = state.notice === null ? 'none' : state.notice.kind;
 
   const connectionLine = byId('connection-line');
@@ -383,9 +414,7 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   tr.appendChild(status);
 
   const progress = document.createElement('td');
-  progress.textContent = verifiedComplete(row)
-    ? '已验证完成'
-    : progressSummary(row);
+  progress.textContent = verifiedComplete(row) ? '已验证完成' : progressSummary(row);
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
@@ -412,7 +441,7 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
     actionButton(
       '打开目录',
       row.lineageId,
-      availability.revealEnabled,
+      availability.revealEnabled && verifiedComplete(row),
       () => void runReveal(row.lineageId),
     ),
   );
