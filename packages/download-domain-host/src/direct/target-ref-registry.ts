@@ -47,7 +47,9 @@ const RAW_LOCATOR_URI_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
  * negative assertion on handles — never to parse a handle into a locator.
  */
 export function isRawLocatorShape(value: string): boolean {
-  return RAW_LOCATOR_URI_PATTERN.test(value) || /^[/\\]/.test(value) || /^[A-Za-z]:[/\\]/.test(value);
+  return (
+    RAW_LOCATOR_URI_PATTERN.test(value) || /^[/\\]/.test(value) || /^[A-Za-z]:[/\\]/.test(value)
+  );
 }
 
 /** In-memory TargetRef registry seeded by the trusted composition. */
@@ -71,7 +73,11 @@ export class InMemoryTargetRefRegistry implements TargetRefRegistry {
    * registry token (T01 R1 P2 — the targetRef must never BE a locator).
    */
   register(handle: string, record: TargetRefRecord): DomainValidationResult<TargetRefRecord> {
-    if (typeof handle !== 'string' || handle.length === 0 || !REFERENCE_TOKEN_PATTERN.test(handle)) {
+    if (
+      typeof handle !== 'string' ||
+      handle.length === 0 ||
+      !REFERENCE_TOKEN_PATTERN.test(handle)
+    ) {
       return fail([
         diagnostic(
           'MALFORMED_REQUIRED_FIELD',
@@ -91,12 +97,18 @@ export class InMemoryTargetRefRegistry implements TargetRefRegistry {
     }
     if (typeof record.uri !== 'string' || record.uri.length === 0 || record.uri.length > 2048) {
       return fail([
-        diagnostic('MALFORMED_REQUIRED_FIELD', 'record.uri', 'record uri must be a bounded delivery locator string'),
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'record.uri',
+          'record uri must be a bounded delivery locator string',
+        ),
       ]);
     }
     if (
       !Array.isArray(record.allowedRedirectHosts) ||
-      record.allowedRedirectHosts.some((host) => typeof host !== 'string' || host.length === 0 || host.length > 255)
+      record.allowedRedirectHosts.some(
+        (host) => typeof host !== 'string' || host.length === 0 || host.length > 255,
+      )
     ) {
       return fail([
         diagnostic(
@@ -132,7 +144,11 @@ export class InMemoryTargetRefRegistry implements TargetRefRegistry {
   resolve(targetRef: string): DomainValidationResult<TargetRefRecord> {
     if (typeof targetRef !== 'string' || targetRef.length === 0) {
       return fail([
-        diagnostic('MALFORMED_REQUIRED_FIELD', 'targetRef', 'targetRef must be a non-empty handle token'),
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'targetRef',
+          'targetRef must be a non-empty handle token',
+        ),
       ]);
     }
     if (isRawLocatorShape(targetRef)) {

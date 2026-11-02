@@ -73,10 +73,7 @@ function acceptedHostResponse(request: { requestId: string; aggregateId: string 
 describe('authorization payload constructor — field whitelist', () => {
   it('emits exactly the frozen whitelist (no browser context field exists)', () => {
     const payload = sealedPayload();
-    assert.deepEqual(
-      Object.keys(payload).sort(),
-      [...AUTHORIZATION_PAYLOAD_FIELDS].sort(),
-    );
+    assert.deepEqual(Object.keys(payload).sort(), [...AUTHORIZATION_PAYLOAD_FIELDS].sort());
     assert.deepEqual([...AUTHORIZATION_PAYLOAD_FIELDS].sort(), [
       'allowedOperation',
       'caller',
@@ -100,7 +97,10 @@ describe('authorization payload constructor — field whitelist', () => {
     assert.equal(full.slice, 'S1');
     assert.equal(full.digestAnchor, SHA);
     assert.equal(full.declaredBytes, 1024);
-    assert.deepEqual(full.caller, { actor: 'browser-extension', sessionRef: 'session-browser-001' });
+    assert.deepEqual(full.caller, {
+      actor: 'browser-extension',
+      sessionRef: 'session-browser-001',
+    });
 
     const leanAction = baseAction();
     const lean = buildAuthorizationPayload(IDENTITY, {
@@ -182,15 +182,20 @@ describe('tampered-payload rejection', () => {
   });
 
   it('refuses tampered digest anchors, sizes and output roots', () => {
-    assert.equal(gateConfirmedAuthorization({ ...sealedPayload(), digestAnchor: 'not-hex' }).authorized, false);
+    assert.equal(
+      gateConfirmedAuthorization({ ...sealedPayload(), digestAnchor: 'not-hex' }).authorized,
+      false,
+    );
     const oversize = { ...sealedPayload(), declaredBytes: 1_099_511_627_777 };
     assert.equal(gateConfirmedAuthorization(oversize).authorized, false);
     assert.equal(
-      gateConfirmedAuthorization({ ...sealedPayload(), outputRootScope: 'C:/tmp/../secrets' }).authorized,
+      gateConfirmedAuthorization({ ...sealedPayload(), outputRootScope: 'C:/tmp/../secrets' })
+        .authorized,
       false,
     );
     assert.equal(
-      gateConfirmedAuthorization({ ...sealedPayload(), outputRootScope: 'relative/root' }).authorized,
+      gateConfirmedAuthorization({ ...sealedPayload(), outputRootScope: 'relative/root' })
+        .authorized,
       false,
     );
   });
@@ -241,9 +246,15 @@ describe('native-host check request construction', () => {
 
   it('fails closed on identities rejected by the seam id rules', () => {
     const intent = sealedPayload();
-    assert.equal(buildNativeHostCheckRequest(intent, { ...CONTEXT, requestId: 'bad id!' }).ok, false);
+    assert.equal(
+      buildNativeHostCheckRequest(intent, { ...CONTEXT, requestId: 'bad id!' }).ok,
+      false,
+    );
     assert.equal(buildNativeHostCheckRequest(intent, { ...CONTEXT, installId: '' }).ok, false);
-    assert.equal(buildNativeHostCheckRequest(intent, { ...CONTEXT, userId: 'bad user!' }).ok, false);
+    assert.equal(
+      buildNativeHostCheckRequest(intent, { ...CONTEXT, userId: 'bad user!' }).ok,
+      false,
+    );
   });
 });
 
@@ -289,7 +300,8 @@ describe('native-host check evaluation — every failure refuses the submission'
     const noAcceptance = { ...acceptedHostResponse(envelope), acceptance: undefined };
     const noAcceptanceDecision = evaluateNativeHostCheck(envelope, noAcceptance);
     assert.equal(noAcceptanceDecision.accepted, false);
-    if (!noAcceptanceDecision.accepted) assert.equal(noAcceptanceDecision.reason, 'HOST_RESPONSE_MALFORMED');
+    if (!noAcceptanceDecision.accepted)
+      assert.equal(noAcceptanceDecision.reason, 'HOST_RESPONSE_MALFORMED');
   });
 
   it('refuses answers bound to a different request or aggregate', () => {
@@ -313,7 +325,9 @@ describe('native-host check evaluation — every failure refuses the submission'
       ...acceptedHostResponse(envelope),
       outcome: 'REJECTED' as const,
       acceptance: undefined,
-      diagnostics: [{ code: 'ADMISSION_REJECTED' as const, path: 'payload', message: 'host check unsatisfied' }],
+      diagnostics: [
+        { code: 'ADMISSION_REJECTED' as const, path: 'payload', message: 'host check unsatisfied' },
+      ],
     };
     const decision = evaluateNativeHostCheck(envelope, rejected);
     assert.equal(decision.accepted, false);
@@ -364,7 +378,8 @@ describe('bounded submission pipeline — stage ordering and fail-closed refusal
     );
     assert.equal(decision.outcome, 'REFUSED_AT_GATE');
     assert.ok(
-      decision.outcome === 'REFUSED_AT_GATE' && decision.diagnostics[0]?.code === 'SCOPE_WIDENING_REFUSED',
+      decision.outcome === 'REFUSED_AT_GATE' &&
+        decision.diagnostics[0]?.code === 'SCOPE_WIDENING_REFUSED',
     );
   });
 

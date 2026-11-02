@@ -40,7 +40,11 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { LineageClaimRecord, LineageHistoryEvent, UnknownEffectRecord } from './lineage-ledger.ts';
+import type {
+  LineageClaimRecord,
+  LineageHistoryEvent,
+  UnknownEffectRecord,
+} from './lineage-ledger.ts';
 
 /** Root shape of the durable ledger document (schema 1; fail-closed on drift). */
 export interface LineageLedgerDoc {
@@ -85,7 +89,10 @@ function parseLedgerDoc(raw: string, path: string): LineageLedgerDoc {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    throw new LineageStoreError('MALFORMED_LEDGER_DOC', `lineage ledger at ${path} is not valid JSON; failing closed`);
+    throw new LineageStoreError(
+      'MALFORMED_LEDGER_DOC',
+      `lineage ledger at ${path} is not valid JSON; failing closed`,
+    );
   }
   if (
     typeof parsed !== 'object' ||

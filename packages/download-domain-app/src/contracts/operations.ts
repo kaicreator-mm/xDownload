@@ -6,12 +6,7 @@
  * Pure additive contract layer; owns no runtime dispatch, no permit logic and
  * no Host ports. The selected Kernel consumes the sealed declaration data.
  */
-import {
-  diagnostic,
-  fail,
-  ok,
-  type DomainValidationResult,
-} from '@xdownload/domain-contracts';
+import { diagnostic, fail, ok, type DomainValidationResult } from '@xdownload/domain-contracts';
 import { SHA256_PATTERN, validateArtifactPath } from './intent.ts';
 
 /** The v0.2 C operation vocabulary (frozen; extended only by L2 amendment). */
@@ -47,7 +42,9 @@ export function validateRouteTable(
   declarations: readonly OperationDeclaration[],
 ): DomainValidationResult<readonly OperationRouteRow[]> {
   if (!Array.isArray(routes) || routes.length === 0) {
-    return fail([diagnostic('CONTRACT_BINDING_MISMATCH', 'routes', 'route table must be a non-empty array')]);
+    return fail([
+      diagnostic('CONTRACT_BINDING_MISMATCH', 'routes', 'route table must be a non-empty array'),
+    ]);
   }
   const declared = new Map(declarations.map((d) => [d.operationId, d]));
   for (const row of routes) {
@@ -64,7 +61,11 @@ export function validateRouteTable(
       row.handlerId.length === 0
     ) {
       return fail([
-        diagnostic('CONTRACT_BINDING_MISMATCH', 'routes', 'every route row needs bounded intent/operation/capability/handler ids'),
+        diagnostic(
+          'CONTRACT_BINDING_MISMATCH',
+          'routes',
+          'every route row needs bounded intent/operation/capability/handler ids',
+        ),
       ]);
     }
     if (!DOWNLOAD_OPERATIONS.includes(row.operationId as DownloadOperationId)) {
@@ -86,10 +87,7 @@ export function validateRouteTable(
         ),
       ]);
     }
-    if (
-      declaration.capabilityId !== row.capabilityId ||
-      declaration.handlerId !== row.handlerId
-    ) {
+    if (declaration.capabilityId !== row.capabilityId || declaration.handlerId !== row.handlerId) {
       return fail([
         diagnostic(
           'CONTRACT_BINDING_MISMATCH',
@@ -109,10 +107,12 @@ export type EffectEnvelope =
   | {
       readonly phase: 'terminal';
       readonly externalRef: string;
-      readonly outcome: { readonly ok: true; readonly output: Record<string, unknown> } | {
-        readonly ok: false;
-        readonly error: { readonly code: string; readonly message: string };
-      };
+      readonly outcome:
+        | { readonly ok: true; readonly output: Record<string, unknown> }
+        | {
+            readonly ok: false;
+            readonly error: { readonly code: string; readonly message: string };
+          };
     };
 
 /**
@@ -122,33 +122,65 @@ export type EffectEnvelope =
  */
 export function normalizeEffectEnvelope(raw: unknown): DomainValidationResult<EffectEnvelope> {
   if (typeof raw !== 'object' || raw === null) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'envelope', 'effect envelope must be a plain object')]);
+    return fail([
+      diagnostic('MALFORMED_REQUIRED_FIELD', 'envelope', 'effect envelope must be a plain object'),
+    ]);
   }
   const record = raw as Record<string, unknown>;
   const externalRef = record.externalRef;
   if (typeof externalRef !== 'string' || externalRef.length === 0) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'externalRef', 'envelope requires a bounded externalRef')]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'externalRef',
+        'envelope requires a bounded externalRef',
+      ),
+    ]);
   }
   if (record.phase === 'accepted' || record.phase === 'running') {
     return ok({ phase: record.phase, externalRef } as EffectEnvelope);
   }
   if (record.phase !== 'terminal') {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'phase', "phase must be 'accepted' | 'running' | 'terminal'")]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'phase',
+        "phase must be 'accepted' | 'running' | 'terminal'",
+      ),
+    ]);
   }
   const outcome = record.outcome;
   if (typeof outcome !== 'object' || outcome === null) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'outcome', 'terminal envelope requires an outcome record')]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'outcome',
+        'terminal envelope requires an outcome record',
+      ),
+    ]);
   }
   const outcomeRecord = outcome as Record<string, unknown>;
   if (outcomeRecord.ok === true) {
     const output = outcomeRecord.output;
     if (typeof output !== 'object' || output === null) {
-      return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'outcome.output', 'ok terminal outcome carries a plain output record')]);
+      return fail([
+        diagnostic(
+          'MALFORMED_REQUIRED_FIELD',
+          'outcome.output',
+          'ok terminal outcome carries a plain output record',
+        ),
+      ]);
     }
-    return ok({ phase: 'terminal', externalRef, outcome: { ok: true, output: output as Record<string, unknown> } });
+    return ok({
+      phase: 'terminal',
+      externalRef,
+      outcome: { ok: true, output: output as Record<string, unknown> },
+    });
   }
   if (outcomeRecord.ok !== false) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'outcome.ok', 'terminal outcome.ok must be boolean')]);
+    return fail([
+      diagnostic('MALFORMED_REQUIRED_FIELD', 'outcome.ok', 'terminal outcome.ok must be boolean'),
+    ]);
   }
   const error = outcomeRecord.error;
   if (
@@ -158,7 +190,11 @@ export function normalizeEffectEnvelope(raw: unknown): DomainValidationResult<Ef
     typeof (error as Record<string, unknown>).message !== 'string'
   ) {
     return fail([
-      diagnostic('MALFORMED_REQUIRED_FIELD', 'outcome.error', 'failed terminal outcome carries a typed {code, message} error'),
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'outcome.error',
+        'failed terminal outcome carries a typed {code, message} error',
+      ),
     ]);
   }
   const errorRecord = error as { code: string; message: string };
@@ -187,22 +223,49 @@ export function validateMaterializedEvidence(
   outputRootScope: string,
 ): DomainValidationResult<MaterializedEvidence> {
   if (typeof evidence !== 'object' || evidence === null) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'evidence', 'materialized evidence must be a plain object')]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'evidence',
+        'materialized evidence must be a plain object',
+      ),
+    ]);
   }
   const record = evidence as Record<string, unknown>;
   const fileSha256 = record.fileSha256;
   if (typeof fileSha256 !== 'string' || !SHA256_PATTERN.test(fileSha256)) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'fileSha256', 'fileSha256 must be lowercase 64-hex')]);
+    return fail([
+      diagnostic('MALFORMED_REQUIRED_FIELD', 'fileSha256', 'fileSha256 must be lowercase 64-hex'),
+    ]);
   }
   const bytesWritten = record.bytesWritten;
-  if (typeof bytesWritten !== 'number' || !Number.isSafeInteger(bytesWritten) || bytesWritten <= 0) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'bytesWritten', 'bytesWritten must be a positive safe integer')]);
+  if (
+    typeof bytesWritten !== 'number' ||
+    !Number.isSafeInteger(bytesWritten) ||
+    bytesWritten <= 0
+  ) {
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'bytesWritten',
+        'bytesWritten must be a positive safe integer',
+      ),
+    ]);
   }
   const stopReason = record.stopReason;
   if (typeof stopReason !== 'string' || stopReason.length === 0 || stopReason.length > 64) {
-    return fail([diagnostic('MALFORMED_REQUIRED_FIELD', 'stopReason', 'stopReason must be a bounded terminal token')]);
+    return fail([
+      diagnostic(
+        'MALFORMED_REQUIRED_FIELD',
+        'stopReason',
+        'stopReason must be a bounded terminal token',
+      ),
+    ]);
   }
-  const pathCheck = validateArtifactPath(outputRootScope, typeof record.artifactPath === 'string' ? record.artifactPath : '');
+  const pathCheck = validateArtifactPath(
+    outputRootScope,
+    typeof record.artifactPath === 'string' ? record.artifactPath : '',
+  );
   if (!pathCheck.ok) return pathCheck;
   return ok({ fileSha256, bytesWritten, artifactPath: pathCheck.value, stopReason });
 }

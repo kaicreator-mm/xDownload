@@ -135,7 +135,11 @@ export class DirectAcquisitionBridge {
     const intentCheck = validateConfirmedIntent(intent);
     if (!intentCheck.ok) {
       this.counters.scopeRefusals += 1;
-      return refusalEnvelope(externalRef, intentCheck.diagnostics[0]!.code, intentCheck.diagnostics[0]!.message);
+      return refusalEnvelope(
+        externalRef,
+        intentCheck.diagnostics[0]!.code,
+        intentCheck.diagnostics[0]!.message,
+      );
     }
     const confirmed: ConfirmedDownloadIntent = intentCheck.value;
     if (confirmed.allowedOperation !== OPERATION_ACQUIRE) {
@@ -151,17 +155,26 @@ export class DirectAcquisitionBridge {
     const recordCheck = this.registry.resolve(confirmed.targetRef);
     if (!recordCheck.ok) {
       this.counters.targetRefRefusals += 1;
-      return refusalEnvelope(externalRef, recordCheck.diagnostics[0]!.code, recordCheck.diagnostics[0]!.message);
+      return refusalEnvelope(
+        externalRef,
+        recordCheck.diagnostics[0]!.code,
+        recordCheck.diagnostics[0]!.message,
+      );
     }
     const record = recordCheck.value;
 
     // 4. Artifact path containment BEFORE any network (a refused path is a
     // zero-transfer refusal by construction).
-    const requestedPath = options.artifactPath ?? join(confirmed.outputRootScope, `${confirmed.requestId}.bin`);
+    const requestedPath =
+      options.artifactPath ?? join(confirmed.outputRootScope, `${confirmed.requestId}.bin`);
     const pathCheck = validateArtifactPath(confirmed.outputRootScope, requestedPath);
     if (!pathCheck.ok) {
       this.counters.pathRefusals += 1;
-      return refusalEnvelope(externalRef, pathCheck.diagnostics[0]!.code, pathCheck.diagnostics[0]!.message);
+      return refusalEnvelope(
+        externalRef,
+        pathCheck.diagnostics[0]!.code,
+        pathCheck.diagnostics[0]!.message,
+      );
     }
     const resolvedRoot = resolve(confirmed.outputRootScope);
     const resolvedPath = resolve(pathCheck.value);
@@ -196,13 +209,23 @@ export class DirectAcquisitionBridge {
     // 6. Terminal acceptance: adapter projection must be a completed,
     // all-validations-passed transfer carrying bytes.
     if (!transfer.ok) {
-      return refusalEnvelope(externalRef, transfer.diagnostics[0]!.code, transfer.diagnostics[0]!.message);
+      return refusalEnvelope(
+        externalRef,
+        transfer.diagnostics[0]!.code,
+        transfer.diagnostics[0]!.message,
+      );
     }
     const outcome = transfer.value;
     const completed =
-      outcome.reason === 'COMPLETED' && outcome.bytes !== undefined && outcome.allApplicableValidationPassed;
+      outcome.reason === 'COMPLETED' &&
+      outcome.bytes !== undefined &&
+      outcome.allApplicableValidationPassed;
     if (!completed || outcome.bytes === undefined) {
-      return refusalEnvelope(externalRef, outcome.reason, `transfer did not complete (${outcome.reason})`);
+      return refusalEnvelope(
+        externalRef,
+        outcome.reason,
+        `transfer did not complete (${outcome.reason})`,
+      );
     }
 
     // 7. Digest re-check (defense in depth behind the adapter target layer):
@@ -281,7 +304,8 @@ function parsePermit(permit: unknown): PermitRefusal | null {
   if (typeof permit !== 'object' || permit === null || Array.isArray(permit)) {
     return {
       code: 'PERMIT_REQUIRED',
-      message: 'direct acquisition requires a kernel permit context (effectId + durableControlTurnId)',
+      message:
+        'direct acquisition requires a kernel permit context (effectId + durableControlTurnId)',
     };
   }
   const record = permit as Record<string, unknown>;

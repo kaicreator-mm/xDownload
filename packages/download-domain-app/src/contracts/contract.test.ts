@@ -75,7 +75,10 @@ describe('validateConfirmedIntent — no-widening', () => {
   });
 
   it('refuses a raw URL as targetRef (opaque token only — L2 A02)', () => {
-    const result = validateConfirmedIntent({ ...baseIntent(), targetRef: 'http://127.0.0.1:8080/file.bin' });
+    const result = validateConfirmedIntent({
+      ...baseIntent(),
+      targetRef: 'http://127.0.0.1:8080/file.bin',
+    });
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.diagnostics[0]?.code, 'LOCATOR_SUBSTITUTION_REJECTED');
   });
@@ -83,7 +86,10 @@ describe('validateConfirmedIntent — no-widening', () => {
   it('refuses malformed identifiers, digest anchors and size bounds', () => {
     assert.equal(validateConfirmedIntent({ ...baseIntent(), requestId: 'BAD_ID' }).ok, false);
     assert.equal(validateConfirmedIntent({ ...baseIntent(), digestAnchor: 'not-hex' }).ok, false);
-    assert.equal(validateConfirmedIntent({ ...baseIntent(), declaredBytes: MAX_DECLARED_BYTES + 1 }).ok, false);
+    assert.equal(
+      validateConfirmedIntent({ ...baseIntent(), declaredBytes: MAX_DECLARED_BYTES + 1 }).ok,
+      false,
+    );
     assert.equal(validateConfirmedIntent({ ...baseIntent(), slice: 'S2' }).ok, false);
     const noCallerRole = { ...baseIntent(), caller: {} };
     assert.equal(validateConfirmedIntent(noCallerRole).ok, false);
@@ -108,7 +114,14 @@ describe('output root and artifact path containment', () => {
 describe('route table binding', () => {
   it('accepts a route table bound to sealed declarations', () => {
     const result = validateRouteTable(
-      [{ intentId: 'confirmDownload', operationId: 'acquisition.acquire', capabilityId: 'acquisition', handlerId: 'acquireFile' }],
+      [
+        {
+          intentId: 'confirmDownload',
+          operationId: 'acquisition.acquire',
+          capabilityId: 'acquisition',
+          handlerId: 'acquireFile',
+        },
+      ],
       DECLARATIONS,
     );
     assert.equal(result.ok, true);
@@ -117,7 +130,14 @@ describe('route table binding', () => {
 
   it('refuses a route to an undeclared capability (exact contract binding mismatch)', () => {
     const result = validateRouteTable(
-      [{ intentId: 'confirmDownload', operationId: 'acquisition.acquire', capabilityId: 'acquisition-missing', handlerId: 'acquireFile' }],
+      [
+        {
+          intentId: 'confirmDownload',
+          operationId: 'acquisition.acquire',
+          capabilityId: 'acquisition-missing',
+          handlerId: 'acquireFile',
+        },
+      ],
       DECLARATIONS,
     );
     assert.equal(result.ok, false);
@@ -126,7 +146,14 @@ describe('route table binding', () => {
 
   it('refuses operations outside the frozen vocabulary', () => {
     const result = validateRouteTable(
-      [{ intentId: 'confirmDownload', operationId: 'madeup.operation', capabilityId: 'acquisition', handlerId: 'acquireFile' }],
+      [
+        {
+          intentId: 'confirmDownload',
+          operationId: 'madeup.operation',
+          capabilityId: 'acquisition',
+          handlerId: 'acquireFile',
+        },
+      ],
       DECLARATIONS,
     );
     assert.equal(result.ok, false);
@@ -155,7 +182,11 @@ describe('effect envelope grammar (L2 A05)', () => {
       outcome: { ok: false, error: { code: 'USER_CANCELLED', message: 'cancelled' } },
     });
     assert.equal(failed.ok, true);
-    const malformed = normalizeEffectEnvelope({ phase: 'terminal', externalRef: 'ref-1', outcome: { ok: false } });
+    const malformed = normalizeEffectEnvelope({
+      phase: 'terminal',
+      externalRef: 'ref-1',
+      outcome: { ok: false },
+    });
     assert.equal(malformed.ok, false);
     const pendingAsSuccess = normalizeEffectEnvelope({ phase: 'pending', externalRef: 'ref-1' });
     assert.equal(pendingAsSuccess.ok, false);
@@ -165,7 +196,12 @@ describe('effect envelope grammar (L2 A05)', () => {
 describe('materialized evidence validation', () => {
   it('accepts bounded evidence inside the root', () => {
     const result = validateMaterializedEvidence(
-      { fileSha256: SHA, bytesWritten: 10, artifactPath: `${ROOT}/req-001.bin`, stopReason: 'COMPLETED' },
+      {
+        fileSha256: SHA,
+        bytesWritten: 10,
+        artifactPath: `${ROOT}/req-001.bin`,
+        stopReason: 'COMPLETED',
+      },
       ROOT,
     );
     assert.equal(result.ok, true);
@@ -173,13 +209,25 @@ describe('materialized evidence validation', () => {
 
   it('refuses bad digests and escaping artifact paths', () => {
     assert.equal(
-      validateMaterializedEvidence({ fileSha256: 'nope', bytesWritten: 1, artifactPath: `${ROOT}/x.bin`, stopReason: 'COMPLETED' }, ROOT)
-        .ok,
+      validateMaterializedEvidence(
+        {
+          fileSha256: 'nope',
+          bytesWritten: 1,
+          artifactPath: `${ROOT}/x.bin`,
+          stopReason: 'COMPLETED',
+        },
+        ROOT,
+      ).ok,
       false,
     );
     assert.equal(
       validateMaterializedEvidence(
-        { fileSha256: SHA, bytesWritten: 1, artifactPath: 'C:/elsewhere/x.bin', stopReason: 'COMPLETED' },
+        {
+          fileSha256: SHA,
+          bytesWritten: 1,
+          artifactPath: 'C:/elsewhere/x.bin',
+          stopReason: 'COMPLETED',
+        },
         ROOT,
       ).ok,
       false,

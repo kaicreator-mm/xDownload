@@ -174,7 +174,11 @@ export function evaluateNativeHostCheck(
     );
   }
   if (response.outcome === 'REJECTED') {
-    return refuse('HOST_CHECK_REJECTED', 'the native host rejected the check', response.diagnostics);
+    return refuse(
+      'HOST_CHECK_REJECTED',
+      'the native host rejected the check',
+      response.diagnostics,
+    );
   }
   if (response.outcome !== 'ACCEPTED') {
     return refuse(
@@ -189,7 +193,10 @@ export function evaluateNativeHostCheck(
       'ACCEPTED host answer carries no well-formed acceptance record',
     );
   }
-  if (acceptance.requestId !== request.requestId || acceptance.aggregateId !== request.aggregateId) {
+  if (
+    acceptance.requestId !== request.requestId ||
+    acceptance.aggregateId !== request.aggregateId
+  ) {
     return refuse(
       'HOST_RESPONSE_UNBOUND',
       'ACCEPTED host answer is re-bound to a different request/aggregate',

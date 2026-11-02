@@ -18,7 +18,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { load, type DomainApp } from '@kaicreator/domain-harness-microkernel';
-import type { V10DocStore, V10DocWriteCondition, V10PublicIntent } from '@kaicreator/domain-harness-contracts';
+import type {
+  V10DocStore,
+  V10DocWriteCondition,
+  V10PublicIntent,
+} from '@kaicreator/domain-harness-contracts';
 import { normalizeEffectEnvelope, type EffectEnvelope } from '../contracts/index.ts';
 import { buildDownloadDomainApp, confirmDownloadRequest } from './composition.ts';
 
@@ -34,7 +38,11 @@ class InMemoryCasDocStore implements V10DocStore {
     return row === undefined ? null : { value: row.value, revision: row.revision };
   }
 
-  async put(key: string, value: unknown, condition: V10DocWriteCondition): Promise<{ revision: number }> {
+  async put(
+    key: string,
+    value: unknown,
+    condition: V10DocWriteCondition,
+  ): Promise<{ revision: number }> {
     const existing = this.docs.get(key);
     if (condition.kind === 'create') {
       if (existing !== undefined) {
@@ -61,14 +69,19 @@ class InMemoryCasDocStore implements V10DocStore {
     const existing = this.docs.get(key);
     if (condition.kind === 'create') {
       if (existing !== undefined) {
-        throw Object.assign(new Error(`CAS conflict on ${key}: create-conditioned remove refused`), {
-          code: 'HOST_CAS_CONFLICT',
-        });
+        throw Object.assign(
+          new Error(`CAS conflict on ${key}: create-conditioned remove refused`),
+          {
+            code: 'HOST_CAS_CONFLICT',
+          },
+        );
       }
       return;
     }
     if (existing === undefined || existing.revision !== condition.revision) {
-      throw Object.assign(new Error(`CAS conflict on ${key}: revision moved`), { code: 'HOST_CAS_CONFLICT' });
+      throw Object.assign(new Error(`CAS conflict on ${key}: revision moved`), {
+        code: 'HOST_CAS_CONFLICT',
+      });
     }
     this.docs.delete(key);
   }
@@ -126,7 +139,11 @@ interface AnswerView {
   readonly snapshot?: { readonly state?: { readonly stateKey?: string } };
 }
 
-type BridgeAcquire = (payload: Record<string, unknown>, permit: unknown, call: AcquireCall) => unknown;
+type BridgeAcquire = (
+  payload: Record<string, unknown>,
+  permit: unknown,
+  call: AcquireCall,
+) => unknown;
 
 interface Workspace {
   readonly app: DomainApp;
@@ -166,9 +183,9 @@ async function makeWorkspace(bridgeAcquire: BridgeAcquire | null): Promise<Works
       authorize: (principal, target) =>
         Boolean(
           principal !== null &&
-            typeof principal === 'object' &&
-            (principal as { actor?: string }).actor === 'xdownload-v02-t03-test-host' &&
-            target.tenantId === tenantId,
+          typeof principal === 'object' &&
+          (principal as { actor?: string }).actor === 'xdownload-v02-t03-test-host' &&
+          target.tenantId === tenantId,
         ),
     },
   });
@@ -312,8 +329,15 @@ describe('N1 — route-less intent: typed refusal, zero dispatch, zero journal r
         messageId: 'msg-t03-unrouted',
         input: confirmedIntent('t03-unrouted'),
       };
-      await assert.rejects(workspace.app.send(raw), (error: unknown) => errorCode(error) === 'INTENT_UNSEALED');
-      assert.equal(workspace.store.journalRows().length, 0, 'a refused intent writes zero journal rows');
+      await assert.rejects(
+        workspace.app.send(raw),
+        (error: unknown) => errorCode(error) === 'INTENT_UNSEALED',
+      );
+      assert.equal(
+        workspace.store.journalRows().length,
+        0,
+        'a refused intent writes zero journal rows',
+      );
       assert.equal(workspace.calls.length, 0, 'zero dispatch: the stub capability never ran');
     } finally {
       workspace.dispose();
@@ -331,9 +355,8 @@ describe('N2 — effect fault: honest failed journal row, no fake success, no re
       // The public facade masks the kernel-internal admission failure to its
       // fixed typed refusal (the honest observed shape, #183 PoC N01b); the
       // DURABLE journal row below is the truthfulness evidence.
-      await assert.rejects(
-        workspace.app.send(intent),
-        (error: unknown) => /ADMISSION_EFFECT_FAILED|HOST_DOC_READ_FAILED|V10/.test(errorCode(error)),
+      await assert.rejects(workspace.app.send(intent), (error: unknown) =>
+        /ADMISSION_EFFECT_FAILED|HOST_DOC_READ_FAILED|V10/.test(errorCode(error)),
       );
       assert.equal(workspace.calls.length, 1, 'no internal retry: exactly one adapter attempt');
       const rows = workspace.store.journalRows();
@@ -363,9 +386,8 @@ describe('N2 — effect fault: honest failed journal row, no fake success, no re
     const workspace = await makeWorkspace(null);
     try {
       const { intent } = confirmDownloadRequest(confirmedIntent('t03-nobridge'));
-      await assert.rejects(
-        workspace.app.send(intent),
-        (error: unknown) => /ADMISSION_EFFECT_FAILED|HOST_DOC_READ_FAILED|V10/.test(errorCode(error)),
+      await assert.rejects(workspace.app.send(intent), (error: unknown) =>
+        /ADMISSION_EFFECT_FAILED|HOST_DOC_READ_FAILED|V10/.test(errorCode(error)),
       );
       assertNoSuccessInJournal(workspace.store);
     } finally {
@@ -386,9 +408,8 @@ describe('N3 — accepted/running ACK under await:terminal is never a completion
       // (V10_EXTERNAL_PENDING inside K; the facade's fixed public refusal
       // crosses the boundary). The journal row and the T01 grammar below are
       // the truthful-completion assertions.
-      await assert.rejects(
-        workspace.app.send(intent),
-        (error: unknown) => /ADMISSION_EFFECT_FAILED|HOST_DOC_READ_FAILED|V10/.test(errorCode(error)),
+      await assert.rejects(workspace.app.send(intent), (error: unknown) =>
+        /ADMISSION_EFFECT_FAILED|HOST_DOC_READ_FAILED|V10/.test(errorCode(error)),
       );
       assert.equal(workspace.calls.length, 1, 'exactly one adapter attempt, no auto-redownload');
       // The await:'terminal' refusal is journaled with its true reason.

@@ -21,14 +21,26 @@ import {
   type BudgetRemaining,
   type ConsumedBudget,
 } from '@xdownload/domain-contracts';
-import type { TransferBudgetLedgerPort, TransferConsumption } from '../../../direct-acquisition/src/index.ts';
+import type {
+  TransferBudgetLedgerPort,
+  TransferConsumption,
+} from '../../../direct-acquisition/src/index.ts';
 
 export class CanonicalBudgetLedger implements TransferBudgetLedgerPort {
   private readonly profile: BudgetProfile;
   private readonly consumed: {
     discovery: { generatedRequests: number; navigationActions: number; modelCalls: number };
-    transfer: { bytes: number; segments: number; activeTransferMs: number; retryTransferRequests: number };
-    globalSafety: { totalGeneratedRequests: number; modelCostUnits: number; activeElapsedMs: number };
+    transfer: {
+      bytes: number;
+      segments: number;
+      activeTransferMs: number;
+      retryTransferRequests: number;
+    };
+    globalSafety: {
+      totalGeneratedRequests: number;
+      modelCostUnits: number;
+      activeElapsedMs: number;
+    };
   };
   /** Plain transfer requests reported to the seam (observability only, not budget math). */
   transferRequestsReported = 0;

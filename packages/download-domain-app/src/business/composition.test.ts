@@ -67,10 +67,12 @@ describe('sealed K/S payload bytes', () => {
   it('seals a closed four-module app with no model provider surface', () => {
     const { built } = buildDownloadDomainApp();
     assert.equal(built.appId, APP_ID);
-    assert.deepEqual(
-      built.modules.map((module) => module.role).sort(),
-      ['business', 'capability', 'kernel-primary', 'standard-primary'],
-    );
+    assert.deepEqual(built.modules.map((module) => module.role).sort(), [
+      'business',
+      'capability',
+      'kernel-primary',
+      'standard-primary',
+    ]);
     for (const module of built.modules) {
       assert.ok(
         !(module.provides ?? []).some((provided) => provided.startsWith('provider:')),
@@ -89,7 +91,9 @@ describe('sealed K/S payload bytes', () => {
     const altered = {
       ...tampered,
       modules: tampered.modules.map((module) =>
-        module.role === 'business' ? { ...module, moduleSource: `${module.moduleSource}\n// tampered` } : module,
+        module.role === 'business'
+          ? { ...module, moduleSource: `${module.moduleSource}\n// tampered` }
+          : module,
       ),
     };
     assert.throws(() => verifySealedModules(altered), /SEALED_BUILD_MODULE_ALTERED/);
@@ -109,12 +113,18 @@ describe('sealed route uses the frozen T01 vocabulary', () => {
         handlerId: 'acquire',
       },
     ]);
-    assert.ok(DOWNLOAD_OPERATIONS.includes(ACQUISITION_ROUTE.operationId as (typeof DOWNLOAD_OPERATIONS)[number]));
+    assert.ok(
+      DOWNLOAD_OPERATIONS.includes(
+        ACQUISITION_ROUTE.operationId as (typeof DOWNLOAD_OPERATIONS)[number],
+      ),
+    );
     const capability = built.modules.find((module) => module.role === 'capability');
     assert.ok(capability, 'capability module must exist');
     assert.equal(capability.capabilityId, 'acquisition');
     assert.equal(capability.externalEffect, true);
-    assert.deepEqual(capability.handlers, [{ operationId: 'acquisition.acquire', handler: 'acquire' }]);
+    assert.deepEqual(capability.handlers, [
+      { operationId: 'acquisition.acquire', handler: 'acquire' },
+    ]);
   });
 
   it('the sealed B policy binds effect:acquire to the K→C external route with await terminal', async () => {
@@ -139,7 +149,11 @@ describe('sealed route uses the frozen T01 vocabulary', () => {
     const binding = policy.effectBindings['effect:acquire'];
     assert.ok(binding, 'effect:acquire must be bound');
     assert.deepEqual(binding.resource, { key: 'acquisition', operation: 'acquisition.acquire' });
-    assert.ok(DOWNLOAD_OPERATIONS.includes(binding.resource.operation as (typeof DOWNLOAD_OPERATIONS)[number]));
+    assert.ok(
+      DOWNLOAD_OPERATIONS.includes(
+        binding.resource.operation as (typeof DOWNLOAD_OPERATIONS)[number],
+      ),
+    );
     assert.equal(binding.external.await, 'terminal');
     assert.ok(binding.external.permitTtlMs >= 1 && binding.external.permitTtlMs <= 3_600_000);
   });

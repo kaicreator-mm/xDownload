@@ -159,7 +159,9 @@ async function makeWorkspace(name: string): Promise<Workspace> {
   const handle = `ref:fixture/${name}.bin`;
   const runtime = await assembleDownloadRuntime({
     storePath,
-    targetRefs: [{ handle, record: { uri: fixture.uri('/file.bin'), allowedRedirectHosts: [fixture.host] } }],
+    targetRefs: [
+      { handle, record: { uri: fixture.uri('/file.bin'), allowedRedirectHosts: [fixture.host] } },
+    ],
   });
   const workspace: Workspace = {
     root,
@@ -203,7 +205,9 @@ interface AnswerView {
 }
 
 function journalHasSuccess(workspace: Workspace): boolean {
-  return workspace.runtime.store.journalRows().some(({ record }) => JSON.stringify(record).includes('"ok":true'));
+  return workspace.runtime.store
+    .journalRows()
+    .some(({ record }) => JSON.stringify(record).includes('"ok":true'));
 }
 
 async function waitForFixtureRequest(workspace: Workspace, before: number): Promise<void> {
@@ -227,14 +231,18 @@ describe('S — sealed direct composition identity', () => {
     assert.equal(capability?.packageId, DIRECT_CAPABILITY_MODULE_ID);
     assert.equal(capability?.externalEffect, true);
     assert.equal(capability?.capabilityId, 'acquisition');
-    assert.deepEqual(capability?.handlers, [{ operationId: 'acquisition.acquire', handler: 'acquire' }]);
+    assert.deepEqual(capability?.handlers, [
+      { operationId: 'acquisition.acquire', handler: 'acquire' },
+    ]);
     // The route is the T03 declaration, unchanged.
     assert.deepEqual(routes, [ACQUISITION_ROUTE]);
     assert.deepEqual(built.routes, [ACQUISITION_ROUTE]);
-    assert.deepEqual(
-      built.modules.map((module) => module.role).sort(),
-      ['business', 'capability', 'kernel-primary', 'standard-primary'],
-    );
+    assert.deepEqual(built.modules.map((module) => module.role).sort(), [
+      'business',
+      'capability',
+      'kernel-primary',
+      'standard-primary',
+    ]);
   });
 });
 
@@ -249,7 +257,10 @@ describe('P1 — real journey: intent → K permit → T04 bridge → DirectHttp
     workspace.fixture.serveBytes('/file.bin', body);
     const requestId = 'p1-file';
 
-    const outcome = await submitConfirmedDownload(workspace.runtime, intentFor(workspace, requestId, body));
+    const outcome = await submitConfirmedDownload(
+      workspace.runtime,
+      intentFor(workspace, requestId, body),
+    );
     assert.equal(outcome.status, 'completed');
     if (outcome.status !== 'completed') return;
 
@@ -263,11 +274,18 @@ describe('P1 — real journey: intent → K permit → T04 bridge → DirectHttp
     const onDisk = readFileSync(artifactPath);
     assert.equal(sha256(onDisk), sha256(body));
     assert.equal(onDisk.byteLength, body.byteLength);
-    assert.equal(outcome.evidence.artifactPath === artifactPath || outcome.evidence.artifactPath === artifactPath.replaceAll('\\', '/'), true);
+    assert.equal(
+      outcome.evidence.artifactPath === artifactPath ||
+        outcome.evidence.artifactPath === artifactPath.replaceAll('\\', '/'),
+      true,
+    );
 
     // The dispatch ran under a LIVE K-issued permit identity.
     assert.ok(outcome.permitEffectId.length > 0);
-    const receipt = outcome.receipt as { status?: string; admitted?: { effects?: { disposition?: string }[] } };
+    const receipt = outcome.receipt as {
+      status?: string;
+      admitted?: { effects?: { disposition?: string }[] };
+    };
     assert.equal(receipt.status, 'admitted');
     assert.equal(receipt.admitted?.effects?.[0]?.disposition, 'executed');
     assert.equal(outcome.terminal.phase, 'terminal');
@@ -294,10 +312,15 @@ describe('P1 — real journey: intent → K permit → T04 bridge → DirectHttp
       { workflowId: 'download-acquisition', instanceKey: `download-${requestId}` },
       (event) => events.push(event),
     );
-    const replay = await submitConfirmedDownload(workspace.runtime, intentFor(workspace, requestId, body));
+    const replay = await submitConfirmedDownload(
+      workspace.runtime,
+      intentFor(workspace, requestId, body),
+    );
     assert.equal(replay.status, 'replayed');
     await new Promise((wait) => setTimeout(wait, 50));
-    const admitted = events.find((event) => event.kind === 'admitted' && event.occurrenceId === `msg-${requestId}`);
+    const admitted = events.find(
+      (event) => event.kind === 'admitted' && event.occurrenceId === `msg-${requestId}`,
+    );
     assert.ok(admitted, 'the replayed occurrence must surface through the subscription');
     subscription.unsubscribe();
   });
@@ -318,7 +341,10 @@ describe('P2 — exactly one K permit and no double journal', () => {
     assert.equal(store.journalRows().length, 0, 'a fresh runtime starts with zero journal rows');
     assert.equal(store.permitDocs().length, 0, 'a fresh runtime starts with zero permits');
 
-    const outcome = await submitConfirmedDownload(workspace.runtime, intentFor(workspace, requestId, body));
+    const outcome = await submitConfirmedDownload(
+      workspace.runtime,
+      intentFor(workspace, requestId, body),
+    );
     assert.equal(outcome.status, 'completed');
 
     // Exactly one K permit (durable), exactly one journal row (durable).
@@ -326,8 +352,14 @@ describe('P2 — exactly one K permit and no double journal', () => {
     assert.equal(store.journalRows().length, 1, 'exactly one effect journal row must exist');
     const permitKey = store.permitDocs()[0]?.key ?? '';
     const journalKey = store.journalRows()[0]?.key ?? '';
-    assert.ok(permitKey.includes(`effect-permit:${outcome.permitEffectId}`), 'the durable permit is keyed by the permit effect identity');
-    assert.ok(journalKey.includes('effect-journal:'), 'the journal row is an effect-journal document');
+    assert.ok(
+      permitKey.includes(`effect-permit:${outcome.permitEffectId}`),
+      'the durable permit is keyed by the permit effect identity',
+    );
+    assert.ok(
+      journalKey.includes('effect-journal:'),
+      'the journal row is an effect-journal document',
+    );
 
     // Permit consumed exactly once: one bridge dispatch, one executed row.
     assert.equal(workspace.runtime.bridge.counters.acquireCalls, 1);
@@ -337,7 +369,10 @@ describe('P2 — exactly one K permit and no double journal', () => {
 
     // Idempotent replay of the same messageId: zero second effects, and the
     // journal/permit families stay at exactly one document (no double journal).
-    const replay = await submitConfirmedDownload(workspace.runtime, intentFor(workspace, requestId, body));
+    const replay = await submitConfirmedDownload(
+      workspace.runtime,
+      intentFor(workspace, requestId, body),
+    );
     assert.equal(replay.status, 'replayed');
     assert.equal(store.permitDocs().length, 1);
     assert.equal(store.journalRows().length, 1);
@@ -412,12 +447,19 @@ describe('N2 — mid-flight abort: truthful failure, no file, no auto-redownload
     assert.equal(workspace.runtime.bridge.counters.filesWritten, 0);
     assert.equal(workspace.runtime.bridge.counters.acquireCalls, 1);
     assert.equal(workspace.fixture.requestCount('/file.bin'), 1);
-    assert.equal(journalHasSuccess(workspace), false, 'no journal row may claim success after an abort');
+    assert.equal(
+      journalHasSuccess(workspace),
+      false,
+      'no journal row may claim success after an abort',
+    );
 
     // A NEW authorized submission under a fresh identity succeeds.
     const retryBody = payload(1024, 42);
     workspace.fixture.serveBytes('/file.bin', retryBody);
-    const retry = await submitConfirmedDownload(workspace.runtime, intentFor(workspace, 'n2-retry', retryBody));
+    const retry = await submitConfirmedDownload(
+      workspace.runtime,
+      intentFor(workspace, 'n2-retry', retryBody),
+    );
     assert.equal(retry.status, 'completed');
     assert.ok(existsSync(join(workspace.outputRoot, 'n2-retry.bin')));
   });
@@ -452,7 +494,10 @@ describe('N3 — store stop/reopen: journal survives, replay idempotent', () => 
       targetRefs: [
         {
           handle: workspace.handle,
-          record: { uri: workspace.fixture.uri('/file.bin'), allowedRedirectHosts: [workspace.fixture.host] },
+          record: {
+            uri: workspace.fixture.uri('/file.bin'),
+            allowedRedirectHosts: [workspace.fixture.host],
+          },
         },
       ],
     });
@@ -507,7 +552,11 @@ describe('N4 — digest mismatch: no file is materialized', () => {
 
     assert.equal(existsSync(join(workspace.outputRoot, `${requestId}.bin`)), false);
     assert.equal(workspace.runtime.bridge.counters.filesWritten, 0);
-    assert.equal(workspace.runtime.bridge.counters.acquireCalls, 1, 'exactly one attempt, no retry');
+    assert.equal(
+      workspace.runtime.bridge.counters.acquireCalls,
+      1,
+      'exactly one attempt, no retry',
+    );
     assert.equal(workspace.fixture.requestCount('/file.bin'), 1);
     assert.equal(journalHasSuccess(workspace), false);
   });
@@ -528,7 +577,10 @@ describe('N5 — T01 gate before send: refused intents create zero effects', () 
       submitConfirmedDownload(workspace.runtime, widened),
       /CONFIRMED_INTENT_INVALID.*SCOPE_WIDENING_REFUSED/,
     );
-    const locator = { ...intentFor(workspace, 'n5-locator', body), targetRef: 'https://evil.example/file.bin' };
+    const locator = {
+      ...intentFor(workspace, 'n5-locator', body),
+      targetRef: 'https://evil.example/file.bin',
+    };
     await assert.rejects(
       submitConfirmedDownload(workspace.runtime, locator),
       /CONFIRMED_INTENT_INVALID.*LOCATOR_SUBSTITUTION_REJECTED/,

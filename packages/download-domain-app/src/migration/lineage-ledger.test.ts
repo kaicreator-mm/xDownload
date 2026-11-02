@@ -35,7 +35,10 @@ function codeOf(action: () => unknown): string {
   try {
     action();
   } catch (error) {
-    assert.ok(error instanceof LineageLedgerError, `expected LineageLedgerError, got ${String(error)}`);
+    assert.ok(
+      error instanceof LineageLedgerError,
+      `expected LineageLedgerError, got ${String(error)}`,
+    );
     return error.code;
   }
   assert.fail('expected a typed LineageLedgerError, none thrown');
@@ -52,7 +55,13 @@ describe('default partition — old lineages stay old-core, no migration', () =>
     assert.equal(ledger.recordedOwnerOf('lineage-never-seen'), null);
     assert.equal(ledger.effectiveOwnerOf('lineage-never-seen'), 'old-core');
     assert.equal(
-      codeOf(() => ledger.claimLineage({ lineageId: 'lineage-never-seen', writer: LEGACY_WRITER, authorization: 'auth:x' })),
+      codeOf(() =>
+        ledger.claimLineage({
+          lineageId: 'lineage-never-seen',
+          writer: LEGACY_WRITER,
+          authorization: 'auth:x',
+        }),
+      ),
       'LINEAGE_PARTITION_VIOLATION',
     );
   });
@@ -63,7 +72,13 @@ describe('default partition — old lineages stay old-core, no migration', () =>
     assert.equal(record.ownerKind, 'old-core');
     assert.equal(ledger.effectiveOwnerOf('old-v01-lineage-1'), 'old-core');
     assert.equal(
-      codeOf(() => ledger.claimLineage({ lineageId: 'old-v01-lineage-1', writer: K_WRITER_A, authorization: 'auth:t09-a' })),
+      codeOf(() =>
+        ledger.claimLineage({
+          lineageId: 'old-v01-lineage-1',
+          writer: K_WRITER_A,
+          authorization: 'auth:t09-a',
+        }),
+      ),
       'LINEAGE_PARTITION_VIOLATION',
     );
     // Idempotent re-registration converges on the same record.
@@ -73,7 +88,11 @@ describe('default partition — old lineages stay old-core, no migration', () =>
 
   it('refuses partition inversion: a claimed new-K lineage can never be re-registered as legacy', () => {
     const ledger = LineageLedger.open({ path: freshLedgerPath('no-inversion') });
-    ledger.claimLineage({ lineageId: 'new-k-lineage-1', writer: K_WRITER_A, authorization: 'auth:t09-claim-1' });
+    ledger.claimLineage({
+      lineageId: 'new-k-lineage-1',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-claim-1',
+    });
     assert.equal(
       codeOf(() => ledger.registerLegacyLineage('new-k-lineage-1')),
       'LINEAGE_PARTITION_VIOLATION',
@@ -88,7 +107,13 @@ describe('default partition — old lineages stay old-core, no migration', () =>
     const reopened = LineageLedger.open({ path });
     assert.equal(reopened.effectiveOwnerOf('old-v01-lineage-2'), 'old-core');
     assert.equal(
-      codeOf(() => reopened.claimLineage({ lineageId: 'old-v01-lineage-2', writer: K_WRITER_B, authorization: 'auth:t09-b' })),
+      codeOf(() =>
+        reopened.claimLineage({
+          lineageId: 'old-v01-lineage-2',
+          writer: K_WRITER_B,
+          authorization: 'auth:t09-b',
+        }),
+      ),
       'LINEAGE_PARTITION_VIOLATION',
     );
   });
@@ -97,19 +122,37 @@ describe('default partition — old lineages stay old-core, no migration', () =>
 describe('exclusive claim — one writer per new lineage', () => {
   it('CAS-creates the first claim and converges idempotently for the same writer', () => {
     const ledger = LineageLedger.open({ path: freshLedgerPath('exclusive') });
-    const claim = ledger.claimLineage({ lineageId: 'lineage-x', writer: K_WRITER_A, authorization: 'auth:t09-x1' });
+    const claim = ledger.claimLineage({
+      lineageId: 'lineage-x',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-x1',
+    });
     assert.equal(claim.state, 'owned');
     assert.equal(claim.ownerWriterId, K_WRITER_A.writerId);
     assert.equal(ledger.effectiveOwnerOf('lineage-x'), 'new-k');
-    const reClaim = ledger.claimLineage({ lineageId: 'lineage-x', writer: K_WRITER_A, authorization: 'auth:t09-x2' });
+    const reClaim = ledger.claimLineage({
+      lineageId: 'lineage-x',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-x2',
+    });
     assert.equal(reClaim.claimId, claim.claimId);
   });
 
   it('refuses a second writer identity with WRITER_IDENTITY_CONFLICT (U02/N06 code)', () => {
     const ledger = LineageLedger.open({ path: freshLedgerPath('dual-writer') });
-    ledger.claimLineage({ lineageId: 'lineage-d', writer: K_WRITER_A, authorization: 'auth:t09-d1' });
+    ledger.claimLineage({
+      lineageId: 'lineage-d',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-d1',
+    });
     assert.equal(
-      codeOf(() => ledger.claimLineage({ lineageId: 'lineage-d', writer: K_WRITER_B, authorization: 'auth:t09-d2' })),
+      codeOf(() =>
+        ledger.claimLineage({
+          lineageId: 'lineage-d',
+          writer: K_WRITER_B,
+          authorization: 'auth:t09-d2',
+        }),
+      ),
       'WRITER_IDENTITY_CONFLICT',
     );
     assert.equal(ledger.effectiveOwnerOf('lineage-d'), 'new-k');
@@ -119,11 +162,19 @@ describe('exclusive claim — one writer per new lineage', () => {
   it('refuses claims/releases with malformed input without durable effect', () => {
     const ledger = LineageLedger.open({ path: freshLedgerPath('malformed') });
     assert.equal(
-      codeOf(() => ledger.claimLineage({ lineageId: 'ok-lineage', writer: K_WRITER_A, authorization: '' })),
+      codeOf(() =>
+        ledger.claimLineage({ lineageId: 'ok-lineage', writer: K_WRITER_A, authorization: '' }),
+      ),
       'LINEAGE_AUTHORIZATION_REQUIRED',
     );
     assert.equal(
-      codeOf(() => ledger.claimLineage({ lineageId: 'bad id with spaces', writer: K_WRITER_A, authorization: 'auth:ok' })),
+      codeOf(() =>
+        ledger.claimLineage({
+          lineageId: 'bad id with spaces',
+          writer: K_WRITER_A,
+          authorization: 'auth:ok',
+        }),
+      ),
       'MALFORMED_LEDGER_INPUT',
     );
     assert.equal(ledger.recordedOwnerOf('ok-lineage'), null);
@@ -134,7 +185,11 @@ describe('crash/restart — kill simulation by reopening the ledger file', () =>
   it('claims stay owned and authority is still enforced after a process boundary', () => {
     const path = freshLedgerPath('restart-claims');
     const first = LineageLedger.open({ path });
-    first.claimLineage({ lineageId: 'lineage-crash', writer: K_WRITER_A, authorization: 'auth:t09-crash' });
+    first.claimLineage({
+      lineageId: 'lineage-crash',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-crash',
+    });
     first.registerLegacyLineage('old-v01-crash');
 
     // Simulated kill: drop the instance, reopen the same durable file.
@@ -146,7 +201,13 @@ describe('crash/restart — kill simulation by reopening the ledger file', () =>
     assert.equal(reopened.effectiveOwnerOf('old-v01-crash'), 'old-core');
     // The second-writer refusal survives the restart too.
     assert.equal(
-      codeOf(() => reopened.claimLineage({ lineageId: 'lineage-crash', writer: K_WRITER_B, authorization: 'auth:t09-other' })),
+      codeOf(() =>
+        reopened.claimLineage({
+          lineageId: 'lineage-crash',
+          writer: K_WRITER_B,
+          authorization: 'auth:t09-other',
+        }),
+      ),
       'WRITER_IDENTITY_CONFLICT',
     );
   });
@@ -155,9 +216,12 @@ describe('crash/restart — kill simulation by reopening the ledger file', () =>
     const path = freshLedgerPath('corrupt');
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, '{ not json at all');
-    assert.throws(() => LineageLedger.open({ path }), (error: unknown) => {
-      return error instanceof Error && error.name === 'LineageStoreError';
-    });
+    assert.throws(
+      () => LineageLedger.open({ path }),
+      (error: unknown) => {
+        return error instanceof Error && error.name === 'LineageStoreError';
+      },
+    );
   });
 
   it('CAS conflict: a stale revision-0 save cannot overwrite durable state', () => {
@@ -214,14 +278,22 @@ describe('UNKNOWN reconciliation book — record only, never auto-clear/replay',
     // No authorization → refused.
     assert.equal(
       codeOf(() =>
-        ledger.resolveUnknownEffect({ unknownId: record.unknownId, authorization: '', resolution: { outcome: 'superseded' } }),
+        ledger.resolveUnknownEffect({
+          unknownId: record.unknownId,
+          authorization: '',
+          resolution: { outcome: 'superseded' },
+        }),
       ),
       'LINEAGE_AUTHORIZATION_REQUIRED',
     );
     // Unknown id → refused typed.
     assert.equal(
       codeOf(() =>
-        ledger.resolveUnknownEffect({ unknownId: 'unknown-nope', authorization: 'auth:t09-r', resolution: { outcome: 'verified' } }),
+        ledger.resolveUnknownEffect({
+          unknownId: 'unknown-nope',
+          authorization: 'auth:t09-r',
+          resolution: { outcome: 'verified' },
+        }),
       ),
       'UNKNOWN_NOT_FOUND',
     );
@@ -235,20 +307,31 @@ describe('UNKNOWN reconciliation book — record only, never auto-clear/replay',
     // Second resolution → refused; record never deleted from the book.
     assert.equal(
       codeOf(() =>
-        ledger.resolveUnknownEffect({ unknownId: record.unknownId, authorization: 'auth:t09-resolve-2', resolution: { outcome: 'again' } }),
+        ledger.resolveUnknownEffect({
+          unknownId: record.unknownId,
+          authorization: 'auth:t09-resolve-2',
+          resolution: { outcome: 'again' },
+        }),
       ),
       'UNKNOWN_ALREADY_RESOLVED',
     );
     assert.equal(ledger.listUnknownEffects().length, 0);
     assert.equal(ledger.listUnknownEffects({ includeResolved: true }).length, 1);
-    assert.equal(ledger.listUnknownEffects({ includeResolved: true })[0]?.unknownId, record.unknownId);
+    assert.equal(
+      ledger.listUnknownEffects({ includeResolved: true })[0]?.unknownId,
+      record.unknownId,
+    );
   });
 });
 
 describe('rollback — new lineage release; old lineage immutable', () => {
   it('releases a new-K lineage by its owner, preserving the released record/history', () => {
     const ledger = LineageLedger.open({ path: freshLedgerPath('release-new') });
-    ledger.claimLineage({ lineageId: 'lineage-rl', writer: K_WRITER_A, authorization: 'auth:t09-rl1' });
+    ledger.claimLineage({
+      lineageId: 'lineage-rl',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-rl1',
+    });
     const released = ledger.releaseLineage({ lineageId: 'lineage-rl', writer: K_WRITER_A });
     assert.ok(released !== null);
     assert.equal(released.state, 'released');
@@ -256,13 +339,25 @@ describe('rollback — new lineage release; old lineage immutable', () => {
     // Record and history preserved; partition falls back to the default.
     assert.equal(ledger.claimFor('lineage-rl')?.state, 'released');
     assert.equal(ledger.effectiveOwnerOf('lineage-rl'), 'old-core');
-    assert.ok(ledger.history().some((event) => event.kind === 'released' && event.lineageId === 'lineage-rl'));
-    assert.ok(ledger.history().some((event) => event.kind === 'claimed' && event.lineageId === 'lineage-rl'));
+    assert.ok(
+      ledger
+        .history()
+        .some((event) => event.kind === 'released' && event.lineageId === 'lineage-rl'),
+    );
+    assert.ok(
+      ledger
+        .history()
+        .some((event) => event.kind === 'claimed' && event.lineageId === 'lineage-rl'),
+    );
   });
 
   it('refuses a foreign release and an old-lineage release', () => {
     const ledger = LineageLedger.open({ path: freshLedgerPath('release-refusals') });
-    ledger.claimLineage({ lineageId: 'lineage-rr', writer: K_WRITER_A, authorization: 'auth:t09-rr' });
+    ledger.claimLineage({
+      lineageId: 'lineage-rr',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-rr',
+    });
     assert.equal(
       codeOf(() => ledger.releaseLineage({ lineageId: 'lineage-rr', writer: K_WRITER_B })),
       'WRITER_IDENTITY_CONFLICT',
@@ -277,18 +372,36 @@ describe('rollback — new lineage release; old lineage immutable', () => {
   it('re-claim after release requires a NEW authorization (stale grant refused)', () => {
     const path = freshLedgerPath('reclaim');
     const first = LineageLedger.open({ path });
-    first.claimLineage({ lineageId: 'lineage-rc', writer: K_WRITER_A, authorization: 'auth:t09-rc-1' });
+    first.claimLineage({
+      lineageId: 'lineage-rc',
+      writer: K_WRITER_A,
+      authorization: 'auth:t09-rc-1',
+    });
     first.releaseLineage({ lineageId: 'lineage-rc', writer: K_WRITER_A });
 
     const reopened = LineageLedger.open({ path });
     assert.equal(
-      codeOf(() => reopened.claimLineage({ lineageId: 'lineage-rc', writer: K_WRITER_A, authorization: 'auth:t09-rc-1' })),
+      codeOf(() =>
+        reopened.claimLineage({
+          lineageId: 'lineage-rc',
+          writer: K_WRITER_A,
+          authorization: 'auth:t09-rc-1',
+        }),
+      ),
       'STALE_AUTHORIZATION',
     );
-    const reclaimed = reopened.claimLineage({ lineageId: 'lineage-rc', writer: K_WRITER_B, authorization: 'auth:t09-rc-2' });
+    const reclaimed = reopened.claimLineage({
+      lineageId: 'lineage-rc',
+      writer: K_WRITER_B,
+      authorization: 'auth:t09-rc-2',
+    });
     assert.equal(reclaimed.state, 'owned');
     assert.equal(reclaimed.claimId !== first.claimFor('lineage-rc')?.claimId, true);
     assert.equal(reopened.effectiveOwnerOf('lineage-rc'), 'new-k');
-    assert.ok(reopened.history().some((event) => event.kind === 're-claimed' && event.lineageId === 'lineage-rc'));
+    assert.ok(
+      reopened
+        .history()
+        .some((event) => event.kind === 're-claimed' && event.lineageId === 'lineage-rc'),
+    );
   });
 });

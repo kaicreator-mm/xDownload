@@ -32,8 +32,16 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildV10App, type V10BuiltApp, type V10ModuleInput } from '@kaicreator/domain-harness-build';
-import type { V10DocStore, V10DocWriteCondition, V10RouteRowInput } from '@kaicreator/domain-harness-contracts';
+import {
+  buildV10App,
+  type V10BuiltApp,
+  type V10ModuleInput,
+} from '@kaicreator/domain-harness-build';
+import type {
+  V10DocStore,
+  V10DocWriteCondition,
+  V10RouteRowInput,
+} from '@kaicreator/domain-harness-contracts';
 import { load, type DomainApp } from '@kaicreator/domain-harness-microkernel';
 import {
   CanonicalBudgetLedger,
@@ -100,7 +108,14 @@ export class FileCasDocStore implements V10DocStore {
     this.path = path;
     mkdirSync(dirname(path), { recursive: true });
     this.docs = existsSync(path)
-      ? new Map(Object.entries(JSON.parse(readFileSync(this.path, 'utf8')) as Record<string, { value: unknown; revision: number }>))
+      ? new Map(
+          Object.entries(
+            JSON.parse(readFileSync(this.path, 'utf8')) as Record<
+              string,
+              { value: unknown; revision: number }
+            >,
+          ),
+        )
       : new Map();
   }
 
@@ -110,7 +125,11 @@ export class FileCasDocStore implements V10DocStore {
     return row === undefined ? null : { value: row.value, revision: row.revision };
   }
 
-  async put(key: string, value: unknown, condition: V10DocWriteCondition): Promise<{ revision: number }> {
+  async put(
+    key: string,
+    value: unknown,
+    condition: V10DocWriteCondition,
+  ): Promise<{ revision: number }> {
     this.counts.writes += 1;
     const existing = this.docs.get(key);
     if (condition.kind === 'create') {
@@ -149,9 +168,12 @@ export class FileCasDocStore implements V10DocStore {
       return;
     }
     if (existing === undefined || existing.revision !== condition.revision) {
-      throw Object.assign(new Error(`CAS conflict on ${key}: revision moved (expected ${condition.revision})`), {
-        code: 'HOST_CAS_CONFLICT',
-      });
+      throw Object.assign(
+        new Error(`CAS conflict on ${key}: revision moved (expected ${condition.revision})`),
+        {
+          code: 'HOST_CAS_CONFLICT',
+        },
+      );
     }
     this.docs.delete(key);
     this.persist();
@@ -266,7 +288,9 @@ export function sealDirectComposition(): SealedDirectComposition {
   // The route is the T03 declaration reused VERBATIM (frozen T01 vocabulary):
   // same object, same capability/handler binding — never re-declared here.
   if (t03.routes.length !== 1 || t03.routes[0] !== ACQUISITION_ROUTE) {
-    throw new Error('CONTRACT_BINDING_MISMATCH: the direct seal must reuse the T03 route declaration verbatim');
+    throw new Error(
+      'CONTRACT_BINDING_MISMATCH: the direct seal must reuse the T03 route declaration verbatim',
+    );
   }
   const capabilitySource = readFileSync(join(HERE, 'capability-acquisition-direct.mjs'), 'utf8');
   const capabilitySha256 = sha256Hex(capabilitySource);
@@ -286,10 +310,14 @@ export function sealDirectComposition(): SealedDirectComposition {
 
   const replaced = modules.find((module) => module.role === 'capability');
   if (replaced?.packageId !== DIRECT_CAPABILITY_MODULE_ID) {
-    throw new Error('DIRECT_COMPOSITION_SEAL_FAILED: the real direct capability module did not replace the T03 stub');
+    throw new Error(
+      'DIRECT_COMPOSITION_SEAL_FAILED: the real direct capability module did not replace the T03 stub',
+    );
   }
   if (t03.built.modules.some((module) => module.packageId === DIRECT_CAPABILITY_MODULE_ID)) {
-    throw new Error('DIRECT_COMPOSITION_SEAL_FAILED: the T03 stub capability must not coexist with the direct module');
+    throw new Error(
+      'DIRECT_COMPOSITION_SEAL_FAILED: the T03 stub capability must not coexist with the direct module',
+    );
   }
 
   // T01 authority cross-check on THIS seal's route before anything is sealed.
@@ -318,10 +346,14 @@ export function sealDirectComposition(): SealedDirectComposition {
   const sealedStandard = built.modules.find((module) => module.role === 'standard-primary');
   const sealedCapability = built.modules.find((module) => module.role === 'capability');
   if (sealedKernel?.moduleSha256 !== POC183_KERNEL_MODULE_SHA256) {
-    throw new Error('DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed kernel-primary lost the #183 PoC manifest hash');
+    throw new Error(
+      'DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed kernel-primary lost the #183 PoC manifest hash',
+    );
   }
   if (sealedStandard?.moduleSha256 !== POC183_STANDARD_MODULE_SHA256) {
-    throw new Error('DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed standard-primary lost the #183 PoC manifest hash');
+    throw new Error(
+      'DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed standard-primary lost the #183 PoC manifest hash',
+    );
   }
   if (
     sealedCapability?.packageId !== DIRECT_CAPABILITY_MODULE_ID ||
@@ -329,7 +361,9 @@ export function sealDirectComposition(): SealedDirectComposition {
     sealedCapability.externalEffect !== true ||
     sealedCapability.capabilityId !== 'acquisition'
   ) {
-    throw new Error('DIRECT_COMPOSITION_SEAL_FAILED: sealed capability is not the real direct module');
+    throw new Error(
+      'DIRECT_COMPOSITION_SEAL_FAILED: sealed capability is not the real direct module',
+    );
   }
 
   return { built, routes: t03.routes };
@@ -453,9 +487,9 @@ export async function assembleDownloadRuntime(
       authorize: (candidate, target) =>
         Boolean(
           candidate !== null &&
-            typeof candidate === 'object' &&
-            (candidate as { actor?: string }).actor === principal &&
-            target.tenantId === tenantId,
+          typeof candidate === 'object' &&
+          (candidate as { actor?: string }).actor === principal &&
+          target.tenantId === tenantId,
         ),
     },
     ...(options.now === undefined ? {} : { now: options.now }),
