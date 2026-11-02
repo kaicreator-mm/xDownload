@@ -409,7 +409,7 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
     'status-tag ' +
     (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : !row.present ? 'unknown' : '');
   tag.textContent = statusLabel(row);
-  tag.title = jobStatusText(row);
+  tag.title = 'Core 原始状态：' + jobStatusText(row);
   status.appendChild(tag);
   tr.appendChild(status);
 
