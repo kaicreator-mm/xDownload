@@ -13,7 +13,7 @@ describe('UI R0 trusted dynamic form descriptor', () => {
     const form = getFormDescriptor('url-preview');
     expect(form?.schemaVersion).toBe(1);
     expect(form?.requiresCoreConfirmation).toBe(true);
-    expect(form?.fields.map((f) => f.id)).toEqual(['url', 'destination']);
+    expect(form?.fields.map((f) => f.id)).toEqual(['url']);
     expect(getFormDescriptor('hls')).toBeNull();
     expect(getFormDescriptor('batch')).toBeNull();
     expect(getFormDescriptor('arbitrary-privileged-action')).toBeNull();
@@ -44,8 +44,6 @@ describe('UI R0 renderer containment and user navigation', () => {
       'managerDiscardPreview',
       'managerCancelJob',
       'managerRetryJob',
-      'managerChooseDestination',
-      'managerRevealJob',
     ]) {
       expect(renderer).toContain('BRIDGE.' + method);
     }
@@ -81,8 +79,9 @@ describe('UI R0 renderer containment and user navigation', () => {
   it('creates one destination picker from the trusted descriptor, not duplicate static markup', () => {
     expect(html).not.toContain('id="destination-label"');
     expect(html).not.toContain('id="choose-destination"');
-    expect(renderer).toContain("destination.id = 'destination-label'");
-    expect(renderer).toContain("browse.id = 'choose-destination'");
+    expect(renderer).not.toContain('choose-destination');
+    expect(renderer).not.toContain('destination.id');
+    expect(renderer).not.toContain('browse.id');
   });
 
   it('hides lineage IDs from the ordinary list and requires every Core completion dimension', () => {
@@ -104,8 +103,12 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).toContain("row.lineageStatus === 'TERMINAL'");
     expect(renderer).toContain("validation.status === 'FAILED'");
     expect(renderer).toContain("validation.status === 'INSUFFICIENT_EVIDENCE'");
+    expect(renderer).not.toContain("validation.status === 'NONE_PASSED'");
     expect(renderer).not.toContain("terminal.selectionAcquisition === 'ACQUIRED'");
-    expect(renderer).toContain("availability.revealEnabled && verifiedComplete(row)");
+    expect(renderer).not.toContain('runReveal');
+    expect(renderer).not.toContain('managerRevealJob');
+    expect(renderer).not.toContain('managerChooseDestination');
+    expect(renderer).toContain('由 Core 配置管理（实际路径尚未提供）');
   });
 
   it('uses only the source host as a friendly label and keeps Core diagnostics intact', () => {
