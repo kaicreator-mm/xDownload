@@ -15,7 +15,7 @@ Formal Task Issue: xDownload #339
 - Source reference baseline: wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334
 - Review policy: required
 - Risk: low
-- Execution profile: WEB_BUILDER / documentation
+- Execution mode: documentation-only Web-first draft; no source mutation
 - Validation scope: traceability of Domain Knowledge, authority, schemas, Workflow definitions, Functions/Tools and validation evidence
 
 ## Goal
