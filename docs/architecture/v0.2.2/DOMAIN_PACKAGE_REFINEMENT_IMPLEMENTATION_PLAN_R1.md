@@ -136,7 +136,7 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 |---|---|---|---|
 | A00 | Architecture inventory and authority audit | — | read-only source; audit report only |
 | A01 | Neutral Domain Contracts and dependency-boundary extraction | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths; exact neutral-contract paths only |
-| A02 | Domain App refactor and public ABI cleanup | A01 | \`packages/download-domain-app/**\` and package-local tests; no root pnpm-lock.yaml |
+| A02 | Domain App refactor and public ABI cleanup | A01 | \`packages/download-domain-app/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
 | A03 | Domain Host refactor and physical adapter ownership | A01 | \`packages/download-domain-host/** and package-local tests; no root pnpm-lock.yaml\` |
 | A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters and pnpm-lock.yaml (sole lockfile writer) |
 | A05 | Domain Knowledge / Workflow / Function-Tool mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` |
