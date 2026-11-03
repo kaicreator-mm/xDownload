@@ -1,6 +1,9 @@
 task_id: "v022-U03-SINGLE-RESOURCE-COMPLETE-STATUS-01"
-base_sha: "9e3ccd382311619e60b8d2a7373e8a7d34733334"
+base_sha: "a3e1b22c200ef11a942dacc953e2bfecdc3db03c"
 tests:
+  - id: "REBASE-01"
+    expected: "Original implementation f48a7e14567ae9d0a89a79c99bf83220961b97d5 is rebased onto exact base a3e1b22c200ef11a942dacc953e2bfecdc3db03c; only the two frozen source paths differ from the new base."
+    state: "NOT_RUN"
   - id: "SINGLE-RESOURCE-COMPLETE-01"
     expected: "Valid single-resource COMPLETE + NOT_APPLICABLE is complete, not failed; label 已完成."
     state: "NOT_RUN"
