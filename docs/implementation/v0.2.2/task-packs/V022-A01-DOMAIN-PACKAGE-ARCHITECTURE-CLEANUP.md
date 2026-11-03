@@ -4,6 +4,9 @@
 
 ## Contract
 
+- Formal Task Issue: [xDownload #335](https://github.com/kaicreator-mm/xDownload/issues/335)
+
+
 - Task ID: V022-A01-DOMAIN-PACKAGE-ARCHITECTURE-CLEANUP
 - Version: v0.2.2 successor (WIP only)
 - Parent: xDownload #305 UI successor / adjacent architecture lane
