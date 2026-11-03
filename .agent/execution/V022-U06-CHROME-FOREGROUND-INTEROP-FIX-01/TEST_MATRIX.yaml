@@ -1,5 +1,5 @@
 task_id: "V022-U06-CHROME-FOREGROUND-INTEROP-FIX-01"
-base_sha: "a3e1b22c200ef11a942dacc953e2bfecdc3db03c"
+base_sha: "4d2148b80976532cecfaddc111c7fdc94980a289"
 tests:
   - id: "INTEROP-DECLARATION-01"
     expected: "Generated U06ActionMouse type declares user32.dll GetForegroundWindow with IntPtr return type; PowerShell compiles it and invokes it without missing-member error."
