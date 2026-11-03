@@ -32,19 +32,15 @@ Preserve the current Core Runtime's deep-import compatibility only where require
 
 1. packages/download-domain-app/src/index.ts
 2. packages/download-domain-app/src/composition/runtime.ts
-3. packages/download-domain-app/src/composition/journey.ts
-4. packages/download-domain-app/src/composition/composition-runtime.test.ts
-5. packages/download-domain-app/src/integrations/index.ts
-6. packages/download-domain-app/src/integrations/media-registry.ts
-7. packages/download-domain-app/src/integrations/s3-media.ts
-8. packages/download-domain-app/src/integrations/s3-media.test.ts
-9. packages/download-domain-app/src/integrations/s4-hls-vod.ts
-10. packages/download-domain-app/src/integrations/s4-hls-vod.test.ts
-11. packages/download-domain-app/src/migration/index.ts
-12. packages/download-domain-app/src/migration/lineage-ledger.ts
-13. packages/download-domain-app/src/migration/lineage-ledger.test.ts
-14. packages/download-domain-app/src/migration/lineage-store.ts
-15. packages/download-domain-app/src/package-boundary.test.ts (new)
+3. packages/download-domain-app/src/composition/composition-runtime.test.ts
+4. packages/download-domain-app/src/integrations/index.ts
+5. packages/download-domain-app/src/integrations/media-registry.ts
+6. packages/download-domain-app/src/integrations/s3-media.ts
+7. packages/download-domain-app/src/integrations/s3-media.test.ts
+8. packages/download-domain-app/src/integrations/s4-hls-vod.ts
+9. packages/download-domain-app/src/integrations/s4-hls-vod.test.ts
+10. packages/download-domain-app/src/migration/index.ts
+11. packages/download-domain-app/src/package-boundary.test.ts (new)
 
 No other file.
 
@@ -97,7 +93,7 @@ Add package-boundary tests that:
 ## Required gates
 
 1. Re-read exact WIP HEAD/tree and this Task Pack before mutation.
-2. Publish and read back the Builder's own accepted ADS DISPATCH_CLAIMED for this exact Task and 15-path write set.
+2. Publish and read back the Builder's own accepted ADS DISPATCH_CLAIMED for this exact Task and 11-path write set.
 3. Node 24 syntax preflight and changed-file Prettier before CI.
 4. Focused App contract, seal and journey tests.
 5. pnpm run typecheck and pnpm run ci:verify.
