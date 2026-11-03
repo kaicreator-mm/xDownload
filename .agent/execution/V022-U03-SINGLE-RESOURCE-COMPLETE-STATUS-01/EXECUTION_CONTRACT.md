@@ -7,13 +7,13 @@
 - WIP target: `wip/v0.2.2-ui-rebuild-r0`.
 - Exact base: `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`.
 - Base tree: `0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7`.
-- Task branch: `task/v0.2.2-u03-single-resource-complete-status` (must be rebased from the old candidate onto the new exact base).
+- Task branch: `task/v0.2.2-u03-single-resource-complete-status-r1` (R1 candidate is now at `9cbaccf5ac3bbae6cfc3d12f333fa929b0f6045f`; legacy branch retains the old-base candidate).
 - Write set: exactly `apps/desktop-shell/src/renderer/renderer-main.ts` and `apps/desktop-shell/test/ux-r0-form-schema.test.ts`.
 - Pinned ADS: v4.18.0 `2c395c55569fe2edf3f4135f12d3d069e526d0b7`.
 
 ## Authority
 
-Owner policy #305 comment 6586392596 authorizes an actual Local Agent to use `role=builder`, `execution_profile=LOCAL_BUILDER`, `execution_environment=LOCAL` for bounded implementation. This Execution Pack is not a Builder Claim; the prior claim is bound to the old base and is invalid for R1. The Local Agent must publish a fresh accepted schema-conforming `DISPATCH_CLAIMED` for the rebound base before source mutation. Owner authorization is recorded at #333 comment 6614278265.
+Owner policy #305 comment 6586392596 authorizes an actual Local Agent to use `role=builder`, `execution_profile=LOCAL_BUILDER`, `execution_environment=LOCAL` for bounded implementation. This Execution Pack is not a Builder Claim; the prior claim is bound to the old base and is invalid for R1. The Local Agent published fresh accepted `DISPATCH_CLAIMED` #333 comment 6614387475 for the rebound base before source mutation; implementation receipt is #333 comment 6614815246. Owner authorization is recorded at #333 comment 6614278265.
 
 ## Required behavior
 
