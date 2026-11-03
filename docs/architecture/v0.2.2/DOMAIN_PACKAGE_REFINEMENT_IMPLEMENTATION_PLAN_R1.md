@@ -19,7 +19,7 @@ The target is a small, acyclic package graph with one production composition roo
 - Repository: \`kaicreator-mm/xDownload\`
 - WIP branch: \`wip/v0.2.2-ui-rebuild-r0\`
 - Audit baseline: \`9e3ccd382311619e60b8d2a7373e8a7d34733334\`
-- Current WIP integration HEAD: `5880731aa84601373c028e45f2ec0380e521686f` (A01 + U03 + U02/U04 + U06 merged; integrated Woodpecker pipeline #16 SUCCESS)
+- Current WIP integration HEAD: `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` (A01 + A01B + U03 + U02/U04 + U06 merged; integration Woodpecker pipeline #19 SUCCESS)
 - Tree: \`ba48b805697ad19c36a6eb3a5e54b6d601b36120\`
 - Product/version branches are not write targets.
 - The current xDownload baseline vendors DomainHarness SDK package tarballs at 0.10.2-rc.0 (vendor/sdk/*-0.10.2-rc.0.tgz, package manifests and pnpm-workspace.yaml overrides). This plan preserves those exact existing pins and bytes; it does not upgrade the vendored SDK to v0.10.3. Any SDK upgrade requires a separate scoped decision and validation.
