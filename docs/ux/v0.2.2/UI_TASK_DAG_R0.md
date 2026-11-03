@@ -101,5 +101,5 @@
 - A00 confirmed the App↔Host manifest cycle and both deep-import directions. Core Runtime remains the active production Domain App composition root but imports deep App/Host paths.
 - A00 corrected the authority map: RouteLog CLAIM is the current new-K route ownership fact; ATTEMPT is route history; OUTCOME is derived from K receipt. K Effect Journal/Permit and Core Seam Journal retain separate authorities.
 - T09 LineageLedger is exported but no active production Core Runtime caller was found in the inspected baseline. It must not be activated as a second authority or described as a proven duplicate writer.
-- A01–A04 source Tasks remain undispatched. A01 (#335) must be narrowed to neutral-contract extraction; A02/A03 can run in parallel after A01; A04 follows both. A05 is a separate documentation lane after A00.
+- A01–A04 source Tasks remain undispatched. A01 (#335) is narrowed to neutral Host-contract extraction and awaits independent Task Pack review; A02/A03 can run in parallel after A01; A04 follows both. A05 (#339) has six documentation drafts committed at planning HEAD `3b22c1cef7e1ee12e21623ab9fa207c55e660263`; independent review is pending.
 - UI work may continue in parallel. All architecture implementation Tasks must re-read current WIP and use disjoint exact write sets.
