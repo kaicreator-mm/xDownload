@@ -507,19 +507,16 @@
           </p>
           <label class="label"
             >合集标识（例如 playlist/my-list）
-            <input id="s6-identity" type="text" placeholder="playlist/my-list" />
+            <span id="s6-identity-field"></span>
           </label>
           <label class="label"
             >合集类型
-            <select id="s6-kind">
-              <option value="playlist">播放列表</option>
-              <option value="gallery">图片合集</option>
-            </select>
+            <span id="s6-kind-field"></span>
           </label>
           <label class="label"
             >页码范围（包含起止页，从 1 开始）
-            <input id="s6-from" type="text" value="1" />
-            <input id="s6-to" type="text" value="1" />
+            <span id="s6-from-field"></span>
+            <span id="s6-to-field"></span>
           </label>
           <button id="s6-prepare" type="button">预览合集范围</button>
           <div id="s6-prepare-result" class="state UNKNOWN" aria-live="polite"></div>
@@ -559,11 +556,11 @@
           </p>
           <label class="label"
             >Host 签发的目标句柄
-            <input id="v02-target-ref" type="text" placeholder="ref:your-host-target" />
+            <span id="v02-target-ref-field"></span>
           </label>
           <label class="label"
             >已获授权的保存目录（绝对路径）
-            <input id="v02-output-root" type="text" placeholder="C:\Users\me\Downloads" />
+            <span id="v02-output-root-field"></span>
           </label>
           <button id="v02-submit" type="button">提交已授权的目标</button>
           <div id="v02-result" class="state UNKNOWN" aria-live="polite"></div>
@@ -573,6 +570,10 @@
     <div class="footer">
       <strong>当前操作状态</strong>
       <div id="state" class="state UNKNOWN" role="status" aria-live="polite">正在检查当前页面…</div>
+      <details id="scan-error-details" class="label" hidden>
+        <summary>技术详情</summary>
+        <pre id="scan-error-raw"></pre>
+      </details>
       <p>所有任务结果以本地 Core 为准；授权只发生在明确的用户操作之后。</p>
     </div>
     <script src="popup.js"></script>
