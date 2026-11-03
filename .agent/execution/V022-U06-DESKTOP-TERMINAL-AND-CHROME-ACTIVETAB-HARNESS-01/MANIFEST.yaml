@@ -1,0 +1,48 @@
+pack_id: "v022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS-01@9e3ccd382311619e60b8d2a7373e8a7d34733334"
+task_id: "v022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+base_sha: "9e3ccd382311619e60b8d2a7373e8a7d34733334"
+base_tree: "ba48b805697ad19c36a6eb3a5e54b6d601b36120"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS.md@planning/v0.2.2-ui-r0@791fe62fa50393227ad10f252f6519458e9cbc0d#blob:8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d"
+branch: "task/v0.2.2-u06-terminal-activetab-harness"
+parent_issue: "#326"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+generated_by: "chatgpt-web:xdownload-v022-u06-controller"
+generated_at: "2026-11-03"
+dependency_completion: []
+execution_context_requirements_ref: null
+dependency_toolchain_profile_ref: null
+material_paths:
+  - "apps/desktop-shell/test/smoke/harness-core.ts"
+  - "apps/desktop-shell/test/smoke/electron-shell-smoke.mjs"
+  - "apps/browser-extension/test/chrome-toolbar-active-tab.mjs"
+  - "apps/desktop-shell/test/smoke/build-shell.mjs"
+  - "apps/desktop-shell/src/main/main.ts"
+  - "apps/desktop-shell/src/renderer/renderer-main.ts"
+  - "apps/browser-extension/manifest.json"
+  - "apps/browser-extension/src/popup/popup.js"
+  - "apps/browser-extension/src/background/background.service-worker.js"
+  - "package.json"
+  - ".woodpecker/xd-ui-r0-verify.yaml"
+core_artifacts:
+  - "MANIFEST.yaml"
+  - "EXECUTION_CONTRACT.md"
+  - "TEST_MATRIX.yaml"
+  - "FAILURE_MATRIX.yaml"
+  - "IMPLEMENTATION_MAP.md"
+  - "REVIEW_CHECKLIST.md"
+optional_artifacts: []
+retention: "durable"
+package_excluded: true
+pack_state_at_generation: "PACK_CURRENT"
+intent_assumption_refs:
+  - "xDownload#305"
+  - "xDownload#326"
+  - "xDownload#332"
+skill_metadata_refs: []
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+owner_authorization_ref: "xDownload#305@6586392596"
+dispatch_admission: "OWNER_AUTHORIZED_LOCAL_BUILDER_PENDING_CLAIM"
