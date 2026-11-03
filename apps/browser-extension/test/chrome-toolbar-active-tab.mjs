@@ -7,7 +7,8 @@
  *     --mode=control|grant --chrome=<exe> --extension=<unpacked-dir> \
  *     --out=<evidence-dir>
  *
- * --out must be a FRESH, non-existent directory: an existing path is
+ * --out must be a FRESH, non-existent directory, claimed by an atomic
+ * exclusive mkdir (kernel EEXIST decision, no TOCTOU): an existing path is
  * refused before anything is written — caller-owned paths are never
  * deleted, truncated or reused.
  *
@@ -74,24 +75,51 @@ if (MODE !== 'control' && MODE !== 'grant') {
   process.exit(EXIT.FAIL);
 }
 
-// P1 repair (web source-review): a caller-supplied --out directory must be
-// FRESH. An existing path is refused before anything is written or deleted —
-// the driver never deletes or truncates caller-owned paths. Without --out a
-// fresh temporary directory is created.
+// P1 repair, round 2 (web source-review): a caller-supplied --out directory
+// must be FRESH and is claimed by an ATOMIC, EXCLUSIVE mkdir — the EEXIST
+// decision is the kernel's, so no TOCTOU window exists between an existence
+// probe and directory creation. The driver never deletes or truncates
+// caller-owned paths. Without --out a fresh temporary directory is created.
+function claimFreshEvidenceDir(target) {
+  try {
+    fs.mkdirSync(target);
+    return;
+  } catch (error) {
+    if (error && error.code === 'EEXIST') {
+      console.error(
+        `FAIL: --out path already exists: ${target}; refusing to reuse, delete or truncate caller-owned paths. Choose a fresh, non-existent directory.`,
+      );
+      process.exit(EXIT.FAIL);
+    }
+    if (error && error.code === 'ENOENT') {
+      // Parent missing: create the parent chain (which the driver owns at
+      // that point just as little as the leaf), then re-claim the leaf
+      // atomically; a racing creator still wins EEXIST below.
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      try {
+        fs.mkdirSync(target);
+        return;
+      } catch (second) {
+        if (second && second.code === 'EEXIST') {
+          console.error(
+            `FAIL: --out path already exists: ${target}; refusing to reuse, delete or truncate caller-owned paths. Choose a fresh, non-existent directory.`,
+          );
+          process.exit(EXIT.FAIL);
+        }
+        throw second;
+      }
+    }
+    throw error;
+  }
+}
 let evidenceDir;
 if (OUT_ARG !== null) {
-  if (fs.existsSync(OUT_ARG)) {
-    console.error(
-      `FAIL: --out directory already exists: ${OUT_ARG}; refusing to reuse, delete or truncate caller-owned paths. Choose a fresh, non-existent directory.`,
-    );
-    process.exit(EXIT.FAIL);
-  }
+  claimFreshEvidenceDir(OUT_ARG);
   evidenceDir = OUT_ARG;
 } else {
   evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-active-tab-evidence-'));
 }
 const profileDir = path.join(evidenceDir, 'profile');
-fs.mkdirSync(evidenceDir, { recursive: true });
 fs.mkdirSync(profileDir, { recursive: true });
 const eventsPath = path.join(evidenceDir, 'events.ndjson');
 fs.writeFileSync(eventsPath, '');
@@ -403,15 +431,58 @@ if ($puzzle -eq $null) {
 $menuPoint = Click-Element $puzzle $mainWindow
 Start-Sleep -Milliseconds 700
 & (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
-# P2 repair (web source-review): capture ONLY the Chrome window bounds, never
-# the full primary desktop — an unrestricted screen capture could include
-# unrelated private windows. If the window bounds are unavailable the
-# screenshot is omitted rather than widened.
+# P2 repair, round 2 (web source-review): capture ONLY the Chrome window
+# bounds, never the full primary desktop — and only when the privacy
+# boundary is PROVABLE: the Chrome window must be the foreground window and
+# no other visible top-level window may overlap its bounds (an overlap
+# could smuggle unrelated private pixels into the capture). When any
+# precondition fails the screenshot is skipped with a recorded reason —
+# the capture is never widened to make it possible.
+$captureAllowed = $false
+$captureSkipReason = 'unknown'
 try {
   Add-Type -AssemblyName System.Drawing
   Add-Type -AssemblyName System.Windows.Forms
   $winRect = $mainWindow.Current.BoundingRectangle
-  if ($winRect.Width -gt 0 -and $winRect.Height -gt 0) {
+  if ($winRect.Width -le 0 -or $winRect.Height -le 0) {
+    $captureSkipReason = 'window_bounds_unavailable'
+  } else {
+    $chromeHandle = [IntPtr]$mainWindow.Current.NativeWindowHandle
+    $foreground = [U06ActionMouse]::GetForegroundWindow()
+    if ($foreground -ne $chromeHandle) {
+      $captureSkipReason = 'chrome_window_not_foreground'
+    } else {
+      $occluder = $null
+      $topLevel = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+        [System.Windows.Automation.TreeScope]::Children,
+        [System.Windows.Automation.Condition]::TrueCondition
+      )
+      foreach ($top in $topLevel) {
+        try {
+          if ($top.Current.NativeWindowHandle -eq $chromeHandle) { continue }
+          if ($top.Current.IsOffscreen) { continue }
+          $other = $top.Current.BoundingRectangle
+          if ($other.Width -le 0 -or $other.Height -le 0) { continue }
+          $overlapX = [Math]::Min($winRect.X + $winRect.Width, $other.X + $other.Width) - [Math]::Max($winRect.X, $other.X)
+          $overlapY = [Math]::Min($winRect.Y + $winRect.Height, $other.Y + $other.Height) - [Math]::Max($winRect.Y, $other.Y)
+          if ($overlapX -gt 0 -and $overlapY -gt 0) {
+            $occluder = $top.Current.Name
+            break
+          }
+        } catch { }
+      }
+      if ($null -ne $occluder) {
+        $captureSkipReason = 'occluded_by:' + $occluder
+      } else {
+        $captureAllowed = $true
+      }
+    }
+  }
+} catch {
+  $captureSkipReason = 'precheck_error:' + $_.Exception.Message
+}
+if ($captureAllowed) {
+  try {
     $bitmap = New-Object System.Drawing.Bitmap ([int]$winRect.Width), ([int]$winRect.Height)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     $graphics.CopyFromScreen([int]$winRect.X, [int]$winRect.Y, 0, 0, $bitmap.Size)
@@ -419,11 +490,11 @@ try {
     $graphics.Dispose()
     $bitmap.Dispose()
     Write-Output 'UIA_TOOLBAR_SCREENSHOT_CHROME_WINDOW_ONLY=1'
-  } else {
-    Write-Output 'UIA_TOOLBAR_SCREENSHOT_SKIPPED=window_bounds_unavailable'
+  } catch {
+    Write-Output ('UIA_TOOLBAR_SCREENSHOT_SKIPPED=capture_error:' + $_.Exception.Message)
   }
-} catch {
-  Write-Output ('UIA_TOOLBAR_SCREENSHOT_SKIPPED=' + $_.Exception.Message)
+} else {
+  Write-Output ('UIA_TOOLBAR_SCREENSHOT_SKIPPED=' + $captureSkipReason)
 }
 $matches = @()
 foreach ($window in (Get-ChromeWindows)) {
