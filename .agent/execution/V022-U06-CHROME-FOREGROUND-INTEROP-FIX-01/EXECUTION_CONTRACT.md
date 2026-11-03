@@ -6,7 +6,7 @@
 - Exact base: 4d2148b80976532cecfaddc111c7fdc94980a289.
 - Base tree: 78246a75ef4951328b17f27b2f9da0b0824d90a4.
 - Task branch: task/v0.2.2-u06-chrome-foreground-interop-fix-r1.
-- Task Pack blob: 989b8434293abcfbda731ea15b34370bd4fa434c.
+- Task Pack blob: 011abe948e87ef087324befcde6850d01ad91c50.
 - Exact source write set: apps/browser-extension/test/chrome-toolbar-active-tab.mjs only.
 
 ## Admission
