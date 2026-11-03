@@ -5,15 +5,15 @@
 - Task: xDownload #333.
 - Task Pack blob: `3e1fa992df6360d8896f0e007f439eefe4c8b83b`.
 - WIP target: `wip/v0.2.2-ui-rebuild-r0`.
-- Exact base: `9e3ccd382311619e60b8d2a7373e8a7d34733334`.
-- Base tree: `ba48b805697ad19c36a6eb3a5e54b6d601b36120`.
-- Task branch: `task/v0.2.2-u03-single-resource-complete-status`.
+- Exact base: `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`.
+- Base tree: `0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7`.
+- Task branch: `task/v0.2.2-u03-single-resource-complete-status` (must be rebased from the old candidate onto the new exact base).
 - Write set: exactly `apps/desktop-shell/src/renderer/renderer-main.ts` and `apps/desktop-shell/test/ux-r0-form-schema.test.ts`.
 - Pinned ADS: v4.18.0 `2c395c55569fe2edf3f4135f12d3d069e526d0b7`.
 
 ## Authority
 
-Owner policy #305 comment 6586392596 authorizes an actual Local Agent to use `role=builder`, `execution_profile=LOCAL_BUILDER`, `execution_environment=LOCAL` for bounded implementation. This Execution Pack is not a Builder Claim; the Local Agent must publish its own accepted schema-conforming `DISPATCH_CLAIMED` before source mutation.
+Owner policy #305 comment 6586392596 authorizes an actual Local Agent to use `role=builder`, `execution_profile=LOCAL_BUILDER`, `execution_environment=LOCAL` for bounded implementation. This Execution Pack is not a Builder Claim; the prior claim is bound to the old base and is invalid for R1. The Local Agent must publish a fresh accepted schema-conforming `DISPATCH_CLAIMED` for the rebound base before source mutation. Owner authorization is recorded at #333 comment 6614278265.
 
 ## Required behavior
 
@@ -26,12 +26,12 @@ Owner policy #305 comment 6586392596 authorizes an actual Local Agent to use `ro
 
 ## Required evidence
 
-1. Re-read exact base, Task Pack, Execution Pack and accepted claim.
+1. Re-read exact new base `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`, its tree `0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7`, Task Pack, rebound Execution Pack and fresh accepted claim. The original implementation is `f48a7e14567ae9d0a89a79c99bf83220961b97d5`; rebase it onto the new base.
 2. Node24 syntax/type preflight and changed-file Prettier before CI.
 3. Focused renderer test with behavior-level valid single-resource COMPLETE and collection COMPLETE cases, plus non-complete controls.
 4. Typecheck and one aggregate `pnpm run ci:verify`.
 5. Local Docker Woodpecker exact candidate SHA, Build ID, pipeline and exit codes.
-6. Independent Exact-SHA review required.
+6. Independent Exact-SHA review required for the new rebased SHA; old SHA review does not carry over.
 7. Re-run real Electron/Core Seam single-resource COMPLETE fixture if available from #332; otherwise mark runtime recheck NOT_RUN.
 
-No Core, domain contract, manager, IPC, Host, main, package, CI or manifest changes. No main/version merge, release/deployment or real side effects.
+No Core, domain contract, manager, IPC, Host, main, package, CI or Product/L2 changes. Source write set remains exactly two paths. No main/version merge, release/deployment or real side effects.
