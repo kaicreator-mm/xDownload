@@ -72,3 +72,17 @@
   - `apps/desktop-shell/test/ux-r0-form-schema.test.ts`
 - #333 uses the Owner-approved LOCAL_BUILDER/LOCAL route under ADS v4.18.0; the worker's accepted claim remains required.
 - The fix must preserve all authoritative completion dimensions, treat NOT_APPLICABLE as complete only when the remaining dimensions prove success, and never alter the domain contract or fabricate coverage.
+
+
+
+## Adjacent architecture track — A01 Domain Package / Host cleanup (2026-11-03)
+
+> This is a cross-cutting architecture lane, not a renumbering or expansion of the Owner-approved U00–U06 UI map. The full DAG remains CANDIDATE_NOT_FROZEN. No user-visible Product capability is added.
+
+- Goal: apply DomainHarness #1465 / PR #1466 to the current xDownload v0.2.2 successor; remove the App↔Host package cycle, move physical Host storage/bridges and production assembly to Host/Core, and make K / Seam / Route Projection / Lineage ownership explicit.
+- Source baseline: `wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334`, Tree `ba48b805697ad19c36a6eb3a5e54b6d601b36120`.
+- Task Pack: `docs/implementation/v0.2.2/task-packs/V022-A01-DOMAIN-PACKAGE-ARCHITECTURE-CLEANUP.md` (proposed for independent review; no Claim/Execution Pack yet).
+- Proposed exclusive source write set: `packages/download-domain-app/**`, `packages/download-domain-host/**`, `packages/domain-contracts/**` only for neutral shared contracts, `packages/core-runtime/**`, directly related package tests, architecture record and required package manifests/lockfile.
+- This lane is disjoint from U02/U03/U04 UI renderer/popup/harness write sets. UI work may continue in parallel; integration must rebind to the current WIP SHA and rerun exact-SHA gates.
+- No DomainHarness SDK/API/ABI change, no v0.2.1/main mutation, no Product capability expansion, no new permission/IPC/Provider, no release or deployment.
+- Authority rule: do not blindly merge K Store, Seam Journal, RouteLog and T09 LineageLedger; prove production ownership and UNKNOWN/recovery semantics first.
