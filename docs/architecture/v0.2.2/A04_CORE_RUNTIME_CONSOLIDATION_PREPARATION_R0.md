@@ -9,9 +9,9 @@
 
 ## Current predecessor status (2026-11-04)
 
-- A02 #341 / PR #344: rebased candidate `330efd081a89e443d79fa27064109c4c40d17b16`; all 11 App blobs are unchanged from the original candidate; exact-SHA Node 24/Prettier/focused tests/typecheck and Docker Woodpecker #20 PASS. Independent review of the rebound commit is pending.
-- A03 #342 / PR #345: candidate `deec3d6272ee9d4329838058098f051f6dfa3492` / tree `fd34b655135b46e1e35cd294e0b3e10ecd601ec4`; 13 paths within the frozen 14-path Host write set; syntax/Prettier/focused 40/40/typecheck and Docker Woodpecker #21 PASS. Independent review is pending.
-- Both PRs target WIP `wip/v0.2.2-ui-rebuild-r0@a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; neither is merged. A04 remains not dispatch-ready until both are reviewed, authorized and integrated.
+- A02 #341 / PR #344: candidate `330efd081a89e443d79fa27064109c4c40d17b16`; all 11 App blobs are unchanged from the original candidate; Node 24/Prettier/focused 29/29/typecheck and Docker Woodpecker #20 PASS. Current Exact-SHA review BLOCKS (P0=0/P1=1/P2=3): the 25 S2/S5/S6 runtime journey cases and their `slice-journey-testkit.ts` still depend on the now-throwing `assembleDownloadRuntime()` relocation sentinel and are not re-established under Core. See #341 comment 6613064965. Do not merge A02 alone to WIP.
+- A03 #342 / PR #345: candidate `deec3d6272ee9d4329838058098f051f6dfa3492` / tree `fd34b655135b46e1e35cd294e0b3e10ecd601ec4`; 13 paths within the frozen 14-path Host write set; syntax/Prettier/focused 40/40/typecheck and Docker Woodpecker #21 PASS. Web technical source review PASS (P0=0/P1=0/P2=2); separate independent review still pending.
+- Both PRs target WIP `wip/v0.2.2-ui-rebuild-r0@a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; neither is merged. A04 is not dispatch-ready, but its test-relocation inventory is now amended. Use a staging integration candidate containing the reviewed A02/A03 commits; do not create a WIP state that drops the 25 S2/S5/S6 cases.
 
 ## 1. Purpose
 
@@ -73,6 +73,22 @@ Use package roots / stable subpath exports rather than `src/**` deep imports. A0
 
 A02 moved runtime integration tests out of App so the App package can become domain-only. The source test files contain the authoritative relocation lists:
 
+### S2 / S5 / S6 — P1 migration gate from A02 Exact-SHA review
+
+The current A02 candidate leaves a test-only runtime helper and three node:test suites under the App package. They still call the now-throwing assembleDownloadRuntime() relocation sentinel. The suites are excluded from the current ci:verify Vitest include, so the green aggregate CI does not detect the break. The independent review recorded this as P1 in #341 comment 6613064965.
+
+Preserve and re-establish all 25 existing cases under Core before integrating A02:
+
+- Source helper to retire from App: packages/download-domain-app/src/integrations/slice-journey-testkit.ts.
+- S2 source suite: packages/download-domain-app/src/integrations/s2-discovery.test.ts (7 cases).
+- S5 source suite: packages/download-domain-app/src/integrations/s5-collection.test.ts (9 cases).
+- S6 source suite: packages/download-domain-app/src/integrations/s6-navigation.test.ts (9 cases).
+- Candidate Core destinations (not yet frozen): packages/core-runtime/test/slice-journey-testkit.ts, s2-discovery-journey.test.ts, s5-collection-journey.test.ts, and s6-navigation-journey.test.ts.
+
+The replacement testkit must compose through the real Core Runtime / Core Seam route, not call the App relocation sentinel or assemble K independently. Preserve the existing localhost HTTP fixtures, deterministic payload/digest checks, 4-way zero-effect deltas (fixture requests, bridge/route counters, durable journal rows, K permit docs), restart/replay and positive/negative journey assertions. Convert the moved cases to the Core test runner already included in ci:verify (Vitest), or prove an explicit aggregate CI command runs them; never leave them as unexecuted source-colocated node:test files.
+
+A04 must remove the obsolete App helper/suites only in the same integration candidate that adds and runs their Core equivalents. Do not merge A02 alone to WIP and temporarily lose these 25 cases. The exact Core helper/test paths and any Core production call-site changes remain to be frozen in the A04 Task Pack after the current candidate imports and SDK/Core APIs are re-read.
+
 ### Direct lane — from composition-runtime.test.ts
 1. Real intent → K permit → Host Direct bridge → existing DirectHttpAdapter → digest-backed materialized file; truthful terminal query/subscription and single-triple evidence.
 2. Exactly one K permit / one journal row; replay adds none.
@@ -99,8 +115,9 @@ Existing Core tests under `packages/core-runtime/test/**` already cover route be
 
 ## 5. Required A04 implementation gates
 
-1. Wait for A02 #341 and A03 #342 to be integrated; re-read exact WIP HEAD/tree and all Task Pack/PR evidence.
-2. Freeze exact A04 write set. Expected owners include Core composition root and its integration tests, App transitional compatibility files, Host stable exports/package manifest, App package manifest, and root pnpm-lock.yaml. Do not use broad globs as the write set.
+1. Re-read exact A02/A03 candidate SHAs, all review findings and current WIP HEAD/tree. A02 is P1-blocked and must not be merged alone.
+2. Build a staging integration candidate from the exact A02 and A03 commits (or an equivalent no-WIP-intermediate sequence) so A04 can migrate the 25 S2/S5/S6 cases before any A02 WIP integration. A03 may be integrated separately only after its independent Exact-SHA review and existing conditional Owner authorization.
+3. Freeze the exact A04 write set against that staging base. Expected owners include Core composition root and integration tests, App transitional compatibility and obsolete App test helper/suites, Host stable exports, both package manifests, and root pnpm-lock.yaml. Do not use broad globs as the write set.
 3. Migrate Core imports to stable package entrypoints:
    - App domain BUILD / journey symbols from `@xdownload/download-domain-app`;
    - Host bridges / Direct and media registries / stores from stable `@xdownload/download-domain-host` entrypoints;
