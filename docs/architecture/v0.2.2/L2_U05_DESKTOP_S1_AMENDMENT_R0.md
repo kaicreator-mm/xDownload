@@ -35,7 +35,7 @@ Core derivation:
 2. Select only `EXECUTE_S1_DIRECT_ACQUISITION` command entries whose peer `installId` and `userId` exactly match the already-authorized query peer.
 3. Deduplicate by `aggregateId` and resolve each identity through the current Core seam authority state.
 4. Derive each row using the same `projectAggregate` implementation as `READ_PROJECTION`; never synthesize status or terminal facts.
-5. Sort by the original accepted S1 command `issuedAt` descending, with `aggregateId` as a deterministic tie-breaker.
+5. Preserve the durable `SeamJournal.replayAll()` commit order, deduplicate by the most recent S1 execution entry for each aggregate, then return in reverse journal commit order. Do not use envelope `issuedAt` as an ordering authority; it is provenance/audit data only.
 6. Return at most 200 projections plus `totalCount` and `truncated`. `truncated=true` means the UI must not claim complete history.
 7. If a journal entry references an aggregate without a current projection, fail the query closed with a typed diagnostic; do not silently omit a corrupt/inconsistent record.
 
