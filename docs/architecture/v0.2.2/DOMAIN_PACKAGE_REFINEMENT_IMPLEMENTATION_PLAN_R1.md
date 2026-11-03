@@ -19,6 +19,7 @@ The target is a small, acyclic package graph with one production composition roo
 - Repository: \`kaicreator-mm/xDownload\`
 - WIP branch: \`wip/v0.2.2-ui-rebuild-r0\`
 - Audit baseline: \`9e3ccd382311619e60b8d2a7373e8a7d34733334\`
+- Current WIP integration HEAD: `5880731aa84601373c028e45f2ec0380e521686f` (A01 + U03 + U02/U04 + U06 merged; integrated Woodpecker pipeline #16 SUCCESS)
 - Tree: \`ba48b805697ad19c36a6eb3a5e54b6d601b36120\`
 - Product/version branches are not write targets.
 - The current xDownload baseline vendors DomainHarness SDK package tarballs at 0.10.2-rc.0 (vendor/sdk/*-0.10.2-rc.0.tgz, package manifests and pnpm-workspace.yaml overrides). This plan preserves those exact existing pins and bytes; it does not upgrade the vendored SDK to v0.10.3. Any SDK upgrade requires a separate scoped decision and validation.
@@ -136,8 +137,9 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 |---|---|---|---|
 | A00 | Architecture inventory and authority audit | — | read-only source; audit report only |
 | A01 | Neutral Domain Contracts and dependency-boundary extraction | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths; exact neutral-contract paths only |
+| A01B | S3 media Host request DTO | A01 | `packages/domain-contracts/src/download-host/s3-media-request.ts`; `src/download-host/index.ts` additive export only; `test/download-host/s3-media-request.test.ts` |
 | A02 | Domain App refactor and public ABI cleanup | A01 | \`packages/download-domain-app/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
-| A03 | Domain Host refactor and physical adapter ownership | A01 | \`packages/download-domain-host/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
+| A03 | Domain Host refactor and physical adapter ownership | A01, A01B | \`packages/download-domain-host/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
 | A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters, both Domain App/Host package.json files, and root pnpm-lock.yaml (sole manifest + lockfile writer) |
 | A05 | Domain Knowledge / Workflow / Function-Tool mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` |
 | A06 | Architecture integration tests and exact-SHA verification | A04, A05 | dedicated architecture tests / validation evidence, exact paths frozen later |
@@ -147,10 +149,11 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 
 1. A00 is the first gate and is read-only.
 2. After A00, A01 and A05 can run in parallel.
-3. After A01, A02 and A03 can run in parallel with disjoint package write sets.
-4. A04 starts only after A02 and A03 are complete.
-5. A06 follows A04 and A05.
-6. A07 is an independent read-only review.
+3. After A01, A02 and A01B can run in parallel.
+4. After A01B, A03 can run in parallel with A02; A02/A03 keep disjoint package source write sets.
+5. A04 starts only after A02 and A03 are complete.
+6. A06 follows A04 and A05.
+7. A07 is an independent read-only review.
 
 **Manifest/lockfile ownership:** A01, A02 and A03 do not edit either Domain App/Host package.json or the root pnpm-lock.yaml. A02/A03 are source-only parallel Tasks. A04 is the sole writer for both `packages/download-domain-app/package.json`, `packages/download-domain-host/package.json`, and root `pnpm-lock.yaml`: after A02/A03 source changes are integrated, it removes the reciprocal workspace dependencies and regenerates the lockfile once. This is required because the local Woodpecker pipeline runs `pnpm install --frozen-lockfile` before `ci:verify`; changing a package importer without the matching lockfile would fail before tests. Later Task Packs must encode this single-writer ownership explicitly.
 
@@ -175,13 +178,19 @@ No source code, manifests, lockfile, tests, or runtime behavior may be changed.
 
 Extract only truly shared contracts used by both App and Host. Preserve domain-specific policy in App. Candidate shared items include C operation payload types/validators, S4 Host-facing intent contract, bounded effect/evidence DTOs, and opaque target-reference grammar. Final paths and symbols must be frozen by the A01 Task Pack after A00.
 
+### A01B — S3 Media Host Request DTO
+
+Add a dedicated neutral S3 Host request DTO pinned to `media.acquire` + `S3`. A01's direct request is pinned to `acquisition.acquire`, while its S4 request requires the S4 selected-rendition tuple; neither represents the existing S3 media lane. Reuse A01's neutral exact-key, opaque-targetRef, output-root, digest/bytes and caller primitives. No Host consumer or App source change in this Task.
+
+Formal Task Pack: `V022-A01B-S3-MEDIA-HOST-REQUEST.md`; Issue #340.
+
 ### A02 — Domain App Refactoring
 
 Remove App→Host dependencies. Keep K/S/B/C declarations, Business Intents, schemas, pure rules, semantic recipe, Workflow definitions and T09 policy in App. Remove physical store implementation and production runtime assembly from App's public root. Do not change operation IDs, ABI or behavior.
 
 ### A03 — Domain Host Refactoring
 
-Remove Host→App deep imports. Implement the neutral ports from A01. Own Direct/HLS physical handlers, target registries and physical SDK store adapters. Preserve permit checks, targetRef opacity, budget, digest, atomic materialization and cancellation. Do not add K or a private journal.
+Remove Host→App deep imports. This Task depends on A01 and A01B so both S3 and S4 media Host requests have neutral, operation-pinned schemas. Implement the neutral ports from A01. Own Direct/HLS physical handlers, target registries and physical SDK store adapters. Preserve permit checks, targetRef opacity, budget, digest, atomic materialization and cancellation. Do not add K or a private journal.
 
 ### A04 — Core Runtime Consolidation
 
@@ -240,7 +249,8 @@ Each source Task needs its own Task Pack, exact base, allowed write set, accepte
 - Parent tracking issue: #337.
 - A00 read-only audit is complete at the exact baseline; independent review PASS is recorded in [#338](https://github.com/kaicreator-mm/xDownload/issues/338).
 - A00 report: [A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md](./A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md); Task Pack blob `1591be332f3ba76e8e5a14d5f062e27860dcc219`.
-- [#335](https://github.com/kaicreator-mm/xDownload/issues/335) is narrowed to A01 neutral Host contracts; its Task Pack independent review is PASS, planning-alignment P2 corrections are recorded here, and it remains NOT_DISPATCHED.
+- [#335](https://github.com/kaicreator-mm/xDownload/issues/335) A01 neutral Host contracts are implemented, reviewed and merged to WIP at merge commit `a3cc525df6a8c561f396dadf1e79bbb549fcc036`.
+- [#340](https://github.com/kaicreator-mm/xDownload/issues/340) A01B S3 media Host request DTO Task Pack is committed and independently reviewed PASS; waiting for Local Builder Claim.
 - [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 documentation draft is complete; independent review PASS is recorded in #339. The validation-map filename P2 is corrected in this planning update.
-- No A01–A07 source implementation is dispatched by this plan.
+- A01 is complete and integrated; A01B is ready pending Local Builder Claim. A02/A03/A04/A06/A07 remain undispatched.
 - UI U00–U06 remains a separate lane and may continue in parallel where exact write sets do not overlap.
