@@ -7,6 +7,12 @@
 > Source-audit baseline: wip/v0.2.2-ui-rebuild-r0@5880731aa84601373c028e45f2ec0380e521686f  
 > Dispatch gate: A02 #341 and A03 #342 must both be integrated and their exact WIP SHAs re-read. A04 must then freeze its exact source write set and execution pack against the new base.
 
+## Current predecessor status (2026-11-04)
+
+- A02 #341 / PR #344: rebased candidate `330efd081a89e443d79fa27064109c4c40d17b16`; all 11 App blobs are unchanged from the original candidate; exact-SHA Node 24/Prettier/focused tests/typecheck and Docker Woodpecker #20 PASS. Independent review of the rebound commit is pending.
+- A03 #342 / PR #345: candidate `deec3d6272ee9d4329838058098f051f6dfa3492` / tree `fd34b655135b46e1e35cd294e0b3e10ecd601ec4`; 13 paths within the frozen 14-path Host write set; syntax/Prettier/focused 40/40/typecheck and Docker Woodpecker #21 PASS. Independent review is pending.
+- Both PRs target WIP `wip/v0.2.2-ui-rebuild-r0@a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; neither is merged. A04 remains not dispatch-ready until both are reviewed, authorized and integrated.
+
 ## 1. Purpose
 
 A04 is the single integration writer after App and Host source boundaries are independently complete. It makes Core Runtime the only production composition root, consumes stable App/Host package entrypoints, removes the reciprocal App↔Host workspace dependency, and preserves the existing Core Seam / K / RouteLog authority model.
@@ -45,7 +51,7 @@ A04 removes the reciprocal App↔Host workspace dependencies after all source im
 
 A02 intentionally left these deep-path compatibility surfaces so the current Core route remains operational during the intermediate WIP state:
 - `packages/download-domain-app/src/composition/runtime.ts`: FileCasDocStore and direct runtime/pin compatibility declarations; `assembleDownloadRuntime` is a relocation sentinel.
-- `packages/download-domain-app/src/integrations/media-registry.ts`: InMemoryMediaTargetRegistry (neutral targetRef grammar remains domain-owned).
+- `packages/download-domain-app/src/integrations/media-registry.ts`: `InMemoryMediaTargetRegistry` remains an App-owned transitional S3/S4 media registry. A03 moves the Direct `InMemoryTargetRefRegistry` into Host, but does **not** move this media registry. A04 must move the media registry behind a Host-owned adapter and expose it only through the Host stable package entrypoint.
 - `packages/download-domain-app/src/integrations/s4-hls-vod.ts`: S4 bridge pin registration and transitional runtime/pin types.
 - `packages/download-domain-app/src/integrations/s3-media.ts`: transitional physical runtime/pin types.
 - `packages/download-domain-app/src/migration/lineage-store.ts` and `migration/index.ts`: PlainFileLineageStore compatibility; A03 adds the Host-owned physical implementation.
@@ -56,7 +62,7 @@ A04 removes or narrows these App physical/Host-runtime compatibility implementat
 ## 3. Intended package boundaries
 
 - Domain App: public domain declarations, Business Intents, pure rules, sealed BUILD producers, Workflow/journey contracts. No Host package dependency, Host runtime assembly, physical store or physical target registry.
-- Domain Host: physical Direct/S3/S4 bridge handlers, targetRef registry, SDK document-store adapter, dormant T09 plain-file adapter. No App source import or App package dependency.
+- Domain Host: physical Direct/S3/S4 bridge handlers, Direct `InMemoryTargetRefRegistry`, S3/S4 media target registry, SDK document-store adapter, dormant T09 plain-file adapter. No App source import or App package dependency.
 - Domain Contracts: pure neutral DTOs, exact validators, output evidence and narrow ports; no App/Host/Core, Node I/O, network or SDK imports.
 - Core Runtime: only production composition root; injects Host adapters, loads exactly one selected K, and owns orchestration around the Core Seam and RouteLog.
 - Core Seam / RouteLog / K Journal / K Permit / T09 LineageLedger retain distinct authority. Do not move RouteLog ownership to T09 and do not auto-clear UNKNOWN.
@@ -97,14 +103,17 @@ Existing Core tests under `packages/core-runtime/test/**` already cover route be
 2. Freeze exact A04 write set. Expected owners include Core composition root and its integration tests, App transitional compatibility files, Host stable exports/package manifest, App package manifest, and root pnpm-lock.yaml. Do not use broad globs as the write set.
 3. Migrate Core imports to stable package entrypoints:
    - App domain BUILD / journey symbols from `@xdownload/download-domain-app`;
-   - Host bridges / registry / stores from stable `@xdownload/download-domain-host` entrypoints;
+   - Host bridges / Direct and media registries / stores from stable `@xdownload/download-domain-host` entrypoints;
    - neutral envelope/evidence/targetRef helpers from `@xdownload/domain-contracts`.
-4. Prove Host FileCasDocStore structural assignability to SDK public `V10DocStore` at the actual Core `load()` call site; do not add an accidental hoisted dependency.
-5. Narrow App journey input types so public journey signatures depend on a domain-facing app/send port, not physical store/registry/pin types (P2 recorded during A02 source audit).
+4. Move the S3/S4 `InMemoryMediaTargetRegistry` and the former App permit-derivation pin behind a Host-owned media composition adapter. Core must resolve the opaque `targetRef` through that registry **before** constructing the Host transport request; derive `manifestUri`, selected rendition, exact allowed origins and budget from the resolved record; bind the permit to the same requestId/lineageId/operation and those facts. The Host bridge currently validates the neutral DTO and permit/origin scope but does not itself resolve the media registry; A04 must not pass caller-controlled `manifestUri` as if the opaque `targetRef` had already been resolved.
+5. Add A04 regressions for unknown targetRef, targetRef/manifest mismatch, mismatched S4 rendition, permit request/lineage mismatch and origin widening; every refusal must prove zero segment requests and zero file writes.
+6. Prove Host FileCasDocStore structural assignability to SDK public `V10DocStore` at the actual Core `load()` call site; do not add an accidental hoisted dependency.
+7. Narrow App journey input types so public journey signatures depend on a domain-facing app/send port, not physical store/registry/pin types (P2 recorded during A02 source audit).
 6. Remove App compatibility physical adapters and transitional Host pins only after all Core and workspace consumers are migrated.
 7. Remove reciprocal App↔Host workspace dependencies; update required stable export maps; regenerate pnpm-lock.yaml exactly once as the sole manifest/lockfile writer.
-8. Node 24 syntax preflight and changed-file Prettier before CI; focused tests, typecheck, `pnpm run ci:verify`, local Docker Woodpecker exact-SHA SUCCESS.
-9. Independent Exact-SHA review PASS before WIP integration.
+8. Strengthen the App package-boundary regression guard to cover side-effect imports and CommonJS `require()` (AST-backed if the current parser/tooling permits; no dependency/manifests outside the A04 write set).
+9. Node 24 syntax preflight and changed-file Prettier before CI; focused tests, typecheck, `pnpm run ci:verify`, local Docker Woodpecker exact-SHA SUCCESS.
+10. Independent Exact-SHA review PASS before WIP integration.
 
 ## 6. Stop conditions
 
@@ -119,7 +128,9 @@ Existing Core tests under `packages/core-runtime/test/**` already cover route be
 ## 7. P2s carried forward
 
 - A01B #340: avoid coercing malformed `allowedOperation` values in a diagnostic; use a constant typed refusal path.
-- A02 #341 P2-01: narrow `submitConfirmedMediaDownload` and `submitConfirmedS4HlsVod` inputs to an App-facing send port so the public Domain App surface does not retain physical runtime types.
-- A02 #341 P2-02: the current package-boundary test regex does not cover all import forms (e.g. side-effect imports or CommonJS `require`). Strengthen the regression guard with AST-backed parsing or explicit coverage in A04/A06; no current App→Host source import was found in the reviewed candidate.
+- A02 #341 P2-01: narrow `submitConfirmedMediaDownload` and `submitConfirmedS4HlsVod` inputs to an App-facing send port so public journey signatures do not retain physical store/registry types.
+- A02 #341 P2-02: strengthen the App boundary regression guard to cover side-effect imports and CommonJS `require()`; the current candidate's four App→Host source edges are removed, but the regex does not cover those forms.
+- A03 #342 P2-01: prove the Host `HostDocStore` structural port is assignable to the SDK public `V10DocStore` at the actual Core `load()` call site.
+- A03 #342 P2-02: move the S3/S4 media target registry and permit-derivation pin behind Host; Core must resolve opaque targetRef to exact manifest/rendition/origin facts before calling the Host bridge. Add mismatch and zero-effect tests.
 
-A01B and A02 independent technical reviews are recorded on their PRs. These P2s are non-blocking follow-ups and do not authorize widening the A03/A04 write sets.
+These are A04 integration gates, not authorization to widen A02/A03 write sets. Current A02/A03 candidates have Web Controller source audits; separate independent Exact-SHA review of the current candidate SHAs remains pending.
