@@ -188,13 +188,13 @@ Formal Task Pack: `V022-A01B-S3-MEDIA-HOST-REQUEST.md`; Issue #340. PR #343 is m
 
 Remove App→Host source imports and narrow the public root to domain-owned declarations, BUILD producers, Business Intents, pure rules, Workflow definitions and journeys. Preserve internal deep-import compatibility required by the current Core route until A04 moves it to Host-owned adapters; those transitional surfaces must not be re-exported from the App root. Keep K/S/B/C identifiers, sealed bytes, operation IDs and behavior unchanged. The existing App runtime integration tests must be re-established under Core A04, not silently dropped.
 
-Task Pack: V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md; Issue #341. PR #344 is rebased onto WIP base `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` at candidate `330efd081a89e443d79fa27064109c4c40d17b16` / tree `253ad057c813c1c447e05d57d5afb1737b092457`; the 11 App file blobs are unchanged. Independent Exact-SHA review PASS (P0=0/P1=0/P2=2); Node 24 syntax/Prettier and exact-SHA local Docker validation are pending on the rebased candidate.
+Task Pack: V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md; Issue #341. PR #344 is rebased onto WIP base `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` at candidate `330efd081a89e443d79fa27064109c4c40d17b16` / tree `253ad057c813c1c447e05d57d5afb1737b092457`; the 11 App file blobs are unchanged. Prior source-tree review findings carry forward because all 11 App blobs are unchanged (P0=0/P1=0/P2=2); current rebound-commit independent Exact-SHA review is pending. Rebase Node 24 syntax 11/11, Prettier, focused 29/29, typecheck and Docker Woodpecker #20/build 19992 are SUCCESS.
 
 ### A03 — Domain Host Refactoring
 
 Remove Host→App deep imports. This Task depends on A01 and A01B so both S3 and S4 media Host requests have neutral, operation-pinned schemas. Own Direct/HLS physical handlers, target registries, FileCasDocStore and the dormant T09 plain-file adapter. Preserve permit checks, targetRef opacity, budget, digest, atomic materialization and cancellation. Keep T09 dormant; do not add K or a private journal.
 
-Task Pack: V022-A03-DOMAIN-HOST-BOUNDARY.md; Issue #342 (Task Pack review PASS; exact-base rebind completed after #343). Current base `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` / tree `0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7`; Execution Pack is current. Ready for the Local Builder's own accepted Claim.
+Task Pack: V022-A03-DOMAIN-HOST-BOUNDARY.md; Issue #342. Builder implementation is complete in PR #345 at `deec3d6272ee9d4329838058098f051f6dfa3492` / tree `fd34b655135b46e1e35cd294e0b3e10ecd601ec4`; compare 1 ahead / 0 behind, 13 paths within the 14-path Host write set. Node 24 syntax, Prettier, focused tests 40/40, typecheck and Docker Woodpecker #21/build 19998 PASS; Web Controller source audit P0=0/P1=0/P2=2. Independent Exact-SHA review is pending.
 
 ### A04 — Core Runtime Consolidation
 
@@ -259,8 +259,8 @@ Each source Task needs its own Task Pack, exact base, allowed write set, accepte
 - A00 report: [A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md](./A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md); Task Pack blob `1591be332f3ba76e8e5a14d5f062e27860dcc219`.
 - [#335](https://github.com/kaicreator-mm/xDownload/issues/335) A01 neutral Host contracts are implemented, reviewed and merged to WIP at merge commit `a3cc525df6a8c561f396dadf1e79bbb549fcc036`.
 - [#340](https://github.com/kaicreator-mm/xDownload/issues/340) A01B merged via PR #343 to WIP at `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Woodpecker #17 SUCCESS; independent review PASS, P0=0/P1=0/P2=1.
-- [#341](https://github.com/kaicreator-mm/xDownload/issues/341) A02 PR #344 rebased to `330efd081a89e443d79fa27064109c4c40d17b16`; independent review PASS, P0=0/P1=0/P2=2; rebase syntax/Prettier and exact-SHA local CI pending.
-- [#342](https://github.com/kaicreator-mm/xDownload/issues/342) A03 Task Pack rebound to WIP `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Execution Pack ready; awaiting Local Builder Claim.
+- [#341](https://github.com/kaicreator-mm/xDownload/issues/341) A02 PR #344 candidate `330efd081a89e443d79fa27064109c4c40d17b16`; rebase validation complete (11 blobs unchanged, syntax/Prettier, focused 29/29, typecheck, Woodpecker #20 PASS); current exact-SHA independent review pending, source P2=2.
+- [#342](https://github.com/kaicreator-mm/xDownload/issues/342) A03 PR #345 candidate `deec3d6272ee9d4329838058098f051f6dfa3492`; implementation and local validation complete (40/40 focused, Woodpecker #21 PASS); Web Controller audit P0=0/P1=0/P2=2; independent review pending.
 - [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 corrected six-document set passed R2 re-review, P0=0/P1=0/P2=0.
-- A01 and A01B are integrated to WIP. A02 source implementation and independent review are complete; its rebased exact-SHA syntax/Prettier and local CI are pending. A03 is rebound and ready for Local Builder Claim. A04 awaits A02/A03 integration; A06/A07 remain downstream.
+- A01 and A01B are integrated to WIP. A02 and A03 implementation/local validation are complete; both PRs await current exact-SHA independent review and Owner WIP-only integration authorization. A04 awaits their integration; A06/A07 remain downstream.
 - UI U00–U06 remains a separate lane and may continue in parallel where exact write sets do not overlap.
