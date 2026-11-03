@@ -26,7 +26,8 @@ Add the closed query discriminant `LIST_S1_JOB_PROJECTIONS` to the existing lega
 Request contract:
 
 - The query is authorized by the existing per-frame `authorizePeer` same-install/same-user check.
-- `aggregateId` is the reserved query subject `core:s1-job-index`; it is not a lineage ID and must be accepted only with the new query discriminant.
+- `aggregateId` MUST equal the exact reserved query subject `core:s1-job-index` when `queryType=LIST_S1_JOB_PROJECTIONS`; reject any other value before reading the journal. It is not a lineage ID and is not accepted for another query discriminant.
+- The query requires seam schema `1.4.0` or newer within supported major `1`. Existing legacy commands and `READ_PROJECTION` remain accepted under their existing compatibility rules.
 - The query carries no user-supplied peer scope, path, filter expression or arbitrary predicate.
 
 Core derivation:
@@ -36,7 +37,7 @@ Core derivation:
 3. Deduplicate by `aggregateId` and resolve each identity through the current Core seam authority state.
 4. Derive each row using the same `projectAggregate` implementation as `READ_PROJECTION`; never synthesize status or terminal facts.
 5. Preserve the durable `SeamJournal.replayAll()` commit order, deduplicate by the most recent S1 execution entry for each aggregate, then return in reverse journal commit order. Do not use envelope `issuedAt` as an ordering authority; it is provenance/audit data only.
-6. Return at most 200 projections plus `totalCount` and `truncated`. `truncated=true` means the UI must not claim complete history.
+6. After peer filtering and aggregate deduplication, `totalCount` is the number of unique S1 aggregates before truncation. Return the latest 200 projections in reverse durable commit order; `truncated` MUST equal `totalCount > items.length`. Thus an empty list has `totalCount=0,truncated=false`, and exactly 200 rows are not truncated.
 7. If a journal entry references an aggregate without a current projection, fail the query closed with a typed diagnostic; do not silently omit a corrupt/inconsistent record.
 
 Response shape (inside the existing `SeamResponse.projection` field):
@@ -54,7 +55,8 @@ Protocol compatibility:
 - Add the query discriminant without changing existing `READ_PROJECTION` or `READ_JOB_PROJECTION` semantics.
 - Bump `CORE_SEAM_SCHEMA_VERSION` from `1.3.0` to `1.4.0`; keep supported major version 1.
 - Existing v1 clients/commands and the explicit v0.2 Domain App query route remain accepted unchanged.
-- Add strict decode tests for the new query subject, unknown query fields, peer mismatch, empty index, duplicate command identities, truncated list and projection-binding integrity.
+- Add strict decode tests for the exact query subject (including rejection of any other subject), query/schema mismatch, schema 1.3 rejection for the new query, and preservation of existing 1.3 `READ_PROJECTION`/command compatibility.
+- Add index tests for peer mismatch, empty index, duplicate aggregate identities, unique post-filter `totalCount`, 199/200/201 boundaries, `truncated` consistency and projection-binding integrity.
 
 ## 3. Desktop adapter contract
 
