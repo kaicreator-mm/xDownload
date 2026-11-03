@@ -17,7 +17,10 @@ import { after, before, describe, it } from 'node:test';
 import { createSyntheticSegmentBytes } from '../../../hls-vod-adapter/src/assemble.ts';
 import {
   acquireMediaViaHls,
+  acquireSelectedHlsVod,
+  s4HlsSelectionTupleDigest,
   type MediaAcquisitionBridgeRequest,
+  type S4HlsVodBridgeRequest,
 } from './media-acquisition-bridge.ts';
 
 const SEGMENT_DURATIONS = [4, 4, 3.5] as const;
@@ -180,7 +183,9 @@ function intentFixture(overrides?: Record<string, unknown>): Record<string, unkn
     targetRef: 'ref:media-target-001',
     outputRootScope: ROOT,
     allowedOperation: 'media.acquire',
-    slice: 'S1',
+    // V022-A03: the S3 media lane validates the A01B neutral DTO, which pins
+    // the slice to S3.
+    slice: 'S3',
     caller: { actor: 'media-host-test', sessionRef: 'session-media-001' },
     ...overrides,
   };
@@ -236,17 +241,39 @@ describe('media acquisition bridge — permit/protocol/domain negatives (zero ne
     assert.equal(totalHits() - beforeHits, 0);
   });
 
-  it('refuses a foreign allowedOperation with zero requests', async () => {
+  it('refuses a request outside the pinned media.acquire + S3 lane with zero requests', async () => {
     const beforeHits = totalHits();
-    const result = await acquireMediaViaHls(
+    // A foreign operation is refused by the A01B neutral DTO itself
+    // (pinned to media.acquire), before the permit, engine or network.
+    const wrongOperation = await acquireMediaViaHls(
       bridgeRequest({ intent: intentFixture({ allowedOperation: 'acquisition.acquire' }) }),
     );
-    assert.equal(result.admitted, false);
-    if (result.admitted) throw new Error('expected refusal');
-    assert.equal(result.code, 'MEDIA_OPERATION_MISMATCH');
-    assert.equal(result.counters.operationRefusals, 1);
-    assert.equal(result.counters.networkRequests, 0);
+    assert.equal(wrongOperation.admitted, false);
+    if (wrongOperation.admitted) throw new Error('expected refusal');
+    assert.equal(wrongOperation.code, 'MEDIA_INTENT_MALFORMED');
+    assert.equal(wrongOperation.counters.networkRequests, 0);
+    assert.equal(wrongOperation.counters.fileWrites, 0);
+
+    // A foreign slice is equally refused by the DTO pin (S3 only).
+    const wrongSlice = await acquireMediaViaHls(
+      bridgeRequest({ intent: intentFixture({ slice: 'S1' }) }),
+    );
+    assert.equal(wrongSlice.admitted, false);
+    if (wrongSlice.admitted) throw new Error('expected refusal');
+    assert.equal(wrongSlice.code, 'MEDIA_INTENT_MALFORMED');
+    assert.equal(wrongSlice.counters.networkRequests, 0);
+
+    // An unknown (widening) field refuses through the no-widening contract.
+    const widened = await acquireMediaViaHls(
+      bridgeRequest({ intent: { ...intentFixture(), extra: 'widened' } }),
+    );
+    assert.equal(widened.admitted, false);
+    if (widened.admitted) throw new Error('expected refusal');
+    assert.equal(widened.code, 'MEDIA_INTENT_MALFORMED');
+    assert.equal(widened.counters.networkRequests, 0);
+
     assert.equal(totalHits() - beforeHits, 0);
+    assert.equal(existsSync(ROOT), false);
   });
 
   it('refuses an out-of-scope manifest origin with zero requests', async () => {
@@ -392,5 +419,185 @@ describe('media acquisition bridge — real bounded HLS execution through the ex
     assert.equal(result.counters.fileWrites, 0);
     assert.equal(result.evidence, undefined);
     assert.equal(existsSync(join(ROOT, 'req-media-001.bin')), false);
+  });
+});
+
+describe('S4 selected-HLS lane — neutral DTO and fresh-facts tuple digest (V022-A03)', () => {
+  const S4_PROFILE = 'BASIC_HLS_VOD_MPEGTS_H264_AAC_V1';
+
+  // Known-answer vectors computed with the Domain App/Core
+  // `s4HlsSelectionTupleDigest` implementation (byte-identical requirement):
+  // the Host re-implementation must reproduce them exactly.
+  const VECTOR_WITH_RESOLUTION = {
+    input: {
+      contractId: 'contract-s4-001',
+      snapshotId: 'snap-001',
+      memberId: 'member-001',
+      previewId: 'preview-001',
+      renditionKey: 'rend-1',
+      renditionUri: 'https://media.example.com/vod/media-720p.m3u8',
+      manifestUri: 'https://media.example.com/vod/master.m3u8',
+      mediaProfileId: S4_PROFILE,
+      bandwidth: 1500000,
+      width: 1280,
+      height: 720,
+    },
+    digest: '4245f8ac85a36366766bfafa969eaed3f5753b2fb11cd42d48c7bee671df2b84',
+  };
+  const VECTOR_NO_RESOLUTION = {
+    input: {
+      contractId: 'contract-s4-001',
+      snapshotId: 'snap-001',
+      memberId: 'member-001',
+      previewId: 'preview-001',
+      renditionKey: 'rend-2',
+      renditionUri: 'https://media.example.com/vod/media-live.m3u8',
+      manifestUri: 'https://media.example.com/vod/master.m3u8',
+      mediaProfileId: S4_PROFILE,
+      bandwidth: 600000,
+    },
+    digest: '13f3fa8e473914928559ec0f6b0649ba8870161cd4052de9eb4b2f22163c47de',
+  };
+
+  it('recomputes the selection tuple digest byte-identically to the App/Core algorithm (known-answer cross-check)', () => {
+    assert.equal(
+      s4HlsSelectionTupleDigest(VECTOR_WITH_RESOLUTION.input),
+      VECTOR_WITH_RESOLUTION.digest,
+    );
+    assert.equal(
+      s4HlsSelectionTupleDigest(VECTOR_NO_RESOLUTION.input),
+      VECTOR_NO_RESOLUTION.digest,
+    );
+  });
+
+  function s4Selection(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      confirmedSelectionId: 'sel-001',
+      previewId: 'preview-001',
+      snapshotId: 'snap-001',
+      memberId: 'member-001',
+      manifestUri: `${origin}/master.m3u8`,
+      mediaProfileId: S4_PROFILE,
+      renditionKey: 'rend-0',
+      renditionUri: `${origin}/media-720p.m3u8`,
+      displayedTupleDigest: s4HlsSelectionTupleDigest({
+        contractId: 'contract-s4-001',
+        snapshotId: 'snap-001',
+        memberId: 'member-001',
+        previewId: 'preview-001',
+        renditionKey: 'rend-0',
+        renditionUri: `${origin}/media-720p.m3u8`,
+        manifestUri: `${origin}/master.m3u8`,
+        mediaProfileId: S4_PROFILE,
+        bandwidth: 1500000,
+        width: 1280,
+        height: 720,
+      }),
+      confirmedAt: '2026-11-03T00:00:00Z',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      ...overrides,
+    };
+  }
+
+  function s4Request(overrides: Record<string, unknown> = {}): S4HlsVodBridgeRequest {
+    return {
+      intent: {
+        requestId: 'req-s4-001',
+        lineageId: 'lineage-s4-001',
+        contractId: 'contract-s4-001',
+        targetRef: 'ref:s4-target-001',
+        outputRootScope: ROOT,
+        allowedOperation: 'media.acquire',
+        selection: s4Selection(),
+        caller: { actor: 's4-host-test', sessionRef: 'session-s4-001' },
+      },
+      protocol: 'HLS',
+      manifestUri: `${origin}/master.m3u8`,
+      permit: permitFixture({ requestId: 'req-s4-001', lineageId: 'lineage-s4-001' }),
+      fixtureLoopbackHttp: true,
+      ...overrides,
+    } as unknown as S4HlsVodBridgeRequest;
+  }
+
+  it('refuses an S4 request rejected by the neutral A01 DTO before any effect', async () => {
+    const beforeHits = totalHits();
+    // Expired selection: the DTO freshness grammar refuses before effects.
+    const expired = await acquireSelectedHlsVod(
+      s4Request({
+        intent: {
+          requestId: 'req-s4-001',
+          lineageId: 'lineage-s4-001',
+          contractId: 'contract-s4-001',
+          targetRef: 'ref:s4-target-001',
+          outputRootScope: ROOT,
+          allowedOperation: 'media.acquire',
+          selection: s4Selection({
+            expiresAt: new Date(Date.now() - 60_000).toISOString(),
+          }),
+          caller: { actor: 's4-host-test', sessionRef: 'session-s4-001' },
+        },
+      }),
+    );
+    assert.equal(expired.admitted, false);
+    if (expired.admitted) throw new Error('expected refusal');
+    assert.equal(expired.code, 'S4_INTENT_INVALID');
+    assert.equal(expired.counters.networkRequests, 0);
+    assert.equal(expired.counters.fileWrites, 0);
+
+    // Foreign operation: the DTO pins media.acquire.
+    const wrongOperation = await acquireSelectedHlsVod(
+      s4Request({
+        intent: {
+          requestId: 'req-s4-001',
+          lineageId: 'lineage-s4-001',
+          contractId: 'contract-s4-001',
+          targetRef: 'ref:s4-target-001',
+          outputRootScope: ROOT,
+          allowedOperation: 'acquisition.acquire',
+          selection: s4Selection(),
+          caller: { actor: 's4-host-test', sessionRef: 'session-s4-001' },
+        },
+      }),
+    );
+    assert.equal(wrongOperation.admitted, false);
+    if (wrongOperation.admitted) throw new Error('expected refusal');
+    assert.equal(wrongOperation.code, 'S4_INTENT_INVALID');
+    assert.equal(wrongOperation.counters.networkRequests, 0);
+
+    assert.equal(totalHits() - beforeHits, 0);
+    assert.equal(existsSync(join(ROOT, 'req-s4-001.ts')), false);
+  });
+
+  it('refuses a stale selection tuple against the freshly fetched master facts before any segment request', async () => {
+    const beforeSegmentHits = segmentHits();
+    // The displayed digest belongs to DIFFERENT master facts (tampered after
+    // confirmation): the Host recompute from fresh master facts must catch it
+    // after the playlist fetches and before any segment transfer.
+    const stale = await acquireSelectedHlsVod(
+      s4Request({
+        intent: {
+          requestId: 'req-s4-001',
+          lineageId: 'lineage-s4-001',
+          contractId: 'contract-s4-001',
+          targetRef: 'ref:s4-target-001',
+          outputRootScope: ROOT,
+          allowedOperation: 'media.acquire',
+          selection: s4Selection({ displayedTupleDigest: 'f'.repeat(64) }),
+          caller: { actor: 's4-host-test', sessionRef: 'session-s4-001' },
+        },
+      }),
+    );
+    assert.equal(stale.admitted, true);
+    if (!stale.admitted) throw new Error('expected admitted result');
+    assert.equal(stale.envelope.phase, 'terminal');
+    if (stale.envelope.phase !== 'terminal' || stale.envelope.outcome.ok !== false) {
+      throw new Error('expected failed terminal envelope');
+    }
+    assert.equal(stale.envelope.outcome.error.code, 'S4_SELECTION_STALE_OR_MISMATCHED');
+    assert.equal(stale.counters.segmentRequests, 0);
+    assert.equal(stale.counters.fileWrites, 0);
+    assert.equal(stale.evidence, undefined);
+    assert.equal(segmentHits() - beforeSegmentHits, 0);
+    assert.equal(existsSync(join(ROOT, 'req-s4-001.ts')), false);
   });
 });
