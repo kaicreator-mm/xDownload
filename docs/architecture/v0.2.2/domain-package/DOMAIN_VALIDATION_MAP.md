@@ -20,7 +20,7 @@
 | Direct Host | packages/download-domain-host/src/direct/direct-acquisition-bridge.test.ts | Permit gate, targetRef, digest, path containment, cancellation and zero effects on refusal |
 | Media Host | packages/download-domain-host/src/media/media-acquisition-bridge.test.ts | Permit gate, HLS-only protocol, budget and materialization |
 | Core route | packages/core-runtime/test/domain-app-route.test.ts | Route ownership, claim-before-send, attempts, outcomes and restart |
-| Core direct/HLS | packages/core-runtime/test/s1-direct.test.ts, s3-selected-media.test.ts, s4-selected-hls-flow.test.ts | Core-to-Host direct/media integration |
+| Core direct/HLS | packages/core-runtime/test/s1-direct.test.ts, s3-selected-media-flow.test.ts, s4-selected-hls-flow.test.ts | Core-to-Host direct/media integration |
 | Core recovery | packages/core-runtime/test/process-restart.test.ts, duplicate-command.test.ts, cancellation-cutoff.test.ts | Restart, idempotency, duplicate and cancellation boundaries |
 | Core projection | packages/core-runtime/test/projection.test.ts | Honest Core job/result projection |
 
