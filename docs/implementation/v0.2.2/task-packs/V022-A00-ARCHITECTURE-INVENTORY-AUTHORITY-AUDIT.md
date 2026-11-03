@@ -2,7 +2,8 @@
 
 > Status: read-only audit completed by Web Builder; independent review pending. This Task Pack is not a source implementation Claim and does not authorize source mutation.
 >
-> Parent tracking: xDownload #337  
+> Parent tracking: xDownload #337
+Formal Task Issue: https://github.com/kaicreator-mm/xDownload/issues/338  
 > Audit report: docs/architecture/v0.2.2/A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md
 
 ## Contract
