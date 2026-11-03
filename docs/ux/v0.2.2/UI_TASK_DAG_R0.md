@@ -87,3 +87,19 @@
 - This lane is disjoint from U02/U03/U04 UI renderer/popup/harness write sets. UI work may continue in parallel; integration must rebind to the current WIP SHA and rerun exact-SHA gates.
 - No DomainHarness SDK/API/ABI change, no v0.2.1/main mutation, no Product capability expansion, no new permission/IPC/Provider, no release or deployment.
 - Authority rule: do not blindly merge K Store, Seam Journal, RouteLog and T09 LineageLedger; prove production ownership and UNKNOWN/recovery semantics first.
+
+
+## Domain Package refinement lane R1 — A00 audit materialized (2026-11-03)
+
+> Append-only architecture-lane update. The existing U00–U06 responsibility map and UI task identities remain unchanged. This does not freeze the UI DAG, authorize Product/L2 changes, or dispatch source implementation.
+
+- Parent tracking: [#337](https://github.com/kaicreator-mm/xDownload/issues/337).
+- A00 read-only audit: [#338](https://github.com/kaicreator-mm/xDownload/issues/338); exact audit baseline `wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334`, Tree `ba48b805697ad19c36a6eb3a5e54b6d601b36120`.
+- Audit report: `docs/architecture/v0.2.2/A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md`.
+- Implementation plan: `docs/architecture/v0.2.2/DOMAIN_PACKAGE_REFINEMENT_IMPLEMENTATION_PLAN_R1.md`.
+- Architecture DAG: `docs/architecture/v0.2.2/DOMAIN_PACKAGE_REFINEMENT_DAG_R1.md`.
+- A00 confirmed the App↔Host manifest cycle and both deep-import directions. Core Runtime remains the active production Domain App composition root but imports deep App/Host paths.
+- A00 corrected the authority map: RouteLog CLAIM is the current new-K route ownership fact; ATTEMPT is route history; OUTCOME is derived from K receipt. K Effect Journal/Permit and Core Seam Journal retain separate authorities.
+- T09 LineageLedger is exported but no active production Core Runtime caller was found in the inspected baseline. It must not be activated as a second authority or described as a proven duplicate writer.
+- A01–A04 source Tasks remain undispatched. A01 (#335) must be narrowed to neutral-contract extraction; A02/A03 can run in parallel after A01; A04 follows both. A05 is a separate documentation lane after A00.
+- UI work may continue in parallel. All architecture implementation Tasks must re-read current WIP and use disjoint exact write sets.
