@@ -41,7 +41,14 @@ skill_metadata_refs: []
 execution_profile: "LOCAL_BUILDER"
 execution_environment: "LOCAL"
 owner_authorization_ref: "xDownload#333@6614278265"
-dispatch_admission: "OWNER_AUTHORIZED_LOCAL_BUILDER_PENDING_FRESH_REBOUND_CLAIM"
+dispatch_admission: "IMPLEMENTATION_READY_PENDING_INDEPENDENT_EXACT_SHA_REVIEW"
+implementation_candidate_sha: "9cbaccf5ac3bbae6cfc3d12f333fa929b0f6045f"
+implementation_candidate_tree: "78246a75ef4951328b17f27b2f9da0b0824d90a4"
+builder_claim_ref: "xDownload#333@6614387475"
+builder_result_ref: "xDownload#333@6614815246"
+woodpecker_pipeline_number: 22
+woodpecker_pipeline_id: 20066
+woodpecker_result: "SUCCESS"
 previous_base_sha: "9e3ccd382311619e60b8d2a7373e8a7d34733334"
 previous_candidate_sha: "f48a7e14567ae9d0a89a79c99bf83220961b97d5"
 baseline_rebind_revision: "R1"
