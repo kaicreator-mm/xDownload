@@ -82,7 +82,7 @@
 - Goal: apply DomainHarness #1465 / PR #1466 to the current xDownload v0.2.2 successor; remove the App↔Host package cycle, move physical Host storage/bridges and production assembly to Host/Core, and make K / Seam / Route Projection / Lineage ownership explicit.
 - Source baseline: `wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334`, Tree `ba48b805697ad19c36a6eb3a5e54b6d601b36120`.
 - Formal Task Issue: [#335](https://github.com/kaicreator-mm/xDownload/issues/335), currently `state:planned` / `DISPATCH=NOT_DISPATCHED`.
-- Task Pack: `docs/implementation/v0.2.2/task-packs/V022-A01-DOMAIN-PACKAGE-ARCHITECTURE-CLEANUP.md` (blob `c89c99b1bc2d26421ceeab751042c790fd21ecce`; proposed for independent review; no Claim/Execution Pack yet).
+- Task Pack: `docs/implementation/v0.2.2/task-packs/V022-A01-DOMAIN-PACKAGE-ARCHITECTURE-CLEANUP.md` (blob `e254a710388a98e2773bc7d4d85176fe2d868375`; proposed for independent review; no Claim/Execution Pack yet).
 - Proposed exclusive source write set: `packages/download-domain-app/**`, `packages/download-domain-host/**`, `packages/domain-contracts/**` only for neutral shared contracts, `packages/core-runtime/**`, directly related package tests, architecture record and required package manifests/lockfile.
 - This lane is disjoint from U02/U03/U04 UI renderer/popup/harness write sets. UI work may continue in parallel; integration must rebind to the current WIP SHA and rerun exact-SHA gates.
 - No DomainHarness SDK/API/ABI change, no v0.2.1/main mutation, no Product capability expansion, no new permission/IPC/Provider, no release or deployment.
