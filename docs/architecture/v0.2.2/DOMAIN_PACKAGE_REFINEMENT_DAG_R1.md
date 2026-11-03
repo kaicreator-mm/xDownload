@@ -97,11 +97,11 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 | Task | State | Notes |
 |---|---|---|
 | A00 | Read-only audit complete; independent review pending | #338; report committed; no source mutation |
-| A01 | Planned / Task Pack narrowing required before dispatch | Existing #335 |
+| A01 | Neutral-contract Task Pack narrowed; review pending; not dispatched | #335 |
 | A02 | Not dispatched | Await A01 |
 | A03 | Not dispatched | Await A01 |
 | A04 | Not dispatched | Await A02 + A03 |
-| A05 | Planned | May start after A00 |
+| A05 | Six documentation drafts committed; independent review pending | #339; docs-only; no source changes |
 | A06 | Not dispatched | Await A04 + A05 |
 | A07 | Not dispatched | Independent final review |
 
