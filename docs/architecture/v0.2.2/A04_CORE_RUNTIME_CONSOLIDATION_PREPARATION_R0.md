@@ -119,6 +119,7 @@ Existing Core tests under `packages/core-runtime/test/**` already cover route be
 ## 7. P2s carried forward
 
 - A01B #340: avoid coercing malformed `allowedOperation` values in a diagnostic; use a constant typed refusal path.
-- A02 #341: narrow `submitConfirmedMediaDownload` and `submitConfirmedS4HlsVod` inputs to an App-facing send port so the public Domain App surface does not retain physical runtime types.
+- A02 #341 P2-01: narrow `submitConfirmedMediaDownload` and `submitConfirmedS4HlsVod` inputs to an App-facing send port so the public Domain App surface does not retain physical runtime types.
+- A02 #341 P2-02: the current package-boundary test regex does not cover all import forms (e.g. side-effect imports or CommonJS `require`). Strengthen the regression guard with AST-backed parsing or explicit coverage in A04/A06; no current App→Host source import was found in the reviewed candidate.
 
-These are non-blocking findings from the Web Controller source audit. The PRs remain pending independent Exact-SHA review; this note does not authorize merge or A04 dispatch.
+A01B and A02 independent technical reviews are recorded on their PRs. These P2s are non-blocking follow-ups and do not authorize widening the A03/A04 write sets.
