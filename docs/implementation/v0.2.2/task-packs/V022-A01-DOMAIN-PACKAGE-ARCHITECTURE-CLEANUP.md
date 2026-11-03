@@ -48,10 +48,10 @@ No UI renderer, Browser popup, Desktop Manager, Native Host manifest, permission
 ## Required implementation outcomes
 
 1. Break the App↔Host package dependency cycle. App declares K/S/B/C/Intent/Schema and pure business logic; it does not import Host implementation. Host implements C/Host ports and depends on neutral contracts rather than deep App source. Core Runtime is the sole production composition root.
-2. Move physical V10DocStore/CAS, direct/HLS bridges and production runtime assembly out of the App package. Do not export Host implementations from the App root.
+2. Move physical V10DocStore/CAS and PlainFileLineageStore implementations, direct/HLS bridges and production runtime assembly out of the App package. Keep LineageLedger ownership policy and its narrow store port in the Domain App/domain layer; do not move the whole policy into Host or export Host implementations from the App root.
 3. Preserve the selected K/S/B/C BUILD, operation IDs, public SDK APIs, permit gate, targetRef, budget, digest, atomic materialization, cancellation and existing direct/HLS behavior.
 4. Prove exactly one production K and one business Writer for each new-K lineage.
-5. Produce a fact-ownership matrix for K Store/Effect Journal/Permit, Core Seam Journal, RouteLog and T09 LineageLedger. Verify actual production use; do not delete/merge stores without evidence. RouteLog OUTCOME derived from K receipt must remain a read model. UNKNOWN is never auto-cleared.
+5. Produce a fact-ownership matrix for K Store/Effect Journal/Permit, Core Seam Journal, RouteLog and T09 LineageLedger. Verify actual production use; do not delete/merge stores without evidence. RouteLog OUTCOME derived from K receipt must remain a read model. Keep LineageLedger policy separate from its physical PlainFileLineageStore Host adapter. UNKNOWN is never auto-cleared.
 6. Keep Core Job Projection distinct from SDK K Query/Subscription. No fake subscribe support and no private Journal/SQLite scan.
 7. Keep the exact DomainHarness v0.10.3 source and vendored tarball bytes unchanged.
 
