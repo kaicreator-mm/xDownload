@@ -3,15 +3,15 @@
 ## Identity
 
 - Issue: xDownload #347 (follow-up to #332).
-- Exact base: a3e1b22c200ef11a942dacc953e2bfecdc3db03c.
-- Base tree: 0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7.
-- Task branch: task/v0.2.2-u06-chrome-foreground-interop-fix.
-- Task Pack blob: 47eb80b65c9fd8b680824e8cebff5f30f8b66a57.
+- Exact base: 4d2148b80976532cecfaddc111c7fdc94980a289.
+- Base tree: 78246a75ef4951328b17f27b2f9da0b0824d90a4.
+- Task branch: task/v0.2.2-u06-chrome-foreground-interop-fix-r1.
+- Task Pack blob: 989b8434293abcfbda731ea15b34370bd4fa434c.
 - Exact source write set: apps/browser-extension/test/chrome-toolbar-active-tab.mjs only.
 
 ## Admission
 
-Owner approval is pending at #347. Do not publish a Builder Claim or mutate source until the Owner explicitly approves the exact base and one-file write set. After approval, publish a fresh accepted LOCAL_BUILDER DISPATCH_CLAIMED bound to this manifest and base.
+Owner authorization is recorded at #347 comment 6616544705. Publish a fresh accepted LOCAL_BUILDER DISPATCH_CLAIMED bound to this R1 manifest and exact base before source mutation. The Local Builder must implement the fix and complete local verification; do not dispatch LOCAL_VALIDATION-only work.
 
 ## Required behavior
 
