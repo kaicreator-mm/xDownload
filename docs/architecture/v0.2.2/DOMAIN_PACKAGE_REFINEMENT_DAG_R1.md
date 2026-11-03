@@ -106,8 +106,8 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 | A00 | Read-only audit complete; independent review PASS | #338; report committed; no source mutation |
 | A01 | Implemented, reviewed and merged to WIP | #335; merge `a3cc525df6a8c561f396dadf1e79bbb549fcc036` |
 | A01B | PR #343 merged to WIP at `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Woodpecker #17 SUCCESS; independent review PASS, P2=1 | #340 |
-| A02 | PR #344 rebased to `330efd081a89e443d79fa27064109c4c40d17b16`; independent review PASS, P2=2; rebased exact-SHA local validation pending | #341 |
-| A03 | Task Pack rebound to WIP `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Execution Pack current; ready for Local Builder Claim | #342 |
+| A02 | PR #344 candidate `330efd081a89e443d79fa27064109c4c40d17b16`; rebase validation PASS (11 blobs unchanged, Node24/Prettier, 29/29, typecheck, Woodpecker #20); current exact-SHA independent review pending, P2=2 | #341 |
+| A03 | PR #345 candidate `deec3d6272ee9d4329838058098f051f6dfa3492`; implementation complete, 13/14 allowed paths, Node24/Prettier, 40/40, typecheck, Woodpecker #21 PASS; independent review pending, P2=2 | #342 |
 | A04 | Preparation R0 committed; not dispatched | Await A02 + A03 integration; then freeze exact write set |
 | A05 | Six documentation drafts committed; corrected validation-map filename passed R2 re-review (P0=0/P1=0/P2=0) | #339; docs-only; no source changes |
 | A06 | Not dispatched | Await A04 + A05 |
