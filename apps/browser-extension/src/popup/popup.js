@@ -183,6 +183,253 @@
     stateBox.textContent = localizeUiMessage(text);
   }
 
+  const scanErrorDetails = document.getElementById('scan-error-details');
+  const scanErrorRaw = document.getElementById('scan-error-raw');
+
+  function isChromeMissingPageAccessDiagnostic(raw) {
+    return (
+      /Cannot access contents of (?:url|the page)/i.test(raw) &&
+      /Extension manifest must request permission to access this host/i.test(raw)
+    );
+  }
+
+  function setInitialScanError(error) {
+    const raw = String(error);
+    scanErrorRaw.textContent = raw;
+    scanErrorDetails.hidden = false;
+    if (isChromeMissingPageAccessDiagnostic(raw)) {
+      setState(
+        'FAILED',
+        '页面扫描失败：当前页面不允许扩展读取内容。请检查扩展的网站访问权限，或打开可访问的 http/https 页面后重试。未自动申请权限。',
+      );
+      return;
+    }
+    setState('FAILED', `页面扫描失败：${raw}`);
+  }
+
+  const STRUCTURED_FORM_OPERATION_FIELDS = Object.freeze({
+    S6_PREPARE_COLLECTION: Object.freeze(['s6-identity', 's6-kind', 's6-from', 's6-to']),
+    V02_ADD_DOWNLOAD: Object.freeze(['v02-target-ref', 'v02-output-root']),
+  });
+  const STRUCTURED_FIELD_KINDS = Object.freeze(['text', 'select', 'integer']);
+  const STRUCTURED_FORM_DESCRIPTOR = Object.freeze({
+    schemaVersion: 1,
+    operations: Object.freeze({
+      S6_PREPARE_COLLECTION: Object.freeze({
+        fields: Object.freeze([
+          Object.freeze({
+            id: 's6-identity',
+            mount: 's6-identity-field',
+            kind: 'text',
+            required: true,
+            placeholder: 'playlist/my-list',
+          }),
+          Object.freeze({
+            id: 's6-kind',
+            mount: 's6-kind-field',
+            kind: 'select',
+            defaultValue: 'playlist',
+            options: Object.freeze([
+              Object.freeze({ value: 'playlist', label: '播放列表' }),
+              Object.freeze({ value: 'gallery', label: '图片合集' }),
+            ]),
+          }),
+          Object.freeze({
+            id: 's6-from',
+            mount: 's6-from-field',
+            kind: 'integer',
+            required: true,
+            defaultValue: '1',
+            min: 1,
+            max: 10000,
+          }),
+          Object.freeze({
+            id: 's6-to',
+            mount: 's6-to-field',
+            kind: 'integer',
+            required: true,
+            defaultValue: '1',
+            min: 1,
+            max: 10000,
+          }),
+        ]),
+      }),
+      V02_ADD_DOWNLOAD: Object.freeze({
+        fields: Object.freeze([
+          Object.freeze({
+            id: 'v02-target-ref',
+            mount: 'v02-target-ref-field',
+            kind: 'text',
+            required: true,
+            placeholder: 'ref:your-host-target',
+          }),
+          Object.freeze({
+            id: 'v02-output-root',
+            mount: 'v02-output-root-field',
+            kind: 'text',
+            required: true,
+            placeholder: 'C:\\Users\\me\\Downloads',
+          }),
+        ]),
+      }),
+    }),
+  });
+
+  function validateStructuredFormDescriptor(descriptor) {
+    if (!descriptor || descriptor.schemaVersion !== 1 || !descriptor.operations) return false;
+    const operationIds = Object.keys(STRUCTURED_FORM_OPERATION_FIELDS);
+    const actualOperationIds = Object.keys(descriptor.operations);
+    if (
+      actualOperationIds.length !== operationIds.length ||
+      actualOperationIds.some((operationId) => !operationIds.includes(operationId))
+    ) {
+      return false;
+    }
+    for (const operationId of operationIds) {
+      const operation = descriptor.operations[operationId];
+      if (!operation || !Array.isArray(operation.fields)) return false;
+      const allowedFieldIds = STRUCTURED_FORM_OPERATION_FIELDS[operationId];
+      if (operation.fields.length !== allowedFieldIds.length) return false;
+      const seen = new Set();
+      for (const field of operation.fields) {
+        if (
+          !field ||
+          !allowedFieldIds.includes(field.id) ||
+          !STRUCTURED_FIELD_KINDS.includes(field.kind) ||
+          typeof field.mount !== 'string' ||
+          field.mount === '' ||
+          seen.has(field.id)
+        ) {
+          return false;
+        }
+        seen.add(field.id);
+        if (
+          field.kind === 'select' &&
+          (!Array.isArray(field.options) ||
+            field.options.length === 0 ||
+            field.options.some(
+              (option) =>
+                !option || typeof option.value !== 'string' || typeof option.label !== 'string',
+            ))
+        ) {
+          return false;
+        }
+        if (
+          field.kind === 'integer' &&
+          (!Number.isSafeInteger(field.min) ||
+            !Number.isSafeInteger(field.max) ||
+            field.max < field.min)
+        ) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function structuredFormField(operationId, fieldId) {
+    const operation = STRUCTURED_FORM_DESCRIPTOR.operations[operationId];
+    return operation ? operation.fields.find((field) => field.id === fieldId) : undefined;
+  }
+
+  function renderStructuredForm(operationId, descriptor = STRUCTURED_FORM_DESCRIPTOR) {
+    if (
+      !validateStructuredFormDescriptor(descriptor) ||
+      !Object.prototype.hasOwnProperty.call(STRUCTURED_FORM_OPERATION_FIELDS, operationId)
+    ) {
+      return false;
+    }
+    const fields = descriptor.operations[operationId].fields;
+    const mounts = fields.map((field) => document.getElementById(field.mount));
+    if (mounts.some((mount) => !mount)) return false;
+    fields.forEach((field, index) => {
+      const control = document.createElement(field.kind === 'select' ? 'select' : 'input');
+      control.id = field.id;
+      if (field.kind === 'select') {
+        for (const option of field.options) {
+          const optionNode = document.createElement('option');
+          optionNode.value = option.value;
+          optionNode.textContent = option.label;
+          control.appendChild(optionNode);
+        }
+        control.value = field.defaultValue || field.options[0].value;
+      } else {
+        control.type = 'text';
+        control.value = field.defaultValue || '';
+        control.placeholder = field.placeholder || '';
+        control.required = field.required === true;
+        if (field.kind === 'integer') control.setAttribute('inputmode', 'numeric');
+      }
+      mounts[index].appendChild(control);
+    });
+    return true;
+  }
+
+  function renderStructuredForms() {
+    if (!validateStructuredFormDescriptor(STRUCTURED_FORM_DESCRIPTOR)) return false;
+    return Object.keys(STRUCTURED_FORM_OPERATION_FIELDS).every((operationId) =>
+      renderStructuredForm(operationId),
+    );
+  }
+
+  const structuredFormsReady = renderStructuredForms();
+
+  function createSingleFlightPollController({ intervalMs, request, isFinal, apply, onError }) {
+    let current = null;
+    let generation = 0;
+
+    function clearRunTimer(run) {
+      if (run.timer !== null) {
+        clearInterval(run.timer);
+        run.timer = null;
+      }
+    }
+
+    async function tick(run) {
+      if (current !== run || run.inFlight || run.latched) return;
+      run.inFlight = true;
+      try {
+        const payload = await request(run.identity, run.generation);
+        if (current !== run || run.latched) return;
+        if (isFinal(payload)) {
+          run.latched = true;
+          clearRunTimer(run);
+        }
+        apply(payload, run);
+      } catch (error) {
+        if (current !== run || run.latched) return;
+        if (onError(error, run) === true) {
+          run.latched = true;
+          clearRunTimer(run);
+        }
+      } finally {
+        run.inFlight = false;
+      }
+    }
+
+    function stop() {
+      if (current !== null) clearRunTimer(current);
+      current = null;
+    }
+
+    function start(identity) {
+      stop();
+      const run = {
+        identity,
+        generation: ++generation,
+        startedAt: Date.now(),
+        inFlight: false,
+        latched: false,
+        timer: null,
+      };
+      current = run;
+      run.timer = setInterval(() => tick(run), intervalMs);
+      void tick(run);
+    }
+
+    return { start, stop };
+  }
+
   /** Injected into the page (self-contained; returns plain data only). */
   function scrapeAttachmentLinks() {
     const anchors = Array.from(document.querySelectorAll('a[href]'));
@@ -665,7 +912,7 @@
         s6SectionEl.hidden = false;
       }
     } catch (error) {
-      setState('FAILED', `页面扫描失败：${String(error)}`);
+      setInitialScanError(error);
     }
   })();
 
@@ -858,9 +1105,21 @@
   s6PrepareButton.addEventListener('click', async () => {
     s6PrepareButton.disabled = true;
     try {
+      if (
+        !structuredFormsReady ||
+        !s6IdentityInput ||
+        !s6KindSelect ||
+        !s6FromInput ||
+        !s6ToInput
+      ) {
+        s6PrepareResult.textContent = 'S6 已拒绝：本地表单描述不受支持，未提交任何任务。';
+        return;
+      }
       const identity = s6IdentityInput.value.trim();
       const fromPage = Number(s6FromInput.value.trim());
       const toPage = Number(s6ToInput.value.trim());
+      const fromRules = structuredFormField('S6_PREPARE_COLLECTION', 's6-from');
+      const toRules = structuredFormField('S6_PREPARE_COLLECTION', 's6-to');
       if (!/^[A-Za-z0-9_./:-]{1,256}$/u.test(identity) || identity.includes('//')) {
         s6PrepareResult.textContent =
           'S6 已拒绝：合集标识必须是长度受限的路径（例如 playlist/my-list）。';
@@ -869,9 +1128,9 @@
       if (
         !Number.isSafeInteger(fromPage) ||
         !Number.isSafeInteger(toPage) ||
-        fromPage < 1 ||
+        fromPage < fromRules.min ||
         toPage < fromPage ||
-        toPage > 10000
+        toPage > toRules.max
       ) {
         s6PrepareResult.textContent =
           'S6 已拒绝：页码范围必须是有上限的闭区间，且从 1 开始并满足起始页不大于结束页。';
@@ -1093,40 +1352,44 @@
     );
   }
 
-  function pollS6Terminal() {
-    const started = Date.now();
-    const timer = setInterval(async () => {
-      let payload = null;
-      try {
-        payload = await chrome.runtime.sendMessage({
-          kind: 'S6_COLLECTION_JOURNEY_STATUS',
-          contractId: s6Confirmed.contractId,
-        });
-      } catch (error) {
-        clearInterval(timer);
-        setS6State('UNKNOWN', `journey status unreadable: ${String(error)}`);
-        return;
-      }
+  const s6PollController = createSingleFlightPollController({
+    intervalMs: 700,
+    request: (contractId) =>
+      chrome.runtime.sendMessage({
+        kind: 'S6_COLLECTION_JOURNEY_STATUS',
+        contractId,
+      }),
+    isFinal: (payload) =>
+      Boolean(
+        payload && ((payload.ok === true && payload.status === 'TERMINAL') || payload.ok !== true),
+      ),
+    apply: (payload, run) => {
       const facts = payload && payload.facts;
       if (payload && payload.ok === true && payload.status === 'TERMINAL') {
-        clearInterval(timer);
         renderS6Terminal(facts || {});
         return;
       }
       if (payload && payload.ok !== true) {
-        clearInterval(timer);
         setS6State('FAILED', `collection failed: ${payload.error || 'unknown failure'}`);
         return;
       }
       setS6State(
         'RUNNING',
-        `Core is downloading the collection (${Math.round((Date.now() - started) / 1000)}s)… per-member status so far:\n${JSON.stringify(
+        `Core is downloading the collection (${Math.round((Date.now() - run.startedAt) / 1000)}s)… per-member status so far:\n${JSON.stringify(
           (facts && facts.members) || [],
           null,
           2,
         )}`,
       );
-    }, 700);
+    },
+    onError: (error) => {
+      setS6State('UNKNOWN', `journey status unreadable: ${String(error)}`);
+      return true;
+    },
+  });
+
+  function pollS6Terminal() {
+    s6PollController.start(s6Confirmed.contractId);
   }
 
   s6ExecuteButton.addEventListener('click', async () => {
@@ -1134,6 +1397,7 @@
       setS6State('FAILED', 'Confirm the collection with Core before downloading.');
       return;
     }
+    s6PollController.stop();
     s6ExecuteButton.disabled = true;
     try {
       const response = await chrome.runtime.sendMessage({
@@ -1304,18 +1568,10 @@
   const v02SubmitButton = document.getElementById('v02-submit');
   const v02ResultBox = document.getElementById('v02-result');
   let v02Lineage = null;
-  let v02PollTimer = null;
 
   function setV02State(kind, text) {
     v02ResultBox.className = `state ${kind}`;
     v02ResultBox.textContent = localizeUiMessage(text);
-  }
-
-  function stopV02Polling() {
-    if (v02PollTimer !== null) {
-      clearInterval(v02PollTimer);
-      v02PollTimer = null;
-    }
   }
 
   function renderV02Projection(projection) {
@@ -1333,34 +1589,40 @@
       text += ' 已传输：' + String(progress.transferredBytes) + ' 字节（总量未知）。';
     }
     setV02State(status, text);
-    if (status !== 'RUNNING') {
-      stopV02Polling();
-    }
   }
 
-  async function pollV02Status() {
-    if (v02Lineage === null) return;
-    let answer;
-    try {
-      answer = await chrome.runtime.sendMessage({ kind: 'V02_JOB_STATUS', lineageId: v02Lineage });
-    } catch {
+  const v02PollController = createSingleFlightPollController({
+    intervalMs: 1000,
+    request: (lineageId) => chrome.runtime.sendMessage({ kind: 'V02_JOB_STATUS', lineageId }),
+    isFinal: (answer) =>
+      !answer ||
+      answer.outcome !== 'PROJECTION' ||
+      String(answer.projection && answer.projection.status) !== 'RUNNING',
+    apply: (answer) => {
+      if (!answer || answer.outcome !== 'PROJECTION') {
+        const code = answer && answer.code ? String(answer.code) : 'UNKNOWN';
+        const detail = answer && answer.detail ? String(answer.detail) : '';
+        setV02State('FAILED', `Status unavailable (${code}). ${detail}`);
+        return;
+      }
+      renderV02Projection(answer.projection);
+    },
+    onError: () => {
       setV02State('UNKNOWN', 'The service worker could not answer the status poll.');
-      return;
-    }
-    if (!answer || answer.outcome !== 'PROJECTION') {
-      const code = answer && answer.code ? String(answer.code) : 'UNKNOWN';
-      const detail = answer && answer.detail ? String(answer.detail) : '';
-      setV02State('FAILED', `Status unavailable (${code}). ${detail}`);
-      stopV02Polling();
-      return;
-    }
-    renderV02Projection(answer.projection);
-  }
+      return false;
+    },
+  });
 
   v02SubmitButton.addEventListener('click', async () => {
+    if (!structuredFormsReady || !v02TargetRefInput || !v02OutputRootInput) {
+      setV02State('FAILED', '本地表单描述不受支持，未提交任何任务。');
+      return;
+    }
     const targetRef = String(v02TargetRefInput.value || '').trim();
     const outputRoot = String(v02OutputRootInput.value || '').trim();
-    if (targetRef === '' || outputRoot === '') {
+    const targetRules = structuredFormField('V02_ADD_DOWNLOAD', 'v02-target-ref');
+    const outputRules = structuredFormField('V02_ADD_DOWNLOAD', 'v02-output-root');
+    if ((targetRules.required && targetRef === '') || (outputRules.required && outputRoot === '')) {
       setV02State(
         'UNKNOWN',
         'Enter the Host-issued target handle and the authorized output root first.',
@@ -1374,6 +1636,7 @@
       setV02State('FAILED', 'This action needs an active http(s) page tab (origin authority).');
       return;
     }
+    v02PollController.stop();
     setV02State('RUNNING', 'Submitting the confirmed intent through the trusted local Host…');
     let answer;
     try {
@@ -1415,11 +1678,7 @@
       'RUNNING',
       `Accepted by Core (lineage ${v02Lineage}). Polling the Core-owned projection…`,
     );
-    stopV02Polling();
-    v02PollTimer = setInterval(() => {
-      void pollV02Status();
-    }, 1000);
-    void pollV02Status();
+    v02PollController.start(v02Lineage);
   });
 
   // UI-only navigation. No permission request, worker command or Core change.
