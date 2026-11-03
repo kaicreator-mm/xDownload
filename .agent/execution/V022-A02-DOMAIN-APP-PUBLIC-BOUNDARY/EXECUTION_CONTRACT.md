@@ -63,7 +63,7 @@ Do not start CI if syntax preflight fails. GitHub Actions are not used.
 
 ## Integration boundary
 
-The Owner has authorized WIP-only integration for reviewed tasks. Before merge, re-read current WIP HEAD, verify exact changed paths and independent Exact-SHA review, and run the required gate at the actual integration SHA. No main/version merge, tag, release, deployment, real download, Native Host or Windows side effect.
+The historical Owner WIP authorization on parent #337 explicitly covered PRs #335, #330, #331 and #334. It does NOT by itself authorize merging A02 PR #344 or A03 PR #345. Obtain a fresh Owner authorization naming the exact PR heads after independent Exact-SHA review. Before any merge, re-read current WIP HEAD, verify exact changed paths and independent review, and run the required gate at the actual integration SHA. No main/version merge, tag, release, deployment, real download, Native Host or Windows side effect.
 
 
 ## Rebase validation addendum — 2026-11-04
