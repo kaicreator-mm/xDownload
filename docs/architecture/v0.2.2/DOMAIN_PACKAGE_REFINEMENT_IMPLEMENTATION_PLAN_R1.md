@@ -140,7 +140,7 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 | A01B | S3 media Host request DTO | A01 | `packages/domain-contracts/src/download-host/s3-media-request.ts`; `src/download-host/index.ts` additive export only; `test/download-host/s3-media-request.test.ts` |
 | A02 | Domain App public boundary and Host decoupling | A01 | Task Pack V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md (11 exact App source/test paths); package.json/root lockfile forbidden |
 | A03 | Domain Host boundary and physical adapters | A01, A01B | Task Pack V022-A03-DOMAIN-HOST-BOUNDARY.md (14 exact Host source/test paths); package.json/root lockfile forbidden |
-| A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters, both Domain App/Host package.json files, and root pnpm-lock.yaml (sole manifest + lockfile writer) |
+| A04 | Core Runtime consolidation and dependency injection | A02, A03 | Not frozen; exact Core/consumer paths must be enumerated in A04 Task Pack after A02/A03 integration; A04 alone owns both package.json files and root pnpm-lock.yaml |
 | A05 | Domain Knowledge / Workflow / Function-Tool mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` |
 | A06 | Architecture integration tests and exact-SHA verification | A04, A05 | dedicated architecture tests / validation evidence, exact paths frozen later |
 | A07 | Final independent Exact-SHA review and closure | A06 | read-only |
