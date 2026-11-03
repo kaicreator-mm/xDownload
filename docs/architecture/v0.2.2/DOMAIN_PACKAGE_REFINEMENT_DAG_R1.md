@@ -11,6 +11,7 @@
 flowchart TD
     A00["A00 — Architecture Inventory & Authority Audit<br/>READ_ONLY"]
     A01["A01 — Domain Contracts & Dependency Decoupling"]
+    A01B["A01B — S3 Media Host Request DTO"]
     A02["A02 — Domain App Refactoring"]
     A03["A03 — Domain Host Refactoring"]
     A04["A04 — Core Runtime Consolidation"]
@@ -21,6 +22,8 @@ flowchart TD
     A00 --> A01
     A00 --> A05
     A01 --> A02
+    A01 --> A01B
+    A01B --> A03
     A01 --> A03
     A02 --> A04
     A03 --> A04
@@ -35,8 +38,9 @@ flowchart TD
 |---|---|---|---|---|
 | A00 | Architecture Inventory & Authority Audit | — | Read-only source; one audit report file | Web-first, read-only |
 | A01 | Domain Contracts & Dependency Decoupling | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths | Source implementation |
+| A01B | S3 Media Host Request DTO | A01 | `packages/domain-contracts/src/download-host/s3-media-request.ts`; `download-host/index.ts` additive export only; `test/download-host/s3-media-request.test.ts` | Local Builder; exact three-path write set |
 | A02 | Domain App Refactoring | A01 | \`packages/download-domain-app/src/**\` and package-local tests; package.json/root lockfile forbidden | Source implementation |
-| A03 | Domain Host Refactoring | A01 | \`packages/download-domain-host/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) | Source implementation |
+| A03 | Domain Host Refactoring | A01, A01B | \`packages/download-domain-host/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) | Source implementation |
 | A04 | Core Runtime Consolidation | A02, A03 | \`packages/core-runtime/**\`, exact consumer adapters, both Domain App/Host package.json files and root pnpm-lock.yaml (sole manifest/lockfile writer) | Single integration writer |
 | A05 | Domain Knowledge & Workflow Mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` | Documentation |
 | A06 | Architecture Integration & Verification | A04, A05 | Dedicated architecture tests and validation evidence; exact paths frozen in its Task Pack | Verification |
@@ -67,9 +71,9 @@ A01 and A05 have disjoint write sets and may proceed in parallel.
 
 After A01:
 - A02 removes App → Host imports and narrows the Domain App public API.
-- A03 removes Host → App deep imports and implements neutral ports.
+- A01B adds the missing S3 media Host request DTO; A01's existing direct and S4 DTOs remain unchanged.
 
-A02 and A03 may proceed in parallel. They must not edit each other's package roots, manifests, or owned contract files.
+A02 and A01B may proceed in parallel. After A01B, A03 removes Host → App deep imports and implements neutral ports; A03 can proceed in parallel with A02. They must not edit each other's package roots, manifests, or owned contract files.
 
 ### Lane 4 — Core composition
 
@@ -87,7 +91,8 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 
 - A DAG edge is a dependency requirement, not an execution Claim.
 - Every source Task needs its own Task Pack, exact current base, allowed write set, accepted ADS dispatch/Claim and JIT branch.
-- Do not dispatch A02/A03 before A01's neutral contracts are frozen.
+- Do not dispatch A02 before A01's neutral contracts are frozen.
+- Do not dispatch A03 before A01 and A01B are complete and integrated.
 - Do not dispatch A04 before both A02 and A03 are complete.
 - A05 may not rewrite source contracts or widen Product/L2.
 - Do not merge any source Task to the WIP branch on a stale base.
@@ -99,9 +104,10 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 | Task | State | Notes |
 |---|---|---|
 | A00 | Read-only audit complete; independent review PASS | #338; report committed; no source mutation |
-| A01 | Neutral-contract Task Pack independent review PASS; planning P2 alignment corrected here; not dispatched | #335 |
-| A02 | Not dispatched | Await A01 |
-| A03 | Not dispatched | Await A01 |
+| A01 | Implemented, reviewed and merged to WIP | #335; merge `a3cc525df6a8c561f396dadf1e79bbb549fcc036` |
+| A01B | Task Pack committed and independent review PASS; awaiting Local Builder Claim | #340 |
+| A02 | Not dispatched | Await A01; may run parallel with A01B |
+| A03 | Not dispatched | Await A01 + A01B |
 | A04 | Not dispatched | Await A02 + A03 |
 | A05 | Six documentation drafts committed; independent review PASS; validation-map filename corrected here | #339; docs-only; no source changes |
 | A06 | Not dispatched | Await A04 + A05 |
