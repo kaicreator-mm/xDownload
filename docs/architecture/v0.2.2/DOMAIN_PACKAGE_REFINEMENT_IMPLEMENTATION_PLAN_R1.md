@@ -200,6 +200,8 @@ Task Pack: V022-A03-DOMAIN-HOST-BOUNDARY.md; Issue #342 (Task Pack review PASS).
 
 Use stable App/Host entrypoints and injected ports. Keep Core Runtime as the only production composition root and load exactly one selected K. Preserve Core Seam acceptance/replay, route ownership, K effect governance and restart/UNKNOWN semantics. Do not silently switch the active RouteLog ownership source to T09 LineageLedger.
 
+Preparation: `A04_CORE_RUNTIME_CONSOLIDATION_PREPARATION_R0.md` records the current Core import inventory, reciprocal package dependency, App compatibility surfaces, test relocation matrix and the two P2 follow-ups. It is read-only preparation, not a Task Pack or dispatch authorization. Freeze A04's exact write set only after A02 and A03 are integrated.
+
 ### A05 — Domain Knowledge & Workflow Mapping
 
 Create a lightweight, traceable map for glossary, authority, schemas, business rules, Workflow definitions, Function/Tool classification, UI Journey boundaries and validation evidence. No new DSL or runtime.
