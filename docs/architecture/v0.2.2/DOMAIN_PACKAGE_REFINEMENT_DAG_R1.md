@@ -35,9 +35,9 @@ flowchart TD
 |---|---|---|---|---|
 | A00 | Architecture Inventory & Authority Audit | — | Read-only source; one audit report file | Web-first, read-only |
 | A01 | Domain Contracts & Dependency Decoupling | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths | Source implementation |
-| A02 | Domain App Refactoring | A01 | \`packages/download-domain-app/**\`, and package-local tests; no root pnpm-lock.yaml | Source implementation |
-| A03 | Domain Host Refactoring | A01 | \`packages/download-domain-host/** and package-local tests; no root pnpm-lock.yaml\` | Source implementation |
-| A04 | Core Runtime Consolidation | A02, A03 | \`packages/core-runtime/**\` exact consumer adapters and pnpm-lock.yaml (sole lockfile writer) | Single integration writer |
+| A02 | Domain App Refactoring | A01 | \`packages/download-domain-app/src/**\` and package-local tests; package.json/root lockfile forbidden | Source implementation |
+| A03 | Domain Host Refactoring | A01 | \`packages/download-domain-host/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) | Source implementation |
+| A04 | Core Runtime Consolidation | A02, A03 | \`packages/core-runtime/**\`, exact consumer adapters, both Domain App/Host package.json files and root pnpm-lock.yaml (sole manifest/lockfile writer) | Single integration writer |
 | A05 | Domain Knowledge & Workflow Mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` | Documentation |
 | A06 | Architecture Integration & Verification | A04, A05 | Dedicated architecture tests and validation evidence; exact paths frozen in its Task Pack | Verification |
 | A07 | Final Exact-SHA Review & Closure | A06 | Read-only | Independent review |
@@ -77,7 +77,7 @@ A04 starts only after A02 and A03 are individually complete and their exact SHAs
 
 A04 must retain one production K and the current route-ownership semantics unless an explicitly reviewed migration decision says otherwise.
 
-**Lockfile ownership:** A01 does not edit manifests or pnpm-lock.yaml. A02/A03 may update only their own package manifests and package-local source/tests; neither may edit the root lockfile. A04 is the sole pnpm-lock.yaml writer after both package Tasks are integrated, regenerating it once from the final manifest graph. A04's Task Pack must explicitly include the lockfile and exact regeneration command.
+**Manifest/lockfile ownership:** A01/A02/A03 are forbidden from editing the Domain App/Host package manifests and root pnpm-lock.yaml. A02/A03 are source-only parallel Tasks. A04 is the sole writer for both package.json files plus root pnpm-lock.yaml after both source Tasks are integrated; it removes the reciprocal workspace dependencies and regenerates the lockfile once. This is mandatory because Woodpecker runs `pnpm install --frozen-lockfile` before `ci:verify`; package-manifest importer drift would fail before verification. A04's Task Pack must include the three files and exact regeneration command.
 
 ### Lane 5 — Verification and closure
 
