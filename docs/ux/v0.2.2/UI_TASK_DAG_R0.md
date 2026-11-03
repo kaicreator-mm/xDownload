@@ -46,3 +46,17 @@
 - Exact approved write set: `apps/browser-extension/src/popup/popup.html`, `apps/browser-extension/src/popup/popup.js`, `apps/browser-extension/test/popup-s5-admission.test.ts`.
 - One Writer only; the three findings #323/#324/#325 must not be dispatched as parallel source writers.
 - The UI DAG remains `CANDIDATE_NOT_FROZEN`. No other lane is implicitly dispatched by this Task.
+
+
+## U06 follow-up after read-only harness feasibility (2026-11-03)
+
+> This is an append-only mapping update. The canonical U00–U06 responsibility map above remains in force; the full DAG remains `CANDIDATE_NOT_FROZEN`. This does not authorize #310 Product scope, any version/main merge, release or deployment.
+
+- #326 feasibility probe: Desktop ACTIVE/COMPLETE/FAILED/CANCELLED valid Core projections were executed through real Electron/Core Seam; Browser denial control passed; genuine toolbar-action activeTab positive remained NOT_RUN because Windows was locked. Exact evidence: #326 comment #6594634490.
+- #332 is the bounded U06 harness implementation successor. Frozen Task Pack blob: `8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d`. Its exclusive write set is:
+  - `apps/desktop-shell/test/smoke/harness-core.ts`
+  - `apps/desktop-shell/test/smoke/electron-shell-smoke.mjs`
+  - `apps/browser-extension/test/chrome-toolbar-active-tab.mjs`
+- #332 is admitted for an actual Local Builder under the pinned ADS v4.18.0 `LOCAL_BUILDER/LOCAL` profile; its current Execution Pack and HANDOFF_READY are linked in #332. The worker's own accepted `DISPATCH_CLAIMED` remains required before source mutation.
+- The valid single-resource COMPLETE projection still has coverage `NOT_APPLICABLE` and the current renderer displays “ended · not completed”. Renderer/Product correction is separate from this test-only Task and is not authorized here.
+- PR #331 (#329 Browser follow-up) and PR #330 (#322 Desktop serialization) are implementation-complete but remain unmerged pending WIP integration control. Their source changes do not alter the frozen base of #332 unless explicitly integrated/rebound.
