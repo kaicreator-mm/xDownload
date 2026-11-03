@@ -64,3 +64,8 @@ Do not start CI if syntax preflight fails. GitHub Actions are not used.
 ## Integration boundary
 
 The Owner has authorized WIP-only integration for reviewed tasks. Before merge, re-read current WIP HEAD, verify exact changed paths and independent Exact-SHA review, and run the required gate at the actual integration SHA. No main/version merge, tag, release, deployment, real download, Native Host or Windows side effect.
+
+
+## Rebase validation addendum — 2026-11-04
+
+The original dispatch/Claim base above remains the historical identity. After A01B PR #343 integrated, the same 11 source blobs were replayed unchanged onto WIP base `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` / tree `0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7`. The current candidate is `330efd081a89e443d79fa27064109c4c40d17b16` / tree `253ad057c813c1c447e05d57d5afb1737b092457`. See [REBASE_VALIDATION_2026-11-04.md](./REBASE_VALIDATION_2026-11-04.md) for exact blob identity, syntax/Prettier, tests, typecheck and Woodpecker #20 evidence. This is a validation rebind only; it changes no write-set permission. Independent Exact-SHA review of the rebound commit is still required.
