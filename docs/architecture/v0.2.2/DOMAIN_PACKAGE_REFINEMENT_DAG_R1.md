@@ -41,7 +41,7 @@ flowchart TD
 | A01B | S3 Media Host Request DTO | A01 | `packages/domain-contracts/src/download-host/s3-media-request.ts`; `download-host/index.ts` additive export only; `test/download-host/s3-media-request.test.ts` | Local Builder; exact three-path write set |
 | A02 | Domain App Public Boundary | A01 | Task Pack V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md (11 exact App paths) | Local Builder; bounded source |
 | A03 | Domain Host Boundary | A01, A01B | Task Pack V022-A03-DOMAIN-HOST-BOUNDARY.md (14 exact Host paths) | Local Builder; bounded source |
-| A04 | Core Runtime Consolidation | A02, A03 | \`packages/core-runtime/**\`, exact consumer adapters, both Domain App/Host package.json files and root pnpm-lock.yaml (sole manifest/lockfile writer) | Single integration writer |
+| A04 | Core Runtime Consolidation | A02, A03 | Not frozen; exact Core/consumer paths must be enumerated in A04 Task Pack after A02/A03 integration; A04 sole writer for both package.json files + root pnpm-lock.yaml | Single integration writer |
 | A05 | Domain Knowledge & Workflow Mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` | Documentation |
 | A06 | Architecture Integration & Verification | A04, A05 | Dedicated architecture tests and validation evidence; exact paths frozen in its Task Pack | Verification |
 | A07 | Final Exact-SHA Review & Closure | A06 | Read-only | Independent review |
@@ -105,11 +105,11 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 |---|---|---|
 | A00 | Read-only audit complete; independent review PASS | #338; report committed; no source mutation |
 | A01 | Implemented, reviewed and merged to WIP | #335; merge `a3cc525df6a8c561f396dadf1e79bbb549fcc036` |
-| A01B | Builder implementation ready; PR #343 / exact SHA `5831c57f512eac90d59d589858ac7c402d19535f`; Woodpecker #17 SUCCESS; independent review pending | #340 |
-| A02 | Builder implementation ready; PR #344 / exact SHA `d89cac20b9c718ae41ec4f64c651aa215b847c45`; Woodpecker #18 SUCCESS; independent review pending | #341 |
-| A03 | Task Pack independent review PASS; waits for #343 WIP integration and exact-base rebind | #342 |
-| A04 | Preparation R0 committed; not dispatched | Await A02 + A03 integration, then freeze exact write set |
-| A05 | Six documentation drafts committed; independent review PASS; validation-map filename corrected here | #339; docs-only; no source changes |
+| A01B | PR #343 merged to WIP at `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Woodpecker #17 SUCCESS; independent review PASS, P2=1 | #340 |
+| A02 | PR #344 rebased to `330efd081a89e443d79fa27064109c4c40d17b16`; independent review PASS, P2=2; rebased exact-SHA local validation pending | #341 |
+| A03 | Task Pack rebound to WIP `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Execution Pack current; ready for Local Builder Claim | #342 |
+| A04 | Preparation R0 committed; not dispatched | Await A02 + A03 integration; then freeze exact write set |
+| A05 | Six documentation drafts committed; corrected validation-map filename passed R2 re-review (P0=0/P1=0/P2=0) | #339; docs-only; no source changes |
 | A06 | Not dispatched | Await A04 + A05 |
 | A07 | Not dispatched | Independent final review |
 
