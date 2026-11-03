@@ -34,10 +34,10 @@ flowchart TD
 | ID | Task | Depends on | Candidate exclusive write set | Execution mode |
 |---|---|---|---|---|
 | A00 | Architecture Inventory & Authority Audit | — | Read-only source; one audit report file | Web-first, read-only |
-| A01 | Domain Contracts & Dependency Decoupling | A00 | \`packages/domain-contracts/**\`; explicitly listed App contract re-export files | Source implementation |
-| A02 | Domain App Refactoring | A01 | \`packages/download-domain-app/**\`, excluding A01-owned contract files | Source implementation |
-| A03 | Domain Host Refactoring | A01 | \`packages/download-domain-host/**\` | Source implementation |
-| A04 | Core Runtime Consolidation | A02, A03 | \`packages/core-runtime/**\` and only explicitly listed consumer adapters | Single integration writer |
+| A01 | Domain Contracts & Dependency Decoupling | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths | Source implementation |
+| A02 | Domain App Refactoring | A01 | \`packages/download-domain-app/**\`, and package-local tests; no root pnpm-lock.yaml | Source implementation |
+| A03 | Domain Host Refactoring | A01 | \`packages/download-domain-host/** and package-local tests; no root pnpm-lock.yaml\` | Source implementation |
+| A04 | Core Runtime Consolidation | A02, A03 | \`packages/core-runtime/**\` exact consumer adapters and pnpm-lock.yaml (sole lockfile writer) | Single integration writer |
 | A05 | Domain Knowledge & Workflow Mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` | Documentation |
 | A06 | Architecture Integration & Verification | A04, A05 | Dedicated architecture tests and validation evidence; exact paths frozen in its Task Pack | Verification |
 | A07 | Final Exact-SHA Review & Closure | A06 | Read-only | Independent review |
@@ -77,6 +77,8 @@ A04 starts only after A02 and A03 are individually complete and their exact SHAs
 
 A04 must retain one production K and the current route-ownership semantics unless an explicitly reviewed migration decision says otherwise.
 
+**Lockfile ownership:** A01 does not edit manifests or pnpm-lock.yaml. A02/A03 may update only their own package manifests and package-local source/tests; neither may edit the root lockfile. A04 is the sole pnpm-lock.yaml writer after both package Tasks are integrated, regenerating it once from the final manifest graph. A04's Task Pack must explicitly include the lockfile and exact regeneration command.
+
 ### Lane 5 — Verification and closure
 
 A06 runs after A04 and A05. A07 independently reviews the final exact integration SHA and evidence.
@@ -96,12 +98,12 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 
 | Task | State | Notes |
 |---|---|---|
-| A00 | Read-only audit complete; independent review pending | #338; report committed; no source mutation |
-| A01 | Neutral-contract Task Pack narrowed; review pending; not dispatched | #335 |
+| A00 | Read-only audit complete; independent review PASS | #338; report committed; no source mutation |
+| A01 | Neutral-contract Task Pack independent review PASS; planning P2 alignment corrected here; not dispatched | #335 |
 | A02 | Not dispatched | Await A01 |
 | A03 | Not dispatched | Await A01 |
 | A04 | Not dispatched | Await A02 + A03 |
-| A05 | Six documentation drafts committed; independent review pending | #339; docs-only; no source changes |
+| A05 | Six documentation drafts committed; independent review PASS; validation-map filename corrected here | #339; docs-only; no source changes |
 | A06 | Not dispatched | Await A04 + A05 |
 | A07 | Not dispatched | Independent final review |
 
