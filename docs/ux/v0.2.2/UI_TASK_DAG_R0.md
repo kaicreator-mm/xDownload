@@ -60,3 +60,15 @@
 - #332 is admitted for an actual Local Builder under the pinned ADS v4.18.0 `LOCAL_BUILDER/LOCAL` profile; its current Execution Pack and HANDOFF_READY are linked in #332. The worker's own accepted `DISPATCH_CLAIMED` remains required before source mutation.
 - The valid single-resource COMPLETE projection still has coverage `NOT_APPLICABLE` and the current renderer displays “ended · not completed”. Renderer/Product correction is separate from this test-only Task and is not authorized here.
 - PR #331 (#329 Browser follow-up) and PR #330 (#322 Desktop serialization) are implementation-complete but remain unmerged pending WIP integration control. Their source changes do not alter the frozen base of #332 unless explicitly integrated/rebound.
+
+
+## U03 follow-up from U06 single-resource terminal fixture (2026-11-03)
+
+> Append-only evidence update; canonical lane definitions remain unchanged and the full UI DAG remains `CANDIDATE_NOT_FROZEN`.
+
+- #326 real Electron/Core Seam fixture exposed a valid single-resource COMPLETE projection misclassified by the Desktop renderer as “ended · not completed” and counted failed. Domain contract requires `coverage=NOT_APPLICABLE` for direct single-resource results; renderer completion predicate only accepted `VERIFIED_COMPLETE`.
+- #333 is the bounded U03 renderer correction. Frozen Task Pack blob: `3e1fa992df6360d8896f0e007f439eefe4c8b83b`. Exclusive write set:
+  - `apps/desktop-shell/src/renderer/renderer-main.ts`
+  - `apps/desktop-shell/test/ux-r0-form-schema.test.ts`
+- #333 uses the Owner-approved LOCAL_BUILDER/LOCAL route under ADS v4.18.0; the worker's accepted claim remains required.
+- The fix must preserve all authoritative completion dimensions, treat NOT_APPLICABLE as complete only when the remaining dimensions prove success, and never alter the domain contract or fabricate coverage.
