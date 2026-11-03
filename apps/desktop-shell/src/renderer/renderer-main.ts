@@ -54,7 +54,10 @@ function verifiedComplete(row: ManagerJobRowDocument): boolean {
     terminal !== null &&
     terminal.targetResolution === 'RESOLVED' &&
     terminal.selectionAcquisition === 'COMPLETE' &&
-    terminal.coverage === 'VERIFIED_COMPLETE' &&
+    // Direct single-resource results carry NOT_APPLICABLE coverage by domain
+    // contract (PRD §18.1); completion is proven by the other terminal
+    // dimensions, never by coverage alone.
+    (terminal.coverage === 'VERIFIED_COMPLETE' || terminal.coverage === 'NOT_APPLICABLE') &&
     terminal.requestFulfillment === 'COMPLETE' &&
     terminal.validationSummary.status === 'ALL_PASSED'
   );
@@ -421,7 +424,12 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   tr.appendChild(status);
 
   const progress = document.createElement('td');
-  progress.textContent = verifiedComplete(row) ? '已验证完成' : progressSummary(row);
+  // “已验证完成” claims measured coverage evidence; NOT_APPLICABLE rows are
+  // completed without it, so they keep the honest coverage detail text.
+  progress.textContent =
+    verifiedComplete(row) && row.terminal !== null && row.terminal.coverage === 'VERIFIED_COMPLETE'
+      ? '已验证完成'
+      : progressSummary(row);
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
