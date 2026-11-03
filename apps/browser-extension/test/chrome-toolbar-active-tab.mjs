@@ -382,6 +382,7 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class U06ActionMouse {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
