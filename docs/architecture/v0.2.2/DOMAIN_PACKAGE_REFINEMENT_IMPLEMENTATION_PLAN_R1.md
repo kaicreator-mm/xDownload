@@ -137,8 +137,8 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 | A00 | Architecture inventory and authority audit | — | read-only source; audit report only |
 | A01 | Neutral Domain Contracts and dependency-boundary extraction | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths; exact neutral-contract paths only |
 | A02 | Domain App refactor and public ABI cleanup | A01 | \`packages/download-domain-app/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
-| A03 | Domain Host refactor and physical adapter ownership | A01 | \`packages/download-domain-host/** and package-local tests; no root pnpm-lock.yaml\` |
-| A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters and pnpm-lock.yaml (sole lockfile writer) |
+| A03 | Domain Host refactor and physical adapter ownership | A01 | \`packages/download-domain-host/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
+| A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters, both Domain App/Host package.json files, and root pnpm-lock.yaml (sole manifest + lockfile writer) |
 | A05 | Domain Knowledge / Workflow / Function-Tool mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` |
 | A06 | Architecture integration tests and exact-SHA verification | A04, A05 | dedicated architecture tests / validation evidence, exact paths frozen later |
 | A07 | Final independent Exact-SHA review and closure | A06 | read-only |
@@ -152,7 +152,7 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 5. A06 follows A04 and A05.
 6. A07 is an independent read-only review.
 
-**Lockfile ownership:** A01 does not change package manifests or the root lockfile. A02 and A03 may change only their own package manifests and package-local source/tests; both must leave root pnpm-lock.yaml untouched. A04 is the single owner of pnpm-lock.yaml, regenerated once after both A02 and A03 are integrated and their package manifests are final. Later Task Packs must encode this ownership explicitly.
+**Manifest/lockfile ownership:** A01, A02 and A03 do not edit either Domain App/Host package.json or the root pnpm-lock.yaml. A02/A03 are source-only parallel Tasks. A04 is the sole writer for both `packages/download-domain-app/package.json`, `packages/download-domain-host/package.json`, and root `pnpm-lock.yaml`: after A02/A03 source changes are integrated, it removes the reciprocal workspace dependencies and regenerates the lockfile once. This is required because the local Woodpecker pipeline runs `pnpm install --frozen-lockfile` before `ci:verify`; changing a package importer without the matching lockfile would fail before tests. Later Task Packs must encode this single-writer ownership explicitly.
 
 Do not create A02/A03/A04 source Tasks with broad or overlapping write sets before A00 has frozen their exact paths and contracts.
 
