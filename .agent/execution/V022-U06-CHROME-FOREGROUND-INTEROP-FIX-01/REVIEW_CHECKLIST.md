@@ -1,6 +1,6 @@
 # Independent Review Checklist — U06 foreground interop fix
 
-- [ ] Exact candidate HEAD/tree/base re-read.
+- [ ] Exact candidate HEAD/tree/base re-read (R1 base: `4d2148b80976532cecfaddc111c7fdc94980a289`, tree `78246a75ef4951328b17f27b2f9da0b0824d90a4`).
 - [ ] Changed paths exactly chrome-toolbar-active-tab.mjs.
 - [ ] U06ActionMouse declares GetForegroundWindow in the same PowerShell type/process that calls it.
 - [ ] PowerShell interop compiles and method invocation returns IntPtr without exception.
