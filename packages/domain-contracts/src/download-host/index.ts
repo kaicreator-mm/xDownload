@@ -39,6 +39,10 @@ export {
   type S4HostConfirmedSelection,
 } from './s4-request.ts';
 export {
+  validateS3MediaHostAcquisitionRequest,
+  type S3MediaHostAcquisitionRequest,
+} from './s3-media-request.ts';
+export {
   normalizeEffectEnvelope,
   validateMaterializedEvidence,
   type EffectEnvelope,
