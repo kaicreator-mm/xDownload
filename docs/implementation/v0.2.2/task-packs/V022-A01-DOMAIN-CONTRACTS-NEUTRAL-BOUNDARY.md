@@ -15,7 +15,8 @@
 - Planning source baseline: 9e3ccd382311619e60b8d2a7373e8a7d34733334
 - Review policy: required
 - Risk: medium
-- Execution profile: implementation Builder selected by current ADS admission; Local Agent may implement or repair if its own Claim authorizes it
+- Pinned ADS standard revision: 2c395c55569fe2edf3f4135f12d3d069e526d0b7 (v4.18.0)
+- Execution profile: LOCAL_BUILDER / LOCAL; the Local Agent may own bounded implementation, tests and repairs under its own accepted Claim
 - Validation scope: neutral C/Host contract design, schema exactness, compatibility and negative validation
 
 ## Goal
