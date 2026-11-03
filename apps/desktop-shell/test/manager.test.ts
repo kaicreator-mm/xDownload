@@ -12,7 +12,7 @@
  *   user-chosen destination — and never claims an artifact path.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCoreSeamServer,
   createLoopbackClientTransport,
@@ -359,3 +359,248 @@ function stubProjectionView(requestFulfillment: 'COMPLETE' | 'PARTIAL'): {
     },
   };
 }
+
+const LINEAGE_A = 'contract-a-000001';
+const LINEAGE_B = 'contract-b-000002';
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+  readonly reject: (reason?: unknown) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: Deferred<T>['resolve'];
+  let reject!: Deferred<T>['reject'];
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+interface AttachOutcome {
+  readonly display: { readonly connection: 'CONNECTED' };
+}
+
+class DeferredAdapter {
+  readonly attachCalls: string[] = [];
+  readonly controlCalls: { readonly action: 'cancel' | 'retry'; readonly lineageId: string }[] = [];
+  maxActiveAttaches = 0;
+  private activeAttaches = 0;
+  private currentLineageId: string | null = null;
+  private readonly pendingAttaches: {
+    readonly lineageId: string;
+    readonly deferred: Deferred<AttachOutcome>;
+  }[] = [];
+
+  constructor(readonly views: Map<string, ReturnType<typeof stubProjectionView>>) {}
+
+  attachAggregate(lineageId: string): Promise<AttachOutcome> {
+    this.attachCalls.push(lineageId);
+    this.currentLineageId = lineageId;
+    this.activeAttaches += 1;
+    this.maxActiveAttaches = Math.max(this.maxActiveAttaches, this.activeAttaches);
+    const deferred = createDeferred<AttachOutcome>();
+    this.pendingAttaches.push({ lineageId, deferred });
+    return deferred.promise.finally(() => {
+      this.activeAttaches -= 1;
+    });
+  }
+
+  hasPendingAttach(lineageId: string): boolean {
+    return this.pendingAttaches.some((pending) => pending.lineageId === lineageId);
+  }
+
+  resolveAttach(lineageId: string): void {
+    const pending = this.takePendingAttach(lineageId);
+    this.currentLineageId = lineageId;
+    pending.deferred.resolve({ display: { connection: 'CONNECTED' } });
+  }
+
+  rejectAttach(lineageId: string, error: Error): void {
+    this.takePendingAttach(lineageId).deferred.reject(error);
+  }
+
+  currentProjectionView(): ReturnType<typeof stubProjectionView> | null {
+    return this.currentLineageId === null ? null : (this.views.get(this.currentLineageId) ?? null);
+  }
+
+  async cancel(): Promise<{
+    readonly routed: string[];
+    readonly rejections: [];
+    readonly refusals: [];
+  }> {
+    return this.routeControl('cancel');
+  }
+
+  async retryFailed(): Promise<{
+    readonly routed: string[];
+    readonly rejections: [];
+    readonly refusals: [];
+  }> {
+    return this.routeControl('retry');
+  }
+
+  private routeControl(action: 'cancel' | 'retry'): {
+    readonly routed: string[];
+    readonly rejections: [];
+    readonly refusals: [];
+  } {
+    if (this.currentLineageId === null) {
+      throw new Error('no attached lineage');
+    }
+    const lineageId = this.currentLineageId;
+    this.controlCalls.push({ action, lineageId });
+    return { routed: [lineageId], rejections: [], refusals: [] };
+  }
+
+  private takePendingAttach(lineageId: string): {
+    readonly lineageId: string;
+    readonly deferred: Deferred<AttachOutcome>;
+  } {
+    const index = this.pendingAttaches.findIndex((pending) => pending.lineageId === lineageId);
+    const pending = this.pendingAttaches[index];
+    if (index < 0 || pending === undefined) {
+      throw new Error(`no pending attach for ${lineageId}`);
+    }
+    this.pendingAttaches.splice(index, 1);
+    return pending;
+  }
+}
+
+function lineageProjection(
+  lineageId: string,
+  revision: number,
+): ReturnType<typeof stubProjectionView> {
+  const view = stubProjectionView('PARTIAL');
+  view.contract.contractId = lineageId;
+  view.contract.revision = revision;
+  return view;
+}
+
+function startDeferredManager(): {
+  readonly adapter: DeferredAdapter;
+  readonly manager: DesktopManager;
+} {
+  const adapter = new DeferredAdapter(
+    new Map([
+      [LINEAGE_A, lineageProjection(LINEAGE_A, 11)],
+      [LINEAGE_B, lineageProjection(LINEAGE_B, 22)],
+    ]),
+  );
+  const manager = new DesktopManager({
+    getAdapter: () => adapter as unknown as DesktopUiAdapter,
+    getConnectionWhenUnconfigured: () => 'CONNECTED',
+    pickDestination: async () => null,
+    revealFolder: () => true,
+  });
+  const jobs = (
+    manager as unknown as {
+      jobs: Map<string, { lineageId: string; destination: string | null }>;
+    }
+  ).jobs;
+  jobs.set(LINEAGE_A, { lineageId: LINEAGE_A, destination: 'C:/downloads/a' });
+  jobs.set(LINEAGE_B, { lineageId: LINEAGE_B, destination: 'C:/downloads/b' });
+  return { adapter, manager };
+}
+
+async function resolveNextAttach(adapter: DeferredAdapter, lineageId: string): Promise<void> {
+  await vi.waitFor(() => {
+    expect(adapter.hasPendingAttach(lineageId)).toBe(true);
+  });
+  adapter.resolveAttach(lineageId);
+}
+
+function expectLineageRows(document: {
+  readonly jobs: readonly { readonly lineageId: string; readonly revision: number | null }[];
+}): void {
+  expect(document.jobs.map((row) => [row.lineageId, row.revision])).toEqual([
+    [LINEAGE_A, 11],
+    [LINEAGE_B, 22],
+  ]);
+}
+
+async function expectSerializedControl(action: 'cancel' | 'retry'): Promise<void> {
+  const { adapter, manager } = startDeferredManager();
+  const refresh = manager.list();
+  await resolveNextAttach(adapter, LINEAGE_A);
+  await vi.waitFor(() => {
+    expect(adapter.hasPendingAttach(LINEAGE_B)).toBe(true);
+  });
+
+  const control =
+    action === 'cancel'
+      ? manager.cancelJob({ lineageId: LINEAGE_A })
+      : manager.retryJob({ lineageId: LINEAGE_A });
+  await Promise.resolve();
+  adapter.resolveAttach(LINEAGE_B);
+  await refresh;
+
+  await resolveNextAttach(adapter, LINEAGE_A);
+  await vi.waitFor(() => {
+    expect(adapter.controlCalls).toHaveLength(1);
+  });
+  await resolveNextAttach(adapter, LINEAGE_A);
+  await resolveNextAttach(adapter, LINEAGE_B);
+  const answer = await control;
+
+  expect(adapter.maxActiveAttaches).toBe(1);
+  expect(adapter.controlCalls).toEqual([{ action, lineageId: LINEAGE_A }]);
+  expect(isRefusal(answer)).toBe(false);
+  if (isRefusal(answer)) {
+    throw new Error('control unexpectedly refused');
+  }
+  expect(answer.action).toBe(action);
+  expect(answer.lineageId).toBe(LINEAGE_A);
+  expect(answer.routed).toBe(true);
+  expectLineageRows(answer.list);
+}
+
+describe('DesktopManager shared-adapter serialization', () => {
+  it('keeps a delayed A/B list refresh from overlapping or retargeting Cancel A', async () => {
+    await expectSerializedControl('cancel');
+  });
+
+  it('keeps a delayed A/B list refresh from overlapping or retargeting Retry A', async () => {
+    await expectSerializedControl('retry');
+  });
+
+  it('binds every list row to its own lineage projection', async () => {
+    const { adapter, manager } = startDeferredManager();
+    const list = manager.list();
+    await resolveNextAttach(adapter, LINEAGE_A);
+    await resolveNextAttach(adapter, LINEAGE_B);
+    expectLineageRows(await list);
+  });
+
+  it('coalesces concurrent public list requests into one in-flight refresh', async () => {
+    const { adapter, manager } = startDeferredManager();
+    const first = manager.list();
+    const second = manager.list();
+    expect(second).toBe(first);
+
+    await resolveNextAttach(adapter, LINEAGE_A);
+    await resolveNextAttach(adapter, LINEAGE_B);
+    const document = await first;
+    expect(await second).toBe(document);
+    expect(adapter.attachCalls).toEqual([LINEAGE_A, LINEAGE_B]);
+    expectLineageRows(document);
+  });
+
+  it('recovers the queue and list single-flight state after an adapter rejection', async () => {
+    const { adapter, manager } = startDeferredManager();
+    const failed = manager.list();
+    await vi.waitFor(() => {
+      expect(adapter.hasPendingAttach(LINEAGE_A)).toBe(true);
+    });
+    adapter.rejectAttach(LINEAGE_A, new Error('deferred projection refused'));
+    await expect(failed).rejects.toThrow('deferred projection refused');
+
+    const recovered = manager.list();
+    expect(recovered).not.toBe(failed);
+    await resolveNextAttach(adapter, LINEAGE_A);
+    await resolveNextAttach(adapter, LINEAGE_B);
+    expectLineageRows(await recovered);
+  });
+});

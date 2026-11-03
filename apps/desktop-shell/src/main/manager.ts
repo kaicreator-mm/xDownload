@@ -94,6 +94,8 @@ export class DesktopManager {
   private readonly options: DesktopManagerOptions;
   private readonly jobs = new Map<string, SessionJob>();
   private pending: PendingPreview | null = null;
+  private operationTail: Promise<void> = Promise.resolve();
+  private listInFlight: Promise<ManagerJobListDocument> | null = null;
 
   constructor(options: DesktopManagerOptions) {
     this.options = options;
@@ -121,49 +123,51 @@ export class DesktopManager {
     readonly url: string;
     readonly destination?: string;
   }): Promise<ManagerPreviewDocument | ShellRefusal> {
-    const adapter = this.options.getAdapter();
-    if (adapter === undefined) {
-      return refusal('no Core connection is configured; downloads cannot be added');
-    }
-    if (this.pending !== null) {
-      return refusal('a preview is already pending; confirm or discard it first');
-    }
-    const decoded = decodeManagerUrl(payload.url);
-    if (!decoded.ok) {
-      return refusal(`url rejected: ${decoded.diagnostics[0]?.message ?? 'malformed URL'}`);
-    }
-    const intent = singleResourceUrlIntent(decoded.value);
-    if (!intent.ok) {
-      return refusal(`intent refused: ${intent.diagnostics[0]?.message ?? 'malformed intent'}`);
-    }
-    const entered = adapter.enterIntent({
-      intent: intent.value,
-      workflowFacts: SINGLE_RESOURCE_WORKFLOW_FACTS,
+    return this.runSerialized(async () => {
+      const adapter = this.options.getAdapter();
+      if (adapter === undefined) {
+        return refusal('no Core connection is configured; downloads cannot be added');
+      }
+      if (this.pending !== null) {
+        return refusal('a preview is already pending; confirm or discard it first');
+      }
+      const decoded = decodeManagerUrl(payload.url);
+      if (!decoded.ok) {
+        return refusal(`url rejected: ${decoded.diagnostics[0]?.message ?? 'malformed URL'}`);
+      }
+      const intent = singleResourceUrlIntent(decoded.value);
+      if (!intent.ok) {
+        return refusal(`intent refused: ${intent.diagnostics[0]?.message ?? 'malformed intent'}`);
+      }
+      const entered = adapter.enterIntent({
+        intent: intent.value,
+        workflowFacts: SINGLE_RESOURCE_WORKFLOW_FACTS,
+      });
+      if (entered.refusals.length > 0) {
+        return refusal(`preview refused: ${entered.refusals[0] ?? 'adapter refusal'}`);
+      }
+      const draft = adapter.currentDraftView();
+      if (draft === null) {
+        return refusal('preview refused: the adapter did not open a draft');
+      }
+      this.pending = {
+        lineageId: draft.contractId,
+        url: draft.targetRef,
+        destination: payload.destination ?? null,
+      };
+      return {
+        document: 'xdownload.desktop.manager.preview',
+        lineageId: draft.contractId,
+        url: draft.targetRef,
+        destination: payload.destination ?? null,
+        automationMode: draft.automationMode,
+        confirmationRequests: draft.requests.map((request) => ({
+          level: request.level,
+          description: request.description,
+          proves: request.proves,
+        })),
+      };
     });
-    if (entered.refusals.length > 0) {
-      return refusal(`preview refused: ${entered.refusals[0] ?? 'adapter refusal'}`);
-    }
-    const draft = adapter.currentDraftView();
-    if (draft === null) {
-      return refusal('preview refused: the adapter did not open a draft');
-    }
-    this.pending = {
-      lineageId: draft.contractId,
-      url: draft.targetRef,
-      destination: payload.destination ?? null,
-    };
-    return {
-      document: 'xdownload.desktop.manager.preview',
-      lineageId: draft.contractId,
-      url: draft.targetRef,
-      destination: payload.destination ?? null,
-      automationMode: draft.automationMode,
-      confirmationRequests: draft.requests.map((request) => ({
-        level: request.level,
-        description: request.description,
-        proves: request.proves,
-      })),
-    };
   }
 
   /**
@@ -172,47 +176,51 @@ export class DesktopManager {
    * outcome lands in the job projection the list reads.
    */
   async confirmAdd(): Promise<ManagerActionDocument | ShellRefusal> {
-    const pending = this.pending;
-    if (pending === null) {
-      return refusal('no preview is pending; nothing to confirm');
-    }
-    const adapter = this.options.getAdapter();
-    if (adapter === undefined) {
-      return refusal('no Core connection is configured; the preview cannot be confirmed');
-    }
-    const outcome = await adapter.confirmScope();
-    const routed = outcome.routed.length > 0;
-    if (routed) {
-      this.jobs.set(pending.lineageId, {
-        lineageId: pending.lineageId,
-        destination: pending.destination,
-      });
-      this.pending = null;
-    }
-    return this.actionDocument('add', pending.lineageId, routed, outcome);
+    return this.runSerialized(async () => {
+      const pending = this.pending;
+      if (pending === null) {
+        return refusal('no preview is pending; nothing to confirm');
+      }
+      const adapter = this.options.getAdapter();
+      if (adapter === undefined) {
+        return refusal('no Core connection is configured; the preview cannot be confirmed');
+      }
+      const outcome = await adapter.confirmScope();
+      const routed = outcome.routed.length > 0;
+      if (routed) {
+        this.jobs.set(pending.lineageId, {
+          lineageId: pending.lineageId,
+          destination: pending.destination,
+        });
+        this.pending = null;
+      }
+      return this.actionDocument('add', pending.lineageId, routed, outcome);
+    });
   }
 
   /** Discard the pending preview (presentation-only; nothing was routed). */
   async discardPreview(): Promise<ManagerActionDocument | ShellRefusal> {
-    const pending = this.pending;
-    if (pending === null) {
-      return refusal('no preview is pending');
-    }
-    const adapter = this.options.getAdapter();
-    if (adapter !== undefined) {
-      adapter.discardDraft();
-    }
-    this.pending = null;
-    return {
-      ok: true,
-      document: 'xdownload.desktop.manager.action',
-      action: 'discard-preview',
-      lineageId: pending.lineageId,
-      routed: false,
-      rejections: [],
-      refusalDetail: null,
-      list: await this.list(),
-    };
+    return this.runSerialized(async () => {
+      const pending = this.pending;
+      if (pending === null) {
+        return refusal('no preview is pending');
+      }
+      const adapter = this.options.getAdapter();
+      if (adapter !== undefined) {
+        adapter.discardDraft();
+      }
+      this.pending = null;
+      return {
+        ok: true,
+        document: 'xdownload.desktop.manager.action',
+        action: 'discard-preview',
+        lineageId: pending.lineageId,
+        routed: false,
+        rejections: [],
+        refusalDetail: null,
+        list: await this.listUnlocked(),
+      };
+    });
   }
 
   // ---- job list ------------------------------------------------------------
@@ -222,7 +230,22 @@ export class DesktopManager {
    * document. This is the ONLY status source of the manager: rows whose
    * read fails render the truthful absent state (never a cached claim).
    */
-  async list(): Promise<ManagerJobListDocument> {
+  list(): Promise<ManagerJobListDocument> {
+    if (this.listInFlight !== null) {
+      return this.listInFlight;
+    }
+    const inFlight = this.runSerialized(() => this.listUnlocked());
+    this.listInFlight = inFlight;
+    const clearInFlight = (): void => {
+      if (this.listInFlight === inFlight) {
+        this.listInFlight = null;
+      }
+    };
+    void inFlight.then(clearInFlight, clearInFlight);
+    return inFlight;
+  }
+
+  private async listUnlocked(): Promise<ManagerJobListDocument> {
     const adapter = this.options.getAdapter();
     const rows: ManagerJobRowDocument[] = [];
     let connection: ShellCoreConnection = 'CONNECTED';
@@ -302,55 +325,68 @@ export class DesktopManager {
   async revealJob(payload: {
     readonly lineageId: string;
   }): Promise<ManagerRevealDocument | ShellRefusal> {
-    const job = this.jobs.get(payload.lineageId);
-    if (job === undefined) {
-      return refusal(`unknown lineage '${payload.lineageId}'`);
-    }
-    if (job.destination === null) {
-      return refusal('this job has no destination folder to reveal');
-    }
-    const adapter = this.options.getAdapter();
-    if (adapter === undefined) {
-      return refusal('no Core connection is configured; completion cannot be verified');
-    }
-    await adapter.attachAggregate(job.lineageId);
-    const view = adapter.currentProjectionView();
-    if (
-      view === null ||
-      view.terminal === undefined ||
-      view.terminal.requestFulfillment !== 'COMPLETE'
-    ) {
-      return refusal('the Core projection does not show this job as completed');
-    }
-    if (!this.options.revealFolder(job.destination)) {
-      return refusal('the destination folder could not be revealed');
-    }
-    return {
-      ok: true,
-      document: 'xdownload.desktop.manager.reveal',
-      lineageId: job.lineageId,
-      revealed: 'destination-folder',
-      destination: job.destination,
-    };
+    return this.runSerialized(async () => {
+      const job = this.jobs.get(payload.lineageId);
+      if (job === undefined) {
+        return refusal(`unknown lineage '${payload.lineageId}'`);
+      }
+      if (job.destination === null) {
+        return refusal('this job has no destination folder to reveal');
+      }
+      const adapter = this.options.getAdapter();
+      if (adapter === undefined) {
+        return refusal('no Core connection is configured; completion cannot be verified');
+      }
+      await adapter.attachAggregate(job.lineageId);
+      const view = adapter.currentProjectionView();
+      if (
+        view === null ||
+        view.terminal === undefined ||
+        view.terminal.requestFulfillment !== 'COMPLETE'
+      ) {
+        return refusal('the Core projection does not show this job as completed');
+      }
+      if (!this.options.revealFolder(job.destination)) {
+        return refusal('the destination folder could not be revealed');
+      }
+      return {
+        ok: true,
+        document: 'xdownload.desktop.manager.reveal',
+        lineageId: job.lineageId,
+        revealed: 'destination-folder',
+        destination: job.destination,
+      };
+    });
   }
 
   // ---- internals ---------------------------------------------------------------
+
+  private runSerialized<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationTail.then(operation);
+    this.operationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
 
   private async routeControl(
     action: 'cancel' | 'retry',
     lineageId: string,
   ): Promise<ManagerActionDocument | ShellRefusal> {
-    if (!this.jobs.has(lineageId)) {
-      return refusal(`unknown lineage '${lineageId}'`);
-    }
-    const adapter = this.options.getAdapter();
-    if (adapter === undefined) {
-      return refusal('no Core connection is configured; the action cannot be routed');
-    }
-    await adapter.attachAggregate(lineageId);
-    const outcome = action === 'cancel' ? await adapter.cancel() : await adapter.retryFailed();
-    const routed = outcome.routed.length > 0;
-    return this.actionDocument(action, lineageId, routed, outcome);
+    return this.runSerialized(async () => {
+      if (!this.jobs.has(lineageId)) {
+        return refusal(`unknown lineage '${lineageId}'`);
+      }
+      const adapter = this.options.getAdapter();
+      if (adapter === undefined) {
+        return refusal('no Core connection is configured; the action cannot be routed');
+      }
+      await adapter.attachAggregate(lineageId);
+      const outcome = action === 'cancel' ? await adapter.cancel() : await adapter.retryFailed();
+      const routed = outcome.routed.length > 0;
+      return this.actionDocument(action, lineageId, routed, outcome);
+    });
   }
 
   private async actionDocument(
@@ -374,7 +410,7 @@ export class DesktopManager {
         message: rejection.message,
       })),
       refusalDetail: routed || firstRefusal === undefined ? null : firstRefusal,
-      list: await this.list(),
+      list: await this.listUnlocked(),
     };
   }
 
