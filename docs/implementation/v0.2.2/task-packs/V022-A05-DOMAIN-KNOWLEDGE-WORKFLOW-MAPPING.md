@@ -2,7 +2,8 @@
 
 > Status: documentation-only Task Pack proposed after A00 source audit. It does not authorize source mutation or Product/L2 changes.
 >
-> Parent tracking: xDownload #337  
+> Parent tracking: xDownload #337
+Formal Task Issue: xDownload #339  
 > A00 audit: xDownload #338  
 > Upstream: DomainHarness #1465 / PR #1466 / #1392
 
