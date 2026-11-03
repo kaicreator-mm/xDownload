@@ -3,8 +3,8 @@
 > TASK_PACK_STATE: PROPOSAL / OWNER_APPROVAL_REQUIRED / NOT_SOURCE_CLAIM
 > Parent: #332 U06 harness
 > Current WIP: wip/v0.2.2-ui-rebuild-r0
-> Exact proposed base: a3e1b22c200ef11a942dacc953e2bfecdc3db03c
-> Base tree: 0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7
+> Exact approved base R1: 4d2148b80976532cecfaddc111c7fdc94980a289
+> Base tree: 78246a75ef4951328b17f27b2f9da0b0824d90a4
 > ADS: v4.18.0 / 2c395c55569fe2edf3f4135f12d3d069e526d0b7
 
 ## Goal
