@@ -1,0 +1,48 @@
+pack_id: "V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY@5880731aa84601373c028e45f2ec0380e521686f"
+task_id: "V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+base_sha: "5880731aa84601373c028e45f2ec0380e521686f"
+base_tree: "d49b4a72ef54bcc8db1f354c394d44650fbec412"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md@planning/v0.2.2-domain-package-architecture-r0@1c4dea041a00db526d6ef99450460d86d1001997#blob:6e1101e51505b18a30c310b5ba0c2052b5e189e0"
+branch: "task/v022-a02-domain-app-public-boundary"
+parent_issue: "#337"
+task_issue: "#341"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+generated_by: "chatgpt-web:xdownload-v022-a02-controller"
+generated_at: "2026-11-03"
+dependency_completion:
+  - "xDownload#335:A01_MERGED_TO_WIP"
+  - "xDownload#341:TASK_PACK_INDEPENDENT_REVIEW_PASS"
+material_paths:
+  - "packages/download-domain-app/src/index.ts"
+  - "packages/download-domain-app/src/composition/runtime.ts"
+  - "packages/download-domain-app/src/integrations/index.ts"
+  - "packages/download-domain-app/src/integrations/media-registry.ts"
+  - "packages/download-domain-app/src/integrations/s3-media.ts"
+  - "packages/download-domain-app/src/integrations/s4-hls-vod.ts"
+  - "packages/download-domain-app/src/migration/index.ts"
+  - "packages/core-runtime/src/domain-app-route.ts"
+  - "packages/domain-contracts/src/download-host/index.ts"
+core_artifacts:
+  - "MANIFEST.yaml"
+  - "EXECUTION_CONTRACT.md"
+  - "TEST_MATRIX.yaml"
+  - "FAILURE_MATRIX.yaml"
+  - "IMPLEMENTATION_MAP.md"
+  - "REVIEW_CHECKLIST.md"
+optional_artifacts: []
+retention: "durable"
+package_excluded: true
+pack_state_at_generation: "PACK_CURRENT"
+intent_assumption_refs:
+  - "xDownload#305"
+  - "xDownload#337"
+  - "xDownload#341"
+skill_metadata_refs: []
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+owner_authorization_refs:
+  - "xDownload#305@6586392596"
+dispatch_admission: "OWNER_AUTHORIZED_LOCAL_BUILDER_PENDING_CLAIM"
