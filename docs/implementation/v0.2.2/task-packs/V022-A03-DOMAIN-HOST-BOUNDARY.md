@@ -1,14 +1,14 @@
 # Task Pack — V022-A03 Domain Host Boundary
 
- > Status: bounded source Task; A01B #340 is integrated into WIP via PR #343; ready for a fresh Local Builder Claim.
+> Status: bounded source Task; A01B #340 is integrated into WIP via PR #343; ready for a fresh Local Builder Claim.
 >
 > Parent tracking: xDownload #337  
 > Formal Task Issue: xDownload #342  
 > Dependencies: A01 #335 and A01B #340  
 > Planning baseline: planning/v0.2.2-domain-package-architecture-r0  
 > Audit baseline: wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334  
- > Current WIP after A01B integration: a3e1b22c200ef11a942dacc953e2bfecdc3db03c (tree 0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7)  
- > Rebind complete: A01B #340 merged as PR #343; use only the exact WIP SHA/tree above for this dispatch.
+> Current WIP after A01B integration: a3e1b22c200ef11a942dacc953e2bfecdc3db03c (tree 0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7)  
+> Rebind complete: A01B #340 merged as PR #343; use only the exact WIP SHA/tree above for this dispatch.
 
 ## Contract
 
