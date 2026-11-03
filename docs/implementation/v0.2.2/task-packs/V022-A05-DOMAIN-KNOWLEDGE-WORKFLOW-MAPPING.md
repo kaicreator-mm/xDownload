@@ -79,4 +79,12 @@ The six requested documents have been created on the planning branch at exact HE
 - docs/architecture/v0.2.2/domain-package/DOMAIN_FUNCTION_TOOL_MAP.md
 - docs/architecture/v0.2.2/domain-package/DOMAIN_VALIDATION_MAP.md
 
-Status: documentation drafted; independent review pending. No source or Product/L2 files changed.
+Status: documentation draft and initial independent review PASS; the validation-map filename P2 was corrected and the corrected six-document set passed R2 re-review on 2026-11-04. No source or Product/L2 files changed.
+
+## Correction re-review R2 (2026-11-04)
+
+- Reviewed all six current documents against A00 baseline `9e3ccd382311619e60b8d2a7373e8a7d34733334`.
+- Five documents remain byte-identical to the initial reviewed set.
+- `DOMAIN_VALIDATION_MAP.md` corrects the Core S3 test path to `packages/core-runtime/test/s3-selected-media-flow.test.ts`; that path exists at the A00 baseline and the old filename does not.
+- No additional architecture, authority, Workflow, Function/Tool, SDK pin, Product/L2 or runtime claim changed.
+- Issue #339 records R2 re-review PASS, P0=0/P1=0/P2=0.
