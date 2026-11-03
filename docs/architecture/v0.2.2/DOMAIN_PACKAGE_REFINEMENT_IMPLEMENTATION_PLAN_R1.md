@@ -238,6 +238,7 @@ Each source Task needs its own Task Pack, exact base, allowed write set, accepte
 - Parent tracking issue: #337.
 - A00 read-only audit is complete at the exact baseline; independent review is pending in [#338](https://github.com/kaicreator-mm/xDownload/issues/338).
 - A00 report: [A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md](./A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md); Task Pack blob `1591be332f3ba76e8e5a14d5f062e27860dcc219`.
-- Existing [#335](https://github.com/kaicreator-mm/xDownload/issues/335) is the planned A01 entry and must be narrowed to neutral-contract extraction before dispatch.
+- [#335](https://github.com/kaicreator-mm/xDownload/issues/335) is now narrowed to A01 neutral Host contracts; its Task Pack is proposed for independent review and remains NOT_DISPATCHED.
+- [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 documentation draft is complete at planning HEAD `3b22c1cef7e1ee12e21623ab9fa207c55e660263`; independent review is pending.
 - No A01–A07 source implementation is dispatched by this plan.
 - UI U00–U06 remains a separate lane and may continue in parallel where exact write sets do not overlap.
