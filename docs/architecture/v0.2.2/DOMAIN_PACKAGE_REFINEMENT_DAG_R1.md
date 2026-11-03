@@ -77,7 +77,7 @@ A02 and A01B may proceed in parallel. After A01B, A03 removes Host → App deep 
 
 ### Lane 4 — Core composition
 
-A04 starts only after A02 and A03 are individually complete and their exact SHAs are read back. It is the sole writer for Core Runtime integration.
+A04 remains the sole writer for Core Runtime integration. A02's current Exact-SHA review found a P1: the 25 S2/S5/S6 journey cases still depend on the throwing App runtime sentinel and are absent from Core CI. Therefore A02 must not be merged alone to WIP. Prepare a staging integration candidate containing the exact A02/A03 commits, then implement A04's test relocation and Core composition on that candidate; integrate the complete candidate to WIP only after fresh validation, independent review and Owner authorization. A03 may be integrated separately only after its independent Exact-SHA review and existing conditional Owner authorization.
 
 A04 must retain one production K and the current route-ownership semantics unless an explicitly reviewed migration decision says otherwise.
 
@@ -93,7 +93,9 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 - Every source Task needs its own Task Pack, exact current base, allowed write set, accepted ADS dispatch/Claim and JIT branch.
 - Do not dispatch A02 before A01's neutral contracts are frozen.
 - Do not dispatch A03 before A01 and A01B are complete and integrated.
-- Do not dispatch A04 before both A02 and A03 are complete.
+- Do not integrate A02 alone while the 25 S2/S5/S6 tests are not re-established under Core.
+- A04 must preserve and run the 25 S2/S5/S6 cases under the Core test runner included in ci:verify; the testkit must use the real Core Runtime/Core Seam path, not the App relocation sentinel.
+- A04's staging candidate may contain the exact reviewed A02/A03 commits as ancestors; this avoids a broken intermediate WIP integration state.
 - A05 may not rewrite source contracts or widen Product/L2.
 - Do not merge any source Task to the WIP branch on a stale base.
 - The current WIP SHA must be re-read before integration; re-run required checks on the actual integration SHA.
@@ -106,9 +108,9 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 | A00 | Read-only audit complete; independent review PASS | #338; report committed; no source mutation |
 | A01 | Implemented, reviewed and merged to WIP | #335; merge `a3cc525df6a8c561f396dadf1e79bbb549fcc036` |
 | A01B | PR #343 merged to WIP at `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Woodpecker #17 SUCCESS; independent review PASS, P2=1 | #340 |
-| A02 | PR #344 candidate `330efd081a89e443d79fa27064109c4c40d17b16`; rebase validation PASS (11 blobs unchanged, Node24/Prettier, 29/29, typecheck, Woodpecker #20); current exact-SHA independent review pending, P2=2 | #341 |
-| A03 | PR #345 candidate `deec3d6272ee9d4329838058098f051f6dfa3492`; implementation complete, 13/14 allowed paths, Node24/Prettier, 40/40, typecheck, Woodpecker #21 PASS; independent review pending, P2=2 | #342 |
-| A04 | Preparation R0 committed; not dispatched | Await A02 + A03 integration; then freeze exact write set |
+| A02 | PR #344 candidate `330efd081a89e443d79fa27064109c4c40d17b16`; local gates PASS; Exact-SHA review BLOCK, P0=0/P1=1/P2=3 due 25 S2/S5/S6 cases not re-established under Core; do not merge alone | #341 |
+| A03 | PR #345 candidate `deec3d6272ee9d4329838058098f051f6dfa3492`; implementation complete, 13/14 allowed paths, Node24/Prettier, 40/40, typecheck, Woodpecker #21 PASS; Web source review PASS P0=0/P1=0/P2=2; separate independent review pending | #342 |
+| A04 | Preparation R0 amended with S2/S5/S6 migration; not dispatched | Build a staging candidate containing exact A02/A03 commits; migrate 25 cases under Core before WIP integration |
 | A05 | Six documentation drafts committed; corrected validation-map filename passed R2 re-review (P0=0/P1=0/P2=0) | #339; docs-only; no source changes |
 | A06 | Not dispatched | Await A04 + A05 |
 | A07 | Not dispatched | Independent final review |
