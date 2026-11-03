@@ -60,4 +60,4 @@ Do not start CI if syntax preflight or changed-file formatting fails.
 
 ## Integration boundary
 
-The Owner has authorized WIP-only integration. This does not authorize merge before independent Exact-SHA review. After implementation, open a PR targeting WIP and write evidence to #342. Do not merge the PR; Web Controller performs currentness review and WIP integration. No main/version merge, release, deployment, real external download, Native Host or Windows Host side effect.
+The historical Owner WIP authorization on parent #337 explicitly covered PRs #335, #330, #331 and #334. It does NOT by itself authorize merging A03 PR #345 (or A02 PR #344). Obtain a fresh Owner authorization naming the exact PR heads after independent Exact-SHA review. After implementation, open a PR targeting WIP and write evidence to #342. Do not merge the PR; Web Controller performs currentness review and WIP integration. No main/version merge, release, deployment, real external download, Native Host or Windows Host side effect.
