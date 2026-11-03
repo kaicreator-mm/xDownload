@@ -1,0 +1,44 @@
+pack_id: "v022-U03-SINGLE-RESOURCE-COMPLETE-STATUS-01@9e3ccd382311619e60b8d2a7373e8a7d34733334"
+task_id: "v022-U03-SINGLE-RESOURCE-COMPLETE-STATUS-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+base_sha: "9e3ccd382311619e60b8d2a7373e8a7d34733334"
+base_tree: "ba48b805697ad19c36a6eb3a5e54b6d601b36120"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U03-SINGLE-RESOURCE-COMPLETE-STATUS.md@planning/v0.2.2-ui-r0@85b3ae4bdb1b887e5ce55920549b1414f3e71327#blob:3e1fa992df6360d8896f0e007f439eefe4c8b83b"
+branch: "task/v0.2.2-u03-single-resource-complete-status"
+parent_issue: "#333"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+generated_by: "chatgpt-web:xdownload-v022-u03-controller"
+generated_at: "2026-11-03"
+dependency_completion: []
+execution_context_requirements_ref: null
+dependency_toolchain_profile_ref: null
+material_paths:
+  - "apps/desktop-shell/src/renderer/renderer-main.ts"
+  - "apps/desktop-shell/test/ux-r0-form-schema.test.ts"
+  - "packages/domain-contracts/src/result.ts"
+  - "apps/desktop-shell/src/main/shell-contract.ts"
+  - "apps/desktop-shell/src/main/manager.ts"
+  - "package.json"
+  - ".woodpecker/xd-ui-r0-verify.yaml"
+core_artifacts:
+  - "MANIFEST.yaml"
+  - "EXECUTION_CONTRACT.md"
+  - "TEST_MATRIX.yaml"
+  - "FAILURE_MATRIX.yaml"
+  - "IMPLEMENTATION_MAP.md"
+  - "REVIEW_CHECKLIST.md"
+optional_artifacts: []
+retention: "durable"
+package_excluded: true
+pack_state_at_generation: "PACK_CURRENT"
+intent_assumption_refs:
+  - "xDownload#305"
+  - "xDownload#326"
+  - "xDownload#333"
+skill_metadata_refs: []
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+owner_authorization_ref: "xDownload#305@6586392596"
+dispatch_admission: "OWNER_AUTHORIZED_LOCAL_BUILDER_PENDING_CLAIM"
