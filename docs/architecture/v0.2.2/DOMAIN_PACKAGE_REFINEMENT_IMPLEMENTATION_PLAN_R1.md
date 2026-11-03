@@ -138,8 +138,8 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 | A00 | Architecture inventory and authority audit | — | read-only source; audit report only |
 | A01 | Neutral Domain Contracts and dependency-boundary extraction | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths; exact neutral-contract paths only |
 | A01B | S3 media Host request DTO | A01 | `packages/domain-contracts/src/download-host/s3-media-request.ts`; `src/download-host/index.ts` additive export only; `test/download-host/s3-media-request.test.ts` |
-| A02 | Domain App refactor and public ABI cleanup | A01 | \`packages/download-domain-app/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
-| A03 | Domain Host refactor and physical adapter ownership | A01, A01B | \`packages/download-domain-host/src/**\` and package-local tests; package.json and root pnpm-lock.yaml forbidden (A04 owns both) |
+| A02 | Domain App public boundary and Host decoupling | A01 | Task Pack V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md (11 exact App source/test paths); package.json/root lockfile forbidden |
+| A03 | Domain Host boundary and physical adapters | A01, A01B | Task Pack V022-A03-DOMAIN-HOST-BOUNDARY.md (14 exact Host source/test paths); package.json/root lockfile forbidden |
 | A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters, both Domain App/Host package.json files, and root pnpm-lock.yaml (sole manifest + lockfile writer) |
 | A05 | Domain Knowledge / Workflow / Function-Tool mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` |
 | A06 | Architecture integration tests and exact-SHA verification | A04, A05 | dedicated architecture tests / validation evidence, exact paths frozen later |
@@ -186,11 +186,15 @@ Formal Task Pack: `V022-A01B-S3-MEDIA-HOST-REQUEST.md`; Issue #340.
 
 ### A02 — Domain App Refactoring
 
-Remove App→Host dependencies. Keep K/S/B/C declarations, Business Intents, schemas, pure rules, semantic recipe, Workflow definitions and T09 policy in App. Remove physical store implementation and production runtime assembly from App's public root. Do not change operation IDs, ABI or behavior.
+Remove App→Host source imports and narrow the public root to domain-owned declarations, BUILD producers, Business Intents, pure rules, Workflow definitions and journeys. Preserve internal deep-import compatibility required by the current Core route until A04 moves it to Host-owned adapters; those transitional surfaces must not be re-exported from the App root. Keep K/S/B/C identifiers, sealed bytes, operation IDs and behavior unchanged. The existing App runtime integration tests must be re-established under Core A04, not silently dropped.
+
+Task Pack: V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md; Issue #341 (Task Pack review PASS; waiting Local Builder Claim).
 
 ### A03 — Domain Host Refactoring
 
-Remove Host→App deep imports. This Task depends on A01 and A01B so both S3 and S4 media Host requests have neutral, operation-pinned schemas. Implement the neutral ports from A01. Own Direct/HLS physical handlers, target registries and physical SDK store adapters. Preserve permit checks, targetRef opacity, budget, digest, atomic materialization and cancellation. Do not add K or a private journal.
+Remove Host→App deep imports. This Task depends on A01 and A01B so both S3 and S4 media Host requests have neutral, operation-pinned schemas. Own Direct/HLS physical handlers, target registries, FileCasDocStore and the dormant T09 plain-file adapter. Preserve permit checks, targetRef opacity, budget, digest, atomic materialization and cancellation. Keep T09 dormant; do not add K or a private journal.
+
+Task Pack: V022-A03-DOMAIN-HOST-BOUNDARY.md; Issue #342 (Task Pack review PASS; waits for A01B integration before Claim/base rebind).
 
 ### A04 — Core Runtime Consolidation
 
@@ -251,6 +255,8 @@ Each source Task needs its own Task Pack, exact base, allowed write set, accepte
 - A00 report: [A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md](./A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md); Task Pack blob `1591be332f3ba76e8e5a14d5f062e27860dcc219`.
 - [#335](https://github.com/kaicreator-mm/xDownload/issues/335) A01 neutral Host contracts are implemented, reviewed and merged to WIP at merge commit `a3cc525df6a8c561f396dadf1e79bbb549fcc036`.
 - [#340](https://github.com/kaicreator-mm/xDownload/issues/340) A01B S3 media Host request DTO Task Pack is committed and independently reviewed PASS; waiting for Local Builder Claim.
+- [#341](https://github.com/kaicreator-mm/xDownload/issues/341) A02 Domain App boundary Task Pack is committed and independently reviewed PASS; waiting for Local Builder Claim.
+- [#342](https://github.com/kaicreator-mm/xDownload/issues/342) A03 Domain Host boundary Task Pack is committed and independently reviewed PASS; waiting for A01B integration and exact-base rebind.
 - [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 documentation draft is complete; independent review PASS is recorded in #339. The validation-map filename P2 is corrected in this planning update.
-- A01 is complete and integrated; A01B is ready pending Local Builder Claim. A02/A03/A04/A06/A07 remain undispatched.
+- A01 is complete and integrated. A01B and A02 are ready pending Local Builder Claims; A03 is Task Pack-reviewed and waits for A01B integration. A04/A06/A07 remain undispatched.
 - UI U00–U06 remains a separate lane and may continue in parallel where exact write sets do not overlap.
