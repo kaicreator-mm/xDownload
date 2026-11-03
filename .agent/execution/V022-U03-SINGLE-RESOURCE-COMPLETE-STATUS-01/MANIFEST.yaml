@@ -41,7 +41,10 @@ skill_metadata_refs: []
 execution_profile: "LOCAL_BUILDER"
 execution_environment: "LOCAL"
 owner_authorization_ref: "xDownload#333@6614278265"
-dispatch_admission: "IMPLEMENTATION_READY_PENDING_INDEPENDENT_EXACT_SHA_REVIEW"
+dispatch_admission: "REVIEW_APPROVED_PENDING_OWNER_WIP_ONLY_AUTHORIZATION"
+independent_review_ref: "xDownload#333@6615735630"
+independent_review_result: "PASS"
+independent_review_findings: { P0: 0, P1: 0, P2: 0 }
 implementation_candidate_sha: "9cbaccf5ac3bbae6cfc3d12f333fa929b0f6045f"
 implementation_candidate_tree: "78246a75ef4951328b17f27b2f9da0b0824d90a4"
 builder_claim_ref: "xDownload#333@6614387475"
