@@ -30,7 +30,10 @@
  * current "ended · not completed" label for that honest state is recorded,
  * never upgraded to a completed claim. Each run uses a fresh Electron
  * user-data directory, unique evidence files and deterministic cleanup;
- * every run proves realDownloads=0 and nativeHostCalls=0.
+ * realDownloads/nativeHostCalls are recorded as labeled
+ * SOURCE_SCOPE_ASSERTION zero counts (the fixture journey drives only the
+ * existing Core Seam — no downloader or Native Host bridge is reachable on
+ * that path by construction), not runtime-measured counters.
  */
 /* global process, console, setTimeout, clearTimeout, fetch, WebSocket, Buffer */
 
@@ -524,8 +527,12 @@ async function runFixtureScenario(fixture, evidenceDir, electronVersion) {
       harnessLogTail: harnessText.slice(-2000),
       shellLogTail: shellText.slice(-2000),
       screenshotPath,
-      realDownloads: 0,
-      nativeHostCalls: 0,
+      // P2 repair (web source-review): labeled source-scope zero-side-effect
+      // assertions, not runtime-measured counters.
+      zeroSideEffects: {
+        realDownloads: { count: 0, basis: 'SOURCE_SCOPE_ASSERTION' },
+        nativeHostCalls: { count: 0, basis: 'SOURCE_SCOPE_ASSERTION' },
+      },
     };
   } catch (error) {
     result = {
@@ -537,8 +544,10 @@ async function runFixtureScenario(fixture, evidenceDir, electronVersion) {
       harnessEvents,
       harnessLogTail: harnessText.slice(-2000),
       shellLogTail: shellText.slice(-2000),
-      realDownloads: 0,
-      nativeHostCalls: 0,
+      zeroSideEffects: {
+        realDownloads: { count: 0, basis: 'SOURCE_SCOPE_ASSERTION' },
+        nativeHostCalls: { count: 0, basis: 'SOURCE_SCOPE_ASSERTION' },
+      },
     };
   } finally {
     if (client) {

@@ -7,6 +7,10 @@
  *     --mode=control|grant --chrome=<exe> --extension=<unpacked-dir> \
  *     --out=<evidence-dir>
  *
+ * --out must be a FRESH, non-existent directory: an existing path is
+ * refused before anything is written — caller-owned paths are never
+ * deleted, truncated or reused.
+ *
  * Both modes use a FRESH temporary Chrome profile and a loopback synthetic
  * fixture page with harmless attachment links; a persistent user profile is
  * never touched.
@@ -70,9 +74,23 @@ if (MODE !== 'control' && MODE !== 'grant') {
   process.exit(EXIT.FAIL);
 }
 
-const evidenceDir = OUT_ARG ?? fs.mkdtempSync(path.join(os.tmpdir(), 'xd-active-tab-evidence-'));
+// P1 repair (web source-review): a caller-supplied --out directory must be
+// FRESH. An existing path is refused before anything is written or deleted —
+// the driver never deletes or truncates caller-owned paths. Without --out a
+// fresh temporary directory is created.
+let evidenceDir;
+if (OUT_ARG !== null) {
+  if (fs.existsSync(OUT_ARG)) {
+    console.error(
+      `FAIL: --out directory already exists: ${OUT_ARG}; refusing to reuse, delete or truncate caller-owned paths. Choose a fresh, non-existent directory.`,
+    );
+    process.exit(EXIT.FAIL);
+  }
+  evidenceDir = OUT_ARG;
+} else {
+  evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xd-active-tab-evidence-'));
+}
 const profileDir = path.join(evidenceDir, 'profile');
-fs.rmSync(profileDir, { recursive: true, force: true });
 fs.mkdirSync(evidenceDir, { recursive: true });
 fs.mkdirSync(profileDir, { recursive: true });
 const eventsPath = path.join(evidenceDir, 'events.ndjson');
@@ -145,8 +163,16 @@ const result = {
   openPopupCalls: 0,
   toolbarClicks: 0,
   desktopPrecheck: null,
-  nativeHostCalls: 0,
-  realDownloads: 0,
+  // P2 repair (web source-review): honest zero-side-effect labeling. These
+  // are SOURCE-SCOPE ASSERTIONS, not runtime-measured counters: this driver
+  // invokes no Native Host path (the unpacked test extension declares no
+  // native messaging host) and never initiates a download (fixture
+  // attachment links are never clicked; the loopback fixture serves the
+  // page and 404s every attachment request).
+  zeroSideEffects: {
+    nativeHostCalls: { count: 0, basis: 'SOURCE_SCOPE_ASSERTION' },
+    realDownloads: { count: 0, basis: 'SOURCE_SCOPE_ASSERTION' },
+  },
 };
 
 // --------------------------------------------------------------------------
@@ -377,15 +403,28 @@ if ($puzzle -eq $null) {
 $menuPoint = Click-Element $puzzle $mainWindow
 Start-Sleep -Milliseconds 700
 & (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
-$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphics.CopyFromScreen($screen.Left, $screen.Top, 0, 0, $bitmap.Size)
-$bitmap.Save($OutPath + '.png', [System.Drawing.Imaging.ImageFormat]::Png)
-$graphics.Dispose()
-$bitmap.Dispose()
+# P2 repair (web source-review): capture ONLY the Chrome window bounds, never
+# the full primary desktop — an unrestricted screen capture could include
+# unrelated private windows. If the window bounds are unavailable the
+# screenshot is omitted rather than widened.
+try {
+  Add-Type -AssemblyName System.Drawing
+  Add-Type -AssemblyName System.Windows.Forms
+  $winRect = $mainWindow.Current.BoundingRectangle
+  if ($winRect.Width -gt 0 -and $winRect.Height -gt 0) {
+    $bitmap = New-Object System.Drawing.Bitmap ([int]$winRect.Width), ([int]$winRect.Height)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen([int]$winRect.X, [int]$winRect.Y, 0, 0, $bitmap.Size)
+    $bitmap.Save($OutPath + '.chrome-window.png', [System.Drawing.Imaging.ImageFormat]::Png)
+    $graphics.Dispose()
+    $bitmap.Dispose()
+    Write-Output 'UIA_TOOLBAR_SCREENSHOT_CHROME_WINDOW_ONLY=1'
+  } else {
+    Write-Output 'UIA_TOOLBAR_SCREENSHOT_SKIPPED=window_bounds_unavailable'
+  }
+} catch {
+  Write-Output ('UIA_TOOLBAR_SCREENSHOT_SKIPPED=' + $_.Exception.Message)
+}
 $matches = @()
 foreach ($window in (Get-ChromeWindows)) {
   $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
@@ -864,15 +903,19 @@ async function main() {
     result.attachmentRequests = httpRequests.filter((item) => item.url?.startsWith('/attachment-'));
     result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
     result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;
+    // P2 repair (web source-review): manifestUnchanged is part of the PASS
+    // predicate — a mutated manifest during the run is a failure, never a
+    // footnote.
     result.ok =
-      MODE === 'grant'
+      result.manifestUnchanged === true &&
+      (MODE === 'grant'
         ? result.initial.attachmentCount === 2 &&
           result.switchDelta.workerMessages === 0 &&
           result.switchDelta.permissionRequests === 0
         : result.initial.attachmentCount === 0 &&
           result.initial.state.includes('Cannot access contents') &&
           result.switchDelta.workerMessages === 0 &&
-          result.switchDelta.permissionRequests === 0;
+          result.switchDelta.permissionRequests === 0);
     result.chromeStderrTail = chromeStderr.slice(-1000);
     fs.writeFileSync(path.join(evidenceDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
     log('driver-result', { ok: result.ok, switchDelta: result.switchDelta });
