@@ -21,7 +21,7 @@ The target is a small, acyclic package graph with one production composition roo
 - Audit baseline: \`9e3ccd382311619e60b8d2a7373e8a7d34733334\`
 - Tree: \`ba48b805697ad19c36a6eb3a5e54b6d601b36120\`
 - Product/version branches are not write targets.
-- DomainHarness source remains pinned to v0.10.3; no SDK source, vendored bytes, ABI, tag, or publication change is in scope.
+- The current xDownload baseline vendors DomainHarness SDK package tarballs at 0.10.2-rc.0 (vendor/sdk/*-0.10.2-rc.0.tgz, package manifests and pnpm-workspace.yaml overrides). This plan preserves those exact existing pins and bytes; it does not upgrade the vendored SDK to v0.10.3. Any SDK upgrade requires a separate scoped decision and validation.
 
 This is an exact-baseline audit, not a claim that the WIP branch is still current at a future dispatch. Every implementation Task must re-read the current WIP head and rebind its own accepted Claim before writing.
 
@@ -135,10 +135,10 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 | Task | Deliverable | Depends on | Candidate exclusive write set |
 |---|---|---|---|
 | A00 | Architecture inventory and authority audit | — | read-only source; audit report only |
-| A01 | Neutral Domain Contracts and dependency-boundary extraction | A00 | \`packages/domain-contracts/**\`; App contract re-export/adapter files explicitly listed in its Task Pack |
-| A02 | Domain App refactor and public ABI cleanup | A01 | \`packages/download-domain-app/**\` excluding A01-owned contract paths |
-| A03 | Domain Host refactor and physical adapter ownership | A01 | \`packages/download-domain-host/**\` |
-| A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters listed in its Task Pack |
+| A01 | Neutral Domain Contracts and dependency-boundary extraction | A00 | \`packages/domain-contracts/src/download-host/**; src/index.ts additive exports only; test/download-host/**\`; no App/Host/Core paths; exact neutral-contract paths only |
+| A02 | Domain App refactor and public ABI cleanup | A01 | \`packages/download-domain-app/**\` and package-local tests; no root pnpm-lock.yaml |
+| A03 | Domain Host refactor and physical adapter ownership | A01 | \`packages/download-domain-host/** and package-local tests; no root pnpm-lock.yaml\` |
+| A04 | Core Runtime consolidation and dependency injection | A02, A03 | \`packages/core-runtime/**\` plus exact consumer adapters and pnpm-lock.yaml (sole lockfile writer) |
 | A05 | Domain Knowledge / Workflow / Function-Tool mapping | A00 | \`docs/architecture/v0.2.2/domain-package/**\` |
 | A06 | Architecture integration tests and exact-SHA verification | A04, A05 | dedicated architecture tests / validation evidence, exact paths frozen later |
 | A07 | Final independent Exact-SHA review and closure | A06 | read-only |
@@ -151,6 +151,8 @@ The arrows mean dependency/import direction: App and Host may both depend on neu
 4. A04 starts only after A02 and A03 are complete.
 5. A06 follows A04 and A05.
 6. A07 is an independent read-only review.
+
+**Lockfile ownership:** A01 does not change package manifests or the root lockfile. A02 and A03 may change only their own package manifests and package-local source/tests; both must leave root pnpm-lock.yaml untouched. A04 is the single owner of pnpm-lock.yaml, regenerated once after both A02 and A03 are integrated and their package manifests are final. Later Task Packs must encode this ownership explicitly.
 
 Do not create A02/A03/A04 source Tasks with broad or overlapping write sets before A00 has frozen their exact paths and contracts.
 
@@ -211,7 +213,7 @@ Independent Exact-SHA review of source diff, package graph, tests, exact WIP int
 - T09 is not activated as a second authority; UNKNOWN is never auto-cleared.
 - Existing direct/HLS, budget, digest, cancellation, restart, duplicate and projection behavior remains compatible.
 - No multi-process CAS claim without real target-environment proof.
-- DomainHarness v0.10.3 source and vendored tarball bytes remain unchanged.
+- The existing xDownload-vendored DomainHarness SDK pins (0.10.2-rc.0) and tarball bytes remain unchanged; no SDK upgrade is included.
 - Node 24 syntax/type preflight and changed-file Prettier run before CI.
 - Focused tests, \`pnpm run typecheck\`, \`pnpm run ci:verify\`, and local Docker Woodpecker exact-SHA SUCCESS.
 - Independent Exact-SHA review PASS.
@@ -236,9 +238,9 @@ Each source Task needs its own Task Pack, exact base, allowed write set, accepte
 ## 10. Current status
 
 - Parent tracking issue: #337.
-- A00 read-only audit is complete at the exact baseline; independent review is pending in [#338](https://github.com/kaicreator-mm/xDownload/issues/338).
+- A00 read-only audit is complete at the exact baseline; independent review PASS is recorded in [#338](https://github.com/kaicreator-mm/xDownload/issues/338).
 - A00 report: [A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md](./A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md); Task Pack blob `1591be332f3ba76e8e5a14d5f062e27860dcc219`.
-- [#335](https://github.com/kaicreator-mm/xDownload/issues/335) is now narrowed to A01 neutral Host contracts; its Task Pack is proposed for independent review and remains NOT_DISPATCHED.
-- [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 documentation draft is complete at planning HEAD `3b22c1cef7e1ee12e21623ab9fa207c55e660263`; independent review is pending.
+- [#335](https://github.com/kaicreator-mm/xDownload/issues/335) is narrowed to A01 neutral Host contracts; its Task Pack independent review is PASS, planning-alignment P2 corrections are recorded here, and it remains NOT_DISPATCHED.
+- [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 documentation draft is complete; independent review PASS is recorded in #339. The validation-map filename P2 is corrected in this planning update.
 - No A01–A07 source implementation is dispatched by this plan.
 - UI U00–U06 remains a separate lane and may continue in parallel where exact write sets do not overlap.
