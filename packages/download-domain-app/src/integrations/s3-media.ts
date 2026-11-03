@@ -41,9 +41,19 @@
  * journey.ts and this lane must not edit merged files; the observable
  * contract is identical.
  *
+ * V022-A02 boundary note: this module no longer imports
+ * @xdownload/download-domain-host. REMOVED here, RELOCATE-TO-CORE-A04:
+ * `assembleMediaRuntime` and the trusted permit pin body
+ * (`executeMediaAcquisition`, which drove the real T06 Host bridge
+ * `acquireMediaViaHls`) — Host-owned physical assembly belongs to the Core
+ * composition root (A04). The `MEDIA_BRIDGE_PIN` ABI name the sealed media
+ * C module reaches stays as the typed transitional reference. See
+ * s3-media.test.ts for the enumerated integration scenario map.
+ *
  * Honest status (T10 baseline vocabulary): this journey is PROVEN at
  * bounded-fixture level (real loopback HLS master→playlist→segments→
- * digest-backed materialization through the real engine and the real K).
+ * digest-backed materialization through the real engine and the real K);
+ * the fixture proof itself relocates to Core A04 with the assembly.
  * Installed-path media validation (real deployed Host, real release SHA) is
  * NOT_PROVEN here and belongs to T16 validation-product.
  */
@@ -58,7 +68,7 @@ import {
   type V10RouteRowInput,
 } from '@kaicreator/domain-harness-build';
 import type { V10PublicIntent } from '@kaicreator/domain-harness-contracts';
-import { load, type DomainApp } from '@kaicreator/domain-harness-microkernel';
+import type { DomainApp } from '@kaicreator/domain-harness-microkernel';
 import {
   AUDIENCE,
   POC183_KERNEL_MODULE_SHA256,
@@ -71,15 +81,13 @@ import {
   validateConfirmedIntent,
   validateMaterializedEvidence,
   validateRouteTable,
-  REFERENCE_TOKEN_PATTERN,
   type ConfirmedDownloadIntent,
   type EffectEnvelope,
   type MaterializedEvidence,
   type OperationDeclaration,
 } from '../contracts/index.ts';
-import { FileCasDocStore } from '../composition/runtime.ts';
-import { InMemoryMediaTargetRegistry } from './media-registry.ts';
-import { acquireMediaViaHls } from '../../../download-domain-host/src/media/media-acquisition-bridge.ts';
+import type { FileCasDocStore } from '../composition/runtime.ts';
+import type { InMemoryMediaTargetRegistry } from './media-registry.ts';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 
@@ -274,19 +282,18 @@ export function sealMediaComposition(): SealedMediaComposition {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime assembly (T11 pattern: pin before load, durable caller-owned store).
+// Transitional runtime contract (V022-A02 → Core A04).
 // ---------------------------------------------------------------------------
 
-/** The trusted Host bridge pin name the sealed media C module reaches. */
+/**
+ * The trusted Host bridge pin name the sealed media C module reaches. The
+ * sealed capability module carries the literal
+ * `globalThis.__xdownloadMediaAcquisitionBridge`; this constant is the typed
+ * reference for the A04 Core-side pin installer (which re-homes the permit
+ * derivation pin body that A02 removed from this module).
+ * TRANSITIONAL: not exported by the public App root.
+ */
 export const MEDIA_BRIDGE_PIN = '__xdownloadMediaAcquisitionBridge';
-
-interface MediaBridgePin {
-  acquireMedia: (payload: Record<string, unknown>, permit: unknown) => Promise<unknown>;
-}
-
-function hostGlobals(): { [MEDIA_BRIDGE_PIN]?: MediaBridgePin } {
-  return globalThis as unknown as { [MEDIA_BRIDGE_PIN]?: MediaBridgePin };
-}
 
 /** Observable pin counters (zero-effect evidence alongside fixture counts). */
 export interface MediaPinCounters {
@@ -299,22 +306,13 @@ export interface MediaPinCounters {
   failedExecutions: number;
 }
 
-export interface MediaTargetSeed {
-  readonly handle: string;
-  readonly record: unknown;
-}
-
-export interface AssembleMediaRuntimeOptions {
-  /** Durable store file path (plain-file CAS; reopened across restarts). */
-  readonly storePath: string;
-  /** Trusted registry seed: opaque handles → media delivery facts. */
-  readonly mediaTargetRefs?: readonly MediaTargetSeed[];
-  readonly tenantId?: string;
-  readonly deployedAppId?: string;
-  readonly queryPrincipal?: string;
-  readonly now?: () => number;
-}
-
+/**
+ * The assembled S3 media runtime contract consumed by the domain journey
+ * below. TRANSITIONAL (A02→A04): the physical assembly (seal → permit
+ * derivation pin over the seeded registry → durable store → SDK public
+ * `load`) moved to the Core composition root, which owns the Host bridge;
+ * Core A04 re-homes this interface unchanged next to the Host adapters.
+ */
 export interface MediaDownloadRuntime {
   readonly built: V10BuiltApp;
   readonly app: DomainApp;
@@ -324,239 +322,6 @@ export interface MediaDownloadRuntime {
   readonly pin: MediaPinCounters;
   /** Truthful cancellation before send; the T06 bridge owns in-flight transfer. */
   stop(): void;
-}
-
-/**
- * Assemble the S3 media runtime: seal the media BUILD, install the trusted
- * T06 bridge pin (permit derivation over the seeded registry), open the
- * durable store and call the SDK public `load`. `stop()` releases the pin
- * (only if still ours), stops the app and closes the store.
- */
-export async function assembleMediaRuntime(
-  options: AssembleMediaRuntimeOptions,
-): Promise<MediaDownloadRuntime> {
-  const { built } = sealMediaComposition();
-
-  const store = new FileCasDocStore(options.storePath);
-  const registry = new InMemoryMediaTargetRegistry(options.mediaTargetRefs ?? []);
-  const pin: MediaPinCounters = {
-    acquireMediaCalls: 0,
-    permitRefusals: 0,
-    intentRefusals: 0,
-    operationRefusals: 0,
-    registryRefusals: 0,
-    completedExecutions: 0,
-    failedExecutions: 0,
-  };
-
-  /**
-   * The trusted dispatch seam for media.acquire (T11 pin pattern + T06
-   * permit derivation — the full contract is documented on this module).
-   */
-  const bridgePin: MediaBridgePin = {
-    acquireMedia: (payload, permit) => executeMediaAcquisition(payload, permit, registry, pin),
-  };
-  hostGlobals()[MEDIA_BRIDGE_PIN] = bridgePin;
-
-  const tenantId = options.tenantId ?? 'tenant:xdownload-v02-t12';
-  const deployedAppId = options.deployedAppId ?? 'deploy:xdownload-v02-t12-media';
-  const principal = options.queryPrincipal ?? 'xdownload-v02-t12-host';
-  const app = await load(built, {
-    store,
-    tenantId,
-    deploymentIdentity: { deployedAppId, tenantId, appId: built.appId },
-    queryAuthority: {
-      principal: { actor: principal },
-      authorize: (candidate, target) =>
-        Boolean(
-          candidate !== null &&
-          typeof candidate === 'object' &&
-          (candidate as { actor?: string }).actor === principal &&
-          target.tenantId === tenantId,
-        ),
-    },
-    ...(options.now === undefined ? {} : { now: options.now }),
-  });
-
-  return {
-    built,
-    app,
-    store,
-    registry,
-    pin,
-    stop(): void {
-      app.stop();
-      if (hostGlobals()[MEDIA_BRIDGE_PIN] === bridgePin) {
-        delete hostGlobals()[MEDIA_BRIDGE_PIN];
-      }
-      store.close();
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// The permit pin: kernel permit identity + seeded registry facts → T06 bridge.
-// ---------------------------------------------------------------------------
-
-interface KernelPermitClaim {
-  readonly effectId: string;
-  readonly durableControlTurnId: string;
-}
-
-function parseKernelPermit(permit: unknown): KernelPermitClaim | null {
-  if (typeof permit !== 'object' || permit === null || Array.isArray(permit)) {
-    return null;
-  }
-  const record = permit as Record<string, unknown>;
-  const bounded = (value: unknown): value is string =>
-    typeof value === 'string' && value.length > 0 && value.length <= 256;
-  if (!bounded(record['effectId']) || !bounded(record['durableControlTurnId'])) {
-    return null;
-  }
-  return {
-    effectId: record['effectId'] as string,
-    durableControlTurnId: record['durableControlTurnId'] as string,
-  };
-}
-
-/**
- * Bounded permit id for the T06 media permit grammar: the kernel effect
- * identity when it fits the opaque-token grammar, else a deterministic
- * digest alias (same input → same alias, no drift). The RAW effect identity
- * still rides the terminal evidence as permitEffectId.
- */
-function boundedPermitIdOf(effectId: string): string {
-  if (REFERENCE_TOKEN_PATTERN.test(effectId)) {
-    return effectId;
-  }
-  const digest = createHash('sha256').update(effectId).digest('hex').slice(0, 32);
-  return `xd-t12-media-${digest}`;
-}
-
-function refusalEnvelope(externalRef: string, code: string, message: string): EffectEnvelope {
-  return { phase: 'terminal', externalRef, outcome: { ok: false, error: { code, message } } };
-}
-
-async function executeMediaAcquisition(
-  payload: Record<string, unknown>,
-  permit: unknown,
-  registry: InMemoryMediaTargetRegistry,
-  counters: MediaPinCounters,
-): Promise<EffectEnvelope> {
-  counters.acquireMediaCalls += 1;
-
-  // (1) Kernel permit gate — before any registry lookup or effect.
-  const kernelPermit = parseKernelPermit(permit);
-  const unpermittedRef = `${MEDIA_ACQUIRE_OPERATION}:unpermitted`;
-  if (kernelPermit === null) {
-    counters.permitRefusals += 1;
-    return refusalEnvelope(
-      unpermittedRef,
-      'MEDIA_PERMIT_REQUIRED',
-      'media.acquire requires a kernel permit identity (effectId + durableControlTurnId); refused before any effect',
-    );
-  }
-  const externalRef = kernelPermit.effectId;
-
-  // (2) T01 no-widening re-check of the projected intent.
-  const intent: Record<string, unknown> = { ...payload };
-  delete intent['effectId'];
-  const intentCheck = validateConfirmedIntent(intent);
-  if (!intentCheck.ok) {
-    counters.intentRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      'MEDIA_INTENT_MALFORMED',
-      `confirmed intent rejected by the no-widening contract: ${intentCheck.diagnostics
-        .map((entry) => entry.code)
-        .join(',')}`,
-    );
-  }
-  const confirmed: ConfirmedDownloadIntent = intentCheck.value;
-  if (confirmed.allowedOperation !== MEDIA_ACQUIRE_OPERATION) {
-    counters.operationRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      'MEDIA_OPERATION_MISMATCH',
-      `the media bridge executes only ${MEDIA_ACQUIRE_OPERATION}; intent authorizes '${confirmed.allowedOperation}'`,
-    );
-  }
-
-  // (3) Opaque targetRef resolution through the injected registry only.
-  const recordCheck = registry.resolve(confirmed.targetRef);
-  if (!recordCheck.ok) {
-    counters.registryRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      recordCheck.diagnostics[0]!.code,
-      recordCheck.diagnostics[0]!.message,
-    );
-  }
-  const record = recordCheck.value;
-
-  // (4) Derive the media permit: kernel identity × seeded registry facts.
-  //     Nothing wider than either input; the T06 bridge re-validates it
-  //     fail-closed before any network/filesystem effect.
-  const mediaPermit = {
-    kind: 'media-acquisition-permit',
-    permitId: boundedPermitIdOf(kernelPermit.effectId),
-    operationId: MEDIA_ACQUIRE_OPERATION,
-    requestId: confirmed.requestId,
-    lineageId: confirmed.lineageId,
-    allowedManifestOrigins: record.allowedManifestOrigins,
-    allowedSegmentOrigins: record.allowedSegmentOrigins,
-    budget: record.budget,
-  };
-
-  // (5) The existing engine executes; the T06 bridge owns every gate beyond
-  //     this point (origin scope, protocol, budget, digest anchor).
-  const result = await acquireMediaViaHls({
-    intent: confirmed,
-    protocol: record.protocol,
-    manifestUri: record.manifestUri,
-    ...(record.selectedRenditionUri === undefined
-      ? {}
-      : { selectedRenditionUri: record.selectedRenditionUri }),
-    ...(record.artifactFileName === undefined ? {} : { artifactFileName: record.artifactFileName }),
-    permit: mediaPermit,
-    ...(record.fixtureLoopbackHttp === true ? { fixtureLoopbackHttp: true } : {}),
-    ...(record.manifestMaxBytes === undefined ? {} : { manifestMaxBytes: record.manifestMaxBytes }),
-    ...(record.segmentMaxBytes === undefined ? {} : { segmentMaxBytes: record.segmentMaxBytes }),
-    ...(record.timeoutMs === undefined ? {} : { timeoutMs: record.timeoutMs }),
-  });
-
-  if (!result.admitted) {
-    counters.failedExecutions += 1;
-    return refusalEnvelope(externalRef, result.code, result.message);
-  }
-  const envelope = result.envelope;
-  if (envelope.phase === 'terminal' && envelope.outcome.ok) {
-    // Bind the K permit identity into the terminal evidence so the journey's
-    // verification can prove the artifact was produced under exactly one
-    // K-issued permit. Only the two identity fields are added; the evidence
-    // fields the T06 bridge produced are forwarded untouched.
-    const enriched = normalizeEffectEnvelope({
-      phase: 'terminal',
-      externalRef,
-      outcome: {
-        ok: true,
-        output: {
-          ...envelope.outcome.output,
-          permitEffectId: kernelPermit.effectId,
-          durableControlTurnId: kernelPermit.durableControlTurnId,
-        },
-      },
-    });
-    if (!enriched.ok) {
-      throw new Error(
-        'media pin invariant violation: enriched terminal envelope rejected by the T01 grammar',
-      );
-    }
-    counters.completedExecutions += 1;
-    return enriched.value;
-  }
-  counters.failedExecutions += 1;
-  return envelope;
 }
 
 // ---------------------------------------------------------------------------

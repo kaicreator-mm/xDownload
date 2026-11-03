@@ -2,12 +2,24 @@
  * v0.2 T12 — integration-other lane public index (S2–S6 + media convergence
  * under K). Consumers import only these named exports.
  *
+ * V022-A02: this barrel no longer surfaces Host bridge/runtime assembly
+ * (`assembleMediaRuntime`, `assembleS4HlsRuntime`, the `MEDIA_BRIDGE_PIN` /
+ * `S4_HLS_BRIDGE_PIN` pin names, the runtime option/counter types) — the
+ * physical assembly moved to the Core composition root (A04). Domain-owned
+ * surfaces stay: sealed BUILD producers/identities, the frozen routes and
+ * operation declarations, Business Intent validators, the media targetRef
+ * registry grammar, the S4 contribution seam and the domain journeys.
+ * Transitional Core-compat symbols (`InMemoryMediaTargetRegistry`,
+ * `acquireS4HlsBridgePin`, `S4HlsRuntime`, …) remain reachable at their deep
+ * module paths only; the current Core route deep-imports them until A04.
+ *
  * Release-claimed journey coverage (T10 baseline vocabulary):
  *
  *   - S3 "Direct Media File"  → `submitConfirmedMediaDownload` over the
  *     sealed media composition + the T06 media bridge. PROVEN at
  *     bounded-HLS-fixture level (real master→playlist→segments run through
- *     the existing engine under one K permit, digest-backed materialization).
+ *     the existing engine under one K permit, digest-backed materialization);
+ *     the fixture proof relocates to Core A04 with the assembly.
  *     Installed-path media validation is NOT_PROVEN here (owner: T16
  *     validation-product).
  *   - S2 "Browser Download Handoff / Explicit Current-page Attachment" →
@@ -31,26 +43,19 @@ export {
   APP_ID_MEDIA,
   BUILD_ID_MEDIA,
   MEDIA_ACQUIRE_OPERATION,
-  MEDIA_BRIDGE_PIN,
   MEDIA_BUSINESS_MODULE_ID,
   MEDIA_CAPABILITY_MODULE_ID,
   MEDIA_ROUTE,
   MEDIA_SLICE,
-  assembleMediaRuntime,
   sealMediaComposition,
   submitConfirmedMediaDownload,
-  type AssembleMediaRuntimeOptions,
-  type MediaDownloadRuntime,
   type MediaJourneySummary,
-  type MediaPinCounters,
   type MediaSubmissionOutcome,
-  type MediaTargetSeed,
   type SealedMediaComposition,
   type SubmitConfirmedMediaOptions,
 } from './s3-media.ts';
 export {
   MEDIA_REGISTRY_PROTOCOLS,
-  InMemoryMediaTargetRegistry,
   validateMediaTargetRecord,
   type MediaTargetRecord,
   type MediaTargetRefSeed,
@@ -90,15 +95,13 @@ export {
 export {
   APP_ID_S4_HLS_VOD,
   BUILD_ID_S4_HLS_VOD,
-  S4_HLS_BRIDGE_PIN,
   S4_HLS_ROUTE,
-  assembleS4HlsRuntime,
   sealS4HlsComposition,
+  s4HlsCompositionContribution,
+  s4HlsSealedPassthrough,
   submitConfirmedS4HlsVod,
+  type S4HlsContribution,
   type S4HlsJourneyResult,
-  type S4HlsPinCounters,
-  type S4HlsRuntime,
-  type S4HlsRuntimeOptions,
 } from './s4-hls-vod.ts';
 export {
   S4_HLS_MEDIA_OPERATION,

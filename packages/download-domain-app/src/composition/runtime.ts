@@ -1,32 +1,29 @@
 /**
- * v0.2 T11 — download Domain App RUNTIME assembly (integration-direct lane;
- * write set packages/download-domain-app/src/composition/** only).
+ * v0.2 T11 — download Domain App direct-lane sealed composition.
  *
- * `assembleDownloadRuntime` end-to-end composes the sealed K/S/B/C BUILD of
- * the T03 composition with the REAL C/Host acquisition implementation:
+ * V022-A02 boundary note: this module no longer imports
+ * @xdownload/download-domain-host and no longer assembles a live runtime.
+ * What stays (all domain-owned):
  *
- *   - K/S/B bytes come from the T03 sealed producer verbatim (kernel-primary
- *     and standard-primary must still reproduce the #183 PoC manifest module
- *     hashes; the B policy module is the sealed business-download.mjs);
- *   - the C capability module is THIS lane's capability-acquisition-direct.mjs
- *     (same route binding as T03: ACQUISITION_ROUTE, capabilityId
- *     'acquisition', handler 'acquire', externalEffect: true) re-sealed into
- *     one BUILD by the public @kaicreator/domain-harness-build producer;
- *   - the physical C implementation is the T04 `DirectAcquisitionBridge`
- *     (permit gate, registry-resolved targetRef, CanonicalBudgetLedger single
- *     budget truth, digest-backed atomic materialization), pinned on
- *     `globalThis.__xdownloadDirectAcquisitionBridge` BEFORE the SDK public
- *     `load` runs (the #183 PoC host-dependency pattern; a missing pin fails
- *     closed inside the sealed C module);
- *   - the K documents live in a caller-owned DURABLE store: this lane ships
- *     the plain-file CAS `FileCasDocStore` (store choice is written up on the
- *     class: the T09 LineageStore seam is a single-document lineage-authority
- *     shape, not a keyed V10DocStore, and the real SQLite leg stays with the
- *     T13 packaging writer per the T09 evidence).
+ *   - the sealed BUILD producer `sealDirectComposition` (T03 K/S/B bytes
+ *     verbatim + this lane's capability-acquisition-direct.mjs re-sealed by
+ *     the public @kaicreator/domain-harness-build producer);
+ *   - the plain-file CAS `FileCasDocStore` — transitional Core compatibility
+ *     (the current Core route deep-imports it; A04 moves the consumer to a
+ *     Host-owned adapter and deletes this class);
+ *   - the `DIRECT_BRIDGE_PIN` ABI name the sealed direct C module reaches
+ *     (the sealed module carries the literal; the constant is the typed
+ *     reference for the A04 Core-side pin installer).
  *
- * Everything below the facade is trusted Host application code over the SDK
- * public surface (`buildV10App`, `load`, `DomainApp`); there is no SDK
- * internal import anywhere.
+ * REMOVED in A02, RELOCATE-TO-CORE-A04: `assembleDownloadRuntime` used to
+ * compose the sealed BUILD with the REAL T04 Host bridge
+ * (DirectAcquisitionBridge / InMemoryTargetRefRegistry /
+ * CanonicalBudgetLedger from download-domain-host) and call the SDK public
+ * `load`. Host-owned physical assembly now belongs to the Core composition
+ * root (A04); the sentinel below keeps the exported contract honest (typed
+ * relocation refusal) until the S2/S5/S6 slice journey tests and
+ * slice-journey-testkit.ts — outside this Task's write set — are re-pointed
+ * by A04. See composition-runtime.test.ts for the enumerated scenario map.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -42,13 +39,7 @@ import type {
   V10DocWriteCondition,
   V10RouteRowInput,
 } from '@kaicreator/domain-harness-contracts';
-import { load, type DomainApp } from '@kaicreator/domain-harness-microkernel';
-import {
-  CanonicalBudgetLedger,
-  DirectAcquisitionBridge,
-  InMemoryTargetRefRegistry,
-  type TargetRefRecord,
-} from '../../../download-domain-host/src/direct/index.ts';
+import type { DomainApp } from '@kaicreator/domain-harness-microkernel';
 import {
   ACQUISITION_ROUTE,
   AUDIENCE,
@@ -96,6 +87,10 @@ export interface FileCasDocStoreCounts {
  *     exactly the durable bytes — the property the restart test proves.
  *     Single-process-safe by construction; cross-process writers are not
  *     its claim (one-writer-per-runtime is the composition's guarantee).
+ *
+ * V022-A02: TRANSITIONAL CORE COMPATIBILITY — internal only, not exported
+ * by the public App root; deleted by A04 after Core consumes the Host-owned
+ * adapter.
  */
 export class FileCasDocStore implements V10DocStore {
   readonly path: string;
@@ -370,23 +365,45 @@ export function sealDirectComposition(): SealedDirectComposition {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime assembly.
+// Transitional runtime contract (V022-A02 → Core A04).
 // ---------------------------------------------------------------------------
 
-/** The trusted Host bridge pin name the sealed direct C module reaches. */
+/**
+ * The trusted Host bridge pin name the sealed direct C module reaches. The
+ * sealed capability module carries the literal
+ * `globalThis.__xdownloadDirectAcquisitionBridge`; this constant is the
+ * typed reference for the A04 Core-side pin installer. TRANSITIONAL: not
+ * exported by the public App root.
+ */
 export const DIRECT_BRIDGE_PIN = '__xdownloadDirectAcquisitionBridge';
 
-interface DirectBridgePin {
-  acquire: (payload: Record<string, unknown>, permit: unknown) => Promise<unknown>;
+/**
+ * Transitional bridge-side counter view (the T04 DirectAcquisitionBridge
+ * counter shape, structurally re-declared so this module needs no Host
+ * import). The physical bridge lives in download-domain-host; Core A04
+ * assembles it next to the Host adapters.
+ */
+export interface DirectBridgeCountersView {
+  readonly acquireCalls: number;
+  readonly permitRefusals: number;
+  readonly scopeRefusals: number;
+  readonly targetRefRefusals: number;
+  readonly pathRefusals: number;
+  readonly filesWritten: number;
+  readonly bytesDownloaded: number;
 }
 
-function hostGlobals(): { [DIRECT_BRIDGE_PIN]?: DirectBridgePin } {
-  return globalThis as unknown as { [DIRECT_BRIDGE_PIN]?: DirectBridgePin };
+/** Transitional view of the pinned T04 direct bridge (Host-owned physical
+ * implementation; Core A04 installs the real instance). */
+export interface TransitionalDirectBridgeView {
+  readonly counters: DirectBridgeCountersView;
 }
 
+/** Trusted registry seed: opaque handles → delivery facts (resolved by the
+ * trusted Host registry at assembly time; the record shape is Host-owned). */
 export interface TargetRefSeed {
   readonly handle: string;
-  readonly record: TargetRefRecord;
+  readonly record: unknown;
 }
 
 export interface AssembleDownloadRuntimeOptions {
@@ -402,13 +419,24 @@ export interface AssembleDownloadRuntimeOptions {
   readonly now?: () => number;
 }
 
+/**
+ * The assembled direct download runtime contract. TRANSITIONAL (A02→A04):
+ * the physical bridge/registry/ledger are Host-owned, so they appear here
+ * only as structural/opaque views; the domain journey (./journey.ts) and
+ * the S2/S5/S6 slice journeys consume exactly this surface
+ * (`app`, `beginSubmission`, `settleSubmission`, `stop`, plus the
+ * `bridge.counters` / `store` evidence accessors), which Core A04 re-homes
+ * unchanged next to the Host adapters.
+ */
 export interface DownloadRuntime {
   readonly built: V10BuiltApp;
   readonly app: DomainApp;
   readonly store: FileCasDocStore;
-  readonly bridge: DirectAcquisitionBridge;
-  readonly registry: InMemoryTargetRefRegistry;
-  readonly ledger: CanonicalBudgetLedger;
+  readonly bridge: TransitionalDirectBridgeView;
+  /** Host-owned targetRef registry (opaque at the App boundary). */
+  readonly registry: unknown;
+  /** Host-owned canonical budget ledger (opaque at the App boundary). */
+  readonly ledger: unknown;
   /** Register the cancellation controller for one in-flight submission. */
   beginSubmission(requestId: string): AbortController;
   /** Drop the cancellation controller once the submission settled. */
@@ -420,114 +448,19 @@ export interface DownloadRuntime {
   stop(): void;
 }
 
-const DEFAULT_BUDGET_PROFILE = {
-  discovery: { domain: 'discovery' },
-  transfer: { domain: 'transfer', maxBytes: 1_048_576 },
-  globalSafety: { domain: 'global_safety' },
-} as const;
-
 /**
- * Assemble the one authoritative direct download runtime: seal the BUILD,
- * install the trusted T04 bridge pin, open the durable store and call the
- * SDK public `load`. `stop()` releases the pin (only if still ours), stops
- * the app, aborts every in-flight submission and closes the store.
+ * V022-A02 RELOCATE-TO-CORE-A04 sentinel. The real assembly (seal → pin the
+ * T04 Host bridge → open the durable store → SDK public `load`) moved to
+ * the Core composition root, which owns the Host adapters. This sentinel
+ * keeps the exported contract honest for the transitional consumers
+ * (slice-journey-testkit.ts, outside this Task's write set): calling it
+ * fails closed with a typed relocation refusal and creates zero effects
+ * (no store file, no pin, no K).
  */
 export async function assembleDownloadRuntime(
-  options: AssembleDownloadRuntimeOptions,
+  _options: AssembleDownloadRuntimeOptions,
 ): Promise<DownloadRuntime> {
-  const { built } = sealDirectComposition();
-
-  const store = new FileCasDocStore(options.storePath);
-  const registry = new InMemoryTargetRefRegistry();
-  for (const seed of options.targetRefs ?? []) {
-    const registered = registry.register(seed.handle, seed.record);
-    if (!registered.ok) {
-      throw new Error(
-        `DIRECT_REGISTRY_SEED_REFUSED: ${registered.diagnostics.map((entry) => entry.code).join(', ')}`,
-      );
-    }
-  }
-  const ledger = new CanonicalBudgetLedger(options.budgetProfile ?? DEFAULT_BUDGET_PROFILE);
-  const bridge = new DirectAcquisitionBridge(registry, ledger);
-
-  const submissions = new Map<string, AbortController>();
-
-  /**
-   * The trusted dispatch seam: the K→C external Effect gate invokes the
-   * sealed direct C module with (payload, dispatchContext) where payload =
-   * the B projection of the T01 intent PLUS the kernel-minted `effectId`.
-   * The T04 bridge takes the effect identity through the PERMIT channel
-   * (`KernelPermitContext.effectId`, verified by its permit gate) and
-   * validates the intent payload against the T01 exact-field grammar — so
-   * the pin re-channels that one kernel-added field through the permit it
-   * already rides and forwards the pure T01 intent verbatim: no field is
-   * invented, none is dropped (the same effectId crosses in the permit),
-   * and the caller's cancellation signal rides along per request.
-   */
-  const pin: DirectBridgePin = {
-    acquire: (payload, permit) => {
-      const intent: Record<string, unknown> = { ...payload };
-      delete intent['effectId'];
-      const requestId = intent['requestId'];
-      const signal = typeof requestId === 'string' ? submissions.get(requestId)?.signal : undefined;
-      return bridge.acquire(intent, permit, signal === undefined ? {} : { signal });
-    },
-  };
-  hostGlobals()[DIRECT_BRIDGE_PIN] = pin;
-
-  const tenantId = options.tenantId ?? 'tenant:xdownload-v02-t11';
-  const deployedAppId = options.deployedAppId ?? 'deploy:xdownload-v02-t11';
-  const principal = options.queryPrincipal ?? 'xdownload-v02-t11-host';
-  const app = await load(built, {
-    store,
-    tenantId,
-    deploymentIdentity: { deployedAppId, tenantId, appId: built.appId },
-    queryAuthority: {
-      principal: { actor: principal },
-      authorize: (candidate, target) =>
-        Boolean(
-          candidate !== null &&
-          typeof candidate === 'object' &&
-          (candidate as { actor?: string }).actor === principal &&
-          target.tenantId === tenantId,
-        ),
-    },
-    ...(options.now === undefined ? {} : { now: options.now }),
-  });
-
-  return {
-    built,
-    app,
-    store,
-    bridge,
-    registry,
-    ledger,
-    beginSubmission(requestId: string): AbortController {
-      const existing = submissions.get(requestId);
-      if (existing !== undefined) return existing;
-      const controller = new AbortController();
-      submissions.set(requestId, controller);
-      return controller;
-    },
-    settleSubmission(requestId: string): void {
-      submissions.delete(requestId);
-    },
-    cancel(requestId: string, reason?: string): void {
-      submissions.get(requestId)?.abort(reason);
-    },
-    signalFor(requestId: string): AbortSignal | undefined {
-      return submissions.get(requestId)?.signal;
-    },
-    stop(): void {
-      for (const controller of submissions.values()) {
-        controller.abort('runtime stopped');
-      }
-      submissions.clear();
-      app.stop();
-      if (hostGlobals()[DIRECT_BRIDGE_PIN] === pin) {
-        delete hostGlobals()[DIRECT_BRIDGE_PIN];
-      }
-      store.close();
-    },
-  };
+  throw new Error(
+    'DIRECT_RUNTIME_ASSEMBLY_RELOCATED: the direct runtime assembly (sealed BUILD + T04 Host bridge pin + durable store + SDK load) moved to the Core composition root (V022-A04); the Domain App no longer imports download-domain-host',
+  );
 }

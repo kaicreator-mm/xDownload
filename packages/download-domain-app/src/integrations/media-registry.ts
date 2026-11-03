@@ -6,10 +6,12 @@
  * confirmed media intent carries an OPAQUE `targetRef`; this registry —
  * seeded by the trusted composition — is the ONLY thing that turns the
  * handle into the T06 bridge request facts (manifest locator, authorized
- * origins, budget profile). The handle is never parsed as a URL/path (the
- * explicit `isRawLocatorShape` negative assertion of the T04 registry is
- * reused verbatim), record fields are copied explicitly (exact-key record
- * grammar, no spread), and unknown handles are typed refusals, never guesses.
+ * origins, budget profile). The handle is never parsed as a URL/path: the
+ * raw-locator negative assertion is A01's neutral `isRawLocatorShape`
+ * grammar from @xdownload/domain-contracts (V022-A02: the App no longer
+ * imports the Host registry), record fields are copied explicitly (exact-key
+ * record grammar, no spread), and unknown handles are typed refusals, never
+ * guesses.
  *
  * The registry record is the SINGLE SOURCE the media pin forwards to the T06
  * bridge: `allowedManifestOrigins` / `allowedSegmentOrigins` / budget come
@@ -26,12 +28,12 @@ import {
   deepFreeze,
   diagnostic,
   fail,
+  isRawLocatorShape,
   ok,
   type BudgetProfile,
   type DomainValidationResult,
 } from '@xdownload/domain-contracts';
 import { REFERENCE_TOKEN_PATTERN } from '../contracts/index.ts';
-import { isRawLocatorShape } from '../../../download-domain-host/src/direct/target-ref-registry.ts';
 
 /** The only protocol this lane's registry accepts (T06 declared support). */
 export const MEDIA_REGISTRY_PROTOCOLS = ['HLS'] as const;
