@@ -34,7 +34,7 @@ This is a downstream package/Host wiring defect, not an SDK defect.
 
 ### 2.2 Host infrastructure is owned/exported by the App package
 
-FileCasDocStore is a physical filesystem implementation of the SDK V10DocStore port. Direct/HLS bridges are physical effect handlers. Runtime assembly binds SDK BUILD, K lifecycle, and Host ports. These belong to Host/Core composition, not the Domain App public root.
+FileCasDocStore is a physical filesystem implementation of the SDK V10DocStore port. Direct/HLS bridges are physical effect handlers. Runtime assembly binds SDK BUILD, K lifecycle, and Host ports. These belong to Host/Core composition, not the Domain App public root. The same distinction applies to T09 migration storage: LineageLedger ownership policy is Domain App logic, but PlainFileLineageStore performs physical file I/O and belongs to Host; move the physical adapter, not the entire LineageLedger.
 
 ### 2.3 Persistence responsibilities need a verified authority map
 
@@ -60,8 +60,8 @@ The current CLI Facade maps query() to Core Seam READ_JOB_PROJECTION; subscribe(
 | Package | Responsibility |
 |---|---|
 | domain-contracts | neutral, stable cross-layer DTOs and business contracts |
-| download-domain-app | K/S/B/C declarations, Business Intents, schemas and pure business logic; no Host imports |
-| download-domain-host | C handlers, V10DocStore/CAS, Provider and physical Host ports; no deep App-source imports |
+| download-domain-app | K/S/B/C declarations, Business Intents, schemas, pure business logic, LineageLedger policy and its narrow store port; no Host imports |
+| download-domain-host | C handlers, V10DocStore/CAS, PlainFileLineageStore implementation, Provider and physical Host ports; no deep App-source imports |
 | core-runtime | sole production composition root; BUILD, Host injection, one K load lifecycle, Core Seam binding |
 | UI / CLI / Desktop / Browser | consume through Core Seam; no direct physical Host or Journal access |
 
@@ -70,7 +70,7 @@ Rules:
 1. App must not import Host implementations or depend on the Host package.
 2. Host must not import deep App source paths. Move only genuinely shared contracts to domain-contracts; avoid creating a broad generic abstraction.
 3. Core Runtime owns production assembly and injects Host ports into the selected K/C composition.
-4. Move physical V10DocStore/CAS implementation to Host. Keep SDK semantics unchanged.
+4. Move physical V10DocStore/CAS and PlainFileLineageStore implementations to Host. Keep LineageLedger domain policy and its narrow port in the App/domain layer; keep SDK semantics unchanged.
 5. Move assembleDownloadRuntime / assembleS4HlsRuntime production entry points to Core/Host composition. Standalone K assemblies belong in test fixtures, not App root exports.
 6. Keep exactly one production K and one business Writer per Lineage. No second scheduler, Journal, Permit authority or implicit effect path.
 
@@ -79,7 +79,7 @@ Rules:
 Included:
 
 - Remove the App↔Host package dependency cycle.
-- Relocate physical Host stores, direct/HLS bridges and production composition functions to the Host/Core composition layer.
+- Relocate physical Host stores (V10DocStore/CAS and PlainFileLineageStore), direct/HLS bridges and production composition functions to the Host/Core composition layer; retain LineageLedger policy in the Domain App.
 - Re-home shared DTO/validation contracts only where required to establish the acyclic graph.
 - Keep the existing selected K/S/B/C BUILD, operation IDs, public SDK exports, permit semantics and direct/HLS behavior unchanged.
 - Make the persistence/authority map explicit in code comments and focused tests; only remove a duplicate writer if actual production use proves it is redundant.
@@ -99,7 +99,7 @@ Excluded:
 
 1. Workspace dependency graph is acyclic; App has no Host package/source imports; Host has no deep App source imports.
 2. Core Runtime is the only production composition root and loads exactly one selected K for the new-K lineage.
-3. Host owns physical V10DocStore/CAS and direct/HLS physical effect handlers; App root exports no Host assembly or physical store.
+3. Host owns physical V10DocStore/CAS, PlainFileLineageStore and direct/HLS physical effect handlers; App root exports no Host assembly or physical store, while LineageLedger policy remains in the Domain App.
 4. K Effect Journal/Permit remains authoritative; Seam Journal remains transport acceptance; RouteLog is an explicitly derived Core projection; Lineage ownership has exactly one authoritative owner. If source evidence cannot prove an overlap, preserve distinct responsibilities and mark unresolved items UNKNOWN.
 5. No behavior/contract regression in direct, S2/S3/S4/S5/S6, cancellation, budget, digest, restart, duplicate and UNKNOWN paths.
 6. DomainHarness v0.10.3 source/tag and all four vendored tarball bytes remain unchanged; no registry fallback.
