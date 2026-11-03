@@ -1,6 +1,6 @@
 # xDownload v0.2.2 — Domain Package Architecture Cleanup R0
 
-> Status: planning candidate for independent review; not a frozen Product/L2/DAG and not a source dispatch. Target is the v0.2.2 successor WIP only. No change to v0.2.1, main, DomainHarness v0.10.3, or public SDK ABI.
+> Status: historical R0 planning record; superseded by DOMAIN_PACKAGE_REFINEMENT_IMPLEMENTATION_PLAN_R1.md and A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md. Use R1 for current task decomposition and authority decisions. R0 is retained for traceability only.
 
 ## 1. Decision
 
@@ -47,7 +47,7 @@ The current implementation contains distinct records:
 | FileBackedDomainAppRouteLog | Core route CLAIM/ATTEMPT/OUTCOME facts used for product Job Projection |
 | T09 LineageLedger | old-core/new-k ownership partition, migration admission and UNKNOWN disposition |
 
-These are not automatically duplicate databases. RouteLog.CLAIM and T09 LineageLedger ownership semantics may overlap conceptually, but source review has not proved two active production writers for the same fact. The implementation task must build the actual production call graph and select one authoritative owner; it must not blindly delete or merge stores.
+These are not automatically duplicate databases. The A00 R1 source audit found that current Core routing reads new-K ownership from RouteLog.CLAIM and does not import or instantiate T09 LineageLedger in the audited production route. No two active production writers were found. Preserve the distinction; do not activate T09 as a second owner or delete it without an explicit compatibility decision.
 
 OUTCOME derived from a K receipt is a product read model, not a second K Effect Journal. Unprovable in-flight work remains UNKNOWN. FileCasDocStore currently claims single-process writer safety only; multi-process SQLite CAS remains NOT_PROVEN until physically verified.
 
@@ -99,8 +99,8 @@ Excluded:
 
 1. Workspace dependency graph is acyclic; App has no Host package/source imports; Host has no deep App source imports.
 2. Core Runtime is the only production composition root and loads exactly one selected K for the new-K lineage.
-3. Host owns physical V10DocStore/CAS, PlainFileLineageStore and direct/HLS physical effect handlers; App root exports no Host assembly or physical store, while LineageLedger policy remains in the Domain App.
-4. K Effect Journal/Permit remains authoritative; Seam Journal remains transport acceptance; RouteLog is an explicitly derived Core projection; Lineage ownership has exactly one authoritative owner. If source evidence cannot prove an overlap, preserve distinct responsibilities and mark unresolved items UNKNOWN.
+3. Host owns the active physical V10DocStore/CAS adapter and direct/HLS physical effect handlers. PlainFileLineageStore is the physical adapter of the currently unreferenced T09 module; if T09 remains supported, its adapter belongs behind Host while LineageLedger policy remains in App.
+4. K Effect Journal/Permit remains authoritative for external effects; Seam Journal remains transport acceptance/replay; RouteLog CLAIM currently supplies the new-K route ownership fact, ATTEMPT records route history, and OUTCOME is derived from K receipt. T09 is not wired into the audited Core route. Preserve these distinct responsibilities and UNKNOWN semantics.
 5. No behavior/contract regression in direct, S2/S3/S4/S5/S6, cancellation, budget, digest, restart, duplicate and UNKNOWN paths.
 6. DomainHarness v0.10.3 source/tag and all four vendored tarball bytes remain unchanged; no registry fallback.
 7. Node 24 syntax/type preflight and changed-file Prettier run before CI; focused tests, typecheck, aggregate pnpm run ci:verify and local Docker Woodpecker exact-SHA SUCCESS; independent Exact-SHA review.
