@@ -1,5 +1,11 @@
 task_id: "v022-U03-SINGLE-RESOURCE-COMPLETE-STATUS-01"
 failures:
+  - id: "F-BASELINE"
+    trigger: "The current WIP HEAD differs from the Owner-approved exact base or the fresh Builder Claim is bound to another SHA."
+    disposition: "STOP; do not mutate source; re-read WIP and obtain a new exact-base rebind/claim."
+  - id: "F-REBASE"
+    trigger: "The rebased candidate changes paths outside the two frozen files or does not preserve the original implementation behavior."
+    disposition: "STOP; do not push or open a PR; report exact diff and request Owner amendment."
   - id: "F-WRITESET"
     trigger: "A required change falls outside renderer-main.ts and ux-r0-form-schema.test.ts."
     disposition: "STOP; no out-of-scope write; request a separate amendment."
