@@ -108,7 +108,7 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 | A01B | Builder implementation ready; PR #343 / exact SHA `5831c57f512eac90d59d589858ac7c402d19535f`; Woodpecker #17 SUCCESS; independent review pending | #340 |
 | A02 | Builder implementation ready; PR #344 / exact SHA `d89cac20b9c718ae41ec4f64c651aa215b847c45`; Woodpecker #18 SUCCESS; independent review pending | #341 |
 | A03 | Task Pack independent review PASS; waits for #343 WIP integration and exact-base rebind | #342 |
-| A04 | Not dispatched | Await A02 + A03 |
+| A04 | Preparation R0 committed; not dispatched | Await A02 + A03 integration, then freeze exact write set |
 | A05 | Six documentation drafts committed; independent review PASS; validation-map filename corrected here | #339; docs-only; no source changes |
 | A06 | Not dispatched | Await A04 + A05 |
 | A07 | Not dispatched | Independent final review |
