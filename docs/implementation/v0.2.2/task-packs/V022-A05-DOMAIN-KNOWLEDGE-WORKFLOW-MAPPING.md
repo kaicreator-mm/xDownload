@@ -53,7 +53,7 @@ No source, manifest, lockfile, tests, CI, SDK, WIP, version, main, Product/L1 or
 - Do not treat Core route OUTCOME as K Effect Journal truth.
 - Do not describe RouteLog CLAIM as merely a disposable projection.
 - Do not claim multi-process CAS.
-- Keep the existing DomainHarness v0.10.3 source and SDK bytes unchanged.
+- Preserve the current xDownload-vendored DomainHarness SDK pins and bytes exactly: the audited baseline uses 0.10.2-rc.0 tarballs under vendor/sdk/ plus matching manifest/workspace overrides. This Task does not upgrade them to v0.10.3; any SDK upgrade is a separate decision.
 
 ## Acceptance
 
