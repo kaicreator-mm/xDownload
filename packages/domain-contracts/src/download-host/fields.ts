@@ -36,3 +36,16 @@ export function isBoundedByteCount(value: unknown): value is number {
     value <= MAX_DECLARED_BYTES
   );
 }
+
+/**
+ * An ISO-8601 timestamp with an EXPLICIT timezone designator (`Z` or
+ * `±hh:mm`). Wall-clock-naive timestamps are refused: `Date.parse` would
+ * interpret them in the host's local zone, making freshness validation
+ * host-dependent and non-deterministic across machines.
+ */
+export const EXPLICIT_TIMEZONE_ISO_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export function isExplicitTimezoneIso(value: unknown): value is string {
+  return typeof value === 'string' && EXPLICIT_TIMEZONE_ISO_PATTERN.test(value);
+}

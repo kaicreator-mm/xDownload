@@ -8,11 +8,23 @@
  * never become success). Successful materialization carries
  * `MaterializedEvidence`: digest-backed, byte-counted and bounded to the
  * confirmed output root — evidence can never widen the authorized scope.
- * Pure contract layer: no I/O, no App/Host/Core imports.
+ *
+ * Both decoders are strict plain-object validators: hostile object
+ * geometry (arrays, class instances, accessors, symbol keys), unknown
+ * fields, missing fields and out-of-bounds values refuse fail-closed —
+ * nothing is silently dropped or coerced. Pure contract layer: no I/O, no
+ * App/Host/Core imports.
  */
 import { diagnostic, fail, ok, type DomainValidationResult } from '../diagnostics.ts';
 import { isBoundedByteCount, isSha256Digest } from './fields.ts';
 import { validateArtifactPath } from './paths.ts';
+import { exactKeys, stableRecord } from './records.ts';
+
+/** Bounded external reference grammar riding every envelope. */
+const EXTERNAL_REF_MAX = 512;
+const ERROR_CODE_MAX = 128;
+const ERROR_MESSAGE_MAX = 1024;
+const STOP_REASON_MAX = 64;
 
 /**
  * Typed phase grammar returned by every external effect adapter (A05).
@@ -32,94 +44,131 @@ export type EffectEnvelope =
           };
     };
 
+function malformed(path: string, message: string) {
+  return fail([diagnostic('MALFORMED_REQUIRED_FIELD', path, message)]);
+}
+
 /**
- * Normalize an unknown adapter return into the envelope grammar. Pending
- * phases carry no outcome (a fake accepted/running ACK can never become
- * success); terminal outcomes must be exactly typed.
+ * Normalize an unknown adapter return into the envelope grammar. The
+ * envelope must be a plain data object with exactly the frozen keys;
+ * pending phases must NOT carry an outcome field at all (a forged outcome
+ * on an accepted/running ACK refuses instead of being dropped); terminal
+ * outcomes must be exactly typed with bounded strings. Fail-closed
+ * throughout.
  */
 export function normalizeEffectEnvelope(raw: unknown): DomainValidationResult<EffectEnvelope> {
-  if (typeof raw !== 'object' || raw === null) {
-    return fail([
-      diagnostic('MALFORMED_REQUIRED_FIELD', 'envelope', 'effect envelope must be a plain object'),
-    ]);
-  }
-  const record = raw as Record<string, unknown>;
+  const stable = stableRecord(raw, 'envelope');
+  if (!stable.ok) return stable;
+  const record = stable.value;
+  const keys = exactKeys(record, ['phase', 'externalRef', 'outcome'], 'envelope', ['outcome']);
+  if (!keys.ok) return keys;
   const externalRef = record.externalRef;
-  if (typeof externalRef !== 'string' || externalRef.length === 0) {
-    return fail([
-      diagnostic(
-        'MALFORMED_REQUIRED_FIELD',
-        'externalRef',
-        'envelope requires a bounded externalRef',
-      ),
-    ]);
+  if (
+    typeof externalRef !== 'string' ||
+    externalRef.length === 0 ||
+    externalRef.length > EXTERNAL_REF_MAX
+  ) {
+    return malformed(
+      'envelope.externalRef',
+      `externalRef must be a bounded string (1..${EXTERNAL_REF_MAX})`,
+    );
   }
   if (record.phase === 'accepted' || record.phase === 'running') {
-    return ok({ phase: record.phase, externalRef } as EffectEnvelope);
+    // Strict: a pending envelope carrying ANY outcome field is a forgery
+    // attempt and refuses; the outcome is never silently discarded.
+    if (Object.hasOwn(record, 'outcome')) {
+      return malformed(
+        'envelope.outcome',
+        `${record.phase} envelopes must not carry an outcome; only 'terminal' settles an effect`,
+      );
+    }
+    return ok(Object.freeze({ phase: record.phase, externalRef }));
   }
   if (record.phase !== 'terminal') {
+    return malformed('envelope.phase', "phase must be 'accepted' | 'running' | 'terminal'");
+  }
+  if (!Object.hasOwn(record, 'outcome')) {
     return fail([
       diagnostic(
-        'MALFORMED_REQUIRED_FIELD',
-        'phase',
-        "phase must be 'accepted' | 'running' | 'terminal'",
+        'MISSING_REQUIRED_FIELD',
+        'envelope.outcome',
+        'terminal envelope requires an outcome',
       ),
     ]);
   }
-  const outcome = record.outcome;
-  if (typeof outcome !== 'object' || outcome === null) {
-    return fail([
-      diagnostic(
-        'MALFORMED_REQUIRED_FIELD',
-        'outcome',
-        'terminal envelope requires an outcome record',
-      ),
-    ]);
-  }
-  const outcomeRecord = outcome as Record<string, unknown>;
-  if (outcomeRecord.ok === true) {
-    const output = outcomeRecord.output;
-    if (typeof output !== 'object' || output === null) {
+  const outcome = stableRecord(record.outcome, 'envelope.outcome');
+  if (!outcome.ok) return outcome;
+  const outcomeKeys = exactKeys(outcome.value, ['ok', 'output', 'error'], 'envelope.outcome', [
+    'output',
+    'error',
+  ]);
+  if (!outcomeKeys.ok) return outcomeKeys;
+  if (outcome.value.ok === true) {
+    if (Object.hasOwn(outcome.value, 'error')) {
+      return malformed('envelope.outcome.error', 'ok outcomes must not carry an error field');
+    }
+    if (!Object.hasOwn(outcome.value, 'output')) {
       return fail([
         diagnostic(
-          'MALFORMED_REQUIRED_FIELD',
-          'outcome.output',
-          'ok terminal outcome carries a plain output record',
+          'MISSING_REQUIRED_FIELD',
+          'envelope.outcome.output',
+          'ok terminal outcome requires an output record',
         ),
       ]);
     }
-    return ok({
-      phase: 'terminal',
-      externalRef,
-      outcome: { ok: true, output: output as Record<string, unknown> },
-    });
+    const output = stableRecord(outcome.value.output, 'envelope.outcome.output');
+    if (!output.ok) return output;
+    return ok(
+      Object.freeze({
+        phase: 'terminal',
+        externalRef,
+        outcome: Object.freeze({ ok: true as const, output: Object.freeze(output.value) }),
+      }),
+    );
   }
-  if (outcomeRecord.ok !== false) {
-    return fail([
-      diagnostic('MALFORMED_REQUIRED_FIELD', 'outcome.ok', 'terminal outcome.ok must be boolean'),
-    ]);
+  if (outcome.value.ok !== false) {
+    return malformed('envelope.outcome.ok', 'terminal outcome.ok must be boolean');
   }
-  const error = outcomeRecord.error;
-  if (
-    typeof error !== 'object' ||
-    error === null ||
-    typeof (error as Record<string, unknown>).code !== 'string' ||
-    typeof (error as Record<string, unknown>).message !== 'string'
-  ) {
+  if (Object.hasOwn(outcome.value, 'output')) {
+    return malformed('envelope.outcome.output', 'failed outcomes must not carry an output field');
+  }
+  if (!Object.hasOwn(outcome.value, 'error')) {
     return fail([
       diagnostic(
-        'MALFORMED_REQUIRED_FIELD',
-        'outcome.error',
-        'failed terminal outcome carries a typed {code, message} error',
+        'MISSING_REQUIRED_FIELD',
+        'envelope.outcome.error',
+        'failed terminal outcome requires a typed error',
       ),
     ]);
   }
-  const errorRecord = error as { code: string; message: string };
-  return ok({
-    phase: 'terminal',
-    externalRef,
-    outcome: { ok: false, error: { code: errorRecord.code, message: errorRecord.message } },
-  });
+  const error = stableRecord(outcome.value.error, 'envelope.outcome.error');
+  if (!error.ok) return error;
+  const errorKeys = exactKeys(error.value, ['code', 'message'], 'envelope.outcome.error');
+  if (!errorKeys.ok) return errorKeys;
+  const code = error.value.code;
+  const message = error.value.message;
+  if (typeof code !== 'string' || code.length === 0 || code.length > ERROR_CODE_MAX) {
+    return malformed(
+      'envelope.outcome.error.code',
+      `error.code must be a bounded string (1..${ERROR_CODE_MAX})`,
+    );
+  }
+  if (typeof message !== 'string' || message.length === 0 || message.length > ERROR_MESSAGE_MAX) {
+    return malformed(
+      'envelope.outcome.error.message',
+      `error.message must be a bounded string (1..${ERROR_MESSAGE_MAX})`,
+    );
+  }
+  return ok(
+    Object.freeze({
+      phase: 'terminal',
+      externalRef,
+      outcome: Object.freeze({
+        ok: false as const,
+        error: Object.freeze({ code, message }),
+      }),
+    }),
+  );
 }
 
 /** Bounded materialized-artifact evidence returned by a trusted Host writer. */
@@ -134,65 +183,48 @@ const EVIDENCE_KEYS = ['fileSha256', 'bytesWritten', 'artifactPath', 'stopReason
 
 /**
  * Validate materialized evidence against the confirmed root and digest
- * grammar: digest must be lowercase 64-hex, bytes a positive safe integer
- * within the v0.2 profile bound, and the path must stay inside the
- * authorized root — evidence can never widen the confirmed output scope.
+ * grammar: a plain data object with exactly the frozen keys; digest must
+ * be lowercase 64-hex; bytes a positive safe integer within the v0.2
+ * profile bound; stopReason a bounded terminal token; and the path must
+ * stay inside the authorized root — evidence can never widen the confirmed
+ * output scope.
  */
 export function validateMaterializedEvidence(
   evidence: unknown,
   outputRootScope: string,
 ): DomainValidationResult<MaterializedEvidence> {
-  if (typeof evidence !== 'object' || evidence === null) {
-    return fail([
-      diagnostic(
-        'MALFORMED_REQUIRED_FIELD',
-        'evidence',
-        'materialized evidence must be a plain object',
-      ),
-    ]);
+  const stable = stableRecord(evidence, 'evidence');
+  if (!stable.ok) return stable;
+  const record = stable.value;
+  const keys = exactKeys(record, EVIDENCE_KEYS, 'evidence');
+  if (!keys.ok) return keys;
+  if (!isSha256Digest(record.fileSha256)) {
+    return malformed('evidence.fileSha256', 'fileSha256 must be lowercase 64-hex');
   }
-  const record = evidence as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    if (!(EVIDENCE_KEYS as readonly string[]).includes(key)) {
-      return fail([
-        diagnostic(
-          'SCOPE_WIDENING_REFUSED',
-          'evidence.' + key,
-          `unknown evidence field is refused: ${key}`,
-        ),
-      ]);
-    }
+  if (!isBoundedByteCount(record.bytesWritten)) {
+    return malformed(
+      'evidence.bytesWritten',
+      'bytesWritten must be a positive safe integer within the v0.2 profile bound',
+    );
   }
-  const fileSha256 = record.fileSha256;
-  if (!isSha256Digest(fileSha256)) {
-    return fail([
-      diagnostic('MALFORMED_REQUIRED_FIELD', 'fileSha256', 'fileSha256 must be lowercase 64-hex'),
-    ]);
+  if (
+    typeof record.stopReason !== 'string' ||
+    record.stopReason.length === 0 ||
+    record.stopReason.length > STOP_REASON_MAX
+  ) {
+    return malformed(
+      'evidence.stopReason',
+      `stopReason must be a bounded terminal token (1..${STOP_REASON_MAX})`,
+    );
   }
-  const bytesWritten = record.bytesWritten;
-  if (!isBoundedByteCount(bytesWritten)) {
-    return fail([
-      diagnostic(
-        'MALFORMED_REQUIRED_FIELD',
-        'bytesWritten',
-        'bytesWritten must be a positive safe integer within the v0.2 profile bound',
-      ),
-    ]);
-  }
-  const stopReason = record.stopReason;
-  if (typeof stopReason !== 'string' || stopReason.length === 0 || stopReason.length > 64) {
-    return fail([
-      diagnostic(
-        'MALFORMED_REQUIRED_FIELD',
-        'stopReason',
-        'stopReason must be a bounded terminal token',
-      ),
-    ]);
-  }
-  const pathCheck = validateArtifactPath(
-    outputRootScope,
-    typeof record.artifactPath === 'string' ? record.artifactPath : '',
-  );
+  const pathCheck = validateArtifactPath(outputRootScope, record.artifactPath);
   if (!pathCheck.ok) return pathCheck;
-  return ok({ fileSha256, bytesWritten, artifactPath: pathCheck.value, stopReason });
+  return ok(
+    Object.freeze({
+      fileSha256: record.fileSha256,
+      bytesWritten: record.bytesWritten,
+      artifactPath: pathCheck.value,
+      stopReason: record.stopReason,
+    }),
+  );
 }

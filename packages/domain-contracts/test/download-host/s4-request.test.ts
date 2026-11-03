@@ -164,6 +164,36 @@ describe('S4-DTO-EXACT-01: expiry and freshness fail closed', () => {
     );
   });
 
+  it('requires an explicit timezone designator (naive local-time refused)', () => {
+    // R2 (independent review): naive ISO strings parse in the host's local
+    // zone, making freshness host-dependent — only Z or ±hh:mm is admitted.
+    expectCode(
+      validateS4HostAcquisitionRequest(withSelection({ expiresAt: '2026-11-04T00:00:00' }), S4_NOW),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    expectCode(
+      validateS4HostAcquisitionRequest(
+        withSelection({ confirmedAt: '2026-11-02 00:00:00Z' }),
+        S4_NOW,
+      ),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    expectCode(
+      validateS4HostAcquisitionRequest(withSelection({ expiresAt: '2026-11-04' }), S4_NOW),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    const offset = validateS4HostAcquisitionRequest(
+      withSelection({ expiresAt: '2026-11-04T00:00:00+08:00' }),
+      S4_NOW,
+    );
+    expect(offset.ok).toBe(true);
+    const zulu = validateS4HostAcquisitionRequest(
+      withSelection({ expiresAt: '2026-11-04T00:00:00.000Z' }),
+      S4_NOW,
+    );
+    expect(zulu.ok).toBe(true);
+  });
+
   it('honours an injected clock (deterministic freshness)', () => {
     const raw = rawS4Request();
     expect(validateS4HostAcquisitionRequest(raw, S4_NOW).ok).toBe(true);

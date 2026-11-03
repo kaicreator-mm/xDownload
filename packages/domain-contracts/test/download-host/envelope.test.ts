@@ -25,16 +25,20 @@ describe('EFFECT-ENVELOPE-01: pending phases are non-terminal', () => {
     }
   });
 
-  it('a pending envelope carrying a forged outcome is not admitted', () => {
+  it('a pending envelope carrying a forged outcome refuses (never dropped)', () => {
     const forged = {
       phase: 'accepted',
       externalRef: 'ref-1',
       outcome: { ok: true, output: { fileSha256: DIGEST_A } },
     };
-    const result = normalizeEffectEnvelope(forged);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value).not.toHaveProperty('outcome');
+    expectCode(normalizeEffectEnvelope(forged), 'MALFORMED_REQUIRED_FIELD');
+  });
+
+  it('a pending envelope with an explicit undefined outcome key still refuses', () => {
+    expectCode(
+      normalizeEffectEnvelope({ phase: 'running', externalRef: 'ref-1', outcome: undefined }),
+      'MALFORMED_REQUIRED_FIELD',
+    );
   });
 
   it('a fake pending ACK never becomes success through re-normalization', () => {
@@ -69,11 +73,16 @@ describe('EFFECT-ENVELOPE-01: pending phases are non-terminal', () => {
 
   it('rejects malformed envelopes (bad phase, missing ref, untyped outcome)', () => {
     expectCode(normalizeEffectEnvelope(null), 'MALFORMED_REQUIRED_FIELD');
+    expectCode(normalizeEffectEnvelope([]), 'MALFORMED_REQUIRED_FIELD');
     expectCode(
       normalizeEffectEnvelope({ phase: 'done', externalRef: 'ref-1' }),
       'MALFORMED_REQUIRED_FIELD',
     );
-    expectCode(normalizeEffectEnvelope({ phase: 'terminal' }), 'MALFORMED_REQUIRED_FIELD');
+    expectCode(normalizeEffectEnvelope({ phase: 'terminal' }), 'MISSING_REQUIRED_FIELD');
+    expectCode(
+      normalizeEffectEnvelope({ phase: 'accepted', externalRef: 'ref-1', extra: 1 }),
+      'SCOPE_WIDENING_REFUSED',
+    );
     expectCode(
       normalizeEffectEnvelope({ phase: 'terminal', externalRef: 'ref-1', outcome: null }),
       'MALFORMED_REQUIRED_FIELD',
@@ -84,8 +93,82 @@ describe('EFFECT-ENVELOPE-01: pending phases are non-terminal', () => {
         externalRef: 'ref-1',
         outcome: { ok: false, error: { code: 7 } },
       }),
+      'MISSING_REQUIRED_FIELD',
+    );
+  });
+
+  it('strict terminal shape: exact outcome keys and bounded strings', () => {
+    expectCode(
+      normalizeEffectEnvelope({
+        phase: 'terminal',
+        externalRef: 'ref-1',
+        outcome: { ok: true, output: {}, extra: 'x' },
+      }),
+      'SCOPE_WIDENING_REFUSED',
+    );
+    expectCode(
+      normalizeEffectEnvelope({
+        phase: 'terminal',
+        externalRef: 'ref-1',
+        outcome: { ok: false, error: { code: 'E', message: 'm', extra: 1 } },
+      }),
+      'SCOPE_WIDENING_REFUSED',
+    );
+    expectCode(
+      normalizeEffectEnvelope({
+        phase: 'terminal',
+        externalRef: 'x'.repeat(513),
+        outcome: { ok: false, error: { code: 'E', message: 'm' } },
+      }),
       'MALFORMED_REQUIRED_FIELD',
     );
+    expectCode(
+      normalizeEffectEnvelope({
+        phase: 'terminal',
+        externalRef: 'ref-1',
+        outcome: { ok: false, error: { code: 'x'.repeat(129), message: 'm' } },
+      }),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    expectCode(
+      normalizeEffectEnvelope({
+        phase: 'terminal',
+        externalRef: 'ref-1',
+        outcome: { ok: false, error: { code: 'E', message: 'x'.repeat(1025) } },
+      }),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    expectCode(
+      normalizeEffectEnvelope({
+        phase: 'terminal',
+        externalRef: 'ref-1',
+        outcome: { ok: true, error: { code: 'E', message: 'm' } },
+      }),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    expectCode(
+      normalizeEffectEnvelope({
+        phase: 'terminal',
+        externalRef: 'ref-1',
+        outcome: { ok: false, output: { a: 1 } },
+      }),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    expectCode(
+      normalizeEffectEnvelope({ phase: 'terminal', externalRef: 'ref-1' }),
+      'MISSING_REQUIRED_FIELD',
+    );
+  });
+
+  it('rejects hostile object geometry on the envelope records', () => {
+    const accessorEnvelope = {
+      phase: 'terminal',
+      externalRef: 'ref-1',
+      get outcome() {
+        return { ok: false, error: { code: 'E', message: 'm' } };
+      },
+    };
+    expectCode(normalizeEffectEnvelope(accessorEnvelope), 'MALFORMED_REQUIRED_FIELD');
   });
 
   it('type-level: only the terminal variant carries an outcome', () => {

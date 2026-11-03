@@ -52,6 +52,35 @@ describe('PATH-CONTAINMENT-01: output root grammar', () => {
       'MALFORMED_REQUIRED_FIELD',
     );
   });
+
+  it('POSIX roots refuse backslash outright (no cross-semantic ambiguity)', () => {
+    // R2 (independent review): on POSIX backslash is an ordinary filename
+    // byte, so the grammar refuses it rather than guessing the OS parsing.
+    expectCode(validateOutputRoot('/var/out\\root'), 'MALFORMED_REQUIRED_FIELD');
+    expectCode(validateOutputRoot('\\var\\out'), 'MALFORMED_REQUIRED_FIELD');
+    expectCode(
+      validateArtifactPath('/var/out/root', '/var/out/root/..\\escape'),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+    expectCode(
+      validateArtifactPath('/var/out/root', '\\var\\out\\root\\file.bin'),
+      'MALFORMED_REQUIRED_FIELD',
+    );
+  });
+
+  it('Windows roots keep admitting both separators and reject traversal', () => {
+    const winRoot = 'C:\\out\\root';
+    expect(validateOutputRoot(winRoot).ok).toBe(true);
+    expect(validateOutputRoot('C:/out/root').ok).toBe(true);
+    expect(validateArtifactPath(winRoot, 'C:\\out\\root\\file.bin').ok).toBe(true);
+    expect(validateArtifactPath(winRoot, 'C:/out/root/file.bin').ok).toBe(true);
+    expectCode(
+      validateArtifactPath(winRoot, 'C:\\out\\root\\..\\escape.bin'),
+      'OUTPUT_ROOT_ESCAPED',
+    );
+    expectCode(validateArtifactPath(winRoot, 'C:/out/root/../escape.bin'), 'OUTPUT_ROOT_ESCAPED');
+    expectCode(validateOutputRoot('C:\\..\\out'), 'OUTPUT_ROOT_ESCAPED');
+  });
 });
 
 describe('PATH-CONTAINMENT-01: artifact containment', () => {

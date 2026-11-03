@@ -7,7 +7,9 @@
  * freshly fetched master manifest before any segment request. Domain App
  * projects its validated S4 Business Intent into exactly this shape; the
  * Host validates it from `unknown` BEFORE any physical effect. Exact-key
- * no-widening; stale/expired selections fail closed.
+ * no-widening; stale/expired selections fail closed. Confirmation
+ * timestamps must carry an explicit timezone designator (`Z` or `±hh:mm`)
+ * so freshness semantics are host-independent.
  *
  * The S4 tuple-digest RECOMPUTATION stays Host-side: it needs the freshly
  * fetched master facts (bandwidth/resolution) and a hash implementation —
@@ -15,7 +17,7 @@
  * displayed tuple digest fact and enforces its grammar only.
  */
 import { diagnostic, fail, ok, type DomainValidationResult } from '../diagnostics.ts';
-import { isSha256Digest } from './fields.ts';
+import { isExplicitTimezoneIso, isSha256Digest } from './fields.ts';
 import { validateHostCaller, type DirectHostCaller } from './direct-request.ts';
 import { validateOutputRoot } from './paths.ts';
 import { exactKeys, stableRecord } from './records.ts';
@@ -224,12 +226,15 @@ export function validateS4HostAcquisitionRequest(
       ),
     ]);
   }
-  if (typeof selection.confirmedAt !== 'string' || typeof selection.expiresAt !== 'string') {
+  if (
+    !isExplicitTimezoneIso(selection.confirmedAt) ||
+    !isExplicitTimezoneIso(selection.expiresAt)
+  ) {
     return fail([
       diagnostic(
         'MALFORMED_REQUIRED_FIELD',
         'request.selection.confirmedAt',
-        'confirmation timestamps must be ISO strings',
+        'confirmation timestamps must be ISO-8601 strings with an explicit timezone designator (Z or ±hh:mm); naive local-time timestamps are refused',
       ),
     ]);
   }

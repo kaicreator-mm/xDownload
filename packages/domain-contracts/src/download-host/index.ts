@@ -11,11 +11,13 @@
  * no I/O, no App/Host/Core/Node/network/SDK imports.
  */
 export {
+  EXPLICIT_TIMEZONE_ISO_PATTERN,
   INTENT_FIELD_PATTERN,
   MAX_DECLARED_BYTES,
   SHA256_PATTERN,
   isBoundedByteCount,
   isBoundedIntentField,
+  isExplicitTimezoneIso,
   isSha256Digest,
 } from './fields.ts';
 export {
