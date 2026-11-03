@@ -1,14 +1,14 @@
 # Task Pack — V022-A03 Domain Host Boundary
 
-> Status: bounded source Task; waits for A01B #340 integration before claim/branch creation.
+ > Status: bounded source Task; A01B #340 is integrated into WIP via PR #343; ready for a fresh Local Builder Claim.
 >
 > Parent tracking: xDownload #337  
 > Formal Task Issue: xDownload #342  
 > Dependencies: A01 #335 and A01B #340  
 > Planning baseline: planning/v0.2.2-domain-package-architecture-r0  
 > Audit baseline: wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334  
-> Current WIP at Task Pack authoring: 5880731aa84601373c028e45f2ec0380e521686f  
-> Required: rebind exact source base after A01B #340 is merged; do not create the task branch or Claim against the older SHA.
+ > Current WIP after A01B integration: a3e1b22c200ef11a942dacc953e2bfecdc3db03c (tree 0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7)  
+ > Rebind complete: A01B #340 merged as PR #343; use only the exact WIP SHA/tree above for this dispatch.
 
 ## Contract
 
@@ -88,7 +88,7 @@ Add a test that scans Host source and fails on imports from @xdownload/download-
 
 ## Required gates
 
-1. Wait until A01B #340 is merged; re-read current WIP HEAD/tree and update the expected base.
+1. Re-read current WIP HEAD/tree and verify it still equals `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` / `0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7`; if moved, rebind before Claim.
 2. Publish and read back the Builder's own accepted ADS DISPATCH_CLAIMED for this exact Task and 14-path write set.
 3. Node 24 syntax preflight and changed-file Prettier before CI.
 4. Focused Direct, S3 media, S4 media, store and migration tests.
@@ -98,7 +98,7 @@ Add a test that scans Host source and fails on imports from @xdownload/download-
 
 ## Stop conditions
 
-- A01B has not been integrated or the neutral S3 DTO does not match the existing S3 intent.
+- A01B #340 integration is absent from the exact base or the neutral S3 DTO does not match the existing S3 intent.
 - Any need to change App, Contracts, Core, package manifests, lockfile, CI or apps.
 - Any change to Product/L1, L2, K/S/B/C identifiers, operation IDs, permission, user confirmation, download protocol or external-effect semantics.
 - Any second K, Journal, Scheduler, transfer engine, SQLite driver or multi-process CAS claim.
