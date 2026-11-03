@@ -46,3 +46,23 @@ execution_environment: "LOCAL"
 owner_authorization_refs:
   - "xDownload#305@6586392596"
 dispatch_admission: "OWNER_AUTHORIZED_LOCAL_BUILDER_PENDING_CLAIM"
+
+rebase_validation:
+  addendum: ".agent/execution/V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY/REBASE_VALIDATION_2026-11-04.md"
+  integration_base_sha: "a3e1b22c200ef11a942dacc953e2bfecdc3db03c"
+  integration_base_tree: "0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7"
+  candidate_head: "330efd081a89e443d79fa27064109c4c40d17b16"
+  candidate_tree: "253ad057c813c1c447e05d57d5afb1737b092457"
+  compare: "1_AHEAD_0_BEHIND"
+  exact_write_set: "11_OF_11_PATHS"
+  source_blobs: "11_OF_11_BYTE_IDENTICAL_TO_ORIGINAL_REVIEWED_TREE"
+  node24_syntax: "PASS_11_OF_11"
+  changed_file_prettier: "PASS"
+  focused_app_tests: "PASS_29_OF_29"
+  typecheck: "PASS"
+  windows_ci_verify: "BASELINE_ELECTRON_ENVIRONMENT_FAILURE_ONLY"
+  local_docker_woodpecker: "SUCCESS"
+  woodpecker_pipeline: "#20"
+  woodpecker_build_id: 19992
+  independent_exact_sha_review: "PENDING_FOR_REBOUND_CANDIDATE"
+  state: "REBASED_VALIDATION_COMPLETE"
