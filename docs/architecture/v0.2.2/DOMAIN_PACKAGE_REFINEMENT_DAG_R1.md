@@ -96,8 +96,8 @@ A06 runs after A04 and A05. A07 independently reviews the final exact integratio
 
 | Task | State | Notes |
 |---|---|---|
-| A00 | Audit findings prepared; formal Task Issue pending link | Read-only; no source mutation |
-| A01 | Planned / Task Pack to be narrowed | Existing #335 |
+| A00 | Read-only audit complete; independent review pending | #338; report committed; no source mutation |
+| A01 | Planned / Task Pack narrowing required before dispatch | Existing #335 |
 | A02 | Not dispatched | Await A01 |
 | A03 | Not dispatched | Await A01 |
 | A04 | Not dispatched | Await A02 + A03 |
