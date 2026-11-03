@@ -182,29 +182,31 @@ Extract only truly shared contracts used by both App and Host. Preserve domain-s
 
 Add a dedicated neutral S3 Host request DTO pinned to `media.acquire` + `S3`. A01's direct request is pinned to `acquisition.acquire`, while its S4 request requires the S4 selected-rendition tuple; neither represents the existing S3 media lane. Reuse A01's neutral exact-key, opaque-targetRef, output-root, digest/bytes and caller primitives. No Host consumer or App source change in this Task.
 
-Formal Task Pack: `V022-A01B-S3-MEDIA-HOST-REQUEST.md`; Issue #340. Builder implementation is complete in PR #343 at `5831c57f512eac90d59d589858ac7c402d19535f`; local Docker Woodpecker #17 SUCCESS. Web Controller source audit P0=0/P1=0/P2=1; independent Exact-SHA review pending.
+Formal Task Pack: `V022-A01B-S3-MEDIA-HOST-REQUEST.md`; Issue #340. PR #343 is merged to WIP at `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; exact candidate Woodpecker #17 SUCCESS; independent Exact-SHA review PASS (P0=0/P1=0/P2=1). The non-blocking P2 diagnostic hardening is carried into A06 follow-up.
 
 ### A02 — Domain App Refactoring
 
 Remove App→Host source imports and narrow the public root to domain-owned declarations, BUILD producers, Business Intents, pure rules, Workflow definitions and journeys. Preserve internal deep-import compatibility required by the current Core route until A04 moves it to Host-owned adapters; those transitional surfaces must not be re-exported from the App root. Keep K/S/B/C identifiers, sealed bytes, operation IDs and behavior unchanged. The existing App runtime integration tests must be re-established under Core A04, not silently dropped.
 
-Task Pack: V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md; Issue #341. Builder implementation is complete in PR #344 at `d89cac20b9c718ae41ec4f64c651aa215b847c45`; local Docker Woodpecker #18 SUCCESS. Web Controller source audit P0=0/P1=0/P2=1; independent Exact-SHA review pending.
+Task Pack: V022-A02-DOMAIN-APP-PUBLIC-BOUNDARY.md; Issue #341. PR #344 is rebased onto WIP base `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` at candidate `330efd081a89e443d79fa27064109c4c40d17b16` / tree `253ad057c813c1c447e05d57d5afb1737b092457`; the 11 App file blobs are unchanged. Independent Exact-SHA review PASS (P0=0/P1=0/P2=2); Node 24 syntax/Prettier and exact-SHA local Docker validation are pending on the rebased candidate.
 
 ### A03 — Domain Host Refactoring
 
 Remove Host→App deep imports. This Task depends on A01 and A01B so both S3 and S4 media Host requests have neutral, operation-pinned schemas. Own Direct/HLS physical handlers, target registries, FileCasDocStore and the dormant T09 plain-file adapter. Preserve permit checks, targetRef opacity, budget, digest, atomic materialization and cancellation. Keep T09 dormant; do not add K or a private journal.
 
-Task Pack: V022-A03-DOMAIN-HOST-BOUNDARY.md; Issue #342 (Task Pack review PASS). Builder is not dispatched; wait for #340/PR #343 independent review and WIP integration, then rebind the exact base/tree before Claim.
+Task Pack: V022-A03-DOMAIN-HOST-BOUNDARY.md; Issue #342 (Task Pack review PASS; exact-base rebind completed after #343). Current base `a3e1b22c200ef11a942dacc953e2bfecdc3db03c` / tree `0a39b3e2b18479fd8f66d1c4c69c22a3c6e44bf7`; Execution Pack is current. Ready for the Local Builder's own accepted Claim.
 
 ### A04 — Core Runtime Consolidation
 
 Use stable App/Host entrypoints and injected ports. Keep Core Runtime as the only production composition root and load exactly one selected K. Preserve Core Seam acceptance/replay, route ownership, K effect governance and restart/UNKNOWN semantics. Do not silently switch the active RouteLog ownership source to T09 LineageLedger.
 
-Preparation: `A04_CORE_RUNTIME_CONSOLIDATION_PREPARATION_R0.md` records the current Core import inventory, reciprocal package dependency, App compatibility surfaces, test relocation matrix and the two P2 follow-ups. It is read-only preparation, not a Task Pack or dispatch authorization. Freeze A04's exact write set only after A02 and A03 are integrated.
+Preparation: `A04_CORE_RUNTIME_CONSOLIDATION_PREPARATION_R0.md` records the current Core import inventory, reciprocal package dependency, App compatibility surfaces, test relocation matrix and three non-blocking boundary/API P2 follow-ups. It is read-only preparation, not a Task Pack or dispatch authorization. Freeze A04's exact write set only after A02 and A03 are integrated.
 
 ### A05 — Domain Knowledge & Workflow Mapping
 
 Create a lightweight, traceable map for glossary, authority, schemas, business rules, Workflow definitions, Function/Tool classification, UI Journey boundaries and validation evidence. No new DSL or runtime.
+
+Six documents are complete. The corrected validation-map filename passed independent R2 re-review in Issue #339 on 2026-11-04 (P0=0/P1=0/P2=0); A05 documentation is ready for A06.
 
 ### A06 — Architecture Integration & Verification
 
@@ -256,9 +258,9 @@ Each source Task needs its own Task Pack, exact base, allowed write set, accepte
 - A00 read-only audit is complete at the exact baseline; independent review PASS is recorded in [#338](https://github.com/kaicreator-mm/xDownload/issues/338).
 - A00 report: [A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md](./A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md); Task Pack blob `1591be332f3ba76e8e5a14d5f062e27860dcc219`.
 - [#335](https://github.com/kaicreator-mm/xDownload/issues/335) A01 neutral Host contracts are implemented, reviewed and merged to WIP at merge commit `a3cc525df6a8c561f396dadf1e79bbb549fcc036`.
-- [#340](https://github.com/kaicreator-mm/xDownload/issues/340) A01B implementation ready: PR #343 / `5831c57f512eac90d59d589858ac7c402d19535f`; Woodpecker #17 SUCCESS; Web Controller audit P0=0/P1=0/P2=1; independent review pending.
-- [#341](https://github.com/kaicreator-mm/xDownload/issues/341) A02 implementation ready: PR #344 / `d89cac20b9c718ae41ec4f64c651aa215b847c45`; Woodpecker #18 SUCCESS; Web Controller audit P0=0/P1=0/P2=1; independent review pending.
-- [#342](https://github.com/kaicreator-mm/xDownload/issues/342) A03 Task Pack independently reviewed PASS; waits for #343 WIP integration and exact-base rebind.
-- [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 documentation draft is complete; independent review PASS is recorded in #339. The validation-map filename P2 is corrected in this planning update.
-- A01 is complete and integrated. A01B and A02 source implementation plus local gates are complete; PR #343/#344 await independent Exact-SHA review before WIP integration. A03 is Task Pack-reviewed and waits for A01B integration/base rebind. A04/A06/A07 remain undispatched.
+- [#340](https://github.com/kaicreator-mm/xDownload/issues/340) A01B merged via PR #343 to WIP at `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Woodpecker #17 SUCCESS; independent review PASS, P0=0/P1=0/P2=1.
+- [#341](https://github.com/kaicreator-mm/xDownload/issues/341) A02 PR #344 rebased to `330efd081a89e443d79fa27064109c4c40d17b16`; independent review PASS, P0=0/P1=0/P2=2; rebase syntax/Prettier and exact-SHA local CI pending.
+- [#342](https://github.com/kaicreator-mm/xDownload/issues/342) A03 Task Pack rebound to WIP `a3e1b22c200ef11a942dacc953e2bfecdc3db03c`; Execution Pack ready; awaiting Local Builder Claim.
+- [#339](https://github.com/kaicreator-mm/xDownload/issues/339) A05 corrected six-document set passed R2 re-review, P0=0/P1=0/P2=0.
+- A01 and A01B are integrated to WIP. A02 source implementation and independent review are complete; its rebased exact-SHA syntax/Prettier and local CI are pending. A03 is rebound and ready for Local Builder Claim. A04 awaits A02/A03 integration; A06/A07 remain downstream.
 - UI U00–U06 remains a separate lane and may continue in parallel where exact write sets do not overlap.
