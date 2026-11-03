@@ -236,7 +236,8 @@ Each source Task needs its own Task Pack, exact base, allowed write set, accepte
 ## 10. Current status
 
 - Parent tracking issue: #337.
-- A00 audit findings are recorded in this R1 plan and the dedicated A00 audit report.
-- Existing #335 is to be narrowed to A01 neutral-contract extraction after the A00 issue and Task Pack are materialized.
+- A00 read-only audit is complete at the exact baseline; independent review is pending in [#338](https://github.com/kaicreator-mm/xDownload/issues/338).
+- A00 report: [A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md](./A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md); Task Pack blob `1591be332f3ba76e8e5a14d5f062e27860dcc219`.
+- Existing [#335](https://github.com/kaicreator-mm/xDownload/issues/335) is the planned A01 entry and must be narrowed to neutral-contract extraction before dispatch.
 - No A01–A07 source implementation is dispatched by this plan.
 - UI U00–U06 remains a separate lane and may continue in parallel where exact write sets do not overlap.
