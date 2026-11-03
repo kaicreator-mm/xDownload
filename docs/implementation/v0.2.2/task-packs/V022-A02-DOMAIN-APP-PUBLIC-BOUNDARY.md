@@ -105,8 +105,13 @@ Add package-boundary tests that:
 - Any need to change Product/L1, L2, K/S/B/C identifiers, sealed module bytes/hashes, operation IDs, confirmation semantics or user-visible download behavior.
 - Any need to modify Host, Contracts, Core, package manifests, lockfile, CI or apps.
 - Any need to break a current Core deep import before A04 is ready.
-- Any write outside the exact 15-path set, stale base, missing Claim or overlapping writer.
+- Any write outside the exact 11-path set listed above, stale base, missing Claim or overlapping writer.
 
 ## Explicit non-authorization
 
 No Host consumer migration, Core Runtime composition, package manifest/lockfile, SDK/vendor, Product/L2, main/version branch, release, deployment, real external download, Native Host or registry side effect.
+
+
+## Post-execution errata — 2026-11-04
+
+The original stop-condition sentence incorrectly referred to a 15-path set. The authoritative allowed write set in this Task Pack has always contained exactly 11 paths, and PR #344 changed exactly those 11 paths. This correction changes no permission, file path, implementation requirement or validation gate; it only makes the stop-condition count consistent with the frozen list. The original execution evidence and original Task Pack blob remain preserved in the Execution Pack history.
