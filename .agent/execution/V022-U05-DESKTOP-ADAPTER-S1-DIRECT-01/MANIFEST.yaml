@@ -1,0 +1,57 @@
+pack_id: "V022-U05-T02-DESKTOP-ADAPTER-S1-DIRECT@ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
+task_id: "V022-U05-DESKTOP-ADAPTER-S1-DIRECT-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+parent_issue: "#310"
+task_issue: "#352"
+parent_dag_issue: "#310"
+architecture_tracking_issue: "#337"
+base_branch: "wip/v0.2.2-ui-rebuild-r0"
+base_sha: "ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
+base_tree: "870657c54eecae9721a6b06221828a6bdfdfbb0d"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U05-DESKTOP-ADAPTER-S1-DIRECT.md@planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d#blob:e29c487caa6ebff2a81e527f3c39bbc2bad10f3a"
+task_pack_blob: "e29c487caa6ebff2a81e527f3c39bbc2bad10f3a"
+task_branch: "task/v0.2.2-u05-desktop-adapter-s1-direct"
+execution_branch: "execution/v0.2.2-u05-desktop-adapter-s1-direct-r1"
+execution_pack_path: ".agent/execution/V022-U05-DESKTOP-ADAPTER-S1-DIRECT-01/MANIFEST.yaml"
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+owner_authorization_ref: "xDownload#310 comment 6616747471 (U05 Product/L2 scope)"
+product_l2_freeze_ref: "planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d"
+dispatch_admission: "OWNER_SCOPE_AUTHORIZED_TASK_PACK_REVIEW_PASS_FRESH_LOCAL_BUILDER_CLAIM_REQUIRED"
+claim:
+  protected_claim_key: "kaicreator-mm/xDownload#352:builder:__default__"
+  claim_generation: 1
+  required_event: "DISPATCH_CLAIMED"
+  claim_owner: "actual Local Builder identity"
+  source_mutation_before_accepted_claim: false
+allowed_write_set:
+  - apps/desktop/src/adapter.ts
+  - apps/desktop/src/commands.ts
+  - apps/desktop/src/manager-documents.ts
+  - apps/desktop/test/core-authority.test.ts
+  - apps/desktop/test/manager-documents.test.ts
+  - apps/desktop/test/s1-direct-acquisition.test.ts
+goal: "Expose the existing Core S1 direct-acquisition path through Desktop adapter and provide typed access to the Core-owned S1 index query. Preserve SUBMIT_CONTRACT and confirmation; after accepted confirmation route EXECUTE_S1_DIRECT_ACQUISITION with canonical identities and accepted aggregate; same URL-host-only redirect default; no optional constraints; acceptance remains admission only; validate query response and preserve request identity on reconnect."
+acceptance:
+  - "Cover valid S1 submit/confirm, invalid/failed confirmation no command, redirect host only, command acceptance not success, strict bounded index response and projection identity, reconnect idempotency, typed refusal/disconnect not empty success."
+  - "Only exact paths in allowed_write_set may change."
+  - "Preserve frozen Product/L2 blobs and existing SDK/Core authority; no scope expansion."
+  - "The Builder must write exact HEAD/tree, commands, exit codes, test counts and Woodpecker Build ID to Task Issue #352."
+pre_ci:
+  - "Verify task branch base SHA/tree equals ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd and pack/task refs are current."
+  - "Acquire a fresh accepted generation-1 LOCAL_BUILDER CAS Claim before source edits."
+  - "Run Node v24 syntax preflight on all changed JS/TS files before CI."
+  - "Run changed-file Prettier before CI."
+  - "Run focused task tests, typecheck, aggregate pnpm run ci:verify, then local Docker Woodpecker exact-SHA."
+  - "No standalone LOCAL_VALIDATION task; Builder owns implementation, repair, and all validation."
+forbidden:
+  - "No Core Seam/Core Runtime/CLI/shell/package manifests/lockfile, no new transfer implementation/store, no per-download outputRoot, no S2-S6, no real external download/Native Host/registry, no main/version/release/deployment."
+  - "main"
+  - "version/v0.2.1"
+  - "tag/release/deployment"
+  - "Any write outside allowed_write_set"
+  - "Merge or WIP integration; requires later independent Exact-SHA review and separate Owner authorization."
+status: "PACK_PREPARED_AWAITING_PACK_CI_AND_BUILDER_CLAIM"
