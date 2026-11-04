@@ -431,9 +431,6 @@ importers:
       '@xdownload/domain-contracts':
         specifier: workspace:*
         version: link:../domain-contracts
-      '@xdownload/download-domain-host':
-        specifier: workspace:*
-        version: link:../download-domain-host
 
   packages/download-domain-host:
     dependencies:
@@ -446,9 +443,6 @@ importers:
       '@xdownload/domain-contracts':
         specifier: workspace:*
         version: link:../domain-contracts
-      '@xdownload/download-domain-app':
-        specifier: workspace:*
-        version: link:../download-domain-app
       '@xdownload/hls-vod-adapter':
         specifier: workspace:*
         version: link:../hls-vod-adapter

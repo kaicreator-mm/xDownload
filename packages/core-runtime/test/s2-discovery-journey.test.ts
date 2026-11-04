@@ -1,20 +1,23 @@
 /**
- * v0.2 T12 — S2 discovery/attachment journey tests (node:test, colocated).
+ * V022-A04 — S2 discovery/attachment journey tests, migrated from the Domain
+ * App integrations lane into Core (packages/core-runtime/test/, discovered
+ * by `pnpm run ci:verify` — the A02 P1 closure).
  *
- * Real end-to-end over the T11 direct runtime and a real 127.0.0.1 fixture
- * (T11/T04 precedent, zero mocks). The T12 counter-evidence convention: every
- * zero-effect guarantee is proven four ways — fixture-side socket requests,
- * bridge-side counters, and the durable K store (permit/journal docs) — each
- * measured as a DELTA against the baseline captured before the journey, so a
- * claim is never anchored in one component's own bookkeeping.
+ * Real end-to-end over the Core-assembled direct runtime (see
+ * ./slice-journey-testkit.ts: sealed BUILD + pinned T04 Host bridge +
+ * Host durable store) and a real 127.0.0.1 fixture (zero mocks). The
+ * counter-evidence convention is preserved verbatim: every zero-effect
+ * guarantee is proven across fixture-side socket requests, bridge-side
+ * counters and the durable K store (permit/journal docs), each measured as
+ * a DELTA against the baseline captured before the journey.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 
-import { runS2DiscoveryJourney } from './s2-discovery.ts';
+import { runS2DiscoveryJourney } from '@xdownload/download-domain-app';
 import {
   LocalHttpFixture,
   makeSliceWorkspace,
@@ -77,7 +80,7 @@ function assertZeroEffectsSince(before0: EffectBaseline): void {
   );
 }
 
-before(async () => {
+beforeAll(async () => {
   await fixture.start();
   workspace = await makeSliceWorkspace('s2', fixture, [
     { handle: 'ref:s2/alpha', path: '/alpha.bin' },
@@ -86,7 +89,7 @@ before(async () => {
   ]);
 });
 
-after(async () => {
+afterAll(async () => {
   await workspace.dispose();
   await fixture.stop();
 });

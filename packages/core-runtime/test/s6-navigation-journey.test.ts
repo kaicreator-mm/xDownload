@@ -1,20 +1,24 @@
 /**
- * v0.2 T12 — S6 explicit playlist/gallery collection journey tests (node:test,
- * colocated). Real per-member K submissions over the T11 direct runtime and a
- * real 127.0.0.1 fixture (zero mocks); zero-effect negatives proven as deltas
- * across fixture requests, bridge counters and the durable K store.
+ * V022-A04 — S6 explicit playlist/gallery collection journey tests,
+ * migrated from the Domain App integrations lane into Core
+ * (packages/core-runtime/test/, discovered by `pnpm run ci:verify` — the
+ * A02 P1 closure).
+ *
+ * Real per-member K submissions over the Core-assembled direct runtime and
+ * a real 127.0.0.1 fixture (zero mocks); zero-effect negatives proven as
+ * deltas across fixture requests, bridge counters and the durable K store.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 
-import { runS6NavigationJourney } from './s6-navigation.ts';
-import {
-  type SliceBatchConfirmationFacts,
-  type SliceMemberDeliveryFacts,
-} from './slice-journey-shared.ts';
+import { runS6NavigationJourney } from '@xdownload/download-domain-app';
+import type {
+  SliceBatchConfirmationFacts,
+  SliceMemberDeliveryFacts,
+} from '@xdownload/download-domain-app';
 import {
   LocalHttpFixture,
   makeSliceWorkspace,
@@ -64,7 +68,7 @@ function assertZeroEffectsSince(before0: EffectBaseline): void {
   assert.equal(workspace.runtime.store.permitDocs().length - before0.permitDocs, 0);
 }
 
-before(async () => {
+beforeAll(async () => {
   await fixture.start();
   workspace = await makeSliceWorkspace('s6', fixture, [
     { handle: 'ref:s6/ep1', path: '/ep1.bin' },
@@ -75,7 +79,7 @@ before(async () => {
   ]);
 });
 
-after(async () => {
+afterAll(async () => {
   await workspace.dispose();
   await fixture.stop();
 });

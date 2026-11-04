@@ -1,17 +1,20 @@
 /**
- * v0.2 T12 — S5 current-page collection journey tests (node:test, colocated).
+ * V022-A04 — S5 current-page collection journey tests, migrated from the
+ * Domain App integrations lane into Core (packages/core-runtime/test/,
+ * discovered by `pnpm run ci:verify` — the A02 P1 closure).
  *
- * Real per-member K submissions over the T11 direct runtime and a real
- * 127.0.0.1 fixture (zero mocks). Zero-effect negatives are proven as deltas
- * across fixture socket requests, bridge counters and the durable K store.
+ * Real per-member K submissions over the Core-assembled direct runtime and
+ * a real 127.0.0.1 fixture (zero mocks). Zero-effect negatives are proven
+ * as deltas across fixture socket requests, bridge counters and the
+ * durable K store.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 
-import { runS5CollectionJourney } from './s5-collection.ts';
+import { runS5CollectionJourney } from '@xdownload/download-domain-app';
 import {
   LocalHttpFixture,
   makeSliceWorkspace,
@@ -62,7 +65,7 @@ function assertZeroEffectsSince(before0: EffectBaseline): void {
   assert.equal(workspace.runtime.store.permitDocs().length - before0.permitDocs, 0);
 }
 
-before(async () => {
+beforeAll(async () => {
   await fixture.start();
   workspace = await makeSliceWorkspace('s5', fixture, [
     { handle: 'ref:s5/one', path: '/one.bin' },
@@ -71,7 +74,7 @@ before(async () => {
   ]);
 });
 
-after(async () => {
+afterAll(async () => {
   await workspace.dispose();
   await fixture.stop();
 });

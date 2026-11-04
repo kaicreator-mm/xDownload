@@ -61,26 +61,22 @@ import {
 import { load, type DomainApp, type V10PublicIntent } from '@kaicreator/domain-harness-microkernel';
 import {
   acquireS4HlsBridgePin,
+  normalizeEffectEnvelope,
   sealS4HlsComposition,
+  validateConfirmedS4HlsIntent,
+  validateMaterializedEvidence,
+  type ConfirmedS4HlsIntent,
+  type EffectEnvelope,
   type S4HlsBridgePin,
   type S4HlsPinCounters,
-} from '../../download-domain-app/src/integrations/s4-hls-vod.ts';
+} from '@xdownload/download-domain-app';
+import { REFERENCE_TOKEN_PATTERN } from '@xdownload/domain-contracts';
 import {
-  validateConfirmedS4HlsIntent,
-  type ConfirmedS4HlsIntent,
-} from '../../download-domain-app/src/integrations/s4-hls-vod-contract.ts';
-import {
+  FileCasDocStore,
   InMemoryMediaTargetRegistry,
+  acquireSelectedHlsVod,
   type MediaTargetRefSeed,
-} from '../../download-domain-app/src/integrations/media-registry.ts';
-import {
-  normalizeEffectEnvelope,
-  REFERENCE_TOKEN_PATTERN,
-  validateMaterializedEvidence,
-  type EffectEnvelope,
-} from '../../download-domain-app/src/contracts/index.ts';
-import { FileCasDocStore } from '../../download-domain-app/src/composition/runtime.ts';
-import { acquireSelectedHlsVod } from '../../download-domain-host/src/media/media-acquisition-bridge.ts';
+} from '@xdownload/download-domain-host';
 import {
   FileBackedDomainAppRouteLog,
   type DomainAppRouteFact,

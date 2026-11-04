@@ -46,15 +46,13 @@ import {
   reopenCoreRuntime,
   type CoreRuntime,
 } from '../src/index.ts';
-import { sealS4HlsComposition } from '../../download-domain-app/src/integrations/s4-hls-vod.ts';
-import {
-  S4_HLS_MEDIA_PROFILE,
-  s4HlsSelectionTupleDigest,
-} from '../../download-domain-app/src/integrations/s4-hls-vod-contract.ts';
 import {
   POC183_KERNEL_MODULE_SHA256,
   POC183_STANDARD_MODULE_SHA256,
-} from '../../download-domain-app/src/business/composition.ts';
+  S4_HLS_MEDIA_PROFILE,
+  s4HlsSelectionTupleDigest,
+  sealS4HlsComposition,
+} from '@xdownload/download-domain-app';
 
 const dirs: string[] = [];
 const servers: Server[] = [];

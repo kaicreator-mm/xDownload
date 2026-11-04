@@ -6,17 +6,18 @@
  * S1/S3 slice field. The Host re-observes the manifest and verifies the
  * confirmed selection tuple before it executes the existing HLS/FFmpeg path.
  *
- * V022-A02 boundary note: this module no longer imports
- * @xdownload/download-domain-host. REMOVED here, RELOCATE-TO-CORE-A04:
+ * V022-A02/A04 boundary note: this module no longer imports
+ * @xdownload/download-domain-host. REMOVED in A02, RELOCATED-TO-CORE-A04:
  * `executeS4Hls` (the trusted pin body that drove the real T06 Host bridge
  * `acquireSelectedHlsVod`) and `assembleS4HlsRuntime` (test/fixture-only
- * standalone assembly around it) — Host-owned physical assembly belongs to
- * the Core composition root (A04), which already composes its own S4 Host
- * bridge over `acquireS4HlsBridgePin`. KEPT until A04 (current Core route
- * deep-import compatibility, NOT re-exported by the public App root):
- * `sealS4HlsComposition`, `s4HlsCompositionContribution`,
- * `acquireS4HlsBridgePin` and the S4 pin contract types. See
- * s4-hls-vod.test.ts for the enumerated integration scenario map.
+ * standalone assembly around it) now live at the Core composition root
+ * (packages/core-runtime/test/domain-app-media-flow.test.ts); the scenario
+ * map recorded in s4-hls-vod.test.ts is re-established there. KEPT here and
+ * exported through the public App root (A04): `sealS4HlsComposition`,
+ * `s4HlsCompositionContribution`, `s4HlsSealedPassthrough`,
+ * `acquireS4HlsBridgePin` and the S4 pin contract types — the domain-side
+ * registration seam the sealed S4 capability module and the Core route
+ * both reach (the physical bridge implementation is Host-owned).
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -45,8 +46,7 @@ import {
   type MaterializedEvidence,
   type OperationDeclaration,
 } from '../contracts/index.ts';
-import type { FileCasDocStore } from '../composition/runtime.ts';
-import type { InMemoryMediaTargetRegistry } from './media-registry.ts';
+import type { KDocStoreEvidencePort } from '../composition/runtime.ts';
 import { S4_HLS_MEDIA_OPERATION, validateConfirmedS4HlsIntent } from './s4-hls-vod-contract.ts';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
@@ -194,6 +194,42 @@ export function sealS4HlsComposition(): V10BuiltApp {
   return built;
 }
 
+/**
+ * V022-A04 — build ONE externally-named single-K composition from the T03
+ * base spliced with the S4 contribution: the exact splice shape the
+ * production Core route uses (`s4HlsCompositionContribution()` into one
+ * existing build), with a caller-chosen app/build identity so externally
+ * composed one-K runtimes (e.g. the Core composition-root test splice)
+ * never re-declare modules or routes. K/S bytes, the frozen route and the
+ * operation declarations stay byte-identical to `sealS4HlsComposition`.
+ */
+export function buildS4HlsSingleKComposition(appId: string, buildId: string): V10BuiltApp {
+  const t03 = buildDownloadDomainApp();
+  const contribution = s4HlsCompositionContribution();
+  const modules: readonly V10ModuleInput[] = t03.built.modules.map((module) => {
+    if (module.role === 'business') return contribution.business;
+    if (module.role === 'capability') return contribution.capability;
+    return s4HlsSealedPassthrough(module);
+  });
+  const routeCheck = validateRouteTable([contribution.route], contribution.declarations);
+  if (!routeCheck.ok || t03.routes.length !== 1) {
+    throw new Error(
+      'S4_HLS_COMPOSITION_BINDING_MISMATCH: route is outside frozen media.acquire vocabulary',
+    );
+  }
+  const built = buildV10App({
+    appId,
+    audience: AUDIENCE,
+    targetProfile: t03.built.targetProfile,
+    modules,
+    routes: [contribution.route],
+    hardBudget: t03.built.hardBudget,
+    buildId,
+  });
+  verifySealedModules(built);
+  return built;
+}
+
 export const S4_HLS_BRIDGE_PIN = '__xdownloadS4HlsVodBridge';
 export interface S4HlsBridgePin {
   acquireS4HlsVod(payload: Record<string, unknown>, permit: unknown): Promise<unknown>;
@@ -207,11 +243,13 @@ function hostGlobals(): { [S4_HLS_BRIDGE_PIN]?: S4HlsBridgePin } {
  * registration is refused atomically instead of silently displacing the first
  * holder (a displaced bridge could route effects to the wrong target registry).
  *
- * V022-A02: TRANSITIONAL CORE COMPATIBILITY — the current Core route
- * (`core-runtime/src/domain-app-route.ts`) deep-imports this seam to install
- * its own S4 Host bridge; it stays exported from this deep module path only
- * (never via the public App root) until A04 moves the consumer to the
- * Host-owned adapter and deletes the App-side seam.
+ * V022-A04: exported through the public App root — the Core composition
+ * root installs its S4 Host bridge via this registrar and consumes it
+ * exclusively through the stable package-root surface (no deep imports).
+ * The pin remains the process-global routing authority for S4 media
+ * effects, so a second live registration is refused atomically instead of
+ * silently displacing the first holder (a displaced bridge could route
+ * effects to the wrong target registry).
  */
 export interface S4HlsBridgeLease {
   readonly bridge: S4HlsBridgePin;
@@ -254,16 +292,19 @@ export interface S4HlsPinCounters {
 }
 /**
  * The assembled S4 runtime contract consumed by `submitConfirmedS4HlsVod`.
- * TRANSITIONAL (A02→A04): the physical assembly (standalone seal → pin →
- * SDK `load`) moved to the Core composition root; the current Core route
- * composes the one production single-K runtime itself and only needs the
- * seal, the contribution and this journey contract surface.
+ * Domain-facing by construction (V022-A04, closing A02 P2-1): the store is
+ * the narrow structural evidence port and the registry is opaque — no
+ * `FileCasDocStore`, no media registry and no physical Runtime type is
+ * exposed. The Core composition root assembles the physical instances (Host
+ * store + Host registry + the pinned Host bridge) and passes them
+ * structurally.
  */
 export interface S4HlsRuntime {
   readonly built: V10BuiltApp;
   readonly app: DomainApp;
-  readonly store: FileCasDocStore;
-  readonly registry: InMemoryMediaTargetRegistry;
+  readonly store: KDocStoreEvidencePort;
+  /** Host-owned media targetRef registry (opaque at the App boundary). */
+  readonly registry: unknown;
   readonly pin: S4HlsPinCounters;
   stop(): void;
 }

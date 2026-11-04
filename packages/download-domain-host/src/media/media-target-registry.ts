@@ -1,6 +1,6 @@
 /**
- * v0.2 T12 — media targetRef registry (trusted Host side, S3 media lane;
- * write set packages/download-domain-app/src/integrations/**).
+ * V022-A04 — Host-owned media targetRef registry (trusted Host side, S3/S4
+ * media lane; relocated verbatim from the Domain App integrations lane).
  *
  * The T04 targetRef registry discipline applied to the media lane: a
  * confirmed media intent carries an OPAQUE `targetRef`; this registry —
@@ -8,20 +8,25 @@
  * handle into the T06 bridge request facts (manifest locator, authorized
  * origins, budget profile). The handle is never parsed as a URL/path: the
  * raw-locator negative assertion is A01's neutral `isRawLocatorShape`
- * grammar from @xdownload/domain-contracts (V022-A02: the App no longer
- * imports the Host registry), record fields are copied explicitly (exact-key
- * record grammar, no spread), and unknown handles are typed refusals, never
- * guesses.
+ * grammar and the bounded handle token grammar is A01's neutral
+ * `REFERENCE_TOKEN_PATTERN`, both imported from the neutral
+ * @xdownload/domain-contracts package (A04: the moved registry must not
+ * import App contracts). Record fields are copied explicitly (exact-key
+ * record grammar, no spread), and unknown handles are typed refusals,
+ * never guesses.
  *
- * The registry record is the SINGLE SOURCE the media pin forwards to the T06
- * bridge: `allowedManifestOrigins` / `allowedSegmentOrigins` / budget come
- * from here and nowhen else, so a derived permit can never be wider than the
- * seeded facts. The loopback-HTTP fixture exception is an explicit seeded
- * fact (`fixtureLoopbackHttp`); production compositions seed it false/absent
- * and the T06 engine default (production TLS/origin admission) applies.
+ * The registry record is the SINGLE SOURCE the media pin forwards to the
+ * T06 bridge: `allowedManifestOrigins` / `allowedSegmentOrigins` / budget
+ * come from here and nowhen else, so a derived permit can never be wider
+ * than the seeded facts. The loopback-HTTP fixture exception is an explicit
+ * seeded fact (`fixtureLoopbackHttp`); production compositions seed it
+ * false/absent and the T06 engine default (production TLS/origin admission)
+ * applies.
  *
  * Pure contract/validation layer: registering or resolving never performs
- * I/O and grants no authority by itself.
+ * I/O and grants no authority by itself. The Host owns the registry because
+ * resolution facts are physical delivery truth (manifest locators, origin
+ * sets, budget profiles), not domain vocabulary.
  */
 import {
   decodeBudgetProfile,
@@ -30,10 +35,10 @@ import {
   fail,
   isRawLocatorShape,
   ok,
+  REFERENCE_TOKEN_PATTERN,
   type BudgetProfile,
   type DomainValidationResult,
 } from '@xdownload/domain-contracts';
-import { REFERENCE_TOKEN_PATTERN } from '../contracts/index.ts';
 
 /** The only protocol this lane's registry accepts (T06 declared support). */
 export const MEDIA_REGISTRY_PROTOCOLS = ['HLS'] as const;
