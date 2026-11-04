@@ -41,14 +41,21 @@
  * journey.ts and this lane must not edit merged files; the observable
  * contract is identical.
  *
- * V022-A02 boundary note: this module no longer imports
- * @xdownload/download-domain-host. REMOVED here, RELOCATE-TO-CORE-A04:
+ * V022-A02/A04 boundary note: this module no longer imports
+ * @xdownload/download-domain-host. REMOVED in A02, RELOCATED-TO-CORE-A04:
  * `assembleMediaRuntime` and the trusted permit pin body
  * (`executeMediaAcquisition`, which drove the real T06 Host bridge
- * `acquireMediaViaHls`) — Host-owned physical assembly belongs to the Core
- * composition root (A04). The `MEDIA_BRIDGE_PIN` ABI name the sealed media
- * C module reaches stays as the typed transitional reference. See
- * s3-media.test.ts for the enumerated integration scenario map.
+ * `acquireMediaViaHls`) live at the Core composition root
+ * (packages/core-runtime/test/domain-app-media-flow.test.ts). V022-A04 R2
+ * scoping: the generic media route is NOT composable into the production
+ * one-K alongside the S4 route (the pinned SDK refuses the duplicate route
+ * pair confirmDownload → media.acquire and binds capabilityId `media`
+ * injectively; the sealed #183 Standard Router also routes by intentType
+ * only — exact limitation with probe transcripts on
+ * kaicreator-mm/xDownload#357), so the S3 integration evidence there is
+ * explicitly component-level, never claimed as the Core one-K proof. The
+ * `MEDIA_BRIDGE_PIN` ABI name the sealed media C module reaches stays as
+ * the typed Core-side pin-installer reference.
  *
  * Honest status (T10 baseline vocabulary): this journey is PROVEN at
  * bounded-fixture level (real loopback HLS master→playlist→segments→
@@ -86,8 +93,7 @@ import {
   type MaterializedEvidence,
   type OperationDeclaration,
 } from '../contracts/index.ts';
-import type { FileCasDocStore } from '../composition/runtime.ts';
-import type { InMemoryMediaTargetRegistry } from './media-registry.ts';
+import type { KDocStoreEvidencePort } from '../composition/runtime.ts';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 
@@ -288,10 +294,11 @@ export function sealMediaComposition(): SealedMediaComposition {
 /**
  * The trusted Host bridge pin name the sealed media C module reaches. The
  * sealed capability module carries the literal
- * `globalThis.__xdownloadMediaAcquisitionBridge`; this constant is the typed
- * reference for the A04 Core-side pin installer (which re-homes the permit
- * derivation pin body that A02 removed from this module).
- * TRANSITIONAL: not exported by the public App root.
+ * `globalThis.__xdownloadMediaAcquisitionBridge`; this constant is the
+ * typed reference for the Core-side pin installer (which owns the permit
+ * derivation pin body A02 removed from this module).
+ * V022-A04: exported through the public App root for the Core composition
+ * root's pin installer; the physical bridge remains Host-owned.
  */
 export const MEDIA_BRIDGE_PIN = '__xdownloadMediaAcquisitionBridge';
 
@@ -308,16 +315,18 @@ export interface MediaPinCounters {
 
 /**
  * The assembled S3 media runtime contract consumed by the domain journey
- * below. TRANSITIONAL (A02→A04): the physical assembly (seal → permit
- * derivation pin over the seeded registry → durable store → SDK public
- * `load`) moved to the Core composition root, which owns the Host bridge;
- * Core A04 re-homes this interface unchanged next to the Host adapters.
+ * below. Domain-facing by construction (V022-A04, closing A02 P2-1): the
+ * store is the narrow structural evidence port and the registry is opaque —
+ * no `FileCasDocStore`, no media registry and no physical Runtime type is
+ * exposed. The Core composition root assembles the physical instances (Host
+ * store + Host registry + permit pin) and passes them structurally.
  */
 export interface MediaDownloadRuntime {
   readonly built: V10BuiltApp;
   readonly app: DomainApp;
-  readonly store: FileCasDocStore;
-  readonly registry: InMemoryMediaTargetRegistry;
+  readonly store: KDocStoreEvidencePort;
+  /** Host-owned media targetRef registry (opaque at the App boundary). */
+  readonly registry: unknown;
   /** Live pin counters (the trusted seam's own zero-effect evidence). */
   readonly pin: MediaPinCounters;
   /** Truthful cancellation before send; the T06 bridge owns in-flight transfer. */

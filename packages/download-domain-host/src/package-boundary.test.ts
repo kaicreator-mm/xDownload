@@ -83,7 +83,13 @@ describe('HOST-NO-APP-IMPORT-01 — no Host source imports the App package', () 
   });
 
   it('host barrels never re-export an App symbol', () => {
-    for (const barrel of ['direct/index.ts', 'storage/index.ts', 'migration/index.ts']) {
+    for (const barrel of [
+      'index.ts',
+      'direct/index.ts',
+      'media/index.ts',
+      'storage/index.ts',
+      'migration/index.ts',
+    ]) {
       const source = readFileSync(join(SRC_ROOT, barrel), 'utf8');
       assert.equal(
         specifiersOf(source).some(
