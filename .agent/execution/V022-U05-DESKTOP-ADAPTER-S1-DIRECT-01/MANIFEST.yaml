@@ -1,4 +1,4 @@
-pack_id: "V022-U05-T02-DESKTOP-ADAPTER-S1-DIRECT-R1@ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
+pack_id: "V022-U05-T02-DESKTOP-ADAPTER-S1-DIRECT-R1-REPAIR-R3@6a61a0abe850792d2cad734dcb2ccfbd07adcacf"
 task_id: "V022-U05-DESKTOP-ADAPTER-S1-DIRECT-01"
 repository: "kaicreator-mm/xDownload"
 version: "v0.2.2"
@@ -23,7 +23,7 @@ execution_environment: "LOCAL"
 agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
 pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
 product_l2_freeze_ref: "planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d"
-dispatch_admission: "OWNER_APPROVED_R1_TASK_PACK_INDEPENDENT_REVIEW_PASS_FRESH_GENERATION_2_LOCAL_BUILDER_CLAIM_REQUIRED"
+dispatch_admission: "OWNER_APPROVED_R1_TASK_PACK / GENERATION_3_IN_SCOPE_REPAIR"
 claim:
   protected_claim_key: "kaicreator-mm/xDownload#352:builder:__default__"
   claim_generation: 3
@@ -37,7 +37,7 @@ allowed_write_set:
   - apps/desktop/test/core-authority.test.ts
   - apps/desktop/test/manager-documents.test.ts
   - apps/desktop/test/s1-direct-acquisition.test.ts
-goal: "Expose the existing Core S1 direct-acquisition path and read-only S1 job-index query through the Desktop adapter. Preserve DESKTOP_UI peer identity and Core confirmation; do not implement transfer in Desktop."
+goal: "Repair strict S1 job-index page cardinality validation within the frozen six-path Desktop adapter write set."
 acceptance:
   - "Preserve preview/confirmation and exact canonical accepted aggregate binding."
   - "Use deterministic injected/mock SeamClient transport for adapter mapping tests; capture exact envelopes and DESKTOP_UI Peer identity."
@@ -45,13 +45,15 @@ acceptance:
   - "Do not rewrite DESKTOP_UI to CLI or spoof/omit Peer identity."
   - "Use URL-host-only redirect default, no optional constraints, stable logical request identity, and Core projection truth."
   - "Validate index response shape/bounds/aggregate identity and fail closed on typed refusal/disconnect."
+  - "Require items.length === Math.min(totalCount, 200) for the server latest-200 contract; reject underfilled pages and totalCount smaller than items.length."
   - "Actual Core DESKTOP_UI admission is a combined-candidate/T03 end-to-end gate after T01 is separately Owner-integrated."
   - "Only exact paths in allowed_write_set may change."
   - "Write exact HEAD/tree, commands, exit codes, test counts and Woodpecker Build ID to #352."
+claim_generation_required: 3
 pre_ci:
-  - "Verify task branch and WIP exact base/tree equal ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd / 870657c54eecae9721a6b06221828a6bdfdfbb0d."
-  - "Independent R1 Task Pack review must PASS before Builder Claim."
-  - "Acquire fresh accepted generation-2 LOCAL_BUILDER CAS Claim before source edits."
+  - "Verify repair source branch HEAD/tree equal 6a61a0abe850792d2cad734dcb2ccfbd07adcacf / 0616a349ea23174e1865cf5d9e6065204e9c4428; original R1 Task Pack base remains ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd / 870657c54eecae9721a6b06221828a6bdfdfbb0d."
+  - "Use the already independently reviewed R1 Task Pack blob 7a55b71bd1c5419dd41bcf3411580a907530865e; no Task Pack or write-set expansion."
+  - "Acquire fresh accepted generation-3 LOCAL_BUILDER CAS Claim before source edits."
   - "Run Node v24 syntax preflight on all changed JS/TS files."
   - "Run changed-file Prettier before CI."
   - "Run focused tests, typecheck, aggregate pnpm run ci:verify, then local Docker Woodpecker exact-SHA."
@@ -63,4 +65,15 @@ forbidden:
   - "tag/release/deployment"
   - "Any write outside allowed_write_set."
   - "Merge or WIP integration; requires later independent Exact-SHA review and separate Owner authorization naming exact candidate HEAD/tree."
-status: "R1_EXECUTION_PACK_PREPARED_WAITING_INDEPENDENT_PACK_REVIEW_AND_BUILDER_CLAIM"
+status: "READY_FOR_GENERATION_3_LOCAL_BUILDER_REPAIR_CLAIM"
+
+repair_of:
+  candidate_head: "6a61a0abe850792d2cad734dcb2ccfbd07adcacf"
+  candidate_tree: "0616a349ea23174e1865cf5d9e6065204e9c4428"
+  review_pr: "#361"
+  review_result: "BLOCK P0=0 P1=0 P2=1"
+  required_repairs:
+    - "Require exact latest-200 page cardinality: items.length === Math.min(totalCount, 200)."
+    - "Change the positive response fixture from 2 items / totalCount 3 / truncated true to a complete valid page."
+    - "Add rejection tests for underfilled pages and totalCount smaller than items.length."
+  no_scope_expansion: true
