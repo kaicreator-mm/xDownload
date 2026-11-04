@@ -5,7 +5,7 @@
  * the Host package: the trusted Host owns every physical adapter, the App
  * keeps only domain contracts and policy. The SDK `V10DocStore` semantics
  * are preserved exactly — keyed multi-document CAS (get/put/remove/keys),
- * exact create/replace conditions with `HOST_CAS_CONFLICT`, whole-document
+ * exact create/cas conditions with `HOST_CAS_CONFLICT`, whole-document
  * temp+rename persistence on every conditional write, sorted-key durable
  * snapshot, restart-safe reads (a real process boundary observes exactly the
  * durable bytes) and an idempotent close.
@@ -29,7 +29,7 @@ import { dirname } from 'node:path';
 
 /** Exact-key conditional write, structurally identical to the SDK condition. */
 export type HostDocWriteCondition =
-  { readonly kind: 'create' } | { readonly kind: 'replace'; readonly revision: number };
+  { readonly kind: 'create' } | { readonly kind: 'cas'; readonly revision: number };
 
 /** One durable document row (value + monotonic CAS revision). */
 export interface HostDocRow {

@@ -22,7 +22,7 @@ function tempStorePath(testName: string): string {
 }
 
 describe('FILE-CAS-DOC-STORE-07 — Host FileCasDocStore preserves V10DocStore CAS/atomic/restart behavior', () => {
-  it('create / read / replace / remove with revision-checked CAS', async () => {
+  it('create / read / CAS update / remove with revision-checked CAS', async () => {
     const path = tempStorePath('cas-lifecycle');
     const store = new FileCasDocStore(path);
     try {
@@ -36,7 +36,7 @@ describe('FILE-CAS-DOC-STORE-07 — Host FileCasDocStore preserves V10DocStore C
       const replaced = await store.put(
         'doc:1',
         { record: { kind: 'updated' } },
-        { kind: 'replace', revision: 0 },
+        { kind: 'cas', revision: 0 },
       );
       assert.deepEqual(replaced, { revision: 1 });
       assert.deepEqual(await store.get('doc:1'), {
@@ -44,7 +44,7 @@ describe('FILE-CAS-DOC-STORE-07 — Host FileCasDocStore preserves V10DocStore C
         revision: 1,
       });
 
-      await store.remove('doc:1', { kind: 'replace', revision: 1 });
+      await store.remove('doc:1', { kind: 'cas', revision: 1 });
       assert.equal(await store.get('doc:1'), null);
       assert.deepEqual(store.keys(), []);
     } finally {
@@ -71,14 +71,14 @@ describe('FILE-CAS-DOC-STORE-07 — Host FileCasDocStore preserves V10DocStore C
     }
   });
 
-  it('replace on a moved revision refuses with HOST_CAS_CONFLICT (no lost update)', async () => {
-    const path = tempStorePath('cas-replace-conflict');
+  it('CAS on a moved revision refuses with HOST_CAS_CONFLICT (no lost update)', async () => {
+    const path = tempStorePath('cas-moved-revision-conflict');
     const store = new FileCasDocStore(path);
     try {
       await store.put('doc:1', { value: 1 }, { kind: 'create' });
-      await store.put('doc:1', { value: 2 }, { kind: 'replace', revision: 0 });
+      await store.put('doc:1', { value: 2 }, { kind: 'cas', revision: 0 });
       await assert.rejects(
-        store.put('doc:1', { value: 3 }, { kind: 'replace', revision: 0 }),
+        store.put('doc:1', { value: 3 }, { kind: 'cas', revision: 0 }),
         (error: unknown) =>
           error instanceof Error && (error as { code?: string }).code === 'HOST_CAS_CONFLICT',
       );
@@ -113,7 +113,7 @@ describe('FILE-CAS-DOC-STORE-07 — Host FileCasDocStore preserves V10DocStore C
       await first.put('effect-permit:req-1', { permit: true }, { kind: 'create' });
       await first.put('effect-journal:req-1', { record: { settled: true } }, { kind: 'create' });
       await first.put('doc:1', { value: 1 }, { kind: 'create' });
-      await first.put('doc:1', { value: 2 }, { kind: 'replace', revision: 0 });
+      await first.put('doc:1', { value: 2 }, { kind: 'cas', revision: 0 });
     } finally {
       first.close();
     }
@@ -127,7 +127,7 @@ describe('FILE-CAS-DOC-STORE-07 — Host FileCasDocStore preserves V10DocStore C
       assert.equal(second.permitDocs().length, 1);
       // CAS continuity across the restart boundary.
       await assert.rejects(
-        second.put('doc:1', { value: 3 }, { kind: 'replace', revision: 0 }),
+        second.put('doc:1', { value: 3 }, { kind: 'cas', revision: 0 }),
         (error: unknown) =>
           error instanceof Error && (error as { code?: string }).code === 'HOST_CAS_CONFLICT',
       );
