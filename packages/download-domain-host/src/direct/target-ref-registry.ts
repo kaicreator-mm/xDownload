@@ -15,8 +15,16 @@
  * composition (the same authority that sealed the intent), not because the
  * handle itself carries any meaning.
  */
-import { diagnostic, fail, ok, type DomainValidationResult } from '@xdownload/domain-contracts';
-import { REFERENCE_TOKEN_PATTERN } from '@xdownload/download-domain-app/src/contracts/index.ts';
+import {
+  diagnostic,
+  fail,
+  isRawLocatorShape,
+  ok,
+  REFERENCE_TOKEN_PATTERN,
+  type DomainValidationResult,
+} from '@xdownload/domain-contracts';
+
+export { isRawLocatorShape };
 
 /** Delivery facts a registry handle resolves to (locator + declared policy). */
 export interface TargetRefRecord {
@@ -36,20 +44,6 @@ export interface TargetRefRecord {
 export interface TargetRefRegistry {
   /** Resolve an opaque handle to its delivery facts; unknown handle is a typed refusal. */
   resolve(targetRef: string): DomainValidationResult<TargetRefRecord>;
-}
-
-const RAW_LOCATOR_URI_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
-
-/**
- * True when the value is shaped like a raw locator (absolute URI with a
- * scheme, a leading filesystem path separator, or a drive-letter path).
- * Mirrors the raw-locator grammar of the T01 intent contract; used ONLY as a
- * negative assertion on handles — never to parse a handle into a locator.
- */
-export function isRawLocatorShape(value: string): boolean {
-  return (
-    RAW_LOCATOR_URI_PATTERN.test(value) || /^[/\\]/.test(value) || /^[A-Za-z]:[/\\]/.test(value)
-  );
 }
 
 /** In-memory TargetRef registry seeded by the trusted composition. */
