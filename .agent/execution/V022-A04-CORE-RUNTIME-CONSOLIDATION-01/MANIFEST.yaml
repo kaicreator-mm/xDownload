@@ -91,7 +91,7 @@ repair_of:
   no_scope_expansion: true
 pre_ci:
   - "Verify repair source base HEAD/tree equal 82be50e204b34f05548fcede7ace37042ce51edb / 83b65306d30a64116910f7122954d5cb106dd20c; original Task Pack staging base remains 8620090b41f4745394b8371b00307b441baecad7 / f50e1115f14c220d4ca4d9b9c16ae09e09e2989e."
-  - "Publish accepted generation-1 CAS DISPATCH_CLAIMED bound to this exact Task Pack/base/tree/write set before source mutation."
+  - "Publish accepted generation-2 CAS DISPATCH_CLAIMED bound to this exact Task Pack/base/tree/write set before source mutation."
   - "Run Node24 syntax preflight on all changed JS/TS files."
   - "Run changed-file Prettier before CI."
   - "Run focused Core/App/Host tests including all 25 migrated S2/S5/S6 cases and Direct/S3/S4 integration cases."
