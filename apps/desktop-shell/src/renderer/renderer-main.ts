@@ -312,7 +312,12 @@ function render(): void {
   connectionLine.textContent = connected
     ? 'Core 已连接'
     : state.connection === null
-      ? '正在连接 Core…'
+      ? // R3-02: a ready page that never achieved a successful Core index
+        // read (first-load unconfigured/refused) shows the disconnected
+        // state — never an implied "connecting" or an empty task list.
+        state.phase === 'ready'
+        ? 'Core 未连接（无权威任务列表）'
+        : '正在连接 Core…'
       : 'Core 状态：' + state.connection;
   connectionLine.dataset.status = connected ? 'connected' : 'disconnected';
   byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
@@ -400,7 +405,10 @@ function renderJobs(): void {
   const table = byId('jobs-table');
   const body = byId('jobs-body');
   body.textContent = '';
-  empty.hidden = allCount !== 0;
+  // R3-02: "no tasks here" is truthful ONLY after a successful CONNECTED
+  // Core index read returned zero rows. An unconfigured/refused Core (or a
+  // not-yet-successful first load) shows the connection/error state instead.
+  empty.hidden = !(state.connection === 'CONNECTED' && allCount === 0);
   filterEmpty.hidden = allCount === 0 || matching.length !== 0;
   table.hidden = matching.length === 0;
   for (const row of matching) body.appendChild(jobRowElement(row));

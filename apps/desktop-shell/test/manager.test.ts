@@ -468,6 +468,117 @@ describe('DesktopManager control transitions remain Core commands (real Core)', 
   });
 });
 
+describe('DesktopManager R3 repairs (review PR #365 BLOCK P1-01/P1-02)', () => {
+  it('R3-01: a rejected second confirmation never executes prior-aggregate S1, keeps the preview, and surfaces the rejection', async () => {
+    // Faithful reproduction of the reviewed defect: the adapter's routed
+    // history is CUMULATIVE, and its rejected SUBMIT_CONTRACT branch returns
+    // that full history even though nothing new routed. The manager must
+    // attribute only newly appended commands bound to the pending lineage.
+    const sent: { commandType: string; aggregateId: string; requestId: string }[] = [
+      { commandType: 'SUBMIT_CONTRACT', aggregateId: 'contract-first-000001', requestId: 'r1' },
+      {
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId: 'contract-first-000001',
+        requestId: 'r2',
+      },
+    ];
+    let executeS1Calls = 0;
+    const secondLineageId = 'contract-second-000002';
+    const adapter = {
+      sentCommandEnvelopes: () => [...sent],
+      enterIntent: () => ({ display: {}, routed: [], rejections: [], refusals: [] }),
+      currentDraftView: () => ({
+        contractId: secondLineageId,
+        automationMode: 'ASSISTED',
+        targetRef: 'https://example.com/b.mp4',
+        requests: [{ level: 'SCOPE_LEVEL', description: 'scope', proves: 'target' }],
+      }),
+      hasDraftIntent: () => true,
+      discardDraft: () => undefined,
+      confirmScope: async () => ({
+        display: {},
+        // The defective discriminant the review flagged: the FIRST add's
+        // commands resurface even though the second submit never routed.
+        routed: [...sent],
+        rejections: [
+          {
+            code: 'REQUEST_IDENTITY_CONFLICT',
+            message: 'the submitted request identity conflicts with the durable record',
+          },
+        ],
+        refusals: [],
+      }),
+      executeS1Direct: async () => {
+        executeS1Calls += 1;
+        sent.push({
+          commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+          aggregateId: 'contract-first-000001',
+          requestId: 'r3',
+        });
+        return { display: {}, routed: [...sent], rejections: [], refusals: [] };
+      },
+      listS1JobProjections: async () => ({
+        ok: true as const,
+        items: [],
+        totalCount: 0,
+        truncated: false,
+      }),
+      currentProjectionView: () => null,
+    } as unknown as DesktopUiAdapter;
+    const manager = new DesktopManager({
+      getAdapter: () => adapter,
+      getConnectionWhenUnconfigured: () => 'CONNECTED',
+    });
+
+    const preview = await manager.previewAdd({ url: 'https://example.com/b.mp4' });
+    expect(isRefusal(preview)).toBe(false);
+    const action = await manager.confirmAdd();
+    expect(isRefusal(action)).toBe(false);
+    if (isRefusal(action)) {
+      return;
+    }
+    // The old routed history is NOT attributed to the new lineage...
+    expect(action.routed).toBe(false);
+    expect(action.lineageId).toBe(secondLineageId);
+    expect(action.rejections.map((rejection) => rejection.code)).toEqual([
+      'REQUEST_IDENTITY_CONFLICT',
+    ]);
+    // ...no prior-aggregate S1 was executed and no new command was routed...
+    expect(executeS1Calls).toBe(0);
+    expect(sent).toHaveLength(2);
+    // ...and the pending preview survives for the user to fix or discard.
+    expect(manager.hasPendingPreview()).toBe(true);
+    expect(expectActionList(action).pendingPreview?.lineageId).toBe(secondLineageId);
+  });
+
+  it('R3-02: no Core adapter on first list is a typed refusal, never an ok:true empty index', async () => {
+    const manager = new DesktopManager({
+      getAdapter: () => undefined,
+      getConnectionWhenUnconfigured: () => 'UNCONFIGURED',
+    });
+    const answer = await manager.list();
+    expect(isRefusal(answer)).toBe(true);
+    if (isRefusal(answer)) {
+      expect(answer.detail).toContain('UNCONFIGURED');
+      expect(answer.detail).toContain('cannot be read');
+    }
+  });
+
+  it('R3-02: a connected Core index with zero rows is the true empty-state (ok, exact totalCount 0)', async () => {
+    const harness = await startHarness();
+    try {
+      const list = expectList(await harness.manager.list());
+      expect(list.ok).toBe(true);
+      expect(list.connection).toBe('CONNECTED');
+      expect(list.totalCount).toBe(0);
+      expect(list.truncated).toBe(false);
+      expect(list.jobs).toEqual([]);
+    } finally {
+      await harness.stop();
+    }
+  });
+});
+
 // ---- shared-adapter serialization over the S1 index read ---------------------
 
 interface Deferred<T> {

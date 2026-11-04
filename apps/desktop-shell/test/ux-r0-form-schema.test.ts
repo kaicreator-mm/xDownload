@@ -580,3 +580,74 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
     expect(renderedRows(dom)).toHaveLength(4);
   });
 });
+
+describe('UI R0 R3 unconfigured/empty/refusal rendering regression (#353)', () => {
+  async function bootWithAnswer(answer: unknown): Promise<ReadonlyMap<string, FakeElement>> {
+    vi.resetModules();
+    const bridge = { managerRefresh: vi.fn(async () => answer) };
+    const booted = installFakeDom(bridge);
+    await import('../src/renderer/renderer-main.ts');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return booted.dom;
+  }
+
+  it('first-load refusal hides the empty-state and shows the disconnected/error state', async () => {
+    const dom = await bootWithAnswer({
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail:
+        'no Core connection is configured (UNCONFIGURED); the durable S1 job index cannot be read',
+    });
+    // Never "no tasks here" without a successful CONNECTED Core index read.
+    expect(dom.get('empty-state')?.hidden).toBe(true);
+    expect(dom.get('jobs-table')?.hidden).toBe(true);
+    expect(dom.get('notice')?.textContent).toContain('刷新失败');
+    expect(dom.get('connection-line')?.textContent).toContain('未连接');
+  });
+
+  it('a connected zero-row Core index shows the true empty-state', async () => {
+    const dom = await bootWithAnswer({
+      ok: true,
+      document: 'xdownload.desktop.manager.jobs',
+      connection: 'CONNECTED',
+      jobs: [],
+      totalCount: 0,
+      truncated: false,
+      pendingPreview: null,
+    });
+    expect(dom.get('empty-state')?.hidden).toBe(false);
+    expect(dom.get('connection-line')?.textContent).toBe('Core 已连接');
+  });
+
+  it('a later refusal after a successful list keeps the truthful rows and reports the refusal', async () => {
+    let answer: unknown = {
+      ok: true,
+      document: 'xdownload.desktop.manager.jobs',
+      connection: 'CONNECTED',
+      jobs: [presentRow({ lineageId: 'contract-desktop-r3-000001' })],
+      totalCount: 1,
+      truncated: false,
+      pendingPreview: null,
+    };
+    vi.resetModules();
+    const bridge = { managerRefresh: vi.fn(async () => answer) };
+    const { dom } = installFakeDom(bridge);
+    await import('../src/renderer/renderer-main.ts');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(renderedRows(dom)).toHaveLength(1);
+
+    answer = {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail:
+        'the Core is disconnected; the durable S1 job index could not be read (no empty list is rendered)',
+    };
+    // The row-title click re-reads the Core (reopen semantics): the refused
+    // refresh must keep the last truthful rows and surface the refusal.
+    click(childAt(childAt(onlyRow(dom), 0), 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(renderedRows(dom)).toHaveLength(1);
+    expect(dom.get('notice')?.textContent).toContain('刷新失败');
+    expect(dom.get('notice')?.textContent).toContain('disconnected');
+  });
+});

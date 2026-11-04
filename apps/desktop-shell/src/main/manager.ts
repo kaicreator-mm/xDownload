@@ -160,6 +160,14 @@ export class DesktopManager {
    * command via the reviewed Desktop adapter (the real Core DESKTOP_UI S1
    * admission). Both routings are admission receipts, never final success —
    * the truthful outcome lands in the Core projection the list reads.
+   *
+   * R3-01: the adapter's `InteractionOutcome.routed` is CUMULATIVE over its
+   * full sent-envelope history, not a per-call delta. Each step therefore
+   * snapshots the history length and attributes ONLY newly appended commands
+   * whose commandType AND aggregateId bind to the current pending lineage. A
+   * rejected second confirmation after a prior successful add must never
+   * execute S1 against the previous aggregate, claim the new lineage was
+   * routed, or clear the current pending preview.
    */
   async confirmAdd(): Promise<ManagerActionDocument | ShellRefusal> {
     return this.runSerialized(async () => {
@@ -171,11 +179,18 @@ export class DesktopManager {
       if (adapter === undefined) {
         return refusal('no Core connection is configured; the preview cannot be confirmed');
       }
+      const historyBeforeConfirm = adapter.sentCommandEnvelopes().length;
       const confirmOutcome = await adapter.confirmScope();
-      const confirmRouted = confirmOutcome.routed.length > 0;
-      if (!confirmRouted) {
-        // The contract was not admitted: nothing further routes, and the
-        // Core-typed rejection (or adapter refusal) surfaces verbatim.
+      const confirmCommands = adapter.sentCommandEnvelopes().slice(historyBeforeConfirm);
+      const confirmBound = confirmCommands.some(
+        (envelope) =>
+          envelope.commandType === 'SUBMIT_CONTRACT' && envelope.aggregateId === pending.lineageId,
+      );
+      if (!confirmBound) {
+        // The current contract was NOT submitted. Keep the pending preview,
+        // route nothing further, and surface the current rejection/refusal
+        // verbatim — an old aggregate's command history is never attributed
+        // to this lineage.
         return this.actionDocument('add', pending.lineageId, false, {
           rejections: confirmOutcome.rejections,
           refusals: confirmOutcome.refusals,
@@ -185,13 +200,16 @@ export class DesktopManager {
       // submitted locator) by the adapter — route the S1 execution with the
       // exact identity the adapter derived. A repeat/disconnect path re-sends
       // the identical envelope through seam idempotency.
+      const historyBeforeS1 = adapter.sentCommandEnvelopes().length;
       const s1Outcome = await adapter.executeS1Direct();
-      // The adapter's refusal/rejection outcomes carry an EMPTY routed set;
-      // any submission path returns its cumulative routed list. The delta is
-      // therefore the exact "the S1 command was submitted" discriminant.
-      const s1Routed = s1Outcome.routed.length > confirmOutcome.routed.length;
+      const s1Commands = adapter.sentCommandEnvelopes().slice(historyBeforeS1);
+      const s1Bound = s1Commands.some(
+        (envelope) =>
+          envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' &&
+          envelope.aggregateId === pending.lineageId,
+      );
       this.pending = null;
-      return this.actionDocument('add', pending.lineageId, s1Routed, {
+      return this.actionDocument('add', pending.lineageId, s1Bound, {
         rejections: [...confirmOutcome.rejections, ...s1Outcome.rejections],
         refusals: s1Outcome.refusals,
       });
@@ -249,17 +267,13 @@ export class DesktopManager {
   private async listUnlocked(): Promise<ManagerJobListDocument | ShellRefusal> {
     const adapter = this.options.getAdapter();
     if (adapter === undefined) {
-      // No adapter: the durable index cannot be read. Truthful answer: no
-      // enumeration exists (the session map is not a source of rows).
-      return {
-        ok: true,
-        document: 'xdownload.desktop.manager.jobs',
-        connection: this.options.getConnectionWhenUnconfigured(),
-        jobs: [],
-        totalCount: 0,
-        truncated: false,
-        pendingPreview: this.pendingDocument(null),
-      };
+      // R3-02: no adapter means NO Core index read occurred — a successful
+      // empty list with a fabricated totalCount=0 would claim an authority
+      // that does not exist. Fail closed with the shell connection word.
+      const connection = this.options.getConnectionWhenUnconfigured();
+      return refusal(
+        `no Core connection is configured (${connection}); the durable S1 job index cannot be read`,
+      );
     }
     const index = await adapter.listS1JobProjections();
     if (!index.ok) {
