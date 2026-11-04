@@ -87,9 +87,9 @@ if (MODE !== 'control' && MODE !== 'grant') {
   );
   process.exit(EXIT.FAIL);
 }
-if (SELF_TEST !== null && SELF_TEST !== 'privacy-inspection-error') {
+if (SELF_TEST !== null && !['privacy-inspection-error', 'desktop-precheck'].includes(SELF_TEST)) {
   console.error(
-    `FAIL: unknown --self-test value: ${SELF_TEST}; supported: privacy-inspection-error`,
+    `FAIL: unknown --self-test value: ${SELF_TEST}; supported: privacy-inspection-error, desktop-precheck`,
   );
   process.exit(EXIT.FAIL);
 }
@@ -233,7 +233,8 @@ const result = {
 // .mjs stays the only repository write path for the harness.
 // --------------------------------------------------------------------------
 const PRECHECK_PS1 = `param(
-  [Parameter(Mandatory=$true)][string]$OutPath
+  [Parameter(Mandatory=$true)][string]$OutPath,
+  [switch]$SelfTest
 )
 Add-Type @'
 using System;
@@ -245,8 +246,34 @@ public static class U06Desktop {
   [DllImport("user32.dll")] public static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex, StringBuilder pvInfo, int nLength, out int lpnLengthNeeded);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
 '@
+function Get-LockState($desktopName, $foregroundOwner, $foregroundText) {
+  $known = -not [string]::IsNullOrWhiteSpace($desktopName) -and
+    -not [string]::IsNullOrWhiteSpace($foregroundOwner)
+  $titleIsLockScreen = $foregroundText -match '锁屏|Lock screen|锁定'
+  $locked = -not $known -or $desktopName -ne 'Default' -or
+    $foregroundOwner -ieq 'LockApp' -or $titleIsLockScreen
+  return [pscustomobject]@{ locked = [bool]$locked; inputCapable = [bool](-not $locked); foregroundIsLockScreen = [bool]$titleIsLockScreen; stateKnown = [bool]$known }
+}
+if ($SelfTest) {
+  $cases = @(
+    @{ name = 'resident_lockapp_chrome'; desktop = 'Default'; owner = 'chrome'; title = 'Chrome'; resident = $true; expected = $false },
+    @{ name = 'foreground_lockapp'; desktop = 'Default'; owner = 'LockApp'; title = ''; resident = $true; expected = $true },
+    @{ name = 'lock_title'; desktop = 'Default'; owner = 'other'; title = 'Lock screen'; resident = $false; expected = $true },
+    @{ name = 'non_default'; desktop = 'Winlogon'; owner = 'chrome'; title = 'Chrome'; resident = $false; expected = $true },
+    @{ name = 'unknown_owner'; desktop = 'Default'; owner = ''; title = ''; resident = $false; expected = $true },
+    @{ name = 'unknown_desktop'; desktop = ''; owner = 'chrome'; title = 'Chrome'; resident = $false; expected = $true }
+  )
+  $results = @($cases | ForEach-Object {
+    $state = Get-LockState $_.desktop $_.owner $_.title
+    [pscustomobject]@{ name = $_.name; lockAppRunning = $_.resident; locked = $state.locked; inputCapable = $state.inputCapable; pass = ($state.locked -eq $_.expected) -and ($state.inputCapable -eq (-not $_.expected)) }
+  })
+  $results | ConvertTo-Json -Depth 4 | Set-Content -Path $OutPath -Encoding UTF8
+  if (@($results | Where-Object { -not $_.pass }).Count -ne 0) { exit 1 }
+  exit 0
+}
 $desktop = [U06Desktop]::OpenInputDesktop(0, $false, 0x0001)
 $desktopName = $null
 if ($desktop -ne [IntPtr]::Zero) {
@@ -259,23 +286,30 @@ if ($desktop -ne [IntPtr]::Zero) {
 }
 $foreground = [U06Desktop]::GetForegroundWindow()
 $foregroundText = ''
+$foregroundPid = [uint32]0
+$foregroundOwner = $null
 if ($foreground -ne [IntPtr]::Zero) {
   $title = New-Object System.Text.StringBuilder 512
   if ([U06Desktop]::GetWindowText($foreground, $title, 512) -gt 0) { $foregroundText = $title.ToString() }
+  [U06Desktop]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid) | Out-Null
+  if ($foregroundPid -ne 0) {
+    $owner = Get-Process -Id $foregroundPid -ErrorAction SilentlyContinue
+    if ($null -ne $owner) { $foregroundOwner = $owner.ProcessName }
+  }
 }
-# The input-desktop name alone can stay 'Default' while the physical console
-# shows the lock screen (native mouse input then cannot reach Chrome). Treat
-# the visible lock screen — LockApp running or a lock-screen foreground — as
-# locked even when the input-desktop query disagrees.
+# A resident LockApp process is diagnostic only; its foreground ownership,
+# known lock-screen titles and a non-Default desktop remain lock indicators.
 $lockAppRunning = $null -ne (Get-Process LockApp -ErrorAction SilentlyContinue | Select-Object -First 1)
-$foregroundIsLockScreen = $foregroundText -match '锁屏|Lock screen|锁定'
-$locked = ($desktopName -ne 'Default') -or $lockAppRunning -or $foregroundIsLockScreen
+$state = Get-LockState $desktopName $foregroundOwner $foregroundText
 [pscustomobject]@{
   inputDesktop = $desktopName
   lockAppRunning = $lockAppRunning
-  foregroundIsLockScreen = $foregroundIsLockScreen
-  locked = $locked
-  inputCapable = -not $locked
+  foregroundIsLockScreen = $state.foregroundIsLockScreen
+  foregroundProcessId = $foregroundPid
+  foregroundProcessName = $foregroundOwner
+  stateKnown = $state.stateKnown
+  locked = $state.locked
+  inputCapable = $state.inputCapable
   foregroundWindowTitle = $foregroundText
   checkedAt = (Get-Date).ToString('o')
 } | ConvertTo-Json -Compress | Set-Content -Path $OutPath -Encoding UTF8
@@ -721,6 +755,17 @@ const POPUP_INSTRUMENTATION = `(() => {
 })();`;
 
 async function main() {
+  if (SELF_TEST === 'desktop-precheck') {
+    const outPath = path.join(evidenceDir, 'desktop-precheck-self-test.json');
+    await runPowerShell('u06-desktop-precheck.ps1', ['-OutPath', outPath, '-SelfTest']);
+    const cases = readJsonWithBom(outPath);
+    fs.writeFileSync(
+      path.join(evidenceDir, 'result.json'),
+      `${JSON.stringify({ ok: true, cases }, null, 2)}\n`,
+    );
+    console.log(JSON.stringify({ ok: true, cases }));
+    return EXIT.PASS;
+  }
   const httpRequests = [];
   const server = http.createServer((req, res) => {
     httpRequests.push({ url: req.url, method: req.method });
