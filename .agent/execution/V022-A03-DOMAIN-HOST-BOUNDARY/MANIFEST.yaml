@@ -67,5 +67,25 @@ implementation_validation:
   woodpecker_pipeline: "#21"
   woodpecker_build_id: 19998
   web_controller_source_audit: "PASS_P0_0_P1_0_P2_2"
-  independent_exact_sha_review: "PENDING"
-  state: "IMPLEMENTATION_COMPLETE_PENDING_INDEPENDENT_REVIEW"
+  independent_exact_sha_review: "BLOCK_P1_01_HOSTDOCSTORE_CONDITION_VOCABULARY"
+  state: "P1_REPAIR_REQUIRED"
+
+repair_r1:
+  addendum: ".agent/execution/V022-A03-DOMAIN-HOST-BOUNDARY/REPAIR_R1_2026-11-04.md"
+  finding: "P1-01_HOSTDOCSTORE_CONDITION_VOCABULARY"
+  root_defect_class: "IMPLEMENTATION_DEFECT"
+  reviewed_candidate_head: "deec3d6272ee9d4329838058098f051f6dfa3492"
+  reviewed_candidate_tree: "fd34b655135b46e1e35cd294e0b3e10ecd601ec4"
+  allowed_paths:
+    - "packages/download-domain-host/src/storage/file-cas-doc-store.ts"
+    - "packages/download-domain-host/src/storage/file-cas-doc-store.test.ts"
+  execution_profile: "LOCAL_BUILDER"
+  node24_syntax: "NOT_RUN"
+  changed_file_prettier: "NOT_RUN"
+  focused_host_tests: "NOT_RUN"
+  typecheck: "NOT_RUN"
+  ci_verify: "NOT_RUN"
+  local_docker_woodpecker: "NOT_RUN"
+  independent_exact_sha_review: "NOT_RUN"
+  staging_admission: "NO"
+  state: "READY_FOR_REPAIR_CLAIM"
