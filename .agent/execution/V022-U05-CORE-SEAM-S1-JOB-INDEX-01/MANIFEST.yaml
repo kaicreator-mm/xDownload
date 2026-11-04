@@ -1,0 +1,56 @@
+pack_id: "V022-U05-T01-CORE-SEAM-S1-JOB-INDEX@ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
+task_id: "V022-U05-CORE-SEAM-S1-JOB-INDEX-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+parent_issue: "#310"
+task_issue: "#351"
+parent_dag_issue: "#310"
+architecture_tracking_issue: "#337"
+base_branch: "wip/v0.2.2-ui-rebuild-r0"
+base_sha: "ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
+base_tree: "870657c54eecae9721a6b06221828a6bdfdfbb0d"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U05-CORE-SEAM-S1-JOB-INDEX.md@planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d#blob:dc71c5f260325fca17712e90f20e0e940d0694b1"
+task_pack_blob: "dc71c5f260325fca17712e90f20e0e940d0694b1"
+task_branch: "task/v0.2.2-u05-core-seam-s1-job-index"
+execution_branch: "execution/v0.2.2-u05-core-seam-s1-job-index-r1"
+execution_pack_path: ".agent/execution/V022-U05-CORE-SEAM-S1-JOB-INDEX-01/MANIFEST.yaml"
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+owner_authorization_ref: "xDownload#310 comment 6616747471 (U05 Product/L2 scope)"
+product_l2_freeze_ref: "planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d"
+dispatch_admission: "OWNER_SCOPE_AUTHORIZED_TASK_PACK_REVIEW_PASS_FRESH_LOCAL_BUILDER_CLAIM_REQUIRED"
+claim:
+  protected_claim_key: "kaicreator-mm/xDownload#351:builder:__default__"
+  claim_generation: 1
+  required_event: "DISPATCH_CLAIMED"
+  claim_owner: "actual Local Builder identity"
+  source_mutation_before_accepted_claim: false
+allowed_write_set:
+  - packages/core-seam/src/envelope.ts
+  - packages/core-seam/src/server.ts
+  - packages/core-seam/test/envelope-wire-compatibility.test.ts
+  - packages/core-seam/test/projection-read-side.test.ts
+  - packages/core-seam/test/s1-job-index.test.ts
+goal: "Implement the frozen read-only LIST_S1_JOB_PROJECTIONS query using only the existing accepted-command journal and projectAggregate. Exact reserved subject core:s1-job-index; schema 1.4+ for new query while preserving 1.3 compatibility; same verified installId/userId filtering; durable journal order and deduplication; latest 200 reverse durable order; truthful totalCount/truncated; fail closed on missing projection."
+acceptance:
+  - "Cover exact sentinel/schema compatibility, peer scope, empty list, dedup/order, 199/200/201 limits, exact totalCount/truncated, missing projection/journal inconsistency, and restart replay."
+  - "Only exact paths in allowed_write_set may change."
+  - "Preserve frozen Product/L2 blobs and existing SDK/Core authority; no scope expansion."
+  - "The Builder must write exact HEAD/tree, commands, exit codes, test counts and Woodpecker Build ID to Task Issue #351."
+pre_ci:
+  - "Verify task branch base SHA/tree equals ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd and pack/task refs are current."
+  - "Acquire a fresh accepted generation-1 LOCAL_BUILDER CAS Claim before source edits."
+  - "Run Node v24 syntax preflight on all changed JS/TS files before CI."
+  - "Run changed-file Prettier before CI."
+  - "Run focused task tests, typecheck, aggregate pnpm run ci:verify, then local Docker Woodpecker exact-SHA."
+  - "No standalone LOCAL_VALIDATION task; Builder owns implementation, repair, and all validation."
+forbidden:
+  - "No new index/store/authority/status model, no renderer scope/filter/path, no state.ts/peer.ts/projection.ts/Core Runtime, no package manifest/lockfile/Desktop/shell/Host, no real download or Native Host."
+  - "main"
+  - "version/v0.2.1"
+  - "tag/release/deployment"
+  - "Any write outside allowed_write_set"
+  - "Merge or WIP integration; requires later independent Exact-SHA review and separate Owner authorization."
+status: "PACK_PREPARED_AWAITING_PACK_CI_AND_BUILDER_CLAIM"
