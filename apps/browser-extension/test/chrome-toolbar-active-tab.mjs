@@ -30,6 +30,18 @@
  *   evidence. There is NO fallback to direct popup navigation, CDP popup
  *   APIs or chrome.action.openPopup — those can never count as positive.
  *
+ * --mode=grant --self-test=privacy-inspection-error — focused R3 P2-01
+ *   regression for the optional Chrome-window screenshot privacy check. It
+ *   launches the same real Chrome + extension, then invokes the generated
+ *   toolbar-action script with the U06_PRIVACY_SELFTEST_INSPECTION_ERROR
+ *   seam: a synthetic top-level window whose UIA reads always throw, and a
+ *   forced-pass foreground precondition so the enumeration loop is reached
+ *   on any desktop. The script performs NO native clicks under the seam. The
+ *   run PASSES only if the privacy check records UNKNOWN and skips the
+ *   screenshot (UIA_TOOLBAR_SCREENSHOT_SKIPPED=window_inspection_error:*)
+ *   and never widens the capture. This seam exists solely in this test file
+ *   and is never set by a normal grant run.
+ *
  * In both modes the popup is instrumented BEFORE its scripts execute (CDP
  * auto-attach with waitForDebuggerOnStart): Worker message kinds/counts and
  * chrome.permissions.request counts are recorded, and mere mode/tab
@@ -67,10 +79,23 @@ const MODE = argValue('--mode');
 const CHROME_ARG = argValue('--chrome');
 const EXTENSION_ARG = argValue('--extension');
 const OUT_ARG = argValue('--out');
+const SELF_TEST = argValue('--self-test');
 
 if (MODE !== 'control' && MODE !== 'grant') {
   console.error(
-    'usage: node chrome-toolbar-active-tab.mjs --mode=control|grant [--chrome=exe] [--extension=dir] [--out=evidence-dir]',
+    'usage: node chrome-toolbar-active-tab.mjs --mode=control|grant [--chrome=exe] [--extension=dir] [--out=evidence-dir] [--self-test=privacy-inspection-error]',
+  );
+  process.exit(EXIT.FAIL);
+}
+if (SELF_TEST !== null && SELF_TEST !== 'privacy-inspection-error') {
+  console.error(
+    `FAIL: unknown --self-test value: ${SELF_TEST}; supported: privacy-inspection-error`,
+  );
+  process.exit(EXIT.FAIL);
+}
+if (SELF_TEST !== null && MODE !== 'grant') {
+  console.error(
+    'FAIL: --self-test requires --mode=grant (the seam only exists in the grant-mode privacy check)',
   );
   process.exit(EXIT.FAIL);
 }
@@ -388,6 +413,14 @@ public static class U06ActionMouse {
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
 }
 '@
+# R3 P2-01 focused regression seam: set ONLY by the Node driver's
+# --self-test=privacy-inspection-error run via the process environment. A
+# normal grant run never sees this. Under the seam the script performs NO
+# native clicks, forces the foreground-window precondition so the top-level
+# enumeration loop is reachable on any desktop, and injects a synthetic
+# top-level window whose UIA reads always throw — proving the privacy check
+# fails closed on inspection errors.
+$selfTestInspectionError = $env:U06_PRIVACY_SELFTEST_INSPECTION_ERROR -eq '1'
 $condition = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
   $ProcessId
@@ -429,9 +462,11 @@ if ($puzzle -eq $null) {
   Write-Output 'UIA_TOOLBAR_ACTION_EXIT=4 REASON=extensions_button_not_found'
   exit 4
 }
-$menuPoint = Click-Element $puzzle $mainWindow
-Start-Sleep -Milliseconds 700
-& (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
+if (-not $selfTestInspectionError) {
+  $menuPoint = Click-Element $puzzle $mainWindow
+  Start-Sleep -Milliseconds 700
+  & (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
+}
 # P2 repair, round 2 (web source-review): capture ONLY the Chrome window
 # bounds, never the full primary desktop — and only when the privacy
 # boundary is PROVABLE: the Chrome window must be the foreground window and
@@ -450,29 +485,68 @@ try {
   } else {
     $chromeHandle = [IntPtr]$mainWindow.Current.NativeWindowHandle
     $foreground = [U06ActionMouse]::GetForegroundWindow()
+    if ($selfTestInspectionError) { $foreground = $chromeHandle }
     if ($foreground -ne $chromeHandle) {
       $captureSkipReason = 'chrome_window_not_foreground'
     } else {
       $occluder = $null
+      # R3 P2-01: any UIA exception while reading a top-level window makes
+      # the privacy state UNKNOWN — an uninspected window must NEVER be
+      # treated as non-occluding. The first inspection error is recorded and
+      # the screenshot is skipped below.
+      $inspectionError = $null
       $topLevel = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
         [System.Windows.Automation.TreeScope]::Children,
         [System.Windows.Automation.Condition]::TrueCondition
       )
-      foreach ($top in $topLevel) {
+      $topWindows = @($topLevel | ForEach-Object { $_ })
+      if ($selfTestInspectionError) {
+        # Prepended (not appended) so the inspection-error path is exercised
+        # deterministically regardless of the real desktop's overlapping
+        # windows — a real occluder found earlier would skip the capture for
+        # the occluded_by reason without ever touching the mock. The mock
+        # models a window whose UIA read yields nothing: PowerShell's adapted
+        # member access surfaces a failing UIA property read as $null rather
+        # than throwing (verified against .NET getter exceptions), so a $null
+        # Current is exactly what an uninspected window looks like here.
+        $mock = [pscustomobject]@{ Current = $null }
+        $topWindows = @($mock) + $topWindows
+      }
+      foreach ($top in $topWindows) {
         try {
-          if ($top.Current.NativeWindowHandle -eq $chromeHandle) { continue }
-          if ($top.Current.IsOffscreen) { continue }
-          $other = $top.Current.BoundingRectangle
+          $current = $top.Current
+          if ($null -eq $current) {
+            # A readable AutomationElement never reports a $null Current; a
+            # $null here means the inspection failed (or terminally errored
+            # deeper below). UNKNOWN — never treat as non-occluding.
+            if ($null -eq $inspectionError) { $inspectionError = '<unreadable>' }
+            continue
+          }
+          if ($current.NativeWindowHandle -eq $chromeHandle) { continue }
+          if ($current.IsOffscreen) { continue }
+          $other = $current.BoundingRectangle
+          if ($null -eq $other) {
+            # Zero-size bounds are provably non-occluding (skipped below),
+            # but NO bounds at all means the read failed. UNKNOWN.
+            if ($null -eq $inspectionError) { $inspectionError = $current.Name }
+            continue
+          }
           if ($other.Width -le 0 -or $other.Height -le 0) { continue }
           $overlapX = [Math]::Min($winRect.X + $winRect.Width, $other.X + $other.Width) - [Math]::Max($winRect.X, $other.X)
           $overlapY = [Math]::Min($winRect.Y + $winRect.Height, $other.Y + $other.Height) - [Math]::Max($winRect.Y, $other.Y)
           if ($overlapX -gt 0 -and $overlapY -gt 0) {
-            $occluder = $top.Current.Name
+            $occluder = $current.Name
             break
           }
-        } catch { }
+        } catch {
+          if ($null -eq $inspectionError) {
+            try { $inspectionError = $top.Current.Name } catch { $inspectionError = '<unreadable>' }
+          }
+        }
       }
-      if ($null -ne $occluder) {
+      if ($null -ne $inspectionError) {
+        $captureSkipReason = 'window_inspection_error:' + $inspectionError
+      } elseif ($null -ne $occluder) {
         $captureSkipReason = 'occluded_by:' + $occluder
       } else {
         $captureAllowed = $true
@@ -496,6 +570,12 @@ if ($captureAllowed) {
   }
 } else {
   Write-Output ('UIA_TOOLBAR_SCREENSHOT_SKIPPED=' + $captureSkipReason)
+}
+if ($selfTestInspectionError) {
+  Write-Output 'UIA_TOOLBAR_SELFTEST_FOREGROUND_PRECONDITION=forced_pass_under_seam'
+  Write-Output ('UIA_TOOLBAR_SELFTEST_PRIVACY=' + $(if ($captureAllowed) { 'CAPTURE_ALLOWED' } else { 'SKIPPED:' + $captureSkipReason }))
+  Write-Output 'UIA_TOOLBAR_SELFTEST_EXIT=0'
+  exit 0
 }
 $matches = @()
 foreach ($window in (Get-ChromeWindows)) {
@@ -537,7 +617,7 @@ for (const [name, body] of Object.entries(ps1Files)) {
   fs.writeFileSync(path.join(evidenceDir, name), body);
 }
 
-async function runPowerShell(script, args) {
+async function runPowerShell(script, args, options = {}) {
   try {
     const answer = await execFileAsync(
       'powershell.exe',
@@ -549,7 +629,7 @@ async function runPowerShell(script, args) {
         path.join(evidenceDir, script),
         ...args,
       ],
-      { timeout: 30_000, windowsHide: true },
+      { timeout: 30_000, windowsHide: true, ...options },
     );
     log(script, { exitCode: 0, stdout: answer.stdout.trim(), stderr: answer.stderr.trim() });
     return answer.stdout;
@@ -670,7 +750,12 @@ async function main() {
   let socket;
   let exitCode = EXIT.FAIL;
   try {
-    if (MODE === 'grant' && !(await precheckDesktop())) {
+    // The R3 privacy self-test verifies only the PowerShell privacy-check
+    // logic through the inspection-error seam; the generated script performs
+    // no native input under the seam, so the unlocked-desktop admission gate
+    // (a property of the genuine click, which the self-test never performs)
+    // does not apply to it.
+    if (MODE === 'grant' && SELF_TEST === null && !(await precheckDesktop())) {
       result.ok = false;
       result.status = 'NOT_RUN';
       result.notRunReason = `desktop locked or not input-capable: ${JSON.stringify(result.desktopPrecheck)}`;
@@ -836,6 +921,58 @@ async function main() {
       waitForDebuggerOnStart: true,
       flatten: true,
     });
+
+    if (SELF_TEST === 'privacy-inspection-error') {
+      // R3 P2-01 focused regression evidence: invoke the SAME generated
+      // toolbar-action script with the inspection-error seam — a synthetic
+      // top-level window whose UIA reads always throw. The privacy check
+      // must record UNKNOWN and skip the screenshot; capturing anyway (or
+      // widening bounds) is a FAIL. No popup/gesture assertions run here.
+      const stdout = await runPowerShell(
+        'u06-uia-toolbar-action.ps1',
+        [
+          '-ProcessId',
+          String(chrome.pid),
+          '-OutPath',
+          path.join(evidenceDir, 'uia-extensions-menu.json'),
+        ],
+        { env: { ...process.env, U06_PRIVACY_SELFTEST_INSPECTION_ERROR: '1' } },
+      );
+      const skipMatch = stdout.match(/UIA_TOOLBAR_SCREENSHOT_SKIPPED=([^\r\n]+)/u);
+      result.selfTest = {
+        name: SELF_TEST,
+        seamEnv: 'U06_PRIVACY_SELFTEST_INSPECTION_ERROR',
+        foregroundPrecondition: 'forced_pass_under_seam',
+        privacySkipReason: skipMatch ? skipMatch[1] : null,
+        screenshotCaptured: stdout.includes('UIA_TOOLBAR_SCREENSHOT_CHROME_WINDOW_ONLY=1'),
+        nativeClicksPerformed: false,
+      };
+      result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
+      result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;
+      result.ok =
+        skipMatch !== null &&
+        skipMatch[1].startsWith('window_inspection_error:') &&
+        result.selfTest.screenshotCaptured === false &&
+        result.manifestUnchanged === true;
+      result.status = result.ok ? 'PASS' : 'FAIL';
+      result.chromeStderrTail = chromeStderr.slice(-1000);
+      fs.writeFileSync(
+        path.join(evidenceDir, 'result.json'),
+        `${JSON.stringify(result, null, 2)}\n`,
+      );
+      log('driver-result', { selfTest: result.selfTest, ok: result.ok });
+      console.log(
+        JSON.stringify({
+          mode: MODE,
+          selfTest: result.selfTest,
+          ok: result.ok,
+          status: result.status,
+          manifestUnchanged: result.manifestUnchanged,
+        }),
+      );
+      exitCode = result.ok ? EXIT.PASS : EXIT.FAIL;
+      return exitCode;
+    }
 
     if (MODE === 'control') {
       // Denial-only control: the direct popup URL is permitted HERE and only
