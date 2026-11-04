@@ -83,13 +83,16 @@ const SELF_TEST = argValue('--self-test');
 
 if (MODE !== 'control' && MODE !== 'grant') {
   console.error(
-    'usage: node chrome-toolbar-active-tab.mjs --mode=control|grant [--chrome=exe] [--extension=dir] [--out=evidence-dir] [--self-test=privacy-inspection-error]',
+    'usage: node chrome-toolbar-active-tab.mjs --mode=control|grant [--chrome=exe] [--extension=dir] [--out=evidence-dir] [--self-test=privacy-inspection-error|desktop-precheck|foreground-guard]',
   );
   process.exit(EXIT.FAIL);
 }
-if (SELF_TEST !== null && !['privacy-inspection-error', 'desktop-precheck'].includes(SELF_TEST)) {
+if (
+  SELF_TEST !== null &&
+  !['privacy-inspection-error', 'desktop-precheck', 'foreground-guard'].includes(SELF_TEST)
+) {
   console.error(
-    `FAIL: unknown --self-test value: ${SELF_TEST}; supported: privacy-inspection-error, desktop-precheck`,
+    `FAIL: unknown --self-test value: ${SELF_TEST}; supported: privacy-inspection-error, desktop-precheck, foreground-guard`,
   );
   process.exit(EXIT.FAIL);
 }
@@ -363,10 +366,122 @@ Write-Output ('UIA_DUMP_EXIT=0 COUNT=' + $rows.Count + ' OUT=' + $OutPath)
 exit 0
 `;
 
+// --------------------------------------------------------------------------
+// R5 foreground admission guard — shared verbatim by UIA_CLICK_PS1 and
+// UIA_TOOLBAR_ACTION_PS1 (each sets $script:Native to its own P/Invoke class).
+// No SetCursorPos/mouse_event unless GetForegroundWindow() readback equals the
+// exact target Chrome HWND. Activation denial, readback timeout, HWND change
+// or unreadable HWND returns 'denied' with zero cursor movement and zero
+// mouse input. Under -SelfTest the native APIs are never touched: readback
+// and input counters run on seam state only.
+// --------------------------------------------------------------------------
+const PS_FOREGROUND_GUARD = String.raw`
+$selfTestGuard = $false
+if ($SelfTest) { $selfTestGuard = $true }
+$script:seamSetCursorPos = 0
+$script:seamMouseEvent = 0
+$script:seamReadback = [IntPtr]::Zero
+function Read-Foreground {
+  if ($selfTestGuard) { return $script:seamReadback }
+  return $script:Native::GetForegroundWindow()
+}
+function Assert-Foreground($targetHwnd) {
+  if ($targetHwnd -eq [IntPtr]::Zero) { return 'denied' }
+  if (-not $selfTestGuard) { $script:Native::SetForegroundWindow($targetHwnd) | Out-Null }
+  $deadline = (Get-Date).AddSeconds(2)
+  while ((Get-Date) -lt $deadline) {
+    if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
+    if ($selfTestGuard) { break }
+    Start-Sleep -Milliseconds 100
+    $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
+  }
+  if ($selfTestGuard) { return 'denied' }
+  # Activation retry via AttachThreadInput: attaching to the current
+  # foreground thread lets this background thread legitimately request
+  # activation. No input is synthesized; the readback below still decides,
+  # and any denial keeps cursor movement and mouse input at zero.
+  $fg = $script:Native::GetForegroundWindow()
+  if ($fg -ne [IntPtr]::Zero -and $fg -ne $targetHwnd) {
+    $dummyPid = [uint32]0
+    $fgThread = $script:Native::GetWindowThreadProcessId($fg, [ref]$dummyPid)
+    $me = $script:Native::GetCurrentThreadId()
+    if ($fgThread -ne 0 -and $fgThread -ne $me) {
+      $script:Native::AttachThreadInput($me, $fgThread, $true) | Out-Null
+      $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
+      Start-Sleep -Milliseconds 150
+      $script:Native::AttachThreadInput($me, $fgThread, $false) | Out-Null
+    }
+  }
+  $retryDeadline = (Get-Date).AddSeconds(1)
+  while ((Get-Date) -lt $retryDeadline) {
+    if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
+    Start-Sleep -Milliseconds 100
+  }
+  return 'denied'
+}
+function Send-NativeClick($x, $y) {
+  if ($selfTestGuard) {
+    $script:seamSetCursorPos += 1
+    $script:seamMouseEvent += 2
+    return
+  }
+  $script:Native::SetCursorPos($x, $y) | Out-Null
+  Start-Sleep -Milliseconds 100
+  $script:Native::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 80
+  $script:Native::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
+function Invoke-GuardedClick($targetHwnd, $x, $y) {
+  $verdict = Assert-Foreground $targetHwnd
+  if ($verdict -eq 'denied') {
+    return [pscustomobject]@{ verdict = $verdict; clicked = $false }
+  }
+  Send-NativeClick $x $y
+  return [pscustomobject]@{ verdict = $verdict; clicked = $true }
+}
+function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
+  $cases = @()
+  $target = [IntPtr]424242
+  # (a) denied/mismatched foreground readback: zero cursor movement, zero input
+  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
+  $script:seamReadback = [IntPtr]1111
+  $r = Invoke-GuardedClick $target 10 10
+  $cases += [pscustomobject]@{ name = 'foreground_denied'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'denied' -and $r.clicked -eq $false -and $script:seamSetCursorPos -eq 0 -and $script:seamMouseEvent -eq 0) }
+  # (b) matching HWND readback: admission, seam counters advance only
+  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
+  $script:seamReadback = $target
+  $r = Invoke-GuardedClick $target 10 10
+  $cases += [pscustomobject]@{ name = 'foreground_matching'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'granted' -and $r.clicked -eq $true -and $script:seamSetCursorPos -eq 1 -and $script:seamMouseEvent -eq 2) }
+  # (c) unreadable foreground ([IntPtr]::Zero): fail closed, zero input
+  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
+  $script:seamReadback = [IntPtr]::Zero
+  $r = Invoke-GuardedClick $target 10 10
+  $cases += [pscustomobject]@{ name = 'foreground_unreadable'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'denied' -and $r.clicked -eq $false -and $script:seamSetCursorPos -eq 0 -and $script:seamMouseEvent -eq 0) }
+  # (d) zero/unknown target HWND: fail closed before any readback
+  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
+  $script:seamReadback = $target
+  $r = Invoke-GuardedClick ([IntPtr]::Zero) 10 10
+  $cases += [pscustomobject]@{ name = 'target_unknown'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'denied' -and $r.clicked -eq $false -and $script:seamSetCursorPos -eq 0 -and $script:seamMouseEvent -eq 0) }
+  $allPass = @($cases | Where-Object { -not $_.pass }).Count -eq 0
+  [pscustomobject]@{ ok = [bool]$allPass; cases = $cases } | ConvertTo-Json -Depth 4 | Set-Content -Path $SelfTestOutPath -Encoding UTF8
+  if (-not $allPass) { exit 1 }
+  exit 0
+}
+if ($SelfTest) {
+  if ([string]::IsNullOrWhiteSpace($OutPath)) {
+    Write-Output 'FOREGROUND_GUARD_SELFTEST_EXIT=1 REASON=missing_outpath'
+    exit 1
+  }
+  Invoke-GuardSelfTest $OutPath
+}
+`;
+
 const UIA_CLICK_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$Name,
-  [string]$ControlType = ''
+  [string]$ControlType = '',
+  [string]$OutPath = '',
+  [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -374,11 +489,17 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class U06Mouse {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 '@
+$script:Native = [U06Mouse]
+${PS_FOREGROUND_GUARD}
 $condition = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
   $ProcessId
@@ -410,15 +531,15 @@ $window = $matches[0].Window
 $rect = $target.Current.BoundingRectangle
 $x = [int]($rect.X + $rect.Width / 2)
 $y = [int]($rect.Y + $rect.Height / 2)
-[U06Mouse]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
-Start-Sleep -Milliseconds 250
-[U06Mouse]::SetCursorPos($x, $y) | Out-Null
-Start-Sleep -Milliseconds 100
-[U06Mouse]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-Start-Sleep -Milliseconds 80
-[U06Mouse]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+# R5 foreground admission guard: zero cursor movement and zero mouse input
+# unless GetForegroundWindow() readback equals the exact target Chrome HWND.
+$guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
+if (-not $guard.clicked) {
+  Write-Output ('UIA_CLICK_EXIT=6 REASON=foreground_denied FOREGROUND_GUARD=1')
+  exit 6
+}
 [pscustomobject]@{
-  mechanism = 'Windows UI Automation bounding rectangle + user32 SetCursorPos/mouse_event'
+  mechanism = 'Windows UI Automation bounding rectangle + user32 SetCursorPos/mouse_event after GetForegroundWindow() readback equals target Chrome HWND'
   processId = $ProcessId
   name = $target.Current.Name
   controlType = $target.Current.ControlType.ProgrammaticName
@@ -433,7 +554,8 @@ exit 0
 
 const UIA_TOOLBAR_ACTION_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
-  [Parameter(Mandatory=$true)][string]$OutPath
+  [Parameter(Mandatory=$true)][string]$OutPath,
+  [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -445,8 +567,13 @@ public static class U06ActionMouse {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 '@
+$script:Native = [U06ActionMouse]
+${PS_FOREGROUND_GUARD}
 # R3 P2-01 focused regression seam: set ONLY by the Node driver's
 # --self-test=privacy-inspection-error run via the process environment. A
 # normal grant run never sees this. Under the seam the script performs NO
@@ -469,13 +596,13 @@ function Click-Element($element, $window) {
   $rect = $element.Current.BoundingRectangle
   $x = [int]($rect.X + $rect.Width / 2)
   $y = [int]($rect.Y + $rect.Height / 2)
-  [U06ActionMouse]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
-  Start-Sleep -Milliseconds 150
-  [U06ActionMouse]::SetCursorPos($x, $y) | Out-Null
-  Start-Sleep -Milliseconds 100
-  [U06ActionMouse]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 80
-  [U06ActionMouse]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+  # R5 foreground admission guard: zero cursor movement and zero mouse input
+  # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
+  $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
+  if (-not $guard.clicked) {
+    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=foreground_denied FOREGROUND_GUARD=1')
+    exit 6
+  }
   return @($x, $y)
 }
 $windows = Get-ChromeWindows
@@ -628,8 +755,8 @@ if ($matches.Count -ne 1) {
 $target = $matches[0].Element
 $point = Click-Element $target $matches[0].Window
 [pscustomobject]@{
-  menuMechanism = 'user32 SetCursorPos/mouse_event on Extensions toolbar automationId view_1006'
-  actionMechanism = 'user32 SetCursorPos/mouse_event on xDownload extension action'
+  menuMechanism = 'user32 SetCursorPos/mouse_event on Extensions toolbar automationId view_1006 after GetForegroundWindow() readback admission'
+  actionMechanism = 'user32 SetCursorPos/mouse_event on xDownload extension action after GetForegroundWindow() readback admission'
   name = $target.Current.Name
   controlType = $target.Current.ControlType.ProgrammaticName
   automationId = $target.Current.AutomationId
@@ -765,6 +892,45 @@ async function main() {
     );
     console.log(JSON.stringify({ ok: true, cases }));
     return EXIT.PASS;
+  }
+  if (SELF_TEST === 'foreground-guard') {
+    // R5 deterministic guard self-test: BOTH click helpers run their shared
+    // guard logic under the -SelfTest seam (scripted foreground readback,
+    // seam input counters — zero native API touch). Cases: denied/mismatched
+    // readback, matching HWND admission, unreadable foreground, unknown
+    // target HWND. A pass requires zero SetCursorPos/mouse_event calls on
+    // every denial path in both scripts.
+    const toolbarOut = path.join(evidenceDir, 'foreground-guard-toolbar-action.json');
+    await runPowerShell('u06-uia-toolbar-action.ps1', [
+      '-ProcessId',
+      '0',
+      '-OutPath',
+      toolbarOut,
+      '-SelfTest',
+    ]);
+    const clickOut = path.join(evidenceDir, 'foreground-guard-click.json');
+    await runPowerShell('u06-uia-click.ps1', [
+      '-ProcessId',
+      '0',
+      '-Name',
+      'self-test',
+      '-OutPath',
+      clickOut,
+      '-SelfTest',
+    ]);
+    const toolbar = readJsonWithBom(toolbarOut);
+    const click = readJsonWithBom(clickOut);
+    result.selfTest = { name: SELF_TEST, toolbarAction: toolbar, click };
+    result.ok = toolbar.ok === true && click.ok === true;
+    result.status = result.ok ? 'PASS' : 'FAIL';
+    result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
+    result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;
+    fs.writeFileSync(path.join(evidenceDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
+    log('driver-result', { selfTest: result.selfTest.name, ok: result.ok });
+    console.log(
+      JSON.stringify({ ok: result.ok, status: result.status, selfTest: result.selfTest }),
+    );
+    return result.ok ? EXIT.PASS : EXIT.FAIL;
   }
   const httpRequests = [];
   const server = http.createServer((req, res) => {
@@ -1052,10 +1218,16 @@ async function main() {
       } catch (error) {
         // The extension action could not be clicked through the visible
         // toolbar UI. This is a NOT_RUN blocker, never a FAIL and never a
-        // fallback to direct popup navigation / CDP / openPopup.
+        // fallback to direct popup navigation / CDP / openPopup. The R5
+        // foreground guard denial is recorded distinctly: it guarantees zero
+        // cursor movement and zero native input were sent.
+        const guardDenied = String(error).includes('foreground_denied');
         result.ok = false;
         result.status = 'NOT_RUN';
-        result.notRunReason = `genuine toolbar action not clickable: ${String(error)}`;
+        result.foregroundGuard = guardDenied ? 'denied_zero_input' : 'not_applicable';
+        result.notRunReason = guardDenied
+          ? `foreground guard denied, zero native input sent: ${String(error)}`
+          : `genuine toolbar action not clickable: ${String(error)}`;
         fs.writeFileSync(
           path.join(evidenceDir, 'result.json'),
           `${JSON.stringify(result, null, 2)}\n`,
