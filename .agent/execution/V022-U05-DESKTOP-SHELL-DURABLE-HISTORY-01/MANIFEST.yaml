@@ -1,0 +1,79 @@
+pack_id: "V022-U05-T03-DESKTOP-SHELL-DURABLE-HISTORY-R2@753ae3d31e074a30d13643687502295a7a00b7e4"
+task_id: "V022-U05-DESKTOP-SHELL-DURABLE-HISTORY-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+parent_issue: "#310"
+task_issue: "#353"
+parent_dag_issue: "#337"
+architecture_tracking_issue: "#337"
+amendment_issue: "#354"
+owner_authorization_ref: "xDownload#354 comment 6623288615"
+base_branch: "wip/v0.2.2-ui-rebuild-r0"
+base_sha: "753ae3d31e074a30d13643687502295a7a00b7e4"
+base_tree: "c9ff7c99caff02035987fc43307c14f851967458"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U05-DESKTOP-SHELL-DURABLE-HISTORY-R2.md@planning/v0.2.2-u05-t03-r2@16aaa110ee20b4c0226952595b74b06eeac4fbef#blob:18e93eafd9c10cdaded8bf3521dd987857428943"
+task_pack_blob: "18e93eafd9c10cdaded8bf3521dd987857428943"
+task_pack_review_ref: "xDownload PR #364 comment 5773853859 TASK_PACK_REVIEW=PASS"
+dag_ref: "docs/architecture/v0.2.2/U05_DESKTOP_S1_IMPLEMENTATION_DAG_R1.md@planning/v0.2.2-u05-r1@39fe921308459a26a29068362757825ed3335147#blob:0048b5b4f6df2b2bad30a93f55450311b304a8bc"
+task_branch: "task/v0.2.2-u05-desktop-shell-durable-history-r2"
+source_branch: "task/v0.2.2-u05-desktop-shell-durable-history-r2"
+execution_branch: "execution/v0.2.2-u05-desktop-shell-durable-history-r2"
+execution_pack_path: ".agent/execution/V022-U05-DESKTOP-SHELL-DURABLE-HISTORY-01/MANIFEST.yaml"
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+product_l2_freeze_ref: "planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d"
+dispatch_admission: "OWNER_APPROVED_R1_SCOPE / T01_T02_INDEPENDENT_REVIEW_PASS_AND_WIP_INTEGRATED / R2_TASK_PACK_REVIEW_PASS / EXACT_BASE_REBOUND / WIP_BUILD_37_SUCCESS"
+claim:
+  protected_claim_key: "kaicreator-mm/xDownload#353:builder:__default__"
+  claim_generation: 1
+  required_event: "DISPATCH_CLAIMED"
+  claim_owner: "actual Local Builder identity"
+  source_mutation_before_accepted_claim: false
+allowed_write_set:
+  - apps/desktop-shell/src/main/manager.ts
+  - apps/desktop-shell/src/main/shell-contract.ts
+  - apps/desktop-shell/src/main/ipc.ts
+  - apps/desktop-shell/src/main/validators.ts
+  - apps/desktop-shell/src/main/main.ts
+  - apps/desktop-shell/src/preload/preload.ts
+  - apps/desktop-shell/src/renderer/manager-state.ts
+  - apps/desktop-shell/src/renderer/renderer-main.ts
+  - apps/desktop-shell/src/renderer/index.html
+  - apps/desktop-shell/src/renderer/styles.css
+  - apps/desktop-shell/test/manager.test.ts
+  - apps/desktop-shell/test/manager-view.test.ts
+  - apps/desktop-shell/test/security-invariants.test.ts
+  - apps/desktop-shell/test/validators.test.ts
+goal: "Replace session-only Desktop manager enumeration with the Core-owned durable S1 index and complete the Desktop S1 add/reopen workflow."
+acceptance:
+  - "managerRefresh reads accepted S1 jobs through the Core LIST_S1_JOB_PROJECTIONS index; no in-memory session Map as enumeration authority."
+  - "confirmAdd preserves preview/confirmation and then routes EXECUTE_S1_DIRECT_ACQUISITION through the reviewed Desktop adapter."
+  - "Reopen uses the aggregate ID and fresh Core READ_PROJECTION; do not fabricate contract/scope facts for jobs created by CLI or another authorized surface."
+  - "Cancel/retry remain existing Core commands; Core re-decides every transition."
+  - "Render exact totalCount/truncated semantics and a visible truncation notice; never claim complete history when truncated."
+  - "Remove destination picker, per-download destination field, reveal action and associated IPC/preload channels; show only 保存位置由 Core 配置管理."
+  - "Preserve main-frame sender validation, closed channel allowlist, exact payload decoding and typed fail-closed errors."
+  - "No fabricated progress, ETA, bytes, completion or artifact path."
+  - "Combined-candidate end-to-end test must exercise the real Core DESKTOP_UI S1 route using integrated T01 Core Seam and T02 Desktop adapter; Mock Transport remains adapter-unit evidence only."
+  - "Only exact paths in allowed_write_set may change."
+  - "Record exact HEAD/tree, Node24 syntax, Prettier, test counts, command exit codes and Woodpecker Build ID on Issue #353."
+pre_ci:
+  - "Re-read WIP branch and require exact HEAD/tree 753ae3d31e074a30d13643687502295a7a00b7e4 / c9ff7c99caff02035987fc43307c14f851967458."
+  - "Verify WIP push pipeline #37 SUCCESS at that exact SHA."
+  - "Verify T01 #360 and T02 #361 merge commits are present in the exact WIP ancestry."
+  - "Verify Task Pack R2 blob 18e93eafd9c10cdaded8bf3521dd987857428943 and independent PASS #5773853859."
+  - "Publish and read back accepted generation-1 LOCAL_BUILDER CAS DISPATCH_CLAIMED bound to this exact Task Pack/base/write set before any source edit."
+  - "Run Node v24 syntax preflight on all changed JS/TS files."
+  - "Run changed-file Prettier before focused tests or CI."
+  - "Run focused Desktop Shell tests, typecheck, aggregate pnpm run ci:verify, then local Docker Woodpecker exact-SHA."
+  - "Builder owns implementation, repair and all local validation; no standalone LOCAL_VALIDATION dispatch."
+forbidden:
+  - "No writes outside the exact fourteen paths."
+  - "No Core Seam/Core Runtime/CLI/Host/package manifests/lockfile changes."
+  - "No destination picker, outputRoot, reveal, guessed path, synthetic progress/ETA, S2-S6, real external download, Native Host or registry side effect."
+  - "No main or version/v0.2.1 changes."
+  - "No tag, release or deployment."
+  - "No WIP merge; requires a later independent Exact-SHA source review and separate integration decision."
+status: "READY_FOR_GENERATION_1_LOCAL_BUILDER_CLAIM"
