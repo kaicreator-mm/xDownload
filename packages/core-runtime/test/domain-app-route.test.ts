@@ -23,7 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { currentSeamSchemaIdentity } from '@xdownload/core-seam';
 import {
@@ -47,12 +47,18 @@ import {
   type CoreRuntime,
 } from '../src/index.ts';
 import {
+  LineageLedger,
+  LineageLedgerError,
+  LineageStoreError as AppLineageStoreError,
   POC183_KERNEL_MODULE_SHA256,
   POC183_STANDARD_MODULE_SHA256,
   S4_HLS_MEDIA_PROFILE,
   s4HlsSelectionTupleDigest,
   sealS4HlsComposition,
+  type LineageLedgerDoc,
+  type LineageStore,
 } from '@xdownload/download-domain-app';
+import { PlainFileLineageStore as HostPlainFileLineageStore } from '@xdownload/download-domain-host';
 
 const dirs: string[] = [];
 const servers: Server[] = [];
@@ -914,5 +920,173 @@ describe('T02 single-K Domain App route', () => {
     expect(() => FileBackedDomainAppRouteLog.openExisting(logPath)).toThrow(
       DurableStoreCorruptError,
     );
+  });
+});
+
+// ------------------------------------------------------------- T09 dormant lane
+//
+// V022-A04 R2 (review P2 closure) — the App owns NO physical lineage store
+// anymore; the Host owns the dormant plain-file store. The seam below is the
+// composition-boundary proof the A03 Host header anticipated ("A04 performs
+// the actual assignability proof at the composition call site"): the actual
+// Core `load`-adjacent composition layer is the only place both packages are
+// importable, so the Host store is injected into the App ledger port HERE.
+// Typed error mapping is preserved across the DISTINCT App/Host
+// `LineageStoreError` constructors: the frozen App ledger classifies store
+// failures by its own constructor (`instanceof`), so foreign Host store
+// failures are normalized onto the App's typed codes at this boundary before
+// they reach the ledger. T09 stays dormant — this is a port proof, not an
+// activation: no UNKNOWN auto-resolution, no SQLite, no multi-process CAS.
+// Evidence precision (A03 P2-3): every reopen below is a SAME-PROCESS reopen;
+// no crash, power-loss or cross-process claim is made.
+
+/**
+ * Normalize foreign (Host-constructed) lineage store failures onto the App's
+ * typed `LineageStoreError` codes. The Host store throws its own
+ * `LineageStoreError` class — identical NAME, distinct constructor — which
+ * the frozen ledger's `commit()` cannot classify; this mapping is the
+ * composition-layer bridge. The production T13 composition adopts this exact
+ * shape when (and only when) the dormant lane is wired.
+ */
+function withMappedLineageStoreErrors(store: LineageStore): LineageStore {
+  function mapError(error: unknown): never {
+    if (error instanceof AppLineageStoreError) throw error;
+    const code = (error as { code?: unknown }).code;
+    if (code === 'LINEAGE_CAS_CONFLICT' || code === 'MALFORMED_LEDGER_DOC') {
+      throw new AppLineageStoreError(code, error instanceof Error ? error.message : String(error));
+    }
+    throw error;
+  }
+  return {
+    load(): LineageLedgerDoc | null {
+      try {
+        return store.load();
+      } catch (error) {
+        mapError(error);
+      }
+    },
+    save(next: LineageLedgerDoc): LineageLedgerDoc {
+      try {
+        return store.save(next);
+      } catch (error) {
+        mapError(error);
+      }
+    },
+  };
+}
+
+describe('V022-A04 R2 — T09 dormant lineage port: Host store injected at the Core composition boundary', () => {
+  it('proves the Host PlainFileLineageStore structurally assignable to the App LineageStore port (compile-time callsite) and durable across same-process reopen', () => {
+    const root = tempRoot('a04r2-lineage-assignability-');
+    const path = join(root, 'lineage-ledger.json');
+    // RAW Host injection: this call site compiles ONLY because the Host store
+    // is structurally assignable to the App port (no cast, no adapter) — the
+    // assignability proof itself. The happy path performs no store failure,
+    // so no error mapping is needed here.
+    const first = LineageLedger.open({ path, store: new HostPlainFileLineageStore(path) });
+    first.claimLineage({
+      lineageId: 'lineage-a04r2-host',
+      writer: { writerId: 'k:v0.2:a04r2', kind: 'new-k' },
+      authorization: 'auth:a04r2-claim-1',
+    });
+    first.registerLegacyLineage('old-v01-a04r2');
+
+    // Same-process stop/reopen over the same durable bytes (qualified: NOT
+    // crash/power-loss/cross-process evidence).
+    const reopened = LineageLedger.open({
+      path,
+      store: new HostPlainFileLineageStore(path),
+    });
+    expect(reopened.effectiveOwnerOf('lineage-a04r2-host')).toBe('new-k');
+    expect(reopened.effectiveOwnerOf('old-v01-a04r2')).toBe('old-core');
+    expect(() =>
+      reopened.claimLineage({
+        lineageId: 'lineage-a04r2-host',
+        writer: { writerId: 'k:v0.2:other', kind: 'new-k' },
+        authorization: 'auth:a04r2-other',
+      }),
+    ).toThrow(LineageLedgerError);
+  });
+
+  it('preserves typed error mapping across the distinct Host/App error constructors: a Host CAS conflict surfaces as the App LineageLedgerError code', () => {
+    const root = tempRoot('a04r2-lineage-error-mapping-');
+    const path = join(root, 'lineage-ledger.json');
+    const openMapped = (): LineageLedger =>
+      LineageLedger.open({
+        path,
+        store: withMappedLineageStoreErrors(new HostPlainFileLineageStore(path)),
+      });
+
+    const first = openMapped();
+    first.claimLineage({
+      lineageId: 'lineage-a04r2-cas',
+      writer: { writerId: 'k:v0.2:a04r2-cas', kind: 'new-k' },
+      authorization: 'auth:a04r2-cas-1',
+    });
+    // A second instance loads the durable doc at revision 1...
+    const stale = openMapped();
+    // ...while the first advances the durable revision underneath it.
+    first.registerLegacyLineage('old-v01-a04r2-cas');
+
+    // The stale instance's commit is refused by the Host CAS gate; the
+    // composition mapping converts the distinct-constructor Host failure into
+    // the App's typed store failure, which the frozen ledger maps to its own
+    // typed ledger error. The caller sees ONE typed failure.
+    let caught: unknown;
+    try {
+      stale.claimLineage({
+        lineageId: 'lineage-a04r2-cas-2',
+        writer: { writerId: 'k:v0.2:a04r2-cas', kind: 'new-k' },
+        authorization: 'auth:a04r2-cas-2',
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(LineageLedgerError);
+    expect((caught as LineageLedgerError).code).toBe('LINEAGE_CAS_CONFLICT');
+
+    // Proof the constructors are genuinely distinct (the mapping did real
+    // work): a RAW Host ghost save throws the Host-constructed error, which
+    // is NOT an instance of the App's LineageStoreError.
+    const ghost = new HostPlainFileLineageStore(path);
+    let rawCaught: unknown;
+    try {
+      ghost.save({
+        schemaVersion: 1,
+        revision: 0,
+        claims: {},
+        unknownEffects: [],
+        history: [],
+      });
+    } catch (error) {
+      rawCaught = error;
+    }
+    expect(rawCaught).toBeInstanceOf(Error);
+    expect((rawCaught as Error).name).toBe('LineageStoreError');
+    expect(rawCaught).not.toBeInstanceOf(AppLineageStoreError);
+
+    // The durable state is untouched after both refusals.
+    const reopened = openMapped();
+    expect(reopened.effectiveOwnerOf('lineage-a04r2-cas')).toBe('new-k');
+    expect(reopened.effectiveOwnerOf('old-v01-a04r2-cas')).toBe('old-core');
+    expect(reopened.recordedOwnerOf('lineage-a04r2-cas-2')).toBeNull();
+  });
+
+  it('maps a malformed durable document onto the App typed code at the boundary (fail closed)', () => {
+    const root = tempRoot('a04r2-lineage-malformed-');
+    const path = join(root, 'lineage-ledger.json');
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, '{ not json at all', 'utf8');
+    let caught: unknown;
+    try {
+      LineageLedger.open({
+        path,
+        store: withMappedLineageStoreErrors(new HostPlainFileLineageStore(path)),
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(AppLineageStoreError);
+    expect((caught as AppLineageStoreError).code).toBe('MALFORMED_LEDGER_DOC');
   });
 });

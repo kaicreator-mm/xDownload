@@ -7,6 +7,17 @@
  * a real 127.0.0.1 fixture (zero mocks). Zero-effect negatives are proven
  * as deltas across fixture socket requests, bridge counters and the
  * durable K store.
+ *
+ * A04 R2 EVIDENCE SCOPE (review P1 disposition): component-level integration
+ * evidence over a Core-test-assembled direct runtime — the pinned SDK cannot
+ * compose the direct route into the production S4 one-K (route selection by
+ * intentType only; the sealed #183 Standard Router returns 'ambiguous' for
+ * the shared `confirmDownload` intent; exact limitation + probe transcripts
+ * on kaicreator-mm/xDownload#357). Per Task Pack §3.1.4 the Builder stopped
+ * rather than substituting a parallel production claim; the production one-K
+ * integration proof of the selected Domain App lives in
+ * domain-app-route.test.ts / domain-app-media-flow.test.ts. A02 P1 closure
+ * (these cases under Core `ci:verify`) is unaffected.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';

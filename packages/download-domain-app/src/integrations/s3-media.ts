@@ -45,11 +45,17 @@
  * @xdownload/download-domain-host. REMOVED in A02, RELOCATED-TO-CORE-A04:
  * `assembleMediaRuntime` and the trusted permit pin body
  * (`executeMediaAcquisition`, which drove the real T06 Host bridge
- * `acquireMediaViaHls`) now live at the Core composition root
- * (packages/core-runtime/test/domain-app-media-flow.test.ts), which owns
- * the Host bridge assembly; the scenario map recorded in s3-media.test.ts
- * is re-established there. The `MEDIA_BRIDGE_PIN` ABI name the sealed media
- * C module reaches stays as the typed Core-side pin-installer reference.
+ * `acquireMediaViaHls`) live at the Core composition root
+ * (packages/core-runtime/test/domain-app-media-flow.test.ts). V022-A04 R2
+ * scoping: the generic media route is NOT composable into the production
+ * one-K alongside the S4 route (the pinned SDK refuses the duplicate route
+ * pair confirmDownload → media.acquire and binds capabilityId `media`
+ * injectively; the sealed #183 Standard Router also routes by intentType
+ * only — exact limitation with probe transcripts on
+ * kaicreator-mm/xDownload#357), so the S3 integration evidence there is
+ * explicitly component-level, never claimed as the Core one-K proof. The
+ * `MEDIA_BRIDGE_PIN` ABI name the sealed media C module reaches stays as
+ * the typed Core-side pin-installer reference.
  *
  * Honest status (T10 baseline vocabulary): this journey is PROVEN at
  * bounded-fixture level (real loopback HLS master→playlist→segments→

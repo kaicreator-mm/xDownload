@@ -8,13 +8,16 @@
  *
  * V022-A02/A04 boundary note: this module no longer imports
  * @xdownload/download-domain-host. REMOVED in A02, RELOCATED-TO-CORE-A04:
- * `executeS4Hls` (the trusted pin body that drove the real T06 Host bridge
- * `acquireSelectedHlsVod`) and `assembleS4HlsRuntime` (test/fixture-only
- * standalone assembly around it) now live at the Core composition root
- * (packages/core-runtime/test/domain-app-media-flow.test.ts); the scenario
- * map recorded in s4-hls-vod.test.ts is re-established there. KEPT here and
- * exported through the public App root (A04): `sealS4HlsComposition`,
- * `s4HlsCompositionContribution`, `s4HlsSealedPassthrough`,
+ * the S4 scenario map recorded in s4-hls-vod.test.ts is re-established at
+ * the Core composition root — V022-A04 R2 routes every runtime-driving S4
+ * scenario through the PRODUCTION composition (`createCoreRuntime` /
+ * `composeDomainAppRoute`) and the actual Core Host bridge
+ * (`createS4HlsHostBridge` in packages/core-runtime/src/domain-app-route.ts);
+ * the test-side `executeS4Hls` duplicate was deleted in R2 (review P1). Only
+ * the App-owned single-K contribution splice keeps a direct SDK `load` with
+ * an intentional stub pin, as BUILD-shape evidence.
+ * KEPT here and exported through the public App root (A04):
+ * `sealS4HlsComposition`, `s4HlsCompositionContribution`, `s4HlsSealedPassthrough`,
  * `acquireS4HlsBridgePin` and the S4 pin contract types — the domain-side
  * registration seam the sealed S4 capability module and the Core route
  * both reach (the physical bridge implementation is Host-owned).

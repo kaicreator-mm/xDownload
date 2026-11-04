@@ -22,7 +22,10 @@
  *     bounded-HLS-fixture level (real master→playlist→segments run through
  *     the existing engine under one K permit, digest-backed materialization);
  *     the fixture proof is re-established at the Core composition root
- *     (packages/core-runtime/test/domain-app-media-flow.test.ts, A04).
+ *     (packages/core-runtime/test/domain-app-media-flow.test.ts, A04; R2
+ *     scoped as component-level evidence — the media route cannot compose
+ *     into the production S4 one-K, exact SDK limitation on
+ *     kaicreator-mm/xDownload#357).
  *     Installed-path media validation is NOT_PROVEN here (owner: T16
  *     validation-product).
  *   - S2 "Browser Download Handoff / Explicit Current-page Attachment" →

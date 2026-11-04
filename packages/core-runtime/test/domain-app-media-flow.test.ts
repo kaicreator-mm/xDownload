@@ -1,75 +1,100 @@
 /**
- * V022-A04 — S3/S4 media integration scenario maps, re-established under
- * the Core composition root (packages/core-runtime/test/, discovered by
+ * V022-A04 R2 (repair of review P1) — S3/S4 media scenario maps under the
+ * Core composition root (packages/core-runtime/test/, discovered by
  * `pnpm run ci:verify`).
  *
- * Every runtime here is assembled Core-side from the stable package roots:
- * sealed media/S4 BUILD producers and the domain journeys from
- * `@xdownload/download-domain-app`; the Host durable store, the opaque
- * media targetRef registry and the T06 HLS acquisition bridge from
- * `@xdownload/download-domain-host`; the one K through the SDK public
- * `load`. No mocks, no second engine, no second ledger.
+ * S4 (the selected Domain App's route) executes through the PRODUCTION
+ * composition — `createCoreRuntime({ domainApp })` / `composeDomainAppRoute`
+ * — and the ACTUAL Core Host bridge: the same `createS4HlsHostBridge`
+ * instances the route installs, observed through the facade pin counters,
+ * the durable route fact log, the v0.2 job projection and real 127.0.0.1
+ * fixture hit accounting. No test-only S4 bridge body, no parallel S4 K.
  *
- * Scenario coverage (A02 P1/P2 and Task Pack §4.3, no case reduced):
+ * S3 (media.acquire generic lane) — NOT REPRESENTABLE in the production
+ * one-K (exact public SDK limitation, recorded with probe transcripts on
+ * kaicreator-mm/xDownload#357): the pinned SDK seals capabilityId bindings
+ * injectively and route pairs (intentId, operationId) uniquely — MEDIA_ROUTE
+ * and S4_HLS_ROUTE are the SAME pair (confirmDownload → media.acquire) —
+ * and the sealed #183 Standard Router selects a route by intentType only,
+ * so even a build-admitted two-route K fails send-time routing as
+ * 'ambiguous' (ROUTING_OUTCOME_UNSELECTED). Per the frozen Task Pack §3.1.4
+ * stop-and-report rule, the S3 scenarios below remain COMPONENT-LEVEL
+ * integration evidence assembled by this Core test support (real sealed
+ * media BUILD, real Host engine/registry/store, real loopback bytes) and
+ * are explicitly NOT claimed as the Core one-K integration proof — the
+ * production proof obligation for the selected Domain App is discharged by
+ * the S4 route suites. No coverage is silently dropped: the App-colocated
+ * s3-media.test.ts (domain-level seal identity / ABI seam) runs unchanged.
+ *
+ * Scenario map (Task Pack §4.3, no case reduced):
  *   S3 — positive bounded HLS journey under one K permit with exact fixture
  *        hit accounting; pre-send refusals (foreign operation/slice,
  *        widened intent, incomplete sealed profile) with zero effects;
  *        unknown/locator-shaped targetRef and over-profile declaredBytes
  *        refused before any segment request or file write; digest mismatch
  *        never overwrites the prior completed artifact.
- *   S4 — the closed explicit rendition-selection contract; unknown target
- *        refusal through K/Host; topology refusals (unclosed live playlist,
- *        AES-128, duplicate variants) with hit accounting; the real FFmpeg
- *        VOD materialization (environment-gated: absence of ffmpeg/ffprobe
- *        is NOT_PROVEN, never a silent PASS); the duplicate bridge
- *        registration discipline; the second-standalone-assembly conflict;
- *        the single externally-built K composition of the S4 contribution
- *        with a stubbed bridge pin (the one-K splice shape).
+ *   S4 — the closed explicit rendition-selection contract and the
+ *        confirmation window (pure validation); unknown targetRef refused
+ *        through the production route before any media effect; topology
+ *        refusals (unclosed live playlist, AES-128, duplicate variants)
+ *        with exact fixture hit accounting; the duplicate bridge
+ *        registration discipline; the S4 second-standalone-assembly
+ *        conflict through the production composition; the App-owned
+ *        single-K contribution splice (BUILD-shape evidence with an
+ *        intentional stub pin); the real FFmpeg VOD materialization through
+ *        the production route (environment-gated: absence of ffmpeg/ffprobe
+ *        is NOT_PROVEN, never a silent PASS).
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { afterAll, beforeAll, describe, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, it } from 'vitest';
 
 import { load } from '@kaicreator/domain-harness-microkernel';
-import { createSyntheticSegmentBytes } from '@xdownload/hls-vod-adapter';
+import { currentSeamSchemaIdentity } from '@xdownload/core-seam';
 import { REFERENCE_TOKEN_PATTERN } from '@xdownload/domain-contracts';
+import { createSyntheticSegmentBytes } from '@xdownload/hls-vod-adapter';
 import {
   MEDIA_ACQUIRE_OPERATION,
   MEDIA_BRIDGE_PIN,
-  buildS4HlsSingleKComposition,
-  sealMediaComposition,
-  sealS4HlsComposition,
-  s4HlsSelectionTupleDigest,
-  submitConfirmedMediaDownload,
-  submitConfirmedS4HlsVod,
-  validateConfirmedIntent,
-  validateConfirmedS4HlsIntent,
   S4_HLS_BRIDGE_PIN,
   S4_HLS_MEDIA_OPERATION,
   S4_HLS_MEDIA_PROFILE,
   acquireS4HlsBridgePin,
+  buildS4HlsSingleKComposition,
   normalizeEffectEnvelope,
+  s4HlsSelectionTupleDigest,
+  sealMediaComposition,
+  submitConfirmedMediaDownload,
+  submitConfirmedS4HlsVod,
+  validateConfirmedIntent,
+  validateConfirmedS4HlsIntent,
   type ConfirmedDownloadIntent,
-  type ConfirmedS4HlsIntent,
   type EffectEnvelope,
   type MediaDownloadRuntime,
   type MediaPinCounters,
   type MediaSubmissionOutcome,
-  type S4HlsPinCounters,
   type S4HlsRuntime,
 } from '@xdownload/download-domain-app';
 import {
   FileCasDocStore,
   InMemoryMediaTargetRegistry,
   acquireMediaViaHls,
-  acquireSelectedHlsVod,
 } from '@xdownload/download-domain-host';
+import {
+  closeCoreRuntime,
+  composeDomainAppRoute,
+  CoreDomainAppRouteError,
+  createCoreRuntime,
+  durableLayout,
+  type CoreRuntime,
+} from '../src/index.ts';
+import { makeTempDir, peer, removeTempDir, requestIdOf, runtimeOptions } from './helpers.ts';
 
 function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -99,7 +124,7 @@ function refusalEnvelope(externalRef: string, code: string, message: string): Ef
 }
 
 // ---------------------------------------------------------------------------
-// Core-side media runtime assembly (S3): seal → registry → permit pin → load.
+// S3 — component-level media-lane evidence (NOT the one-K proof; see header).
 // ---------------------------------------------------------------------------
 
 interface KernelPermitClaim {
@@ -125,11 +150,14 @@ function parseKernelPermit(permit: unknown): KernelPermitClaim | null {
 
 /**
  * The trusted S3 media pin body (T11 pin pattern + T06 permit derivation),
- * assembled Core-side: kernel permit gate → T01 no-widening re-check →
- * opaque targetRef resolution through the injected Host registry ONLY →
- * permit derivation binding the kernel identity to the seeded registry
- * facts (never wider than either input) → the existing T06 engine. Success
- * binds the K permit identity into the terminal evidence.
+ * assembled by this Core test support: kernel permit gate → T01 no-widening
+ * re-check → opaque targetRef resolution through the injected Host registry
+ * ONLY → permit derivation binding the kernel identity to the seeded
+ * registry facts (never wider than either input) → the existing T06 engine.
+ * There is NO production S3 pin installer (the generic media route is not
+ * composable into the one-K — exact SDK limitation on #357), so this
+ * component-level body is the honest S3 evidence; it invents no authority
+ * the production S4 bridge does not also enforce (same gates, same engine).
  */
 async function executeMediaAcquisition(
   payload: Record<string, unknown>,
@@ -273,9 +301,10 @@ function emptyMediaPinCounters(): MediaPinCounters {
 }
 
 /**
- * Assemble the S3 media runtime Core-side (A04 composition pattern): seal
- * the App media BUILD, seed the Host registry, install the `MEDIA_BRIDGE_PIN`
- * permit-derivation pin BEFORE the SDK public `load`, and load the one K.
+ * Assemble the S3 media runtime Core-side (component-level evidence; see the
+ * file header): seal the App media BUILD, seed the Host registry, install
+ * the `MEDIA_BRIDGE_PIN` permit-derivation pin BEFORE the SDK public
+ * `load`, and load the one media-lane K.
  */
 async function assembleMediaRuntimeCore(options: {
   readonly storePath: string;
@@ -323,198 +352,6 @@ async function assembleMediaRuntimeCore(options: {
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// Core-side S4 runtime assembly: seal → registry → pin → single-owner load.
-// ---------------------------------------------------------------------------
-
-function emptyS4PinCounters(): S4HlsPinCounters {
-  return {
-    acquireCalls: 0,
-    permitRefusals: 0,
-    intentRefusals: 0,
-    registryRefusals: 0,
-    completedExecutions: 0,
-    failedExecutions: 0,
-  };
-}
-
-/**
- * The trusted S4 pin body (same discipline as the Core production route):
- * kernel permit gate → closed S4 intent re-validation → opaque targetRef
- * resolution through the Host registry → confirmed-selection/tuple match
- * against the seeded registry facts → permit derivation → the T06
- * `acquireSelectedHlsVod` engine. Success binds the K permit identity into
- * the terminal evidence.
- */
-async function executeS4Hls(
-  payload: Record<string, unknown>,
-  permit: unknown,
-  registry: InMemoryMediaTargetRegistry,
-  counters: S4HlsPinCounters,
-): Promise<EffectEnvelope> {
-  counters.acquireCalls += 1;
-  const kernelPermit = parseKernelPermit(permit);
-  if (kernelPermit === null) {
-    counters.permitRefusals += 1;
-    return refusalEnvelope(
-      'media.acquire:unpermitted',
-      'MEDIA_PERMIT_REQUIRED',
-      'Kernel effect permit is required',
-    );
-  }
-  const externalRef = kernelPermit.effectId;
-  const candidate: Record<string, unknown> = { ...payload };
-  delete candidate.effectId;
-  // The K's rule projection maps digestAnchor unconditionally; an absent
-  // optional anchor rides the internal path as null (dropped here).
-  if (candidate['digestAnchor'] === null) delete candidate['digestAnchor'];
-  const checked = validateConfirmedS4HlsIntent(candidate);
-  if (!checked.ok) {
-    counters.intentRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      'S4_INTENT_INVALID',
-      checked.diagnostics[0]?.message ?? 'S4 intent refused',
-    );
-  }
-  const intent: ConfirmedS4HlsIntent = checked.value;
-  const recordCheck = registry.resolve(intent.targetRef);
-  if (!recordCheck.ok) {
-    counters.registryRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      recordCheck.diagnostics[0]?.code ?? 'MEDIA_TARGET_UNKNOWN',
-      'opaque targetRef did not resolve',
-    );
-  }
-  const record = recordCheck.value;
-  if (
-    record.protocol !== 'HLS' ||
-    record.manifestUri !== intent.selection.manifestUri ||
-    (record.selectedRenditionUri !== undefined &&
-      record.selectedRenditionUri !== intent.selection.renditionUri)
-  ) {
-    counters.registryRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      'S4_SELECTION_TARGET_MISMATCH',
-      'confirmed selection does not match trusted target registry facts',
-    );
-  }
-  const mediaPermit = {
-    kind: 'media-acquisition-permit',
-    permitId: boundedPermitIdOf(kernelPermit.effectId),
-    operationId: S4_HLS_MEDIA_OPERATION,
-    requestId: intent.requestId,
-    lineageId: intent.lineageId,
-    allowedManifestOrigins: record.allowedManifestOrigins,
-    allowedSegmentOrigins: record.allowedSegmentOrigins,
-    budget: record.budget,
-  };
-  const result = await acquireSelectedHlsVod({
-    intent,
-    protocol: record.protocol,
-    manifestUri: record.manifestUri,
-    permit: mediaPermit,
-    ...(record.artifactFileName === undefined ? {} : { artifactFileName: record.artifactFileName }),
-    ...(record.fixtureLoopbackHttp === true ? { fixtureLoopbackHttp: true } : {}),
-    ...(record.manifestMaxBytes === undefined ? {} : { manifestMaxBytes: record.manifestMaxBytes }),
-    ...(record.segmentMaxBytes === undefined ? {} : { segmentMaxBytes: record.segmentMaxBytes }),
-    ...(record.timeoutMs === undefined ? {} : { timeoutMs: record.timeoutMs }),
-  });
-  if (!result.admitted) {
-    counters.failedExecutions += 1;
-    return refusalEnvelope(externalRef, result.code, result.message);
-  }
-  if (result.envelope.phase === 'terminal' && result.envelope.outcome.ok) {
-    const normalized = normalizeEffectEnvelope({
-      phase: 'terminal',
-      externalRef,
-      outcome: {
-        ok: true,
-        output: {
-          ...result.envelope.outcome.output,
-          permitEffectId: kernelPermit.effectId,
-          durableControlTurnId: kernelPermit.durableControlTurnId,
-        },
-      },
-    });
-    if (!normalized.ok) {
-      throw new Error('S4 Host permit enrichment rejected the T01 envelope grammar');
-    }
-    counters.completedExecutions += 1;
-    return normalized.value;
-  }
-  counters.failedExecutions += 1;
-  return result.envelope;
-}
-
-/**
- * Assemble one S4 runtime Core-side. A second live S4 assembly beside this
- * one is refused by the single-owner registrar (the preserved S4
- * second-standalone-assembly conflict), never displacing this holder.
- */
-async function assembleS4RuntimeCore(options: {
-  readonly storePath: string;
-  readonly mediaTargetRefs?: readonly { readonly handle: string; readonly record: unknown }[];
-  readonly tenantId?: string;
-}): Promise<S4HlsRuntime> {
-  const built = sealS4HlsComposition();
-  const store = new FileCasDocStore(options.storePath);
-  const registry = new InMemoryMediaTargetRegistry(options.mediaTargetRefs ?? []);
-  const pin = emptyS4PinCounters();
-  const registration = acquireS4HlsBridgePin({
-    acquireS4HlsVod: (payload, permit) => executeS4Hls(payload, permit, registry, pin),
-  });
-  if (!registration.ok) {
-    store.close();
-    throw new Error(`S4_BRIDGE_PIN_CONFLICT: ${registration.message}`);
-  }
-  const tenantId = options.tenantId ?? 'tenant:xdownload-v021-s4';
-  let app;
-  try {
-    app = await load(built, {
-      store,
-      tenantId,
-      deploymentIdentity: {
-        deployedAppId: 'deploy:xdownload-v021-s4',
-        tenantId,
-        appId: built.appId,
-      },
-      queryAuthority: {
-        principal: { actor: 'xdownload-v021-s4-host' },
-        authorize: (candidate, target) =>
-          Boolean(
-            candidate !== null &&
-            typeof candidate === 'object' &&
-            (candidate as { actor?: string }).actor === 'xdownload-v021-s4-host' &&
-            target.tenantId === tenantId,
-          ),
-      },
-    });
-  } catch (error) {
-    registration.lease.release();
-    store.close();
-    throw error;
-  }
-  return {
-    built,
-    app,
-    store,
-    registry,
-    pin,
-    stop(): void {
-      app.stop();
-      registration.lease.release();
-      store.close();
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// S3 — bounded hand-crafted HLS fixture (no ffmpeg required).
-// ---------------------------------------------------------------------------
 
 const SEGMENT_DURATIONS = [2, 3, 4] as const;
 
@@ -608,10 +445,13 @@ function assertS3ZeroEffectsSince(
   assert.equal(s3Runtime!.store.permitDocs().length - beforePermits, 0, 'no K permit may exist');
 }
 
-describe('S3 — Core media flow (bounded HLS fixture)', () => {
+describe('S3 — Core media flow (bounded HLS fixture; component-level evidence, not the one-K proof)', () => {
   beforeAll(async () => {
     s3Hits.clear();
-    s3Root = mkdtempSync(join(tmpdir(), 'xd-a04-s3-'));
+    // The S3 block manages its own root: the shared afterEach (below) that
+    // cleans the S4 composition dirs must not delete this root from under
+    // the long-lived media runtime between tests.
+    s3Root = makeTempDir('xd-a04-s3-');
     s3Server = createServer((request, response) => {
       const url = request.url ?? '';
       s3Hits.set(url, (s3Hits.get(url) ?? 0) + 1);
@@ -855,7 +695,136 @@ describe('S3 — Core media flow (bounded HLS fixture)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// S4 — selected-HLS VOD under K (contract, refusals, conflict, splice, ffmpeg).
+// Production composition workspace (the actual Core Host bridge path).
+// ---------------------------------------------------------------------------
+
+const dirs: string[] = [];
+const servers: Server[] = [];
+
+afterEach(async () => {
+  for (const server of servers.splice(0)) {
+    server.closeAllConnections();
+    await new Promise<void>((resolveClose) => {
+      server.close(() => resolveClose());
+    });
+  }
+  for (const dir of dirs.splice(0)) {
+    removeTempDir(dir);
+  }
+});
+
+function tempRoot(prefix: string): string {
+  const dir = makeTempDir(prefix);
+  dirs.push(dir);
+  return dir;
+}
+
+function composeS4Runtime(rootDir: string, mediaTargetRefs: readonly unknown[]): CoreRuntime {
+  return createCoreRuntime({
+    ...runtimeOptions(rootDir),
+    domainApp: {
+      mediaTargetRefs: mediaTargetRefs as never,
+    },
+  });
+}
+
+function v02CommandFrame(input: {
+  readonly requestId: string;
+  readonly lineageId: string;
+  readonly intent: unknown;
+}): string {
+  return JSON.stringify({
+    schemaIdentity: currentSeamSchemaIdentity(),
+    kind: 'command',
+    route: 'v0.2',
+    commandType: 'DOMAIN_APP_SEND',
+    peer: peer(),
+    requestId: input.requestId,
+    aggregateId: input.lineageId,
+    issuedAt: '2026-11-04T01:00:00Z',
+    payload: { intent: input.intent },
+  });
+}
+
+function v02JobQueryFrame(input: {
+  readonly requestId: string;
+  readonly lineageId: string;
+}): string {
+  return JSON.stringify({
+    schemaIdentity: currentSeamSchemaIdentity(),
+    kind: 'query',
+    route: 'v0.2',
+    queryType: 'READ_JOB_PROJECTION',
+    peer: peer(),
+    requestId: input.requestId,
+    aggregateId: input.lineageId,
+    issuedAt: '2026-11-04T01:00:00Z',
+  });
+}
+
+interface JobProjectionView {
+  readonly lineageId: string;
+  readonly owner: 'old-core' | 'new-k';
+  readonly status: string;
+  readonly attempts?: readonly { readonly attemptId: string; readonly status: string }[];
+  readonly progress?: { readonly transferredBytes: number };
+  readonly error?: { readonly code: string; readonly message?: string };
+}
+
+type JobQueryResponse = ReturnType<CoreRuntime['seam']['handleFrame']> & {
+  readonly projection?: JobProjectionView;
+};
+
+/** Poll the v0.2 job projection until the status leaves the running set. */
+async function waitForJobStatus(
+  runtime: CoreRuntime,
+  lineageId: string,
+  wanted: readonly string[],
+  timeoutMs = 20_000,
+): Promise<JobProjectionView> {
+  const deadline = Date.now() + timeoutMs;
+  let last: JobProjectionView | undefined;
+  while (Date.now() < deadline) {
+    const response = runtime.seam.handleFrame(
+      v02JobQueryFrame({ requestId: `req-job-${lineageId}`, lineageId }),
+    ) as JobQueryResponse;
+    if (response.outcome === 'PROJECTION' && response.projection !== undefined) {
+      last = response.projection;
+      if (wanted.includes(response.projection.status)) {
+        return response.projection;
+      }
+    }
+    await new Promise((resolvePause) => setTimeout(resolvePause, 25));
+  }
+  throw new Error(
+    `job projection for '${lineageId}' did not reach ${wanted.join('/')} in time; last=${JSON.stringify(last)}`,
+  );
+}
+
+/** Drive one S4 intent through the production route and settle the outcome. */
+async function submitS4ThroughRoute(input: {
+  readonly runtime: CoreRuntime;
+  readonly requestId: string;
+  readonly lineageId: string;
+  readonly intent: Record<string, unknown>;
+}): Promise<JobProjectionView> {
+  const response = input.runtime.seam.handleFrame(
+    v02CommandFrame({
+      requestId: input.requestId,
+      lineageId: input.lineageId,
+      intent: input.intent,
+    }),
+  );
+  assert.equal(
+    response.outcome,
+    'ACCEPTED',
+    `route must admit the send: ${JSON.stringify(response)}`,
+  );
+  return waitForJobStatus(input.runtime, input.lineageId, ['SUCCEEDED', 'FAILED']);
+}
+
+// ---------------------------------------------------------------------------
+// S4 intent/fixture constructors (unchanged scenario vocabulary).
 // ---------------------------------------------------------------------------
 
 interface S4IntentOptions {
@@ -908,6 +877,15 @@ function s4ConfirmedIntent(
   };
 }
 
+/** Re-confirm the displayed tuple digest against concrete fixture URIs. */
+function bindSelectionDigest(
+  intent: Record<string, unknown>,
+  tupleFacts: Parameters<typeof s4HlsSelectionTupleDigest>[0],
+): void {
+  const selection = intent['selection'] as Record<string, unknown>;
+  selection['displayedTupleDigest'] = s4HlsSelectionTupleDigest(tupleFacts);
+}
+
 function s4MasterPlaylist(): string {
   return [
     '#EXTM3U',
@@ -928,6 +906,565 @@ function ffmpegAvailable(): boolean {
 }
 
 const HAS_FFMPEG = ffmpegAvailable();
+
+// ---------------------------------------------------------------------------
+// S4 — selected-HLS VOD under the production one-K route.
+// ---------------------------------------------------------------------------
+
+describe('S4 — production-route selected-HLS flow', () => {
+  it('accepts only the closed explicit rendition-selection contract', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-contract-'));
+    try {
+      const outputRoot = resolve(join(root, 'output'));
+      await mkdir(outputRoot, { recursive: true });
+
+      const valid = validateConfirmedS4HlsIntent(s4ConfirmedIntent(outputRoot));
+      assert.equal(valid.ok, true);
+
+      const widened = validateConfirmedS4HlsIntent({
+        ...s4ConfirmedIntent(outputRoot),
+        rawUrl: 'https://cdn.example.test/vod/master.m3u8',
+      });
+      assert.equal(widened.ok, false);
+      if (!widened.ok) assert.equal(widened.diagnostics[0]?.code, 'SCOPE_WIDENING_REFUSED');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects future-dated and expired confirmation windows before K send', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-expiry-'));
+    try {
+      const outputRoot = resolve(join(root, 'output'));
+      await mkdir(outputRoot, { recursive: true });
+      const future = s4ConfirmedIntent(outputRoot);
+      const futureSelection = future.selection as Record<string, unknown>;
+      futureSelection.confirmedAt = new Date(Date.now() + 1_000).toISOString();
+      futureSelection.expiresAt = new Date(Date.now() + 30_000).toISOString();
+      assert.equal(validateConfirmedS4HlsIntent(future).ok, false);
+
+      const expired = s4ConfirmedIntent(outputRoot);
+      const expiredSelection = expired.selection as Record<string, unknown>;
+      expiredSelection.confirmedAt = new Date(Date.now() - 61_000).toISOString();
+      expiredSelection.expiresAt = new Date(Date.now() - 1_000).toISOString();
+      assert.equal(validateConfirmedS4HlsIntent(expired).ok, false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses unknown S4 targets through the production route before any media effect', async () => {
+    const root = tempRoot('xd-a04r2-s4-unknown-');
+    const outputRoot = resolve(join(root, 'output'));
+    const runtime = composeS4Runtime(root, []);
+    try {
+      await runtime.domainApp?.ready;
+      const projection = await submitS4ThroughRoute({
+        runtime,
+        requestId: requestIdOf('a04r2-s4-unknown'),
+        lineageId: 'lineage-s4-a04r2-unknown',
+        intent: {
+          ...s4ConfirmedIntent(outputRoot),
+          requestId: requestIdOf('a04r2-s4-unknown'),
+          lineageId: 'lineage-s4-a04r2-unknown',
+        },
+      });
+      assert.equal(projection.owner, 'new-k');
+      assert.equal(projection.status, 'FAILED');
+      assert.equal(projection.error?.code, 'CONTRACT_BINDING_MISMATCH');
+
+      // The actual Core Host bridge saw exactly one dispatch and one registry
+      // refusal; the durable route log recorded claim → attempt → outcome;
+      // no file was created.
+      assert.equal(runtime.domainApp?.pin.acquireCalls, 1);
+      assert.equal(runtime.domainApp?.pin.registryRefusals, 1);
+      assert.equal(runtime.domainApp?.pin.completedExecutions, 0);
+      const facts = runtime.domainApp?.routeFacts() ?? [];
+      assert.deepEqual(
+        facts.map((fact) => fact.kind),
+        ['CLAIM', 'ATTEMPT', 'OUTCOME'],
+      );
+      assert.deepEqual(readdirSyncOrEmpty(outputRoot), []);
+    } finally {
+      closeCoreRuntime(runtime);
+    }
+  });
+
+  it('rejects a duplicate bridge registration without displacing the live holder', () => {
+    const first = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => ({
+        phase: 'terminal',
+        externalRef: 'x',
+        outcome: { ok: true, output: {} },
+      }),
+    });
+    assert.equal(first.ok, true);
+    if (!first.ok) throw new Error('expected first registration to succeed');
+
+    const second = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => {
+        throw new Error('never routed');
+      },
+    });
+    assert.equal(second.ok, false);
+    if (second.ok) throw new Error('expected duplicate registration refusal');
+    assert.equal(second.code, 'S4_BRIDGE_PIN_CONFLICT');
+
+    // The live holder keeps its authority: the conflicting registration routed nothing.
+    assert.equal((globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], first.lease.bridge);
+    first.lease.release();
+    first.lease.release();
+    assert.equal((globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], undefined);
+
+    const reacquired = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => ({
+        phase: 'terminal',
+        externalRef: 'x',
+        outcome: { ok: true, output: {} },
+      }),
+    });
+    assert.equal(reacquired.ok, true);
+    if (reacquired.ok) reacquired.lease.release();
+  });
+
+  it('refuses a second live production composition instead of displacing the first (S4 second-standalone-assembly conflict)', async () => {
+    const root = tempRoot('xd-a04r2-s4-conflict-');
+    const first = composeS4Runtime(root, []);
+    try {
+      await first.domainApp?.ready;
+      assert.equal(first.domainApp?.isLoaded(), true);
+
+      // A second composition of the production route while the first K is
+      // live is refused typed (never displaced, never a second K).
+      const secondLayout = durableLayout(join(root, 'second'));
+      assert.throws(
+        () => composeDomainAppRoute({}, secondLayout, true),
+        (error: unknown) =>
+          error instanceof CoreDomainAppRouteError &&
+          error.message.includes('S4_BRIDGE_PIN_CONFLICT'),
+      );
+
+      // The first runtime keeps full authority: it still answers a v0.2 send
+      // with its own registry refusal and the failed-execution counters move.
+      const outputRoot = resolve(join(root, 'output'));
+      const projection = await submitS4ThroughRoute({
+        runtime: first,
+        requestId: requestIdOf('a04r2-s4-conflict-live'),
+        lineageId: 'lineage-s4-a04r2-conflict',
+        intent: {
+          ...s4ConfirmedIntent(outputRoot),
+          requestId: requestIdOf('a04r2-s4-conflict-live'),
+          lineageId: 'lineage-s4-a04r2-conflict',
+        },
+      });
+      assert.equal(projection.status, 'FAILED');
+      assert.equal(projection.error?.code, 'CONTRACT_BINDING_MISMATCH');
+      assert.equal(first.domainApp?.pin.acquireCalls, 1);
+      assert.equal(first.domainApp?.pin.registryRefusals, 1);
+    } finally {
+      closeCoreRuntime(first);
+    }
+
+    // After the live runtime closes, the pin is free for a new composition.
+    const secondRoot = tempRoot('xd-a04r2-s4-reacquire-');
+    const second = composeS4Runtime(secondRoot, []);
+    try {
+      await second.domainApp?.ready;
+      assert.equal(second.domainApp?.isLoaded(), true);
+    } finally {
+      closeCoreRuntime(second);
+    }
+  });
+
+  it('composes the S4 contribution into one externally-built single-K app (BUILD-shape evidence, stub pin)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-single-k-'));
+    // BUILD-shape evidence only: the App-owned single-K splice producer
+    // (V022-A04) — T03 base + the S4 contribution in ONE build, externally
+    // named; K/S bytes, the frozen route and the declarations stay identical
+    // to `sealS4HlsComposition`. The stub pin is intentional here (the
+    // production-bridge proof is the route suite above); this case alone
+    // loads a K directly and is NOT the Core integration proof.
+    const built = buildS4HlsSingleKComposition(
+      'app:xdownload-a04-single-k-contribution',
+      'xdownload-a04-single-k-contribution-v1',
+    );
+
+    const store = new FileCasDocStore(join(root, 'single-k-documents.json'));
+    const registration = acquireS4HlsBridgePin({
+      acquireS4HlsVod: async () => {
+        return {
+          phase: 'terminal',
+          externalRef: 'media.acquire:unpermitted',
+          outcome: {
+            ok: false,
+            error: { code: 'MEDIA_TARGET_UNKNOWN', message: 'opaque targetRef did not resolve' },
+          },
+        };
+      },
+    });
+    assert.equal(registration.ok, true);
+    if (!registration.ok) throw new Error('expected contribution bridge registration');
+    try {
+      const app = await load(built, {
+        store,
+        tenantId: 'tenant:xdownload-a04-single-k',
+        deploymentIdentity: {
+          deployedAppId: 'deploy:xdownload-a04-single-k',
+          tenantId: 'tenant:xdownload-a04-single-k',
+          appId: built.appId,
+        },
+        queryAuthority: {
+          principal: { actor: 'xdownload-a04-single-k-host' },
+          authorize: (candidate, target) =>
+            Boolean(
+              candidate !== null &&
+              typeof candidate === 'object' &&
+              (candidate as { actor?: string }).actor === 'xdownload-a04-single-k-host' &&
+              target.tenantId === 'tenant:xdownload-a04-single-k',
+            ),
+        },
+      });
+      try {
+        assert.equal(typeof (globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], 'object');
+        const runtime: S4HlsRuntime = {
+          built,
+          app,
+          store,
+          registry: undefined,
+          pin: {
+            acquireCalls: 0,
+            permitRefusals: 0,
+            intentRefusals: 0,
+            registryRefusals: 0,
+            completedExecutions: 0,
+            failedExecutions: 0,
+          },
+          stop() {
+            app.stop();
+          },
+        };
+        const result = await submitConfirmedS4HlsVod(
+          runtime,
+          s4ConfirmedIntent(join(root, 'output')),
+        );
+        assert.equal(result.status, 'failed');
+        if (result.status !== 'failed')
+          throw new Error('expected typed registry refusal through one K');
+        assert.equal(result.code, 'MEDIA_TARGET_UNKNOWN');
+      } finally {
+        app.stop();
+      }
+    } finally {
+      if (registration.ok) registration.lease.release();
+      store.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('materializes real HLS VOD through the production route with FFmpeg integrity checks', async (context) => {
+    if (!HAS_FFMPEG) {
+      // NOT_PROVEN — the environment lacks ffmpeg/ffprobe; the bounded
+      // synthetic refusals above still prove the production K/Host path, and
+      // the real FFmpeg materialization remains explicitly unproven here
+      // (never a silent PASS).
+      context.skip();
+      return;
+    }
+    const root = tempRoot('xd-a04r2-s4-positive-');
+    const outputRoot = resolve(join(root, 'output'));
+    await mkdir(outputRoot, { recursive: true });
+    const fixture = await createRealHlsFixture(root);
+    const expectedBytes = Buffer.concat([...fixture.segments]);
+    const digestAnchor = createHash('sha256').update(expectedBytes).digest('hex');
+
+    const hits = new Map<string, number>();
+    const serverInstance = createServer((request, response) => {
+      const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+      hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+      const body =
+        pathname === '/master.m3u8'
+          ? s4MasterPlaylist()
+          : pathname === '/media.m3u8'
+            ? fixture.mediaPlaylist
+            : undefined;
+      if (body !== undefined) {
+        response.writeHead(200, {
+          'content-type': 'application/vnd.apple.mpegurl',
+          'content-length': String(Buffer.byteLength(body)),
+        });
+        response.end(body);
+        return;
+      }
+      const name = pathname.slice(1);
+      const segment = fixture.segmentNames.indexOf(name);
+      if (segment >= 0) {
+        response.writeHead(200, {
+          'content-type': 'video/mp2t',
+          'content-length': String(fixture.segments[segment]?.length ?? 0),
+        });
+        response.end(fixture.segments[segment]);
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+    servers.push(serverInstance);
+    await new Promise<void>((resolveListen, rejectListen) => {
+      serverInstance.once('error', rejectListen);
+      serverInstance.listen(0, '127.0.0.1', resolveListen);
+    });
+    const address = serverInstance.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('S4 fixture server did not bind a TCP port');
+    }
+    const origin = `http://127.0.0.1:${String(address.port)}`;
+    const manifestUri = `${origin}/master.m3u8`;
+    const renditionUri = `${origin}/media.m3u8`;
+
+    const runtime = composeS4Runtime(root, [
+      {
+        handle: 'ref:s4-target-positive',
+        record: {
+          protocol: 'HLS',
+          manifestUri,
+          selectedRenditionUri: renditionUri,
+          artifactFileName: 's4-positive.ts',
+          allowedManifestOrigins: [origin],
+          allowedSegmentOrigins: [origin],
+          budget: budgetFixture(8_000_000),
+          fixtureLoopbackHttp: true,
+        },
+      },
+    ]);
+    try {
+      await runtime.domainApp?.ready;
+      const intent = s4ConfirmedIntent(outputRoot, {
+        manifestUri,
+        renditionUri,
+        targetRef: 'ref:s4-target-positive',
+        digestAnchor,
+      });
+      intent['requestId'] = requestIdOf('a04r2-s4-positive');
+      intent['lineageId'] = 'lineage-s4-a04r2-positive';
+      bindSelectionDigest(intent, {
+        contractId: 'contract-s4-001',
+        snapshotId: 'snapshot-s4-001',
+        memberId: 'member-s4-001',
+        previewId: 'preview-s4-001',
+        renditionKey: 'rend-0',
+        renditionUri,
+        manifestUri,
+        mediaProfileId: S4_HLS_MEDIA_PROFILE,
+        bandwidth: 500_000,
+        width: 160,
+        height: 90,
+      });
+
+      const projection = await submitS4ThroughRoute({
+        runtime,
+        requestId: requestIdOf('a04r2-s4-positive'),
+        lineageId: 'lineage-s4-a04r2-positive',
+        intent,
+      });
+      assert.equal(projection.owner, 'new-k');
+      assert.equal(projection.status, 'SUCCEEDED');
+      assert.equal(projection.progress?.transferredBytes, expectedBytes.byteLength);
+
+      // The materialized artifact reproduces the confirmed digest exactly.
+      const onDisk = readFileSync(join(outputRoot, 's4-positive.ts'));
+      assert.equal(sha256(onDisk), digestAnchor);
+
+      // Exactly one master + one media playlist + exactly one fetch per
+      // segment through the real engine — no duplicate effects anywhere.
+      assert.equal(hits.get('/master.m3u8'), 1);
+      assert.equal(hits.get('/media.m3u8'), 1);
+      for (const name of fixture.segmentNames) assert.equal(hits.get(`/${name}`), 1);
+      assert.equal(hits.size, fixture.segmentNames.length + 2);
+      assert.equal(runtime.domainApp?.pin.acquireCalls, 1);
+      assert.equal(runtime.domainApp?.pin.completedExecutions, 1);
+      assert.equal(runtime.domainApp?.pin.registryRefusals, 0);
+      // The durable route truth settled exactly once.
+      const outcomes = (runtime.domainApp?.routeFacts() ?? []).filter(
+        (fact) => fact.kind === 'OUTCOME',
+      );
+      assert.equal(outcomes.length, 1);
+      assert.equal(outcomes[0]?.status, 'SUCCEEDED');
+    } finally {
+      closeCoreRuntime(runtime);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S4 topology refusals through the production route (bounded fixtures).
+// ---------------------------------------------------------------------------
+
+async function runS4TopologyRefusalScenario(input: {
+  readonly master: string;
+  readonly media: string;
+  readonly expectedCode: string;
+  readonly expectedPlaylistRequests: number;
+}): Promise<void> {
+  const root = tempRoot('xd-a04r2-s4-refusal-');
+  const outputRoot = resolve(join(root, 'output'));
+  await mkdir(outputRoot, { recursive: true });
+  const hits = new Map<string, number>();
+  const serverInstance = createServer((request, response) => {
+    const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+    hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+    const body =
+      pathname === '/master.m3u8'
+        ? input.master
+        : pathname === '/media.m3u8'
+          ? input.media
+          : undefined;
+    if (body !== undefined) {
+      response.writeHead(200, {
+        'content-type': 'application/vnd.apple.mpegurl',
+        'content-length': String(Buffer.byteLength(body)),
+      });
+      response.end(body);
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  servers.push(serverInstance);
+  await new Promise<void>((resolveListen, rejectListen) => {
+    serverInstance.once('error', rejectListen);
+    serverInstance.listen(0, '127.0.0.1', resolveListen);
+  });
+  const address = serverInstance.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('S4 refusal fixture server did not bind a TCP port');
+  }
+  const origin = `http://127.0.0.1:${String(address.port)}`;
+  const manifestUri = origin + '/master.m3u8';
+  const renditionUri = origin + '/media.m3u8';
+  const targetRef = 'ref:s4-target-negative';
+  const runtime = composeS4Runtime(root, [
+    {
+      handle: targetRef,
+      record: {
+        protocol: 'HLS',
+        manifestUri,
+        selectedRenditionUri: renditionUri,
+        artifactFileName: 's4-refusal.ts',
+        allowedManifestOrigins: [origin],
+        allowedSegmentOrigins: [origin],
+        // The engine's conservative pre-HTTP gate admits a segment only
+        // when the fetcher's worst-case bound still fits the remaining
+        // budget, so the transfer budget must exceed segmentMaxBytes
+        // (2 MiB) plus the playlist fetches.
+        budget: budgetFixture(8_000_000),
+        fixtureLoopbackHttp: true,
+      },
+    },
+  ]);
+  try {
+    await runtime.domainApp?.ready;
+    const intent = s4ConfirmedIntent(outputRoot, { manifestUri, renditionUri, targetRef });
+    intent['requestId'] = requestIdOf('a04r2-s4-refusal');
+    intent['lineageId'] = 'lineage-s4-a04r2-refusal';
+    bindSelectionDigest(intent, {
+      contractId: 'contract-s4-001',
+      snapshotId: 'snapshot-s4-001',
+      memberId: 'member-s4-001',
+      previewId: 'preview-s4-001',
+      renditionKey: 'rend-0',
+      renditionUri,
+      manifestUri,
+      mediaProfileId: S4_HLS_MEDIA_PROFILE,
+      bandwidth: 500_000,
+      width: 160,
+      height: 90,
+    });
+
+    const projection = await submitS4ThroughRoute({
+      runtime,
+      requestId: requestIdOf('a04r2-s4-refusal'),
+      lineageId: 'lineage-s4-a04r2-refusal',
+      intent,
+    });
+    assert.equal(projection.status, 'FAILED');
+    assert.equal(projection.error?.code, input.expectedCode);
+
+    // The actual Core Host bridge counters and the fixture agree: exactly
+    // one dispatch, no completed execution, and no segment/key requests.
+    assert.equal(runtime.domainApp?.pin.acquireCalls, 1);
+    assert.equal(runtime.domainApp?.pin.completedExecutions, 0);
+    assert.equal(runtime.domainApp?.pin.failedExecutions, 1);
+    assert.equal(hits.get('/master.m3u8'), 1);
+    assert.equal(hits.get('/media.m3u8') ?? 0, input.expectedPlaylistRequests);
+    assert.equal(hits.get('/segment000.ts') ?? 0, 0);
+    assert.equal(hits.get('/key.bin') ?? 0, 0);
+    assert.deepEqual(await readdir(outputRoot), []);
+  } finally {
+    closeCoreRuntime(runtime);
+  }
+}
+
+describe('S4 — production-route topology refusals', () => {
+  it('refuses an unclosed live playlist before requesting any segment', async () => {
+    await runS4TopologyRefusalScenario({
+      master: s4MasterPlaylist(),
+      media: [
+        '#EXTM3U',
+        '#EXT-X-VERSION:6',
+        '#EXT-X-TARGETDURATION:2',
+        '#EXT-X-MEDIA-SEQUENCE:0',
+        '#EXTINF:2.000000,',
+        'segment000.ts',
+        '',
+      ].join('\n'),
+      expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
+      expectedPlaylistRequests: 1,
+    });
+  });
+
+  it('refuses AES-128 protected media without requesting keys or segments', async () => {
+    await runS4TopologyRefusalScenario({
+      master: s4MasterPlaylist(),
+      media: [
+        '#EXTM3U',
+        '#EXT-X-VERSION:6',
+        '#EXT-X-TARGETDURATION:2',
+        '#EXT-X-PLAYLIST-TYPE:VOD',
+        '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"',
+        '#EXTINF:2.000000,',
+        'segment000.ts',
+        '#EXTINF:2.000000,',
+        'segment001.ts',
+        '#EXT-X-ENDLIST',
+        '',
+      ].join('\n'),
+      expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
+      expectedPlaylistRequests: 1,
+    });
+  });
+
+  it('refuses duplicate variants before fetching a media playlist', async () => {
+    const ambiguousMaster = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:6',
+      '#EXT-X-STREAM-INF:BANDWIDTH=500000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
+      'media.m3u8',
+      '#EXT-X-STREAM-INF:BANDWIDTH=600000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
+      'media.m3u8',
+      '',
+    ].join('\n');
+    await runS4TopologyRefusalScenario({
+      master: ambiguousMaster,
+      media: '',
+      expectedCode: 'MEDIA_MANIFEST_MALFORMED',
+      expectedPlaylistRequests: 0,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shared fixture helpers.
+// ---------------------------------------------------------------------------
 
 async function createRealHlsFixture(root: string): Promise<{
   readonly mediaPlaylist: string;
@@ -1010,527 +1547,8 @@ async function createRealHlsFixture(root: string): Promise<{
   return { mediaPlaylist, segmentNames, segments };
 }
 
-async function runS4RefusalScenario(input: {
-  readonly master: string;
-  readonly media: string;
-  readonly expectedCode: string;
-  readonly expectedPlaylistRequests: number;
-}): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-refusal-'));
-  let runtime: S4HlsRuntime | undefined;
-  let server: Server | undefined;
-  try {
-    const outputRoot = resolve(join(root, 'output'));
-    await mkdir(outputRoot, { recursive: true });
-    const hits = new Map<string, number>();
-    const serverInstance = createServer((request, response) => {
-      const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
-      hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
-      const body =
-        pathname === '/master.m3u8'
-          ? input.master
-          : pathname === '/media.m3u8'
-            ? input.media
-            : undefined;
-      if (body !== undefined) {
-        response.writeHead(200, {
-          'content-type': 'application/vnd.apple.mpegurl',
-          'content-length': String(Buffer.byteLength(body)),
-        });
-        response.end(body);
-        return;
-      }
-      response.writeHead(404);
-      response.end();
-    });
-    server = serverInstance;
-    await new Promise<void>((resolveListen, rejectListen) => {
-      serverInstance.once('error', rejectListen);
-      serverInstance.listen(0, '127.0.0.1', resolveListen);
-    });
-    const address = serverInstance.address();
-    if (address === null || typeof address === 'string') {
-      throw new Error('S4 refusal fixture server did not bind a TCP port');
-    }
-    const origin = `http://127.0.0.1:${String(address.port)}`;
-    const manifestUri = origin + '/master.m3u8';
-    const renditionUri = origin + '/media.m3u8';
-    const targetRef = 'ref:s4-target-negative';
-    runtime = await assembleS4RuntimeCore({
-      storePath: join(root, 'k-documents.json'),
-      mediaTargetRefs: [
-        {
-          handle: targetRef,
-          record: {
-            protocol: 'HLS',
-            manifestUri,
-            selectedRenditionUri: renditionUri,
-            artifactFileName: 's4-refusal.ts',
-            allowedManifestOrigins: [origin],
-            allowedSegmentOrigins: [origin],
-            // The engine's conservative pre-HTTP gate admits a segment only
-            // when the fetcher's worst-case bound still fits the remaining
-            // budget, so the transfer budget must exceed segmentMaxBytes
-            // (2 MiB) plus the playlist fetches.
-            budget: budgetFixture(8_000_000),
-            fixtureLoopbackHttp: true,
-          },
-        },
-      ],
-    });
-    const intent = s4ConfirmedIntent(outputRoot, { manifestUri, renditionUri, targetRef });
-    const selection = intent.selection as Record<string, unknown>;
-    selection.displayedTupleDigest = s4HlsSelectionTupleDigest({
-      contractId: 'contract-s4-001',
-      snapshotId: 'snapshot-s4-001',
-      memberId: 'member-s4-001',
-      previewId: 'preview-s4-001',
-      renditionKey: 'rend-0',
-      renditionUri,
-      manifestUri,
-      mediaProfileId: S4_HLS_MEDIA_PROFILE,
-      bandwidth: 500_000,
-      width: 160,
-      height: 90,
-    });
-
-    const result = await submitConfirmedS4HlsVod(runtime, intent);
-    assert.equal(result.status, 'failed');
-    if (result.status !== 'failed') throw new Error('expected a typed S4 topology refusal');
-    assert.equal(result.code, input.expectedCode);
-    assert.equal(runtime.pin.acquireCalls, 1);
-    assert.equal(runtime.pin.completedExecutions, 0);
-    assert.equal(runtime.pin.failedExecutions, 1);
-    assert.equal(hits.get('/master.m3u8'), 1);
-    assert.equal(hits.get('/media.m3u8') ?? 0, input.expectedPlaylistRequests);
-    assert.equal(hits.get('/segment000.ts') ?? 0, 0);
-    assert.equal(hits.get('/key.bin') ?? 0, 0);
-    assert.deepEqual(await readdir(outputRoot), []);
-  } finally {
-    runtime?.stop();
-    if (server !== undefined) {
-      server.closeAllConnections();
-      await new Promise<void>((resolveClose, rejectClose) => {
-        server!.close((error) => (error === undefined ? resolveClose() : rejectClose(error)));
-      });
-    }
-    await rm(root, { recursive: true, force: true });
-  }
+/** readdir that tolerates a not-yet-created output root (zero-effect proof). */
+function readdirSyncOrEmpty(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir);
 }
-
-describe('S4 — Core selected-HLS flow', () => {
-  it('accepts only the closed explicit rendition-selection contract', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-contract-'));
-    try {
-      const outputRoot = resolve(join(root, 'output'));
-      await mkdir(outputRoot, { recursive: true });
-
-      const valid = validateConfirmedS4HlsIntent(s4ConfirmedIntent(outputRoot));
-      assert.equal(valid.ok, true);
-
-      const widened = validateConfirmedS4HlsIntent({
-        ...s4ConfirmedIntent(outputRoot),
-        rawUrl: 'https://cdn.example.test/vod/master.m3u8',
-      });
-      assert.equal(widened.ok, false);
-      if (!widened.ok) assert.equal(widened.diagnostics[0]?.code, 'SCOPE_WIDENING_REFUSED');
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('rejects future-dated and expired confirmation windows before K send', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-expiry-'));
-    try {
-      const outputRoot = resolve(join(root, 'output'));
-      await mkdir(outputRoot, { recursive: true });
-      const future = s4ConfirmedIntent(outputRoot);
-      const futureSelection = future.selection as Record<string, unknown>;
-      futureSelection.confirmedAt = new Date(Date.now() + 1_000).toISOString();
-      futureSelection.expiresAt = new Date(Date.now() + 30_000).toISOString();
-      assert.equal(validateConfirmedS4HlsIntent(future).ok, false);
-
-      const expired = s4ConfirmedIntent(outputRoot);
-      const expiredSelection = expired.selection as Record<string, unknown>;
-      expiredSelection.confirmedAt = new Date(Date.now() - 61_000).toISOString();
-      expiredSelection.expiresAt = new Date(Date.now() - 1_000).toISOString();
-      assert.equal(validateConfirmedS4HlsIntent(expired).ok, false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('refuses unknown S4 targets before media effects through K/Host', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-runtime-'));
-    try {
-      const outputRoot = resolve(join(root, 'output'));
-      await mkdir(outputRoot, { recursive: true });
-
-      const runtime = await assembleS4RuntimeCore({
-        storePath: join(root, 'k-documents.json'),
-        mediaTargetRefs: [],
-      });
-      try {
-        const result = await submitConfirmedS4HlsVod(runtime, s4ConfirmedIntent(outputRoot));
-        assert.equal(result.status, 'failed');
-        if (result.status !== 'failed') throw new Error('expected unknown target refusal');
-        assert.equal(result.code, 'CONTRACT_BINDING_MISMATCH');
-        assert.equal(runtime.pin.acquireCalls, 1);
-        assert.equal(runtime.pin.registryRefusals, 1);
-        assert.equal(runtime.pin.completedExecutions, 0);
-        assert.deepEqual(await readdir(outputRoot), []);
-      } finally {
-        runtime.stop();
-      }
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('refuses an unclosed live playlist before requesting any segment', async () => {
-    await runS4RefusalScenario({
-      master: s4MasterPlaylist(),
-      media: [
-        '#EXTM3U',
-        '#EXT-X-VERSION:6',
-        '#EXT-X-TARGETDURATION:2',
-        '#EXT-X-MEDIA-SEQUENCE:0',
-        '#EXTINF:2.000000,',
-        'segment000.ts',
-        '',
-      ].join('\n'),
-      expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
-      expectedPlaylistRequests: 1,
-    });
-  });
-
-  it('refuses AES-128 protected media without requesting keys or segments', async () => {
-    await runS4RefusalScenario({
-      master: s4MasterPlaylist(),
-      media: [
-        '#EXTM3U',
-        '#EXT-X-VERSION:6',
-        '#EXT-X-TARGETDURATION:2',
-        '#EXT-X-PLAYLIST-TYPE:VOD',
-        '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"',
-        '#EXTINF:2.000000,',
-        'segment000.ts',
-        '#EXTINF:2.000000,',
-        'segment001.ts',
-        '#EXT-X-ENDLIST',
-        '',
-      ].join('\n'),
-      expectedCode: 'MEDIA_TOPOLOGY_UNSUPPORTED',
-      expectedPlaylistRequests: 1,
-    });
-  });
-
-  it('refuses duplicate variants before fetching a media playlist', async () => {
-    const ambiguousMaster = [
-      '#EXTM3U',
-      '#EXT-X-VERSION:6',
-      '#EXT-X-STREAM-INF:BANDWIDTH=500000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
-      'media.m3u8',
-      '#EXT-X-STREAM-INF:BANDWIDTH=600000,CODECS="avc1.42c01e,mp4a.40.2",RESOLUTION=160x90',
-      'media.m3u8',
-      '',
-    ].join('\n');
-    await runS4RefusalScenario({
-      master: ambiguousMaster,
-      media: '',
-      expectedCode: 'MEDIA_MANIFEST_MALFORMED',
-      expectedPlaylistRequests: 0,
-    });
-  });
-
-  it('rejects a duplicate bridge registration without displacing the live holder', () => {
-    const first = acquireS4HlsBridgePin({
-      acquireS4HlsVod: async () => ({
-        phase: 'terminal',
-        externalRef: 'x',
-        outcome: { ok: true, output: {} },
-      }),
-    });
-    assert.equal(first.ok, true);
-    if (!first.ok) throw new Error('expected first registration to succeed');
-
-    const second = acquireS4HlsBridgePin({
-      acquireS4HlsVod: async () => {
-        throw new Error('never routed');
-      },
-    });
-    assert.equal(second.ok, false);
-    if (second.ok) throw new Error('expected duplicate registration refusal');
-    assert.equal(second.code, 'S4_BRIDGE_PIN_CONFLICT');
-
-    // The live holder keeps its authority: the conflicting registration routed nothing.
-    assert.equal((globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], first.lease.bridge);
-    first.lease.release();
-    first.lease.release();
-    assert.equal((globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], undefined);
-
-    const reacquired = acquireS4HlsBridgePin({
-      acquireS4HlsVod: async () => ({
-        phase: 'terminal',
-        externalRef: 'x',
-        outcome: { ok: true, output: {} },
-      }),
-    });
-    assert.equal(reacquired.ok, true);
-    if (reacquired.ok) reacquired.lease.release();
-  });
-
-  it('refuses a second standalone assembly beside a live runtime instead of displacing its bridge', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-conflict-'));
-    let first: S4HlsRuntime | undefined;
-    try {
-      const outputRoot = resolve(join(root, 'output'));
-      await mkdir(outputRoot, { recursive: true });
-      first = await assembleS4RuntimeCore({
-        storePath: join(root, 'k-first.json'),
-        mediaTargetRefs: [],
-      });
-
-      await assert.rejects(
-        assembleS4RuntimeCore({ storePath: join(root, 'k-second.json'), mediaTargetRefs: [] }),
-        /S4_BRIDGE_PIN_CONFLICT/,
-      );
-
-      // Zero wrong-registry effects from the refused assembly: the live
-      // runtime still owns the pin and answers with its own registry refusal.
-      const result = await submitConfirmedS4HlsVod(first, s4ConfirmedIntent(outputRoot));
-      assert.equal(result.status, 'failed');
-      if (result.status !== 'failed') throw new Error('expected unknown target refusal');
-      assert.equal(result.code, 'CONTRACT_BINDING_MISMATCH');
-      assert.equal(first.pin.acquireCalls, 1);
-      assert.equal(first.pin.registryRefusals, 1);
-      assert.deepEqual(await readdir(outputRoot), []);
-    } finally {
-      first?.stop();
-      await rm(root, { recursive: true, force: true });
-    }
-
-    // After the live runtime is stopped, a new assembly may hold the pin again.
-    const secondRoot = await mkdtemp(join(tmpdir(), 'xd-a04-s4-reacquire-'));
-    try {
-      const second = await assembleS4RuntimeCore({
-        storePath: join(secondRoot, 'k-second.json'),
-        mediaTargetRefs: [],
-      });
-      second.stop();
-    } finally {
-      await rm(secondRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('composes the S4 contribution into one externally-built single-K app', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-single-k-'));
-    // The App-owned single-K splice producer (V022-A04): T03 base + the S4
-    // contribution in ONE build, externally named; K/S bytes, the frozen
-    // route and the declarations stay identical to `sealS4HlsComposition`.
-    const built = buildS4HlsSingleKComposition(
-      'app:xdownload-a04-single-k-contribution',
-      'xdownload-a04-single-k-contribution-v1',
-    );
-
-    const store = new FileCasDocStore(join(root, 'single-k-documents.json'));
-    const pinCounters = emptyS4PinCounters();
-    const registration = acquireS4HlsBridgePin({
-      acquireS4HlsVod: async () => {
-        pinCounters.acquireCalls += 1;
-        pinCounters.registryRefusals += 1;
-        return {
-          phase: 'terminal',
-          externalRef: 'media.acquire:unpermitted',
-          outcome: {
-            ok: false,
-            error: { code: 'MEDIA_TARGET_UNKNOWN', message: 'opaque targetRef did not resolve' },
-          },
-        };
-      },
-    });
-    assert.equal(registration.ok, true);
-    if (!registration.ok) throw new Error('expected contribution bridge registration');
-    try {
-      const app = await load(built, {
-        store,
-        tenantId: 'tenant:xdownload-a04-single-k',
-        deploymentIdentity: {
-          deployedAppId: 'deploy:xdownload-a04-single-k',
-          tenantId: 'tenant:xdownload-a04-single-k',
-          appId: built.appId,
-        },
-        queryAuthority: {
-          principal: { actor: 'xdownload-a04-single-k-host' },
-          authorize: (candidate, target) =>
-            Boolean(
-              candidate !== null &&
-              typeof candidate === 'object' &&
-              (candidate as { actor?: string }).actor === 'xdownload-a04-single-k-host' &&
-              target.tenantId === 'tenant:xdownload-a04-single-k',
-            ),
-        },
-      });
-      try {
-        assert.equal(typeof (globalThis as Record<string, unknown>)[S4_HLS_BRIDGE_PIN], 'object');
-        const runtime: S4HlsRuntime = {
-          built,
-          app,
-          store,
-          registry: undefined,
-          pin: pinCounters,
-          stop() {
-            app.stop();
-          },
-        };
-        const result = await submitConfirmedS4HlsVod(
-          runtime,
-          s4ConfirmedIntent(join(root, 'output')),
-        );
-        assert.equal(result.status, 'failed');
-        if (result.status !== 'failed')
-          throw new Error('expected typed registry refusal through one K');
-        assert.equal(result.code, 'MEDIA_TARGET_UNKNOWN');
-        assert.equal(pinCounters.acquireCalls, 1);
-      } finally {
-        app.stop();
-      }
-    } finally {
-      if (registration.ok) registration.lease.release();
-      store.close();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('materializes real HLS VOD through K/Host with FFmpeg integrity checks', async (context) => {
-    if (!HAS_FFMPEG) {
-      // NOT_PROVEN — the environment lacks ffmpeg/ffprobe; the bounded
-      // synthetic refusals above still prove the K/Host path, and the real
-      // FFmpeg materialization remains explicitly unproven here (never a
-      // silent PASS).
-      context.skip();
-      return;
-    }
-    const root = await mkdtemp(join(tmpdir(), 'xd-a04-s4-positive-'));
-    let runtime: S4HlsRuntime | undefined;
-    let server: Server | undefined;
-    try {
-      const outputRoot = resolve(join(root, 'output'));
-      await mkdir(outputRoot, { recursive: true });
-      const fixture = await createRealHlsFixture(root);
-      const expectedBytes = Buffer.concat([...fixture.segments]);
-      const digestAnchor = createHash('sha256').update(expectedBytes).digest('hex');
-
-      const hits = new Map<string, number>();
-      const serverInstance = createServer((request, response) => {
-        const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
-        hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
-        const body =
-          pathname === '/master.m3u8'
-            ? s4MasterPlaylist()
-            : pathname === '/media.m3u8'
-              ? fixture.mediaPlaylist
-              : undefined;
-        if (body !== undefined) {
-          response.writeHead(200, {
-            'content-type': 'application/vnd.apple.mpegurl',
-            'content-length': String(Buffer.byteLength(body)),
-          });
-          response.end(body);
-          return;
-        }
-        const name = pathname.slice(1);
-        const segment = fixture.segmentNames.indexOf(name);
-        if (segment >= 0) {
-          response.writeHead(200, {
-            'content-type': 'video/mp2t',
-            'content-length': String(fixture.segments[segment]?.length ?? 0),
-          });
-          response.end(fixture.segments[segment]);
-          return;
-        }
-        response.writeHead(404);
-        response.end();
-      });
-      server = serverInstance;
-      await new Promise<void>((resolveListen, rejectListen) => {
-        serverInstance.once('error', rejectListen);
-        serverInstance.listen(0, '127.0.0.1', resolveListen);
-      });
-      const address = serverInstance.address();
-      if (address === null || typeof address === 'string') {
-        throw new Error('S4 fixture server did not bind a TCP port');
-      }
-      const origin = `http://127.0.0.1:${String(address.port)}`;
-      const manifestUri = `${origin}/master.m3u8`;
-      const renditionUri = `${origin}/media.m3u8`;
-
-      runtime = await assembleS4RuntimeCore({
-        storePath: join(root, 'k-documents.json'),
-        mediaTargetRefs: [
-          {
-            handle: 'ref:s4-target-positive',
-            record: {
-              protocol: 'HLS',
-              manifestUri,
-              selectedRenditionUri: renditionUri,
-              artifactFileName: 's4-positive.ts',
-              allowedManifestOrigins: [origin],
-              allowedSegmentOrigins: [origin],
-              budget: budgetFixture(8_000_000),
-              fixtureLoopbackHttp: true,
-            },
-          },
-        ],
-      });
-      const intent = s4ConfirmedIntent(outputRoot, {
-        manifestUri,
-        renditionUri,
-        targetRef: 'ref:s4-target-positive',
-        digestAnchor,
-      });
-      const selection = intent.selection as Record<string, unknown>;
-      selection.displayedTupleDigest = s4HlsSelectionTupleDigest({
-        contractId: 'contract-s4-001',
-        snapshotId: 'snapshot-s4-001',
-        memberId: 'member-s4-001',
-        previewId: 'preview-s4-001',
-        renditionKey: 'rend-0',
-        renditionUri,
-        manifestUri,
-        mediaProfileId: S4_HLS_MEDIA_PROFILE,
-        bandwidth: 500_000,
-        width: 160,
-        height: 90,
-      });
-
-      const result = await submitConfirmedS4HlsVod(runtime, intent);
-      assert.equal(result.status, 'completed');
-      if (result.status !== 'completed') return;
-      assert.equal(result.evidence?.fileSha256, digestAnchor);
-      assert.equal(result.evidence?.bytesWritten, expectedBytes.byteLength);
-      assert.equal(result.summary?.segmentsTransferred, fixture.segmentNames.length);
-      assert.ok(result.summary?.transferredByteCount);
-      const onDisk = readFileSync(join(outputRoot, 's4-positive.ts'));
-      assert.equal(sha256(onDisk), digestAnchor);
-
-      // Exactly one master + one media playlist + exactly one fetch per segment.
-      assert.equal(hits.get('/master.m3u8'), 1);
-      assert.equal(hits.get('/media.m3u8'), 1);
-      for (const name of fixture.segmentNames) assert.equal(hits.get(`/${name}`), 1);
-      assert.equal(hits.size, fixture.segmentNames.length + 2);
-      assert.equal(runtime.pin.acquireCalls, 1);
-      assert.equal(runtime.pin.completedExecutions, 1);
-      assert.equal(runtime.pin.registryRefusals, 0);
-    } finally {
-      runtime?.stop();
-      if (server !== undefined) {
-        server.closeAllConnections();
-        await new Promise<void>((resolveClose, rejectClose) => {
-          server!.close((error) => (error === undefined ? resolveClose() : rejectClose(error)));
-        });
-      }
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-});

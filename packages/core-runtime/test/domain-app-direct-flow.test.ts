@@ -11,6 +11,17 @@
  * Host store/bridge/registry/ledger come from the trusted Host package
  * root, the sealed BUILD and the domain journey from the App package root.
  *
+ * A04 R2 EVIDENCE SCOPE (review P1 disposition): this matrix is
+ * component-level integration evidence assembled by Core test support — the
+ * pinned SDK cannot compose the direct route into the production S4 one-K
+ * (route selection by intentType only; the sealed #183 Standard Router
+ * returns 'ambiguous' for the shared `confirmDownload` intent — the exact
+ * public API limitation with probe transcripts is recorded on
+ * kaicreator-mm/xDownload#357). Per Task Pack §3.1.4 the Builder stopped
+ * rather than substituting a parallel production claim; the production
+ * one-K integration proof of the selected Domain App lives in
+ * domain-app-route.test.ts / domain-app-media-flow.test.ts.
+ *
  * Counter-evidence convention (T04 precedent): every zero-effect guarantee
  * is proven three ways — bridge-side counters, fixture-side recorded socket
  * requests, and the durable K store (effect-journal / effect-permit docs) —

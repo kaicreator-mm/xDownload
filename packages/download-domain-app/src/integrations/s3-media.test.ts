@@ -9,13 +9,17 @@
  * @xdownload/hls-vod-adapter engine and a REAL bounded HLS fixture served
  * by node:http on an ephemeral 127.0.0.1 port) relocated to the Core
  * composition root and are re-established under
- * packages/core-runtime/test/domain-app-media-flow.test.ts (A04). The media
+ * packages/core-runtime/test/domain-app-media-flow.test.ts (A04; R2-scoped
+ * as component-level evidence — the generic media route cannot compose into
+ * the production S4 one-K; exact SDK limitation with probe transcripts on
+ * kaicreator-mm/xDownload#357). The media
  * targetRef registry grammar moved to the trusted Host
  * (packages/download-domain-host/src/media/media-target-registry.test.ts);
  * its Host-owned grammar tests live there. No coverage is silently dropped.
  *
  * RELOCATED-TO-CORE-A04 — integration scenario map (re-established under
- * the Core composition root; physical pieces: real Host bridge, K load,
+ * the Core composition root as COMPONENT-LEVEL evidence, not the one-K
+ * integration proof; physical pieces: real Host bridge, K load,
  * permit minting, loopback HTTP fixture, materialization, pin counters):
  *   1. S3 positive journey: master→playlist→segments through the real HLS
  *      engine under one K permit, digest-backed materialization evidence,

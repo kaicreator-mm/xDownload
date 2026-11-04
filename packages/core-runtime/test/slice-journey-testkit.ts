@@ -1,5 +1,5 @@
 /**
- * V022-A04 — Core-owned test support for the S2/S5/S6 slice journey tests
+ * V022-A04 R2 — Core-owned test support for the S2/S5/S6 slice journey tests
  * and the Direct integration matrix (migrated from the Domain App
  * integrations lane; packages/core-runtime/test/).
  *
@@ -10,6 +10,25 @@
  * factory — the same zero-mock discipline as the T11 composition matrix:
  * real sealed K runtime assembled by the Core composition layer, real
  * pinned T04 Host bridge, real 127.0.0.1 bytes.
+ *
+ * A04 R2 EVIDENCE SCOPE (review P1 disposition): the direct-composition K
+ * below is assembled through the SDK public `load` by this TEST SUPPORT —
+ * it is component-level integration evidence (real sealed BUILD, real Host
+ * bridge/registry/store/ledger, real bytes, honest durability), NOT the
+ * production one-K integration proof. The pinned public SDK cannot compose
+ * the direct route together with the S4 route into one FUNCTIONAL K: the
+ * sealed #183 Standard Router selects a route by `intentType` only, and
+ * `ACQUISITION_ROUTE` shares `confirmDownload` with the S4 route — two
+ * candidates are outcome 'ambiguous' at send (`ROUTING_OUTCOME_UNSELECTED`;
+ * exact limitation with probe transcripts recorded on
+ * kaicreator-mm/xDownload#357). Per the frozen Task Pack §3.1.4 stop-and-
+ * report rule, no parallel composition hack substitutes for the one K. The
+ * production one-K integration proof of the selected Domain App (S4) lives
+ * in domain-app-route.test.ts and domain-app-media-flow.test.ts, which drive
+ * the actual `composeDomainAppRoute`/`createCoreRuntime` composition and its
+ * real Host bridge. A02's P1 closure (all 25 S2/S5/S6 cases under Core
+ * `ci:verify`) is unaffected: these suites remain the authoritative location
+ * of the direct-lane and slice-journey scenario maps.
  *
  * A04 ownership: the physical assembly (sealed BUILD + Host bridge pin +
  * durable Host store + SDK public `load`) lives HERE, next to the Core
