@@ -790,11 +790,12 @@ export class DesktopUiAdapter {
   /**
    * The typed read-only `LIST_S1_JOB_PROJECTIONS` adapter call (L2 U05 §2/§3).
    * The response payload is validated strictly — closed shape, the 200-entry
-   * bound, post-filter `totalCount`, the exact `truncated === totalCount >
-   * items.length` consistency, per-item projection verification with the
-   * existing decoder/binding checks and aggregate-identity uniqueness. A
-   * typed rejection or a disconnect is returned as an explicit failure —
-   * never as an empty successful list.
+   * bound, post-filter `totalCount`, the exact latest-page cardinality
+   * `items.length === Math.min(totalCount, 200)`, the exact
+   * `truncated === totalCount > items.length` consistency, per-item projection
+   * verification with the existing decoder/binding checks and
+   * aggregate-identity uniqueness. A typed rejection or a disconnect is
+   * returned as an explicit failure — never as an empty successful list.
    */
   async listS1JobProjections(): Promise<S1JobIndexResult> {
     const envelope = desktopS1JobIndexQuery({
@@ -1194,11 +1195,12 @@ function checkIntentShape(
 /**
  * Strict fail-closed verification of the raw `LIST_S1_JOB_PROJECTIONS`
  * response payload (L2 U05 §2): closed `{items, totalCount, truncated}`
- * shape, the 200-entry bound, integer non-negative `totalCount`, boolean
- * `truncated` with the exact `totalCount > items.length` consistency, and
- * every item verified as a projection bound to its own aggregate identity,
- * unique across the page. Any violation is a typed degraded fact, never a
- * best-effort partial list.
+ * shape, the 200-entry bound, integer non-negative `totalCount`, the exact
+ * latest-page cardinality `items.length === Math.min(totalCount, 200)`, the
+ * exact `truncated === totalCount > items.length` consistency, and every item
+ * verified as a projection bound to its own aggregate identity, unique across
+ * the page. Any violation is a typed degraded fact, never a best-effort
+ * partial list.
  */
 function verifyS1JobIndexPayload(raw: unknown):
   | {
@@ -1228,6 +1230,15 @@ function verifyS1JobIndexPayload(raw: unknown):
   const totalCount = raw['totalCount'];
   if (typeof totalCount !== 'number' || !Number.isInteger(totalCount) || totalCount < 0) {
     return malformed('S1 job-index totalCount is not a non-negative integer');
+  }
+  // The server contract returns exactly the latest min(totalCount, 200) rows:
+  // a shorter page is an underfilled page and can never be presented as the
+  // truthful tail of the index.
+  const expectedPageSize = Math.min(totalCount, S1_JOB_INDEX_MAX_ITEMS);
+  if (itemsRaw.length !== expectedPageSize) {
+    return malformed(
+      `S1 job-index items length ${String(itemsRaw.length)} does not equal the latest-page cardinality min(totalCount, ${String(S1_JOB_INDEX_MAX_ITEMS)}) = ${String(expectedPageSize)}`,
+    );
   }
   const truncated = raw['truncated'];
   if (typeof truncated !== 'boolean') {

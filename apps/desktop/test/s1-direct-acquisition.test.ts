@@ -541,9 +541,13 @@ describe('LIST_S1_JOB_PROJECTIONS — typed adapter query', () => {
         return {
           outcome: 'PROJECTION',
           projection: {
-            items: [activeProjection('contract-s1-a', 2), activeProjection('contract-s1-b', 3)],
+            items: [
+              activeProjection('contract-s1-a', 2),
+              activeProjection('contract-s1-b', 3),
+              activeProjection('contract-s1-c', 1),
+            ],
             totalCount: 3,
-            truncated: true,
+            truncated: false,
           },
         };
       }
@@ -553,12 +557,13 @@ describe('LIST_S1_JOB_PROJECTIONS — typed adapter query', () => {
     const result = await adapter.listS1JobProjections();
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(2);
+      expect(result.items).toHaveLength(3);
       expect(result.totalCount).toBe(3);
-      expect(result.truncated).toBe(true);
+      expect(result.truncated).toBe(false);
       expect(result.items.map((item) => item.contract.contractId)).toStrictEqual([
         'contract-s1-a',
         'contract-s1-b',
+        'contract-s1-c',
       ]);
     }
     const queryFrames = framesOfType(mock, 'LIST_S1_JOB_PROJECTIONS');
@@ -611,6 +616,38 @@ describe('LIST_S1_JOB_PROJECTIONS — typed adapter query', () => {
       { name: 'negative totalCount', payload: { items: [], totalCount: -1, truncated: false } },
       { name: 'fractional totalCount', payload: { items: [], totalCount: 1.5, truncated: false } },
       { name: 'non-boolean truncated', payload: { items: [], totalCount: 0, truncated: 'no' } },
+      {
+        name: 'underfilled page (items fewer than min(totalCount, 200))',
+        payload: {
+          items: [activeProjection('contract-y-1', 1), activeProjection('contract-y-2', 1)],
+          totalCount: 3,
+          truncated: true,
+        },
+      },
+      {
+        name: 'underfilled page with truncated false',
+        payload: {
+          items: [activeProjection('contract-y-1', 1)],
+          totalCount: 2,
+          truncated: false,
+        },
+      },
+      {
+        name: 'totalCount smaller than items.length',
+        payload: {
+          items: [activeProjection('contract-y-1', 1), activeProjection('contract-y-2', 1)],
+          totalCount: 1,
+          truncated: false,
+        },
+      },
+      {
+        name: 'totalCount smaller than a full 200-page',
+        payload: {
+          items: manyItems.slice(0, 200),
+          totalCount: 199,
+          truncated: false,
+        },
+      },
       {
         name: 'truncated contradicts totalCount (false)',
         payload: {
