@@ -76,6 +76,8 @@ repair_r1:
   root_defect_class: "IMPLEMENTATION_DEFECT"
   reviewed_candidate_head: "deec3d6272ee9d4329838058098f051f6dfa3492"
   reviewed_candidate_tree: "fd34b655135b46e1e35cd294e0b3e10ecd601ec4"
+  current_wip_observed_sha: "4d2148b80976532cecfaddc111c7fdc94980a289"
+  base_drift_disposition: "EXACT_REVIEWED_CANDIDATE_REPAIR_ONLY_NO_REBASE_NO_INTEGRATION"
   allowed_paths:
     - "packages/download-domain-host/src/storage/file-cas-doc-store.ts"
     - "packages/download-domain-host/src/storage/file-cas-doc-store.test.ts"
