@@ -164,6 +164,28 @@ describe('LIST_S1_JOB_PROJECTIONS durable read-only index', () => {
     expect(journal.replayCount()).toBe(beforeReplay);
   });
 
+  it('rejects installId-only and userId-only peer mismatches independently before journal access', () => {
+    const journal = controllableJournal();
+    const server = serverWith(journal);
+    seedS1(server, 'contract-local-001');
+    const beforeReplay = journal.replayCount();
+
+    const installOnlyMismatch = { ...peer(), installId: 'install-999' };
+    const installResponse = listResponse(server, installOnlyMismatch);
+    expect(installResponse.outcome).toBe('REJECTED');
+    expect(installResponse.diagnostics?.[0]?.code).toBe('PEER_IDENTITY_REJECTED');
+    expect(installResponse.projection).toBeUndefined();
+
+    const userOnlyMismatch = { ...peer(), userId: 'user-999' };
+    const userResponse = listResponse(server, userOnlyMismatch);
+    expect(userResponse.outcome).toBe('REJECTED');
+    expect(userResponse.diagnostics?.[0]?.code).toBe('PEER_IDENTITY_REJECTED');
+    expect(userResponse.projection).toBeUndefined();
+
+    expect(journal.replayCount()).toBe(beforeReplay);
+    expect(contractIds(readIndex(server))).toStrictEqual(['contract-local-001']);
+  });
+
   it('fails closed when no durable journal is installed', () => {
     const response = listResponse(serverWith());
     expect(response.outcome).toBe('REJECTED');

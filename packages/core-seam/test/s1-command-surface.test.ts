@@ -20,6 +20,7 @@ import {
 } from '../src/index.ts';
 import {
   EXPECTED_PEER,
+  foreignPeer,
   peer,
   rawCollectionContract,
   rawCommand,
@@ -154,6 +155,48 @@ describe('EXECUTE_S1_DIRECT_ACQUISITION surface admission (#351 R1)', () => {
     expect(response.outcome).toBe('REJECTED');
     expect(response.diagnostics?.[0]?.code).toBe('ADMISSION_REJECTED');
     expect(response.diagnostics?.[0]?.path).toBe('peer.surface');
+    expect(calls).toHaveLength(0);
+    expect(s.pendingS1Executions()).toHaveLength(0);
+  });
+
+  it('rejects a foreign peer for the CLI surface at authorizePeer before any intent exists', () => {
+    const { beginner, calls } = makeBeginner();
+    const s = serverWith({ beginner });
+    submitSingle(s);
+    const response = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+          aggregateId: 'contract-single-surface-001',
+          payload: s1Payload(),
+          expectedRevision: 1,
+          asPeer: foreignPeer('CLI'),
+        }),
+      ),
+    );
+    expect(response.outcome).toBe('REJECTED');
+    expect(response.diagnostics?.[0]?.code).toBe('PEER_IDENTITY_REJECTED');
+    expect(calls).toHaveLength(0);
+    expect(s.pendingS1Executions()).toHaveLength(0);
+  });
+
+  it('rejects a foreign peer for the DESKTOP_UI surface at authorizePeer before any intent exists', () => {
+    const { beginner, calls } = makeBeginner();
+    const s = serverWith({ beginner });
+    submitSingle(s, 'contract-single-surface-001', 'DESKTOP_UI');
+    const response = s.handleFrame(
+      JSON.stringify(
+        rawCommand({
+          commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+          aggregateId: 'contract-single-surface-001',
+          payload: s1Payload(),
+          expectedRevision: 1,
+          asPeer: foreignPeer('DESKTOP_UI'),
+        }),
+      ),
+    );
+    expect(response.outcome).toBe('REJECTED');
+    expect(response.diagnostics?.[0]?.code).toBe('PEER_IDENTITY_REJECTED');
     expect(calls).toHaveLength(0);
     expect(s.pendingS1Executions()).toHaveLength(0);
   });
