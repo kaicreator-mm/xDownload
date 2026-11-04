@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CORE_SEAM_SCHEMA_ID,
+  S1_JOB_INDEX_SUBJECT,
   decodeSeamEnvelope,
   encodeSeamEnvelope,
   SUPPORTED_SEAM_MAJOR_VERSIONS,
@@ -30,6 +31,12 @@ function server() {
     throw new Error('server construction failed');
   }
   return result.value;
+}
+
+function rawS1JobIndexQuery(): Record<string, unknown> {
+  const raw = rawQuery({ aggregateId: S1_JOB_INDEX_SUBJECT });
+  raw['queryType'] = 'LIST_S1_JOB_PROJECTIONS';
+  return raw;
 }
 
 describe('wire-contract-compatibility: explicit schema identity/version', () => {
@@ -87,6 +94,71 @@ describe('wire-contract-compatibility: explicit schema identity/version', () => 
     raw['schemaIdentity'] = { schema: CORE_SEAM_SCHEMA_ID, version: 'one' };
     const decoded = decodeSeamEnvelope(raw);
     expect(decoded.ok).toBe(false);
+  });
+});
+
+describe('wire-contract-compatibility: S1 job index query', () => {
+  it('decodes only the exact reserved subject on seam 1.4', () => {
+    const decoded = decodeSeamEnvelope(rawS1JobIndexQuery());
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok || decoded.value.kind !== 'query') return;
+    expect(decoded.value.queryType).toBe('LIST_S1_JOB_PROJECTIONS');
+    expect(decoded.value.aggregateId).toBe('core:s1-job-index');
+  });
+
+  it('rejects every non-reserved index subject and reserves it against READ_PROJECTION', () => {
+    for (const aggregateId of ['contract-single-001', 'core:s1-job-index:other', '']) {
+      const raw = rawS1JobIndexQuery();
+      raw['aggregateId'] = aggregateId;
+      const decoded = decodeSeamEnvelope(raw);
+      expect(decoded.ok).toBe(false);
+      if (!decoded.ok) {
+        expect(decoded.diagnostics.some((d) => d.path === 'aggregateId')).toBe(true);
+      }
+    }
+
+    const reservedRead = rawQuery({ aggregateId: S1_JOB_INDEX_SUBJECT });
+    const decodedRead = decodeSeamEnvelope(reservedRead);
+    expect(decodedRead.ok).toBe(false);
+    if (!decodedRead.ok) {
+      expect(decodedRead.diagnostics[0]?.code).toBe('QUERY_REJECTED');
+      expect(decodedRead.diagnostics[0]?.path).toBe('aggregateId');
+    }
+  });
+
+  it('rejects the new query on schema 1.3 and on the explicit v0.2 route', () => {
+    const old = rawS1JobIndexQuery();
+    old['schemaIdentity'] = { schema: CORE_SEAM_SCHEMA_ID, version: '1.3.0' };
+    const decodedOld = decodeSeamEnvelope(old);
+    expect(decodedOld.ok).toBe(false);
+    if (!decodedOld.ok) {
+      expect(decodedOld.diagnostics[0]?.code).toBe('UNSUPPORTED_ENVELOPE_VERSION');
+    }
+
+    const wrongRoute = rawS1JobIndexQuery();
+    wrongRoute['route'] = 'v0.2';
+    const decodedRoute = decodeSeamEnvelope(wrongRoute);
+    expect(decodedRoute.ok).toBe(false);
+    if (!decodedRoute.ok) {
+      expect(decodedRoute.diagnostics[0]?.code).toBe('ROUTE_QUERY_MISMATCH');
+    }
+  });
+
+  it('preserves existing 1.3 command and READ_PROJECTION compatibility', () => {
+    const s = server();
+    const submit = rawCommand({
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: 'contract-single-001',
+      payload: rawSingleResourceContract(),
+    });
+    submit['schemaIdentity'] = { schema: CORE_SEAM_SCHEMA_ID, version: '1.3.0' };
+    expect(s.handleFrame(JSON.stringify(submit)).outcome).toBe('ACCEPTED');
+
+    const read = rawQuery({ aggregateId: 'contract-single-001' });
+    read['schemaIdentity'] = { schema: CORE_SEAM_SCHEMA_ID, version: '1.3.0' };
+    const response = s.handleFrame(JSON.stringify(read));
+    expect(response.outcome).toBe('PROJECTION');
+    expect(response.schemaIdentity.version).toBe('1.4.0');
   });
 });
 

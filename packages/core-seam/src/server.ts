@@ -61,6 +61,7 @@ import {
 import {
   currentSeamSchemaIdentity,
   decodeSeamEnvelope,
+  S1_JOB_INDEX_SUBJECT,
   type CommandEnvelope,
   type QueryEnvelope,
   type V02CommandEnvelope,
@@ -166,6 +167,15 @@ export type V02IntentDecoder = (input: unknown) => DomainValidationResult<unknow
 export interface JobProjectionProvider {
   read(lineageId: string): SeamResult<unknown>;
 }
+
+/** Read-only bounded index derived from durable S1 commands and current Core projections. */
+export interface S1JobIndexProjection {
+  readonly items: readonly SeamProjectionView[];
+  readonly totalCount: number;
+  readonly truncated: boolean;
+}
+
+const S1_JOB_INDEX_LIMIT = 200;
 
 export interface CoreSeamServerOptions {
   /** The only same-install/same-user peer scope this seam admits. */
@@ -1878,6 +1888,9 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       };
     }
 
+    if (envelope.queryType === 'LIST_S1_JOB_PROJECTIONS') {
+      return handleS1JobIndexQuery(envelope);
+    }
     if (envelope.queryType !== 'READ_PROJECTION') {
       return rejected(envelope.requestId, [
         seamDiagnostic('UNKNOWN_QUERY_TYPE', 'queryType', 'unknown query discriminant'),
@@ -1895,6 +1908,89 @@ export function createCoreSeamServer(options: CoreSeamServerOptions): CoreSeamSe
       inReplyTo: envelope.requestId,
       outcome: 'PROJECTION',
       projection: view,
+    };
+  }
+
+  function handleS1JobIndexQuery(envelope: QueryEnvelope): SeamResponse {
+    if (envelope.aggregateId !== S1_JOB_INDEX_SUBJECT) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'QUERY_REJECTED',
+          'aggregateId',
+          `LIST_S1_JOB_PROJECTIONS requires the exact reserved subject '${S1_JOB_INDEX_SUBJECT}'`,
+        ),
+      ]);
+    }
+    if (journal === undefined) {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'JOB_PROJECTION_UNAVAILABLE',
+          'journal',
+          'the accepted-command journal is not installed; the durable S1 index is unavailable',
+        ),
+      ]);
+    }
+
+    let entries: ReturnType<SeamJournal['replayAll']>;
+    try {
+      entries = journal.replayAll();
+    } catch {
+      return rejected(envelope.requestId, [
+        seamDiagnostic(
+          'JOB_PROJECTION_UNAVAILABLE',
+          'journal',
+          'the accepted-command journal could not be replayed; failing closed',
+        ),
+      ]);
+    }
+
+    const aggregateIds: string[] = [];
+    const seen = new Set<string>();
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index]!;
+      if (entry.kind !== undefined && entry.kind !== 'COMMAND') continue;
+      const command = entry.envelope;
+      if (
+        command.commandType !== 'EXECUTE_S1_DIRECT_ACQUISITION' ||
+        command.peer.installId !== envelope.peer.installId ||
+        command.peer.userId !== envelope.peer.userId
+      ) {
+        continue;
+      }
+      if (!seen.has(command.aggregateId)) {
+        seen.add(command.aggregateId);
+        aggregateIds.push(command.aggregateId);
+      }
+    }
+
+    const projections: SeamProjectionView[] = [];
+    for (const aggregateId of aggregateIds) {
+      const view = projectAggregate(state, aggregateId);
+      if (view === undefined) {
+        return rejected(envelope.requestId, [
+          seamDiagnostic(
+            'AGGREGATE_NOT_FOUND',
+            'journal',
+            `accepted S1 journal entry references aggregate '${aggregateId}' without a current projection; failing closed`,
+          ),
+        ]);
+      }
+      projections.push(view);
+    }
+
+    const items = Object.freeze(projections.slice(0, S1_JOB_INDEX_LIMIT));
+    const totalCount = aggregateIds.length;
+    const projection: S1JobIndexProjection = Object.freeze({
+      items,
+      totalCount,
+      truncated: totalCount > items.length,
+    });
+    return {
+      schemaIdentity: currentSeamSchemaIdentity(),
+      kind: 'response',
+      inReplyTo: envelope.requestId,
+      outcome: 'PROJECTION',
+      projection,
     };
   }
 
@@ -4417,13 +4513,15 @@ function applyExecuteS1DirectAcquisition(
       ),
     ]);
   }
-  // The Core-executed direct lane serves the CLI surface (curl-like S1).
-  if (envelope.peer.surface !== 'CLI') {
+  // The Core-executed direct lane serves the CLI (curl-like S1) and the
+  // DESKTOP_UI surfaces (#351 R1, Owner-approved #354); every other surface
+  // stays rejected and every later gate is unchanged.
+  if (envelope.peer.surface !== 'CLI' && envelope.peer.surface !== 'DESKTOP_UI') {
     return seamFail([
       seamDiagnostic(
         'ADMISSION_REJECTED',
         'peer.surface',
-        'EXECUTE_S1_DIRECT_ACQUISITION is admissible only from the CLI surface',
+        'EXECUTE_S1_DIRECT_ACQUISITION is admissible only from the CLI or DESKTOP_UI surface',
         'L2-§6.4',
       ),
     ]);

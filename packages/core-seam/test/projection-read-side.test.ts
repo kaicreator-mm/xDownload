@@ -165,7 +165,7 @@ describe('no surface-owned budget/result state is creatable via commands', () =>
       'RETRY_FAILED_MEMBERS',
       'SUBMIT_CONTRACT',
     ]);
-    expect([...QUERY_TYPES]).toStrictEqual(['READ_PROJECTION']);
+    expect([...QUERY_TYPES]).toStrictEqual(['READ_PROJECTION', 'LIST_S1_JOB_PROJECTIONS']);
     for (const attempted of [
       'MUTATE_BUDGET',
       'RESET_BUDGET',

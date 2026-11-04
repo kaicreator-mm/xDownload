@@ -53,8 +53,10 @@ export const CORE_SEAM_SCHEMA_ID = 'xdownload.core-seam' as const;
  * behind OS-verified same-user/same-logon-session transport admission.
  * 1.0/1.1 commands and peers remain accepted unchanged under their existing
  * gates; S3 commands demand a 1.2+ frame.
+ * 1.4.0 (#351): the read-only S1 job index query; earlier commands and
+ * READ_PROJECTION retain their existing compatibility rules.
  */
-export const CORE_SEAM_SCHEMA_VERSION = '1.3.0' as const;
+export const CORE_SEAM_SCHEMA_VERSION = '1.4.0' as const;
 export const SUPPORTED_SEAM_MAJOR_VERSIONS: readonly number[] = [1];
 
 /**
@@ -161,10 +163,13 @@ export type CommandType =
   | S5Seam12CommandType
   | S6Seam12CommandType;
 
-/** Closed v1 read vocabulary: the only surface query is the projection read. */
-export const QUERY_TYPES = ['READ_PROJECTION'] as const;
+/** Closed v1 read vocabulary: aggregate projection and durable S1 job index reads. */
+export const QUERY_TYPES = ['READ_PROJECTION', 'LIST_S1_JOB_PROJECTIONS'] as const;
 
 export type QueryType = (typeof QUERY_TYPES)[number];
+
+/** Reserved non-lineage subject for the read-only S1 job index query. */
+export const S1_JOB_INDEX_SUBJECT = 'core:s1-job-index' as const;
 
 /** Explicit Domain App v0.2 route vocabularies; kept separate from legacy v1 commands/queries. */
 export const V02_COMMAND_TYPES = ['DOMAIN_APP_SEND'] as const;
@@ -504,6 +509,20 @@ function requireV02RouteVersion(identity: SeamSchemaIdentity): SeamResult<void> 
   return seamOk(undefined);
 }
 
+function requireS1JobIndexVersion(identity: SeamSchemaIdentity): SeamResult<void> {
+  const version = parseSemVer(identity.version);
+  if (version === undefined || version.major !== 1 || version.minor < 4) {
+    return seamFail([
+      seamDiagnostic(
+        'UNSUPPORTED_ENVELOPE_VERSION',
+        'schemaIdentity.version',
+        'LIST_S1_JOB_PROJECTIONS requires core-seam schema 1.4.0 or newer',
+      ),
+    ]);
+  }
+  return seamOk(undefined);
+}
+
 /** Decode a command or query envelope from untrusted decoded-JSON input. */
 export function decodeSeamEnvelope(value: unknown): SeamResult<SeamEnvelope> {
   if (!isPlainObject(value)) {
@@ -805,6 +824,10 @@ function decodeLegacyQueryEnvelope(
       ),
     ]);
   }
+  if (queryType === 'LIST_S1_JOB_PROJECTIONS') {
+    const indexVersion = requireS1JobIndexVersion(schemaIdentity.value);
+    if (!indexVersion.ok) return indexVersion;
+  }
   const requestId = decodeRequestId(record['requestId']);
   if (!requestId.ok) {
     return requestId;
@@ -812,6 +835,20 @@ function decodeLegacyQueryEnvelope(
   const aggregateId = decodeAggregateId(record['aggregateId']);
   if (!aggregateId.ok) {
     return aggregateId;
+  }
+  if (
+    (queryType === 'LIST_S1_JOB_PROJECTIONS' && aggregateId.value !== S1_JOB_INDEX_SUBJECT) ||
+    (queryType === 'READ_PROJECTION' && aggregateId.value === S1_JOB_INDEX_SUBJECT)
+  ) {
+    return seamFail([
+      seamDiagnostic(
+        'QUERY_REJECTED',
+        'aggregateId',
+        queryType === 'LIST_S1_JOB_PROJECTIONS'
+          ? `LIST_S1_JOB_PROJECTIONS requires the exact reserved subject '${S1_JOB_INDEX_SUBJECT}'`
+          : `READ_PROJECTION does not accept the reserved subject '${S1_JOB_INDEX_SUBJECT}'`,
+      ),
+    ]);
   }
   const issuedAt = decodeIssuedAt(record['issuedAt']);
   if (!issuedAt.ok) {
