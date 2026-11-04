@@ -367,22 +367,31 @@ exit 0
 `;
 
 // --------------------------------------------------------------------------
-// R5 foreground admission guard — shared verbatim by UIA_CLICK_PS1 and
+// R5/R6 foreground admission guard — shared verbatim by UIA_CLICK_PS1 and
 // UIA_TOOLBAR_ACTION_PS1 (each sets $script:Native to its own P/Invoke class).
 // No SetCursorPos/mouse_event unless GetForegroundWindow() readback equals the
-// exact target Chrome HWND. Activation denial, readback timeout, HWND change
-// or unreadable HWND returns 'denied' with zero cursor movement and zero
-// mouse input. Under -SelfTest the native APIs are never touched: readback
-// and input counters run on seam state only.
+// exact target Chrome HWND, and SetCursorPos failure never falls through to
+// mouse input. Activation denial, readback timeout, HWND change or unreadable
+// HWND returns 'denied' with zero cursor movement and zero mouse input.
+// Under -SelfTest the native APIs are never touched: readback is scripted
+// from a queue and input advances seam counters only.
 // --------------------------------------------------------------------------
 const PS_FOREGROUND_GUARD = String.raw`
 $selfTestGuard = $false
 if ($SelfTest) { $selfTestGuard = $true }
 $script:seamSetCursorPos = 0
 $script:seamMouseEvent = 0
-$script:seamReadback = [IntPtr]::Zero
+$script:seamReadbackScript = @()
+$script:seamSetCursorPosResult = $true
 function Read-Foreground {
-  if ($selfTestGuard) { return $script:seamReadback }
+  if ($selfTestGuard) {
+    if ($script:seamReadbackScript.Count -gt 0) {
+      $next = $script:seamReadbackScript[0]
+      $script:seamReadbackScript = @($script:seamReadbackScript | Select-Object -Skip 1)
+      return $next
+    }
+    return [IntPtr]::Zero
+  }
   return $script:Native::GetForegroundWindow()
 }
 function Assert-Foreground($targetHwnd) {
@@ -399,17 +408,20 @@ function Assert-Foreground($targetHwnd) {
   # Activation retry via AttachThreadInput: attaching to the current
   # foreground thread lets this background thread legitimately request
   # activation. No input is synthesized; the readback below still decides,
-  # and any denial keeps cursor movement and mouse input at zero.
+  # and any denial keeps cursor movement and mouse input at zero. The attach
+  # is paired only on success and guaranteed detached in finally.
   $fg = $script:Native::GetForegroundWindow()
   if ($fg -ne [IntPtr]::Zero -and $fg -ne $targetHwnd) {
     $dummyPid = [uint32]0
     $fgThread = $script:Native::GetWindowThreadProcessId($fg, [ref]$dummyPid)
     $me = $script:Native::GetCurrentThreadId()
     if ($fgThread -ne 0 -and $fgThread -ne $me) {
-      $script:Native::AttachThreadInput($me, $fgThread, $true) | Out-Null
-      $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
-      Start-Sleep -Milliseconds 150
-      $script:Native::AttachThreadInput($me, $fgThread, $false) | Out-Null
+      $attached = $script:Native::AttachThreadInput($me, $fgThread, $true)
+      try {
+        $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
+      } finally {
+        if ($attached) { $script:Native::AttachThreadInput($me, $fgThread, $false) | Out-Null }
+      }
     }
   }
   $retryDeadline = (Get-Date).AddSeconds(1)
@@ -419,53 +431,93 @@ function Assert-Foreground($targetHwnd) {
   }
   return 'denied'
 }
-function Send-NativeClick($x, $y) {
+function Send-NativeClick($targetHwnd, $x, $y) {
+  # R6: exact foreground readback immediately adjacent to every native input
+  # step; SetCursorPos failure fails closed with zero mouse input; no
+  # unguarded delays between down and up.
+  if ((Read-Foreground) -ne $targetHwnd) {
+    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved' }
+  }
+  $cursorOk = $true
   if ($selfTestGuard) {
     $script:seamSetCursorPos += 1
-    $script:seamMouseEvent += 2
-    return
+    $cursorOk = $script:seamSetCursorPosResult
+  } else {
+    $cursorOk = $script:Native::SetCursorPos($x, $y)
   }
-  $script:Native::SetCursorPos($x, $y) | Out-Null
-  Start-Sleep -Milliseconds 100
-  $script:Native::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 80
-  $script:Native::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+  if (-not $cursorOk) {
+    return [pscustomobject]@{ sent = $false; reason = 'set_cursor_pos_failed' }
+  }
+  if ((Read-Foreground) -ne $targetHwnd) {
+    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved' }
+  }
+  if ($selfTestGuard) { $script:seamMouseEvent += 1 } else { $script:Native::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero) }
+  if ((Read-Foreground) -ne $targetHwnd) {
+    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved_after_mouse_down' }
+  }
+  if ($selfTestGuard) { $script:seamMouseEvent += 1 } else { $script:Native::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero) }
+  return [pscustomobject]@{ sent = $true }
 }
 function Invoke-GuardedClick($targetHwnd, $x, $y) {
   $verdict = Assert-Foreground $targetHwnd
   if ($verdict -eq 'denied') {
-    return [pscustomobject]@{ verdict = $verdict; clicked = $false }
+    return [pscustomobject]@{ verdict = $verdict; clicked = $false; reason = 'foreground_denied' }
   }
-  Send-NativeClick $x $y
-  return [pscustomobject]@{ verdict = $verdict; clicked = $true }
+  $send = Send-NativeClick $targetHwnd $x $y
+  if (-not $send.sent) {
+    return [pscustomobject]@{ verdict = $verdict; clicked = $false; reason = $send.reason }
+  }
+  return [pscustomobject]@{ verdict = $verdict; clicked = $true; reason = 'clicked' }
 }
 function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   $cases = @()
   $target = [IntPtr]424242
-  # (a) denied/mismatched foreground readback: zero cursor movement, zero input
-  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
-  $script:seamReadback = [IntPtr]1111
-  $r = Invoke-GuardedClick $target 10 10
-  $cases += [pscustomobject]@{ name = 'foreground_denied'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'denied' -and $r.clicked -eq $false -and $script:seamSetCursorPos -eq 0 -and $script:seamMouseEvent -eq 0) }
-  # (b) matching HWND readback: admission, seam counters advance only
-  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
-  $script:seamReadback = $target
-  $r = Invoke-GuardedClick $target 10 10
-  $cases += [pscustomobject]@{ name = 'foreground_matching'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'granted' -and $r.clicked -eq $true -and $script:seamSetCursorPos -eq 1 -and $script:seamMouseEvent -eq 2) }
+  $other = [IntPtr]1111
+  function New-Case($name, $readbacks, $cursorResult, $clickTarget) {
+    $script:seamSetCursorPos = 0
+    $script:seamMouseEvent = 0
+    $script:seamReadbackScript = @($readbacks)
+    $script:seamSetCursorPosResult = $cursorResult
+    $r = Invoke-GuardedClick $clickTarget 10 10
+    [pscustomobject]@{
+      name = $name
+      verdict = $r.verdict
+      reason = $r.reason
+      clicked = $r.clicked
+      setCursorPosCalls = $script:seamSetCursorPos
+      mouseEventCalls = $script:seamMouseEvent
+    }
+  }
+  # (a) denied/mismatched activation readback: zero cursor movement, zero input
+  $c = New-Case 'foreground_denied' @($other) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (b) matching HWND readback: full admission, counters advance only
+  $c = New-Case 'foreground_matching' @($target, $target, $target, $target) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $true -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2)
   # (c) unreadable foreground ([IntPtr]::Zero): fail closed, zero input
-  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
-  $script:seamReadback = [IntPtr]::Zero
-  $r = Invoke-GuardedClick $target 10 10
-  $cases += [pscustomobject]@{ name = 'foreground_unreadable'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'denied' -and $r.clicked -eq $false -and $script:seamSetCursorPos -eq 0 -and $script:seamMouseEvent -eq 0) }
+  $c = New-Case 'foreground_unreadable' @([IntPtr]::Zero) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
   # (d) zero/unknown target HWND: fail closed before any readback
-  $script:seamSetCursorPos = 0; $script:seamMouseEvent = 0
-  $script:seamReadback = $target
-  $r = Invoke-GuardedClick ([IntPtr]::Zero) 10 10
-  $cases += [pscustomobject]@{ name = 'target_unknown'; verdict = $r.verdict; clicked = $r.clicked; setCursorPosCalls = $script:seamSetCursorPos; mouseEventCalls = $script:seamMouseEvent; pass = ($r.verdict -eq 'denied' -and $r.clicked -eq $false -and $script:seamSetCursorPos -eq 0 -and $script:seamMouseEvent -eq 0) }
+  $c = New-Case 'target_unknown' @($target) $true ([IntPtr]::Zero)
+  $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (e) R6: activation granted but HWND mismatch immediately before cursor:
+  # zero cursor movement, zero mouse input
+  $c = New-Case 'post_activation_mismatch' @($target, $other) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'foreground_moved' -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (f) R6: SetCursorPos failure: zero mouse events
+  $c = New-Case 'set_cursor_pos_failed' @($target, $target) $false $target
+  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'set_cursor_pos_failed' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0)
+  # (g) R6: foreground moves between mouse-down and mouse-up
+  $c = New-Case 'foreground_moved_after_mouse_down' @($target, $target, $target, $other) $true $target
+  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_moved_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 1)
   $allPass = @($cases | Where-Object { -not $_.pass }).Count -eq 0
   [pscustomobject]@{ ok = [bool]$allPass; cases = $cases } | ConvertTo-Json -Depth 4 | Set-Content -Path $SelfTestOutPath -Encoding UTF8
   if (-not $allPass) { exit 1 }
   exit 0
+}
+function Add-Note($caseObj, $pass) {
+  $caseObj | Add-Member -MemberType NoteProperty -Name pass -Value [bool]$pass -Force
+  return $caseObj
 }
 if ($SelfTest) {
   if ([string]::IsNullOrWhiteSpace($OutPath)) {
@@ -535,7 +587,7 @@ $y = [int]($rect.Y + $rect.Height / 2)
 # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
 $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
 if (-not $guard.clicked) {
-  Write-Output ('UIA_CLICK_EXIT=6 REASON=foreground_denied FOREGROUND_GUARD=1')
+  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1')
   exit 6
 }
 [pscustomobject]@{
@@ -600,7 +652,7 @@ function Click-Element($element, $window) {
   # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
   $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
   if (-not $guard.clicked) {
-    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=foreground_denied FOREGROUND_GUARD=1')
+    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1')
     exit 6
   }
   return @($x, $y)
@@ -1222,15 +1274,18 @@ async function main() {
         // foreground guard denial is recorded distinctly: it guarantees zero
         // cursor movement and zero native input were sent.
         // The exit-6 guard marker reaches us on the failed process's captured
-        // stdout, not in the execFile error message.
-        const guardDenied =
-          String(error).includes('foreground_denied') ||
-          String(error.stdout ?? '').includes('foreground_denied');
+        // stdout, not in the execFile error message. The reason distinguishes
+        // pre-input denial (zero cursor/mouse) from a mid-click foreground
+        // move (mouse-down may have been sent without mouse-up).
+        const stdoutText = String(error.stdout ?? '');
+        const guardBlocked = stdoutText.includes('FOREGROUND_GUARD=1');
+        const reasonMatch = stdoutText.match(/REASON=([^\s]+)/u);
+        const guardReason = reasonMatch ? reasonMatch[1] : 'unknown';
         result.ok = false;
         result.status = 'NOT_RUN';
-        result.foregroundGuard = guardDenied ? 'denied_zero_input' : 'not_applicable';
-        result.notRunReason = guardDenied
-          ? `foreground guard denied, zero native input sent: ${String(error)}`
+        result.foregroundGuard = guardBlocked ? `blocked:${guardReason}` : 'not_applicable';
+        result.notRunReason = guardBlocked
+          ? `native click guard blocked (${guardReason}): ${String(error)}`
           : `genuine toolbar action not clickable: ${String(error)}`;
         fs.writeFileSync(
           path.join(evidenceDir, 'result.json'),
