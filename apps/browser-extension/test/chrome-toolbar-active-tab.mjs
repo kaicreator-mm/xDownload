@@ -381,6 +381,8 @@ $selfTestGuard = $false
 if ($SelfTest) { $selfTestGuard = $true }
 $script:seamSetCursorPos = 0
 $script:seamMouseEvent = 0
+$script:seamMouseDown = 0
+$script:seamMouseUp = 0
 $script:seamReadbackScript = @()
 $script:seamSetCursorPosResult = $true
 function Read-Foreground {
@@ -388,6 +390,7 @@ function Read-Foreground {
     if ($script:seamReadbackScript.Count -gt 0) {
       $next = $script:seamReadbackScript[0]
       $script:seamReadbackScript = @($script:seamReadbackScript | Select-Object -Skip 1)
+      if ($next -is [string] -and $next -eq '__THROW__') { throw 'synthetic foreground readback failure' }
       return $next
     }
     return [IntPtr]::Zero
@@ -432,11 +435,12 @@ function Assert-Foreground($targetHwnd) {
   return 'denied'
 }
 function Send-NativeClick($targetHwnd, $x, $y) {
-  # R6: exact foreground readback immediately adjacent to every native input
-  # step; SetCursorPos failure fails closed with zero mouse input; no
-  # unguarded delays between down and up.
+  # R7: exact foreground readback before every new input side effect. Once
+  # mouse-down is attempted, mouse-up is guaranteed in finally: a focus
+  # change/readback error may block a click, but must never leave the global
+  # left button logically pressed. The cleanup up is not a second click.
   if ((Read-Foreground) -ne $targetHwnd) {
-    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved' }
+    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
   $cursorOk = $true
   if ($selfTestGuard) {
@@ -446,28 +450,90 @@ function Send-NativeClick($targetHwnd, $x, $y) {
     $cursorOk = $script:Native::SetCursorPos($x, $y)
   }
   if (-not $cursorOk) {
-    return [pscustomobject]@{ sent = $false; reason = 'set_cursor_pos_failed' }
+    return [pscustomobject]@{ sent = $false; reason = 'set_cursor_pos_failed'; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
   if ((Read-Foreground) -ne $targetHwnd) {
-    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved' }
+    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
-  if ($selfTestGuard) { $script:seamMouseEvent += 1 } else { $script:Native::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero) }
-  if ((Read-Foreground) -ne $targetHwnd) {
-    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved_after_mouse_down' }
+
+  $mouseDownAttempted = $false
+  $mouseDownSent = $false
+  $mouseUpCleanupSent = $false
+  $failureReason = $null
+  try {
+    $mouseDownAttempted = $true
+    if ($selfTestGuard) {
+      $script:seamMouseDown += 1
+      $script:seamMouseEvent += 1
+    } else {
+      $script:Native::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    }
+    $mouseDownSent = $true
+
+    try {
+      if ((Read-Foreground) -ne $targetHwnd) {
+        $failureReason = 'foreground_moved_after_mouse_down'
+      }
+    } catch {
+      $failureReason = 'foreground_readback_error_after_mouse_down'
+    }
+  } catch {
+    $failureReason = 'mouse_down_failed'
+  } finally {
+    # Always release after a down attempt, even when the post-down guard
+    # refuses or throws. This is a release cleanup only, never a new click.
+    if ($mouseDownAttempted) {
+      try {
+        if ($selfTestGuard) {
+          $script:seamMouseUp += 1
+          $script:seamMouseEvent += 1
+        } else {
+          $script:Native::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        }
+        $mouseUpCleanupSent = $true
+      } catch {
+        $failureReason = 'mouse_up_cleanup_failed'
+      }
+    }
   }
-  if ($selfTestGuard) { $script:seamMouseEvent += 1 } else { $script:Native::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero) }
-  return [pscustomobject]@{ sent = $true }
+
+  if ($failureReason -ne $null) {
+    return [pscustomobject]@{
+      sent = $false
+      reason = $failureReason
+      mouseDownSent = $mouseDownSent
+      mouseUpCleanupSent = $mouseUpCleanupSent
+    }
+  }
+  return [pscustomobject]@{
+    sent = $true
+    reason = 'clicked'
+    mouseDownSent = $mouseDownSent
+    mouseUpCleanupSent = $mouseUpCleanupSent
+  }
 }
 function Invoke-GuardedClick($targetHwnd, $x, $y) {
   $verdict = Assert-Foreground $targetHwnd
   if ($verdict -eq 'denied') {
-    return [pscustomobject]@{ verdict = $verdict; clicked = $false; reason = 'foreground_denied' }
+    return [pscustomobject]@{ verdict = $verdict; clicked = $false; reason = 'foreground_denied'; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
   $send = Send-NativeClick $targetHwnd $x $y
   if (-not $send.sent) {
-    return [pscustomobject]@{ verdict = $verdict; clicked = $false; reason = $send.reason }
+    return [pscustomobject]@{
+      verdict = $verdict
+      clicked = $false
+      reason = $send.reason
+      mouseDownSent = $send.mouseDownSent
+      mouseUpCleanupSent = $send.mouseUpCleanupSent
+    }
   }
-  return [pscustomobject]@{ verdict = $verdict; clicked = $true; reason = 'clicked' }
+  return [pscustomobject]@{
+    verdict = $verdict
+    clicked = $true
+    reason = 'clicked'
+    mouseDownSent = $send.mouseDownSent
+    mouseUpCleanupSent = $send.mouseUpCleanupSent
+  }
 }
 function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   $cases = @()
@@ -476,6 +542,8 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   function New-Case($name, $readbacks, $cursorResult, $clickTarget) {
     $script:seamSetCursorPos = 0
     $script:seamMouseEvent = 0
+    $script:seamMouseDown = 0
+    $script:seamMouseUp = 0
     $script:seamReadbackScript = @($readbacks)
     $script:seamSetCursorPosResult = $cursorResult
     $r = Invoke-GuardedClick $clickTarget 10 10
@@ -486,6 +554,10 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
       clicked = $r.clicked
       setCursorPosCalls = $script:seamSetCursorPos
       mouseEventCalls = $script:seamMouseEvent
+      mouseDownCalls = $script:seamMouseDown
+      mouseUpCalls = $script:seamMouseUp
+      mouseDownSent = $r.mouseDownSent
+      mouseUpCleanupSent = $r.mouseUpCleanupSent
     }
   }
   # (a) denied/mismatched activation readback: zero cursor movement, zero input
@@ -493,7 +565,7 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
   # (b) matching HWND readback: full admission, counters advance only
   $c = New-Case 'foreground_matching' @($target, $target, $target, $target) $true $target
-  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $true -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2)
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $true -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
   # (c) unreadable foreground ([IntPtr]::Zero): fail closed, zero input
   $c = New-Case 'foreground_unreadable' @([IntPtr]::Zero) $true $target
   $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
@@ -509,7 +581,10 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'set_cursor_pos_failed' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0)
   # (g) R6: foreground moves between mouse-down and mouse-up
   $c = New-Case 'foreground_moved_after_mouse_down' @($target, $target, $target, $other) $true $target
-  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_moved_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 1)
+  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_moved_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
+  # (h) R7: a readback exception after down still runs the matching up cleanup.
+  $c = New-Case 'foreground_readback_error_after_mouse_down' @($target, $target, $target, '__THROW__') $true $target
+  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_readback_error_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
   $allPass = @($cases | Where-Object { -not $_.pass }).Count -eq 0
   [pscustomobject]@{ ok = [bool]$allPass; cases = $cases } | ConvertTo-Json -Depth 4 | Set-Content -Path $SelfTestOutPath -Encoding UTF8
   if (-not $allPass) { exit 1 }
@@ -587,7 +662,7 @@ $y = [int]($rect.Y + $rect.Height / 2)
 # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
 $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
 if (-not $guard.clicked) {
-  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1')
+  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
   exit 6
 }
 [pscustomobject]@{
@@ -652,7 +727,7 @@ function Click-Element($element, $window) {
   # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
   $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
   if (-not $guard.clicked) {
-    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1')
+    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
     exit 6
   }
   return @($x, $y)
@@ -1276,11 +1351,17 @@ async function main() {
         // The exit-6 guard marker reaches us on the failed process's captured
         // stdout, not in the execFile error message. The reason distinguishes
         // pre-input denial (zero cursor/mouse) from a mid-click foreground
-        // move (mouse-down may have been sent without mouse-up).
+        // move (mouse-down may have been sent; the helper guarantees its matching mouse-up cleanup).
         const stdoutText = String(error.stdout ?? '');
         const guardBlocked = stdoutText.includes('FOREGROUND_GUARD=1');
         const reasonMatch = stdoutText.match(/REASON=([^\s]+)/u);
         const guardReason = reasonMatch ? reasonMatch[1] : 'unknown';
+        const downMatch = stdoutText.match(/MOUSE_DOWN_SENT=([01])/u);
+        const upMatch = stdoutText.match(/MOUSE_UP_CLEANUP_SENT=([01])/u);
+        result.nativeInputCleanup = {
+          mouseDownSent: downMatch ? downMatch[1] === '1' : null,
+          mouseUpCleanupSent: upMatch ? upMatch[1] === '1' : null,
+        };
         result.ok = false;
         result.status = 'NOT_RUN';
         result.foregroundGuard = guardBlocked ? `blocked:${guardReason}` : 'not_applicable';
