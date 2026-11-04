@@ -246,3 +246,54 @@ export function revealHintFor(row: ManagerJobRow): boolean {
     row.destination !== null
   );
 }
+
+// ---- U05-T02: typed S1 manager-row projection --------------------------------
+
+/**
+ * One S1 manager row: a typed projection of one S1 job-index item's Core
+ * facts (frozen L2 U05 §4). Unlike the legacy shell lane, the U05 S1 flow
+ * carries no per-download destination at all — the row has no destination
+ * field, and no output path, progress, ETA or terminal success is ever
+ * derived locally.
+ */
+export interface S1ManagerJobRow {
+  /** Opaque Core contract/aggregate identity (never a URL or path). */
+  readonly lineageId: string;
+  /** The seam lane this row is read from. */
+  readonly lane: 's1';
+  /** Verbatim contract status word from the Core projection. */
+  readonly contractStatus: string;
+  /** Verbatim aggregate revision from the Core projection. */
+  readonly revision: number;
+  /** Verbatim lineage status word from the Core projection. */
+  readonly lineageStatus: string;
+  /** The projected terminal result, all six dimensions verbatim; else null. */
+  readonly terminal: ManagerTerminalSummary | null;
+  /** Retry availability hint derived ONLY from the projected facts above. */
+  readonly retry: { readonly available: boolean; readonly reason: string | null };
+}
+
+/**
+ * Project one verified S1 job-index projection item into a manager row. The
+ * input is a Core-verified projection (the adapter's index query validates
+ * every item before rows are built); the mapping adds no fact of its own.
+ */
+export function projectS1JobRow(view: SeamProjectionView): S1ManagerJobRow {
+  const retryDomain = deriveRetryDomain({
+    selectedMemberIds: view.snapshot?.selectedMemberIds ?? [],
+    retriedMemberIds: view.lineage.retriedMemberIds,
+    failedMemberCount: view.lineage.failedMemberCount,
+  });
+  return {
+    lineageId: view.contract.contractId,
+    lane: 's1',
+    contractStatus: view.contract.status,
+    revision: view.contract.revision,
+    lineageStatus: view.lineage.status,
+    terminal: view.terminal === undefined ? null : { ...terminalSummary(view.terminal) },
+    retry:
+      retryDomain.kind === 'DETERMINED'
+        ? { available: true, reason: null }
+        : { available: false, reason: retryDomain.reason },
+  };
+}

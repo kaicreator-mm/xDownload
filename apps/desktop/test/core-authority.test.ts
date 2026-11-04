@@ -29,6 +29,10 @@ import {
   currentSeamSchemaIdentity,
 } from '@xdownload/core-seam';
 import { deriveRetryDomain } from '../src/view-model.ts';
+import {
+  SINGLE_RESOURCE_WORKFLOW_FACTS,
+  singleResourceUrlIntent,
+} from '../src/manager-documents.ts';
 
 /**
  * Route a RETRY_FAILED_MEMBERS command directly through the seam, as another
@@ -382,5 +386,74 @@ describe('deriveRetryDomain — exact-branch regression (REVIEW_RESULT 598017431
     expect(
       deriveRetryDomain({ selectedMemberIds: ['a'], retriedMemberIds: [], failedMemberCount: 0 }),
     ).toStrictEqual({ kind: 'UNAVAILABLE', reason: 'NO_FAILED_MEMBERS' });
+  });
+});
+
+describe('U05-T02 S1 surface identity against the real Core authority', () => {
+  it('the S1 command routes with the DESKTOP_UI peer; the Core rejection surfaces verbatim — no CLI spoof, no fabricated acceptance', async () => {
+    const core = await startCore();
+    const adapter = desktopAdapter(core);
+    const intent = singleResourceUrlIntent('https://example.com/media/clip.mp4');
+    expect(intent.ok).toBe(true);
+    if (!intent.ok) {
+      return;
+    }
+    const entered = adapter.enterIntent({
+      intent: intent.value,
+      workflowFacts: SINGLE_RESOURCE_WORKFLOW_FACTS,
+    });
+    expect(entered.refusals).toStrictEqual([]);
+    const outcome = await adapter.confirmScope();
+    expect(outcome.rejections).toStrictEqual([]);
+    expect(outcome.routed[0]?.commandType).toBe('SUBMIT_CONTRACT');
+
+    const executed = await adapter.executeS1Direct();
+    const envelope = adapter
+      .sentCommandEnvelopes()
+      .findLast((e) => e.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION');
+    expect(envelope).toBeDefined();
+    // The peer identity is preserved on the wire — never rewritten to CLI.
+    expect(envelope?.peer.surface).toBe('DESKTOP_UI');
+    expect(envelope?.aggregateId).toBe(outcome.routed[0]?.aggregateId);
+
+    // The loopback Core composition at this base installs no S1 driver, so
+    // its earliest fail-closed gate rejects the command at commandType —
+    // real Core authority evidence of the rejection, surfaced verbatim
+    // (never a mocked acceptance). The peer.surface gate amended by T01
+    // sits behind this composition guard.
+    expect(executed.rejections).toStrictEqual([
+      {
+        code: 'ADMISSION_REJECTED',
+        path: 'commandType',
+        message:
+          'this Core composition provides no S1 direct-acquisition driver; EXECUTE_S1_DIRECT_ACQUISITION fails closed',
+      },
+    ]);
+    // Acceptance-as-success does not exist: the display holds the re-synced
+    // ACTIVE projection and no terminal claim.
+    expect(sectionLines(executed.display, 'Selection / progress')).toContain(
+      'lineage status: ACTIVE',
+    );
+    expect(executed.display.sections.some((s) => s.title.startsWith('Result explanation'))).toBe(
+      false,
+    );
+    await adapter.close();
+    await core.stop();
+  });
+
+  it('a non-URL locator refuses at the S1 payload gate before any transfer command is routed', async () => {
+    const core = await startCore();
+    const adapter = desktopAdapter(core);
+    // The stock fixture target ('target-file-001') is not an http(s) locator.
+    const outcome = await confirmSingleResourceTask(adapter);
+    expect(outcome.rejections).toStrictEqual([]);
+
+    const attempted = await adapter.executeS1Direct();
+    expect(attempted.refusals.length + attempted.rejections.length).toBeGreaterThan(0);
+    expect(
+      adapter.sentCommandEnvelopes().some((e) => e.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION'),
+    ).toBe(false);
+    await adapter.close();
+    await core.stop();
   });
 });

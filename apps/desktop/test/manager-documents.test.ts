@@ -18,6 +18,7 @@ import {
   decodeManagerUrl,
   MANAGER_MAX_URL_LENGTH,
   projectLegacyJobRow,
+  projectS1JobRow,
   revealHintFor,
   singleResourceUrlIntent,
   type ManagerJobRow,
@@ -249,5 +250,54 @@ describe('revealHintFor', () => {
     });
     expect(revealHintFor(partial)).toBe(false);
     expect(revealHintFor({ ...partial, present: false })).toBe(false);
+  });
+});
+
+describe('projectS1JobRow (U05-T02)', () => {
+  it('maps Core facts verbatim with the s1 lane; no destination/progress/ETA field exists', () => {
+    const row = projectS1JobRow(legacyView({}));
+    expect(row.lane).toBe('s1');
+    expect(row.lineageId).toBe('contract-desktop-ab12cd34-000001');
+    expect(row.contractStatus).toBe('CONFIRMED');
+    expect(row.revision).toBe(4);
+    expect(row.lineageStatus).toBe('ACTIVE');
+    expect(row.terminal).toBeNull();
+    // The U05 S1 flow carries no per-download destination: the row has no
+    // destination field at all, and no success boolean exists.
+    expect('destination' in row).toBe(false);
+    expect('successful' in row).toBe(false);
+    expect('progress' in row).toBe(false);
+    expect('eta' in row).toBe(false);
+  });
+
+  it('renders the projected terminal verbatim, all six dimensions', () => {
+    const row = projectS1JobRow(legacyView({ terminalRequestFulfillment: 'COMPLETE' }));
+    expect(row.terminal).not.toBeNull();
+    if (row.terminal !== null) {
+      expect(row.terminal.requestFulfillment).toBe('COMPLETE');
+      expect(row.terminal.targetResolution).toBe('RESOLVED');
+      expect(row.terminal.validationSummary).toEqual({
+        status: 'ALL_PASSED',
+        passedCount: 1,
+        failedCount: 0,
+      });
+    }
+  });
+
+  it('retry availability mirrors deriveRetryDomain exactly (Core facts only)', () => {
+    const noFailures = projectS1JobRow(legacyView({ failedMemberCount: 0 }));
+    expect(noFailures.retry).toEqual({ available: false, reason: 'NO_FAILED_MEMBERS' });
+    const allFailed = projectS1JobRow(legacyView({ failedMemberCount: 1 }));
+    expect(allFailed.retry).toEqual({ available: true, reason: null });
+    const partialFailure = projectS1JobRow(
+      legacyView({
+        selectedMemberIds: ['member-001', 'member-002', 'member-003'],
+        failedMemberCount: 1,
+      }),
+    );
+    expect(partialFailure.retry).toEqual({
+      available: false,
+      reason: 'FAILED_IDENTITIES_NOT_EXPOSED_BY_PROJECTION',
+    });
   });
 });

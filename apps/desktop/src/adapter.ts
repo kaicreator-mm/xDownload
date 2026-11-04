@@ -32,6 +32,7 @@
 import {
   type CommandEnvelope,
   type PeerIdentity,
+  type QueryEnvelope,
   type SeamClient,
   type SeamClientTransport,
   type SeamListenTarget,
@@ -54,8 +55,14 @@ import { planConfirmationWorkflow, type ConfirmationPlan } from '@xdownload/disc
 import {
   createDesktopPeer,
   DesktopIdentitySequence,
+  buildS1DirectExecutionPayload,
+  deriveS1ExecutionIdentities,
   desktopCommand,
   desktopProjectionQuery,
+  desktopS1JobIndexQuery,
+  s1CompositeEffectIdentity,
+  s1EffectIdentityWithinBound,
+  S1_JOB_INDEX_MAX_ITEMS,
 } from './commands.ts';
 import {
   bannerLine,
@@ -129,6 +136,36 @@ export interface InteractionOutcome {
   readonly refusals: readonly string[];
 }
 
+/**
+ * The typed result of the read-only `LIST_S1_JOB_PROJECTIONS` index query
+ * (U05-T02). A rejection or a disconnect is an explicit degraded fact —
+ * never an empty successful list (L2 U05 §2/§5).
+ */
+export type S1JobIndexFailure =
+  | { readonly reason: 'DISCONNECTED' }
+  | { readonly reason: 'REJECTED' }
+  | { readonly reason: 'MALFORMED_INDEX'; readonly detail: string };
+
+export type S1JobIndexResult =
+  | {
+      readonly ok: true;
+      readonly items: readonly SeamProjectionView[];
+      readonly totalCount: number;
+      readonly truncated: boolean;
+    }
+  | { readonly ok: false; readonly failure: S1JobIndexFailure };
+
+interface S1ExecutionRecord {
+  /**
+   * The exact envelope routed for this logical S1 command. Retries and
+   * reconnects re-send this identical envelope — same request identity, same
+   * derived snapshot/member/artifact identities — so the seam's idempotency
+   * converges them; no second identity and no local durable store is created
+   * (L2 U05 §3).
+   */
+  readonly envelope: CommandEnvelope;
+}
+
 interface AggregateRecord {
   /**
    * The exact payload Core accepted for a contract this surface submitted
@@ -141,6 +178,14 @@ interface AggregateRecord {
     readonly selectedMemberIds: readonly string[];
   } | null;
   projection: SeamProjectionView | null;
+  /**
+   * The locator this surface submitted for the contract (echo of this
+   * surface's own intent input; the canonical contract echo carries only the
+   * derived logical target id). Null for aggregates this surface never
+   * submitted — delivery facts are never fabricated for them.
+   */
+  submittedLocatorUri: string | null;
+  s1Execution: S1ExecutionRecord | null;
 }
 
 interface DraftState {
@@ -543,7 +588,7 @@ export class DesktopUiAdapter {
     if (response.outcome === 'REJECTED') {
       return this.rejectedOutcome(response);
     }
-    this.openAggregate(aggregateId, confirmed.value);
+    this.openAggregate(aggregateId, confirmed.value, null);
     await this.refresh();
     return this.outcome(this.lastRouted());
   }
@@ -650,6 +695,154 @@ export class DesktopUiAdapter {
     return this.outcome(this.lastRouted());
   }
 
+  // ---- S1 direct acquisition (U05-T02) ------------------------------------
+
+  /**
+   * Route the existing Core `EXECUTE_S1_DIRECT_ACQUISITION` command for the
+   * single-resource task this surface just confirmed (frozen L2 U05 §1/§3).
+   * The CLI sequence is the mapping reference; the Desktop adds no transfer
+   * implementation. The command binds the contract accepted by the same
+   * Desktop interaction, carries canonical snapshot/member/artifact
+   * identities derived once, and defaults `declaredRedirectHosts` to the
+   * submitted URL's own host only (no implicit widening; the optional
+   * digest/content-type/total-byte fields stay absent from the U05 form).
+   *
+   * Command acceptance is admission only — never acquisition success. The
+   * display re-reads `READ_PROJECTION` and only Core projection facts update
+   * status/terminal truth. A repeat invocation (retry after a disconnect, or
+   * a duplicate interaction) re-sends the identical envelope so the seam's
+   * idempotency converges on the same logical request identity; no second
+   * identity and no local durable store is created.
+   */
+  async executeS1Direct(): Promise<InteractionOutcome> {
+    this.beginInteraction();
+    const record = this.requireConfirmedRecord();
+    if (record === null || record.contractEcho === null) {
+      return this.refusalOutcome([
+        'no confirmed contract submitted by this surface is held; S1 direct acquisition requires a task this surface confirmed',
+      ]);
+    }
+    if (record.projection === null) {
+      return this.refusalOutcome([
+        'no live Core projection is held for this task; refresh from Core before starting an S1 acquisition',
+      ]);
+    }
+    const contract = record.contractEcho;
+    if (
+      contract.intentType !== 'SINGLE_RESOURCE' ||
+      contract.requestedScope.kind !== 'single_resource'
+    ) {
+      return this.refusalOutcome([
+        'the S1 direct-acquisition lane serves SINGLE_RESOURCE single-resource contracts only',
+      ]);
+    }
+    if (record.s1Execution !== null) {
+      // Retry/reconnect or duplicate interaction: re-send the identical
+      // envelope (same request identity, same derived identities).
+      return this.submitS1Execution(record.s1Execution.envelope);
+    }
+    if (record.submittedLocatorUri === null) {
+      return this.refusalOutcome([
+        'this surface holds no submitted locator for the task; S1 delivery facts are never fabricated',
+      ]);
+    }
+    const identities = deriveS1ExecutionIdentities(contract.contractId);
+    if (!identities.ok) {
+      return this.coreRejectionOutcome(identities.diagnostics.map(toDomainTypedRejection));
+    }
+    const payload = buildS1DirectExecutionPayload({
+      identities: identities.value,
+      locatorUri: record.submittedLocatorUri,
+    });
+    if (!payload.ok) {
+      return this.coreRejectionOutcome(payload.diagnostics.map(toDomainTypedRejection));
+    }
+    // The canonical composite effect identity bound is enforced Core-side;
+    // an identity that can never execute rejects here, before any routing.
+    const effectIdentity = s1CompositeEffectIdentity({
+      contractId: contract.contractId,
+      snapshotId: payload.value.snapshotId,
+      requestedTarget: contract.requestedTarget,
+    });
+    if (!s1EffectIdentityWithinBound(effectIdentity)) {
+      return this.refusalOutcome([
+        'the canonical composite effect identity exceeds the 128-character bound; the S1 command can never execute and is not routed',
+      ]);
+    }
+    const envelope = desktopCommand({
+      facts: {
+        peer: this.peer,
+        aggregateId: contract.contractId,
+        expectedRevision: record.projection.contract.revision,
+        requestId: this.ids.requestId(),
+        issuedAt: this.now(),
+        correlation: { contractId: contract.contractId },
+      },
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      payload: payload.value,
+    });
+    // The envelope is retained before submission so a disconnect preserves
+    // the exact logical command for the idempotent re-send.
+    record.s1Execution = { envelope };
+    return this.submitS1Execution(envelope);
+  }
+
+  /**
+   * The typed read-only `LIST_S1_JOB_PROJECTIONS` adapter call (L2 U05 §2/§3).
+   * The response payload is validated strictly — closed shape, the 200-entry
+   * bound, post-filter `totalCount`, the exact latest-page cardinality
+   * `items.length === Math.min(totalCount, 200)`, the exact
+   * `truncated === totalCount > items.length` consistency, per-item projection
+   * verification with the existing decoder/binding checks and
+   * aggregate-identity uniqueness. A typed rejection or a disconnect is
+   * returned as an explicit failure — never as an empty successful list.
+   */
+  async listS1JobProjections(): Promise<S1JobIndexResult> {
+    const envelope = desktopS1JobIndexQuery({
+      peer: this.peer,
+      requestId: this.ids.requestId(),
+      issuedAt: this.now(),
+    });
+    let response: SeamResponse;
+    try {
+      // Vocabulary bridge: the closed seam query type gains this discriminant
+      // with the T01 Core-side index (schema 1.4.0); the adapter's own typed
+      // envelope crosses the unchanged client surface at exactly this site.
+      response = await this.client.submitQuery(envelope as unknown as QueryEnvelope);
+    } catch {
+      this.connection = 'DISCONNECTED';
+      return { ok: false, failure: { reason: 'DISCONNECTED' } };
+    }
+    if (response.outcome === 'REJECTED') {
+      this.recordRejections(response);
+      this.connection = 'CONNECTED';
+      return { ok: false, failure: { reason: 'REJECTED' } };
+    }
+    const verified = verifyS1JobIndexPayload(response.projection);
+    if (!verified.ok) {
+      return { ok: false, failure: { reason: 'MALFORMED_INDEX', detail: verified.detail } };
+    }
+    this.connection = 'CONNECTED';
+    return { ok: true, ...verified.value };
+  }
+
+  private async submitS1Execution(envelope: CommandEnvelope): Promise<InteractionOutcome> {
+    const response = await this.submitOrDisconnect(envelope);
+    if (response === null) {
+      // Disconnected: the retained envelope keeps the logical command alive
+      // for the idempotent re-send; nothing is fabricated locally.
+      return this.outcome(this.lastRouted());
+    }
+    if (response.outcome === 'REJECTED') {
+      // Core refused admission: surface the typed rejection verbatim and
+      // re-sync the display from the projection (no acceptance-as-success).
+      await this.refresh();
+      return this.rejectedOutcome(response);
+    }
+    await this.refresh();
+    return this.outcome(this.lastRouted());
+  }
+
   // ---- projection re-sync -------------------------------------------------
 
   /** Re-read the current aggregate's projection and rebuild the display from it. */
@@ -707,6 +900,8 @@ export class DesktopUiAdapter {
         contractEcho: null,
         snapshotEcho: null,
         projection: verified.view,
+        submittedLocatorUri: null,
+        s1Execution: null,
       });
     }
     this.connection = 'CONNECTED';
@@ -746,7 +941,7 @@ export class DesktopUiAdapter {
       this.recordRejections(response);
       return this.lastRouted();
     }
-    this.openAggregate(draft.contractId, contract.value);
+    this.openAggregate(draft.contractId, contract.value, draft.intent.targetRef);
     this.draft = null;
     await this.refresh();
     return this.lastRouted();
@@ -819,11 +1014,17 @@ export class DesktopUiAdapter {
     }
   }
 
-  private openAggregate(aggregateId: string, contractEcho: AcquisitionContract): void {
+  private openAggregate(
+    aggregateId: string,
+    contractEcho: AcquisitionContract,
+    submittedLocatorUri: string | null,
+  ): void {
     this.aggregates.set(aggregateId, {
       contractEcho,
       snapshotEcho: null,
       projection: null,
+      submittedLocatorUri,
+      s1Execution: null,
     });
     this.currentAggregateId = aggregateId;
   }
@@ -989,6 +1190,90 @@ function checkIntentShape(
     return { ok: false, message: 'authorization context must be an opaque reference string' };
   }
   return { ok: true };
+}
+
+/**
+ * Strict fail-closed verification of the raw `LIST_S1_JOB_PROJECTIONS`
+ * response payload (L2 U05 §2): closed `{items, totalCount, truncated}`
+ * shape, the 200-entry bound, integer non-negative `totalCount`, the exact
+ * latest-page cardinality `items.length === Math.min(totalCount, 200)`, the
+ * exact `truncated === totalCount > items.length` consistency, and every item
+ * verified as a projection bound to its own aggregate identity, unique across
+ * the page. Any violation is a typed degraded fact, never a best-effort
+ * partial list.
+ */
+function verifyS1JobIndexPayload(raw: unknown):
+  | {
+      readonly ok: true;
+      readonly value: { items: SeamProjectionView[]; totalCount: number; truncated: boolean };
+    }
+  | { readonly ok: false; readonly detail: string } {
+  const malformed = (detail: string) => ({ ok: false as const, detail });
+  if (!isPlainRecord(raw)) {
+    return malformed('S1 job-index payload is not an object');
+  }
+  const unknownKeys = Object.keys(raw).filter(
+    (key) => key !== 'items' && key !== 'totalCount' && key !== 'truncated',
+  );
+  if (unknownKeys.length > 0) {
+    return malformed(`unknown field on S1 job-index payload: ${unknownKeys.join(', ')}`);
+  }
+  const itemsRaw = raw['items'];
+  if (!Array.isArray(itemsRaw)) {
+    return malformed('S1 job-index items is not an array');
+  }
+  if (itemsRaw.length > S1_JOB_INDEX_MAX_ITEMS) {
+    return malformed(
+      `S1 job-index items exceeds the ${String(S1_JOB_INDEX_MAX_ITEMS)}-entry bound`,
+    );
+  }
+  const totalCount = raw['totalCount'];
+  if (typeof totalCount !== 'number' || !Number.isInteger(totalCount) || totalCount < 0) {
+    return malformed('S1 job-index totalCount is not a non-negative integer');
+  }
+  // The server contract returns exactly the latest min(totalCount, 200) rows:
+  // a shorter page is an underfilled page and can never be presented as the
+  // truthful tail of the index.
+  const expectedPageSize = Math.min(totalCount, S1_JOB_INDEX_MAX_ITEMS);
+  if (itemsRaw.length !== expectedPageSize) {
+    return malformed(
+      `S1 job-index items length ${String(itemsRaw.length)} does not equal the latest-page cardinality min(totalCount, ${String(S1_JOB_INDEX_MAX_ITEMS)}) = ${String(expectedPageSize)}`,
+    );
+  }
+  const truncated = raw['truncated'];
+  if (typeof truncated !== 'boolean') {
+    return malformed('S1 job-index truncated is not a boolean');
+  }
+  if (truncated !== totalCount > itemsRaw.length) {
+    return malformed('S1 job-index truncated does not equal (totalCount > items.length)');
+  }
+  const seen = new Set<string>();
+  const items: SeamProjectionView[] = [];
+  for (const itemRaw of itemsRaw) {
+    const contractId =
+      isPlainRecord(itemRaw) && isPlainRecord(itemRaw['contract'])
+        ? itemRaw['contract']['contractId']
+        : undefined;
+    if (typeof contractId !== 'string' || contractId.length === 0) {
+      return malformed('an S1 job-index item is missing its contract identity');
+    }
+    if (seen.has(contractId)) {
+      return malformed(`S1 job-index repeats aggregate identity '${contractId}'`);
+    }
+    const verified = verifyProjectionPayload(itemRaw, contractId);
+    if (!verified.ok) {
+      return malformed(
+        `S1 job-index item '${contractId}' failed projection verification: ${verified.reason} (${verified.detail})`,
+      );
+    }
+    seen.add(contractId);
+    items.push(verified.view);
+  }
+  return { ok: true, value: { items, totalCount, truncated } };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function renderDraftSections(draft: DraftState): readonly DisplaySection[] {
