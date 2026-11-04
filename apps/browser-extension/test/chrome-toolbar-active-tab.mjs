@@ -1221,7 +1221,11 @@ async function main() {
         // fallback to direct popup navigation / CDP / openPopup. The R5
         // foreground guard denial is recorded distinctly: it guarantees zero
         // cursor movement and zero native input were sent.
-        const guardDenied = String(error).includes('foreground_denied');
+        // The exit-6 guard marker reaches us on the failed process's captured
+        // stdout, not in the execFile error message.
+        const guardDenied =
+          String(error).includes('foreground_denied') ||
+          String(error.stdout ?? '').includes('foreground_denied');
         result.ok = false;
         result.status = 'NOT_RUN';
         result.foregroundGuard = guardDenied ? 'denied_zero_input' : 'not_applicable';
