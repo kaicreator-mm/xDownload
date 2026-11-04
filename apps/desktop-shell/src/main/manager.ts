@@ -1,49 +1,52 @@
 /**
- * T08 desktop download-manager service — the shell main process's ONE
- * download authority surface over the existing desktop adapter (frozen T08:
- * queue/result state comes from the Core projection; no local status/retry
- * truth; the renderer holds no authority at all).
+ * U05-T03 desktop download-manager service — the shell main process's ONE
+ * download authority surface over the reviewed T02 Desktop adapter and the
+ * T01 Core-owned durable S1 job index (frozen U05 scope: enumeration truth
+ * is the Core S1 index; the in-memory session registry is gone; no local
+ * status/retry truth; the renderer holds no authority at all).
  *
  * Discipline:
- * - The session job registry records ONLY which lineages THIS window added
- *   (and each add's user-chosen destination folder). It is presentation
- *   state, not truth: every row's status/progress/terminal/retry facts are
- *   re-read from the Core projection when an answer is built. A disconnected
- *   Core renders truthful "no projection available" rows — never a cached
- *   status claim.
+ * - managerRefresh reads accepted S1 jobs ONLY through the adapter's typed
+ *   LIST_S1_JOB_PROJECTIONS index query. The response is the Core's own
+ *   latest-page projection (max 200 rows) with exact totalCount/truncated
+ *   words. A refusal, a disconnect or a malformed index is a typed refusal —
+ *   NEVER an empty successful list. When truncated is true the visible rows
+ *   are not the complete history and the document says so.
  * - add flows through the adapter's canonical confirmation workflow
-   (enterIntent draft → preview → confirmScope). The preview is
-   non-authoritative; Core admission is the authority act.
- * - cancel routes as a Core control transition. Core typed refusals (e.g.
-   a lineage the v0.2 K durably owns) surface VERBATIM — never masked.
- * - retry routes only the adapter's own eligible retry domain (derived from
-   projected failed-member facts); ineligibility is a typed refusal.
- * - destination/reveal are main-process authorities: the renderer never
-   receives a filesystem API. Reveal opens the USER-CHOSEN destination
-   folder and only when a FRESH Core projection proves the job COMPLETE —
-   Core exposes no artifact filesystem path, so none is ever claimed.
+ *   (enterIntent draft → preview → confirmScope), then routes the S1
+ *   direct-acquisition command through adapter.executeS1Direct() — the real
+ *   T01 DESKTOP_UI S1 admission gate plus the T02 adapter; the T02 Mock
+ *   Transport tests are adapter-unit evidence only and are never a
+ *   substitute for this journey. Acceptance is admission only: the pending
+ *   state holds until a Core projection provides terminal truth.
+ * - reopen is a fresh index read: every row is keyed by the Core aggregate
+ *   id and its facts come from a fresh Core projection (the index replays
+ *   the durable journal per query). No contract/scope fact is fabricated
+ *   for jobs created by the CLI or another authorized surface — the adapter
+ *   holds no echo for them and none is invented.
+ * - cancel/retry remain Core control transitions: the manager attaches the
+ *   aggregate id and routes the adapter's cancel/retry; Core re-decides
+ *   every transition and typed refusals surface VERBATIM — never masked.
+ * - U05-T03 removed the destination picker, the per-download destination
+ *   field and the reveal action (with their IPC/preload channels): the
+ *   shell owns no per-download output location and never guesses a path.
  *
- * This module imports no `electron`: the native dialog/reveal authorities
- * are injected by the main entry, so the service is unit-testable against
- * the real seam server.
+ * This module imports no `electron`: the service is unit-testable against
+ * the real seam server end to end.
  */
 
-import type { SeamProjectionView } from '@xdownload/core-seam';
 import type { DesktopUiAdapter } from '@xdownload/desktop-ui';
 import {
   decodeManagerUrl,
-  projectLegacyJobRow,
+  projectS1JobRow,
   SINGLE_RESOURCE_WORKFLOW_FACTS,
   singleResourceUrlIntent,
-  type ManagerJobRow,
 } from '@xdownload/desktop-ui';
 import type {
   ManagerActionDocument,
-  ManagerDestinationDocument,
   ManagerJobListDocument,
   ManagerJobRowDocument,
   ManagerPreviewDocument,
-  ManagerRevealDocument,
   ShellCoreConnection,
   ShellRefusal,
 } from './shell-contract.ts';
@@ -60,23 +63,12 @@ export interface DesktopManagerOptions {
    * exists (the adapter's own state wins whenever it does).
    */
   readonly getConnectionWhenUnconfigured: () => ShellCoreConnection;
-  /** Main-process authority: open the native directory picker. */
-  readonly pickDestination: () => Promise<string | null>;
-  /** Main-process authority: reveal a folder in the platform file manager. */
-  readonly revealFolder: (path: string) => boolean;
-}
-
-/** The internal session record of one add (presentation state, not truth). */
-interface SessionJob {
-  readonly lineageId: string;
-  readonly destination: string | null;
 }
 
 /** The pending, unconfirmed preview (draft interaction state). */
 interface PendingPreview {
   readonly lineageId: string;
   readonly url: string;
-  readonly destination: string | null;
 }
 
 function refusal(detail: string): ShellRefusal {
@@ -92,10 +84,9 @@ const MANAGER_AUTOMATION_MODE = 'ASSISTED';
 
 export class DesktopManager {
   private readonly options: DesktopManagerOptions;
-  private readonly jobs = new Map<string, SessionJob>();
   private pending: PendingPreview | null = null;
   private operationTail: Promise<void> = Promise.resolve();
-  private listInFlight: Promise<ManagerJobListDocument> | null = null;
+  private listInFlight: Promise<ManagerJobListDocument | ShellRefusal> | null = null;
 
   constructor(options: DesktopManagerOptions) {
     this.options = options;
@@ -108,20 +99,15 @@ export class DesktopManager {
     return this.pending !== null;
   }
 
-  /** Number of lineages this window added this session. */
-  trackedJobCount(): number {
-    return this.jobs.size;
-  }
-
   // ---- add flow ------------------------------------------------------------
 
   /**
    * Build the non-authoritative add preview for one URL. No command routes:
-   * the draft lives in the adapter until the user confirms.
+   * the draft lives in the adapter until the user confirms. U05-T03: the
+   * preview carries no destination — the shell owns no output location.
    */
   async previewAdd(payload: {
     readonly url: string;
-    readonly destination?: string;
   }): Promise<ManagerPreviewDocument | ShellRefusal> {
     return this.runSerialized(async () => {
       const adapter = this.options.getAdapter();
@@ -153,13 +139,11 @@ export class DesktopManager {
       this.pending = {
         lineageId: draft.contractId,
         url: draft.targetRef,
-        destination: payload.destination ?? null,
       };
       return {
         document: 'xdownload.desktop.manager.preview',
         lineageId: draft.contractId,
         url: draft.targetRef,
-        destination: payload.destination ?? null,
         automationMode: draft.automationMode,
         confirmationRequests: draft.requests.map((request) => ({
           level: request.level,
@@ -171,9 +155,19 @@ export class DesktopManager {
   }
 
   /**
-   * Confirm the pending preview: route the confirmed contract to the Core.
-   * Acceptance is an admission receipt, never final success — the truthful
-   * outcome lands in the job projection the list reads.
+   * Confirm the pending preview: submit the confirmed contract through the
+   * adapter's canonical confirmation, then route the S1 direct-acquisition
+   * command via the reviewed Desktop adapter (the real Core DESKTOP_UI S1
+   * admission). Both routings are admission receipts, never final success —
+   * the truthful outcome lands in the Core projection the list reads.
+   *
+   * R3-01: the adapter's `InteractionOutcome.routed` is CUMULATIVE over its
+   * full sent-envelope history, not a per-call delta. Each step therefore
+   * snapshots the history length and attributes ONLY newly appended commands
+   * whose commandType AND aggregateId bind to the current pending lineage. A
+   * rejected second confirmation after a prior successful add must never
+   * execute S1 against the previous aggregate, claim the new lineage was
+   * routed, or clear the current pending preview.
    */
   async confirmAdd(): Promise<ManagerActionDocument | ShellRefusal> {
     return this.runSerialized(async () => {
@@ -185,16 +179,40 @@ export class DesktopManager {
       if (adapter === undefined) {
         return refusal('no Core connection is configured; the preview cannot be confirmed');
       }
-      const outcome = await adapter.confirmScope();
-      const routed = outcome.routed.length > 0;
-      if (routed) {
-        this.jobs.set(pending.lineageId, {
-          lineageId: pending.lineageId,
-          destination: pending.destination,
+      const historyBeforeConfirm = adapter.sentCommandEnvelopes().length;
+      const confirmOutcome = await adapter.confirmScope();
+      const confirmCommands = adapter.sentCommandEnvelopes().slice(historyBeforeConfirm);
+      const confirmBound = confirmCommands.some(
+        (envelope) =>
+          envelope.commandType === 'SUBMIT_CONTRACT' && envelope.aggregateId === pending.lineageId,
+      );
+      if (!confirmBound) {
+        // The current contract was NOT submitted. Keep the pending preview,
+        // route nothing further, and surface the current rejection/refusal
+        // verbatim — an old aggregate's command history is never attributed
+        // to this lineage.
+        return this.actionDocument('add', pending.lineageId, false, {
+          rejections: confirmOutcome.rejections,
+          refusals: confirmOutcome.refusals,
         });
-        this.pending = null;
       }
-      return this.actionDocument('add', pending.lineageId, routed, outcome);
+      // The confirmed contract is held (with its fresh projection and the
+      // submitted locator) by the adapter — route the S1 execution with the
+      // exact identity the adapter derived. A repeat/disconnect path re-sends
+      // the identical envelope through seam idempotency.
+      const historyBeforeS1 = adapter.sentCommandEnvelopes().length;
+      const s1Outcome = await adapter.executeS1Direct();
+      const s1Commands = adapter.sentCommandEnvelopes().slice(historyBeforeS1);
+      const s1Bound = s1Commands.some(
+        (envelope) =>
+          envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' &&
+          envelope.aggregateId === pending.lineageId,
+      );
+      this.pending = null;
+      return this.actionDocument('add', pending.lineageId, s1Bound, {
+        rejections: [...confirmOutcome.rejections, ...s1Outcome.rejections],
+        refusals: s1Outcome.refusals,
+      });
     });
   }
 
@@ -223,14 +241,15 @@ export class DesktopManager {
     });
   }
 
-  // ---- job list ------------------------------------------------------------
+  // ---- job list (the Core durable S1 index is the ONLY enumeration) --------
 
   /**
-   * Re-read EVERY tracked lineage's Core projection and build the list
-   * document. This is the ONLY status source of the manager: rows whose
-   * read fails render the truthful absent state (never a cached claim).
+   * Read the Core-owned durable S1 job index through the adapter and build
+   * the list document with the Core's own totalCount/truncated words. A
+   * refused, disconnected or malformed index answers with a typed refusal —
+   * never an empty successful list (L2 U05 §2/§5).
    */
-  list(): Promise<ManagerJobListDocument> {
+  list(): Promise<ManagerJobListDocument | ShellRefusal> {
     if (this.listInFlight !== null) {
       return this.listInFlight;
     }
@@ -245,118 +264,76 @@ export class DesktopManager {
     return inFlight;
   }
 
-  private async listUnlocked(): Promise<ManagerJobListDocument> {
+  private async listUnlocked(): Promise<ManagerJobListDocument | ShellRefusal> {
     const adapter = this.options.getAdapter();
-    const rows: ManagerJobRowDocument[] = [];
-    let connection: ShellCoreConnection = 'CONNECTED';
     if (adapter === undefined) {
-      connection = this.options.getConnectionWhenUnconfigured();
-      for (const job of this.jobs.values()) {
-        rows.push(this.rowDocument(job, null));
-      }
-    } else {
-      for (const job of this.jobs.values()) {
-        const outcome = await adapter.attachAggregate(job.lineageId);
-        const view = adapter.currentProjectionView();
-        // Only a read that Core answered CONNECTED may render. A failed read
-        // (disconnected/refused/stale) renders the truthful absent row — the
-        // adapter may still hold the last successful projection internally,
-        // and presenting it would be a cached status claim.
-        const readFresh = view !== null && outcome.display.connection === 'CONNECTED';
-        if (!readFresh) {
-          connection = outcome.display.connection;
-        }
-        rows.push(this.rowDocument(job, readFresh ? view : null));
+      // R3-02: no adapter means NO Core index read occurred — a successful
+      // empty list with a fabricated totalCount=0 would claim an authority
+      // that does not exist. Fail closed with the shell connection word.
+      const connection = this.options.getConnectionWhenUnconfigured();
+      return refusal(
+        `no Core connection is configured (${connection}); the durable S1 job index cannot be read`,
+      );
+    }
+    const index = await adapter.listS1JobProjections();
+    if (!index.ok) {
+      switch (index.failure.reason) {
+        case 'DISCONNECTED':
+          return refusal(
+            'the Core is disconnected; the durable S1 job index could not be read (no empty list is rendered)',
+          );
+        case 'REJECTED':
+          return refusal(
+            'the Core rejected the S1 job index query (the DESKTOP_UI peer scope was refused)',
+          );
+        case 'MALFORMED_INDEX':
+          return refusal(`the Core returned a malformed S1 job index: ${index.failure.detail}`);
       }
     }
+    // The adapter verified every index item before rows are built: each row
+    // is a verbatim Core projection keyed by its aggregate id. Reopen is the
+    // same fresh read — the index replays the durable journal per query.
+    const rows: ManagerJobRowDocument[] = index.items.map((view) => {
+      const row = projectS1JobRow(view);
+      return {
+        lineageId: row.lineageId,
+        lane: row.lane,
+        contractStatus: row.contractStatus,
+        revision: row.revision,
+        lineageStatus: row.lineageStatus,
+        terminal: row.terminal === null ? null : { ...row.terminal },
+        retry: { ...row.retry },
+      };
+    });
     return {
       ok: true,
       document: 'xdownload.desktop.manager.jobs',
-      connection,
+      connection: 'CONNECTED',
       jobs: rows,
-      pendingPreview:
-        this.pending === null
-          ? null
-          : {
-              document: 'xdownload.desktop.manager.preview',
-              lineageId: this.pending.lineageId,
-              url: this.pending.url,
-              destination: this.pending.destination,
-              automationMode: MANAGER_AUTOMATION_MODE,
-              confirmationRequests: this.draftRequests(adapter),
-            },
+      totalCount: index.totalCount,
+      truncated: index.truncated,
+      pendingPreview: this.pendingDocument(adapter),
     };
   }
 
   // ---- control transitions ---------------------------------------------------
 
-  /** Route a Core cancellation for one tracked lineage. */
+  /**
+   * Route a Core cancellation for one listed lineage. The aggregate id comes
+   * from the durable index rows the renderer displays; Core re-decides the
+   * transition and typed refusals surface verbatim.
+   */
   async cancelJob(payload: {
     readonly lineageId: string;
   }): Promise<ManagerActionDocument | ShellRefusal> {
     return this.routeControl('cancel', payload.lineageId);
   }
 
-  /** Route an eligible Core retry for one tracked lineage. */
+  /** Route an eligible Core retry for one listed lineage. */
   async retryJob(payload: {
     readonly lineageId: string;
   }): Promise<ManagerActionDocument | ShellRefusal> {
     return this.routeControl('retry', payload.lineageId);
-  }
-
-  // ---- destination / reveal --------------------------------------------------
-
-  /** Open the native directory picker (main-process authority). */
-  async chooseDestination(): Promise<ManagerDestinationDocument | ShellRefusal> {
-    const destination = await this.options.pickDestination();
-    return {
-      ok: true,
-      document: 'xdownload.desktop.manager.destination',
-      destination,
-    };
-  }
-
-  /**
-   * Reveal a completed job's destination folder. The gate re-reads a FRESH
-   * Core projection: only a COMPLETE fulfilled job reveals, and only the
-   * user-chosen folder (the Core projection exposes no artifact path, so
-   * none is ever claimed or derived).
-   */
-  async revealJob(payload: {
-    readonly lineageId: string;
-  }): Promise<ManagerRevealDocument | ShellRefusal> {
-    return this.runSerialized(async () => {
-      const job = this.jobs.get(payload.lineageId);
-      if (job === undefined) {
-        return refusal(`unknown lineage '${payload.lineageId}'`);
-      }
-      if (job.destination === null) {
-        return refusal('this job has no destination folder to reveal');
-      }
-      const adapter = this.options.getAdapter();
-      if (adapter === undefined) {
-        return refusal('no Core connection is configured; completion cannot be verified');
-      }
-      await adapter.attachAggregate(job.lineageId);
-      const view = adapter.currentProjectionView();
-      if (
-        view === null ||
-        view.terminal === undefined ||
-        view.terminal.requestFulfillment !== 'COMPLETE'
-      ) {
-        return refusal('the Core projection does not show this job as completed');
-      }
-      if (!this.options.revealFolder(job.destination)) {
-        return refusal('the destination folder could not be revealed');
-      }
-      return {
-        ok: true,
-        document: 'xdownload.desktop.manager.reveal',
-        lineageId: job.lineageId,
-        revealed: 'destination-folder',
-        destination: job.destination,
-      };
-    });
   }
 
   // ---- internals ---------------------------------------------------------------
@@ -375,18 +352,32 @@ export class DesktopManager {
     lineageId: string,
   ): Promise<ManagerActionDocument | ShellRefusal> {
     return this.runSerialized(async () => {
-      if (!this.jobs.has(lineageId)) {
-        return refusal(`unknown lineage '${lineageId}'`);
-      }
       const adapter = this.options.getAdapter();
       if (adapter === undefined) {
         return refusal('no Core connection is configured; the action cannot be routed');
       }
+      // Attach the aggregate id first: the adapter re-reads the fresh Core
+      // projection (READ_PROJECTION) and refuses the control when no live
+      // projection is held — never acting on stale or fabricated facts.
       await adapter.attachAggregate(lineageId);
       const outcome = action === 'cancel' ? await adapter.cancel() : await adapter.retryFailed();
       const routed = outcome.routed.length > 0;
       return this.actionDocument(action, lineageId, routed, outcome);
     });
+  }
+
+  private pendingDocument(adapter: DesktopUiAdapter | null): ManagerPreviewDocument | null {
+    const pending = this.pending;
+    if (pending === null) {
+      return null;
+    }
+    return {
+      document: 'xdownload.desktop.manager.preview',
+      lineageId: pending.lineageId,
+      url: pending.url,
+      automationMode: MANAGER_AUTOMATION_MODE,
+      confirmationRequests: this.draftRequests(adapter ?? undefined),
+    };
   }
 
   private async actionDocument(
@@ -426,27 +417,5 @@ export class DesktopManager {
       description: request.description,
       proves: request.proves,
     }));
-  }
-
-  private rowDocument(job: SessionJob, view: SeamProjectionView | null): ManagerJobRowDocument {
-    const row: ManagerJobRow = projectLegacyJobRow({
-      lineageId: job.lineageId,
-      view,
-      destination: job.destination,
-    });
-    return {
-      lineageId: row.lineageId,
-      lane: row.lane,
-      present: row.present,
-      contractStatus: row.contractStatus,
-      revision: row.revision,
-      lineageStatus: row.lineageStatus,
-      selectedMemberCount: row.selectedMemberCount,
-      failedMemberCount: row.failedMemberCount,
-      retriedMemberIds: [...row.retriedMemberIds],
-      terminal: row.terminal === null ? null : { ...row.terminal },
-      retry: { ...row.retry },
-      destination: row.destination,
-    };
   }
 }

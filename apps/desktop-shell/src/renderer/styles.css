@@ -475,6 +475,18 @@ tbody tr:hover {
   background: #fff1f0;
   color: #a53c3a;
 }
+.truncation-banner {
+  margin: 0;
+  padding: 0 22px;
+  font-size: 12px;
+}
+.truncation-banner:not(:empty) {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background: #fff8e6;
+  color: #8a6d1a;
+  border-left: 3px solid #e0b84f;
+}
 .drawer-backdrop,
 .preview-backdrop {
   position: fixed;
@@ -809,6 +821,11 @@ tbody tr:hover {
   .notice[data-kind='error']:not(:empty) {
     background: #4a3036;
     color: #ffd4cf;
+  }
+  .truncation-banner:not(:empty) {
+    background: #3d3521;
+    color: #ecd28f;
+    border-left-color: #a8873a;
   }
 }
 @media (prefers-reduced-motion: reduce) {

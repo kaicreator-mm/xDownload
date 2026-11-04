@@ -38,7 +38,7 @@
           </button>
         </nav>
         <div class="sidebar-footer">
-          <span class="scope-note">仅展示本窗口会话已添加的任务</span>
+          <span class="scope-note">展示 Core 持久记录的 S1 任务历史（跨窗口、跨入口）</span>
           <p>任务状态以 Core 返回为准</p>
         </div>
       </aside>
@@ -56,9 +56,9 @@
             </button>
           </div>
         </header>
-        <section class="overview" aria-label="本次会话统计">
+        <section class="overview" aria-label="Core 任务统计">
           <div class="overview-cell">
-            <span>会话任务</span><strong id="summary-all">0</strong><small>仅当前窗口</small>
+            <span>Core 任务</span><strong id="summary-all">0</strong><small>当前列表页可见</small>
           </div>
           <div class="overview-cell">
             <span>未结束</span><strong id="summary-active">0</strong
@@ -76,7 +76,7 @@
               <p>管理已提交的任务及结果</p>
             </div>
             <label class="search-control"
-              ><span class="sr-only">搜索会话任务</span><span aria-hidden="true">⌕</span
+              ><span class="sr-only">搜索任务</span><span aria-hidden="true">⌕</span
               ><input
                 id="job-search"
                 type="search"
@@ -85,6 +85,13 @@
             /></label>
           </div>
           <p id="notice" class="notice" role="status" aria-live="polite"></p>
+          <p
+            id="truncation-notice"
+            class="truncation-banner"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></p>
           <div id="empty-state" class="empty-state" hidden>
             <span class="empty-illustration" aria-hidden="true">↓</span>
             <h3>这里还没有任务</h3>
@@ -98,14 +105,14 @@
           <div class="table-scroll">
             <table id="jobs-table" hidden>
               <caption class="sr-only">
-                Core 实时任务投影（仅本次窗口会话任务）
+                Core 持久 S1 任务索引投影（跨窗口、跨入口；截断时并非完整历史）
               </caption>
               <thead>
                 <tr>
                   <th scope="col">链接来源</th>
                   <th scope="col">状态</th>
                   <th scope="col">进度 / 结果</th>
-                  <th scope="col">输出位置</th>
+                  <th scope="col">保存位置</th>
                   <th scope="col">操作</th>
                 </tr>
               </thead>
@@ -114,7 +121,8 @@
           </div>
         </section>
         <p class="bottom-notice">
-          显示的任务和进度必须经过 Core 验证；无权威字节数据时不估算速度、百分比或剩余时间。
+          显示的任务和进度必须经过 Core
+          验证；无权威字节数据时不估算速度、百分比或剩余时间。保存位置由 Core 配置管理。
         </p>
       </main>
       <aside id="job-details" class="detail-panel" aria-labelledby="details-title" hidden>
@@ -133,8 +141,8 @@
           <p id="details-progress">—</p>
         </div>
         <div class="detail-block">
-          <span>输出位置</span>
-          <p id="details-destination">—</p>
+          <span>保存位置</span>
+          <p id="details-destination">保存位置由 Core 配置管理</p>
         </div>
         <details class="technical-info">
           <summary>技术详情</summary>
@@ -160,8 +168,8 @@
             </button>
           </div>
           <p class="form-hint">
-            输入链接并预览 Core 确认范围后提交。输出位置由 Core
-            安装配置管理；当前不支持按任务自定义目录。
+            输入链接并预览 Core 确认范围后提交。保存位置由 Core
+            配置管理，桌面入口不提供按任务选择或修改输出目录。
           </p>
           <form id="add-form">
             <div id="form-fields" class="field-stack"></div>
@@ -192,8 +200,8 @@
           <h2 id="preview-title">确认任务范围</h2>
           <p>下载目标</p>
           <strong id="preview-url" class="value-break">—</strong>
-          <p>Core 输出位置</p>
-          <strong id="preview-destination" class="value-break">—</strong>
+          <p>保存位置</p>
+          <strong id="preview-destination" class="value-break">保存位置由 Core 配置管理</strong>
           <h3>Core 要求确认的事项</h3>
           <ul id="preview-requests"></ul>
           <p class="form-hint">确认表示同意所展示的范围，实际结果仍由 Core 判定。</p>

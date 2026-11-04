@@ -1,5 +1,5 @@
 /**
- * T07/T08 desktop-shell process entry — a thin Electron main process over
+ * T07/U05-T03 desktop-shell process entry — a thin Electron main process over
  * the existing Core lifecycle/seam and the existing desktop adapter semantics.
  *
  * - `app.enableSandbox()` hardens every renderer process of this app.
@@ -9,16 +9,17 @@
  *   per-window factory hardening).
  * - The ONE Core connection is the seam CLIENT composed over the existing
  *   desktop adapter (DESKTOP_UI peer) — never a private Core/Kernel.
- * - The T08 download manager composes over the same adapter: the renderer
- *   reaches it ONLY through the closed IPC registry; the native destination
- *   dialog and the reveal authority stay main-process-side.
+ * - The U05-T03 download manager composes over the same adapter: the renderer
+ *   reaches it ONLY through the closed IPC registry. The shell owns NO
+ *   per-download destination authority anymore — the destination picker and
+ *   the reveal action were removed with their channels; the page renders
+ *   only "保存位置由 Core 配置管理".
  * - `--xdownload-smoke=<out.json>` runs the minimal non-installed shell
  *   smoke: hidden window, in-renderer bridge/CSP/isolation probes, a JSON
  *   verdict on stdout and at the given path, then a deterministic exit.
  */
 
-import { app, BrowserWindow, dialog, shell } from 'electron';
-import { existsSync } from 'node:fs';
+import { app, BrowserWindow } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CoreConnection } from './core-connection.ts';
@@ -94,21 +95,13 @@ async function ready(): Promise<void> {
   // One truthful seam round-trip before any window is shown.
   await connection.probeOnce();
   const window = createShellWindow({ assetPath, preloadPath, show: smoke === undefined });
-  // T08: the download manager composes over the SAME adapter. The renderer
-  // never touches it directly — every capability crosses the closed registry
-  // below; the native authorities (directory picker, folder reveal) stay in
-  // this process.
+  // U05-T03: the download manager composes over the SAME adapter. The
+  // renderer never touches it directly — every capability crosses the closed
+  // registry below. The shell owns no destination/reveal authority: output
+  // location is Core configuration, rendered as a fixed label in the page.
   const manager = new DesktopManager({
     getAdapter: () => connection.adapterOrNull(),
     getConnectionWhenUnconfigured: () => connection.connectionState(),
-    pickDestination: () => pickDestinationDirectory(window),
-    revealFolder: (path) => {
-      if (!existsSync(path)) {
-        return false;
-      }
-      shell.showItemInFolder(path);
-      return true;
-    },
   });
   // Registered in the same tick as window creation: the page cannot call the
   // bridge before did-finish-load, and the admitted sender is exactly this
@@ -127,18 +120,6 @@ async function ready(): Promise<void> {
       void runSmoke(window, connection, smoke);
     }
   });
-}
-
-/** The main-process destination authority: one native directory pick. */
-async function pickDestinationDirectory(parent: BrowserWindow): Promise<string | null> {
-  const result = await dialog.showOpenDialog(parent, {
-    title: 'Choose download destination',
-    properties: ['openDirectory', 'createDirectory'],
-  });
-  if (result.canceled || result.filePaths.length === 0) {
-    return null;
-  }
-  return result.filePaths[0] ?? null;
 }
 
 async function runSmoke(

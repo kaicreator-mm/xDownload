@@ -73,7 +73,7 @@ describe('UI R0 renderer containment and user navigation', () => {
     }
     expect(html).toContain("default-src 'none'");
     expect(html).toContain('aria-modal="true"');
-    expect(renderer).toContain('暂无可靠字节进度');
+    expect(renderer).toContain('尚无权威字节进度');
     expect(renderer).not.toContain('innerHTML');
   });
   it('describes only the fields that the task search actually indexes', () => {
@@ -116,8 +116,8 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).not.toContain('runReveal');
     expect(renderer).not.toContain('managerRevealJob');
     expect(renderer).not.toContain('managerChooseDestination');
-    expect(renderer).toContain('由 Core 配置管理（实际路径尚未提供）');
-    expect(html).toContain('当前不支持按任务自定义目录');
+    expect(renderer).toContain('保存位置由 Core 配置管理');
+    expect(html).toContain('桌面入口不提供按任务选择或修改输出目录');
     expect(html).not.toContain('打开目录');
   });
 
@@ -226,6 +226,7 @@ const RENDERER_IDS = [
   'app',
   'bridge-missing',
   'notice',
+  'truncation-notice',
   'connection-line',
   'add-dialog',
   'add-submit',
@@ -300,17 +301,12 @@ function installFakeDom(bridge: unknown): BootedRenderer {
 function presentRow(overrides: Partial<ManagerJobRowDocument> = {}): ManagerJobRowDocument {
   return {
     lineageId: 'contract-desktop-u03-000001',
-    lane: 'legacy',
-    present: true,
+    lane: 's1',
     contractStatus: 'CONFIRMED',
     revision: 3,
     lineageStatus: 'ACTIVE',
-    selectedMemberCount: 1,
-    failedMemberCount: 0,
-    retriedMemberIds: [],
     terminal: null,
     retry: { available: false, reason: 'NO_FAILED_MEMBERS' },
-    destination: null,
     ...overrides,
   };
 }
@@ -339,6 +335,8 @@ async function bootRenderer(rows: readonly ManagerJobRowDocument[]): Promise<Boo
       document: 'xdownload.desktop.manager.jobs' as const,
       connection: 'CONNECTED' as const,
       jobs: rows,
+      totalCount: rows.length,
+      truncated: false,
       pendingPreview: null,
     })),
   };
@@ -427,7 +425,6 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
     const row = presentRow({
       lineageId: 'contract-desktop-u03-collection-vc',
       lineageStatus: 'TERMINAL',
-      selectedMemberCount: 3,
       terminal: terminalResult({
         coverage: 'VERIFIED_COMPLETE',
         validationSummary: { status: 'ALL_PASSED', passedCount: 3, failedCount: 0 },
@@ -493,7 +490,7 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
     expect(renderedRows(dom)).toHaveLength(3);
   });
 
-  it('CANCELLED-UNKNOWN-01: cancelled, missing-terminal, stale and selected-only rows stay non-complete', async () => {
+  it('CANCELLED-UNKNOWN-01: cancelled, missing-terminal, unrecognized-status and retry-available rows stay non-complete', async () => {
     const rows = [
       presentRow({
         lineageId: 'contract-desktop-u03-cancelled',
@@ -504,20 +501,17 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
         lineageStatus: 'TERMINAL',
         terminal: null,
       }),
+      // An unrecognized Core status word renders as "状态待核实" — the S1
+      // index rows are verified projections, so there is no absent-row form.
       presentRow({
-        lineageId: 'contract-desktop-u03-stale',
-        present: false,
-        contractStatus: null,
-        revision: null,
-        lineageStatus: null,
-        selectedMemberCount: null,
-        failedMemberCount: null,
+        lineageId: 'contract-desktop-u03-unrecognized',
+        lineageStatus: 'UNRECOGNIZED_WORD',
       }),
-      // selectedMemberCount alone never proves completion
+      // Retry availability alone never proves completion.
       presentRow({
-        lineageId: 'contract-desktop-u03-selected-only',
+        lineageId: 'contract-desktop-u03-retry-available',
         lineageStatus: 'ACTIVE',
-        selectedMemberCount: 7,
+        retry: { available: true, reason: null },
       }),
     ];
     const { dom, nav } = await bootRenderer(rows);
@@ -529,7 +523,7 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
 
     // Rows render in projection order.
     const labels = renderedRows(dom).map((row) => statusTagOf(row).textContent);
-    expect(labels).toEqual(['已取消', '已结束 · 终态明细缺失', '状态未知', '已提交 · 未结束']);
+    expect(labels).toEqual(['已取消', '已结束 · 终态明细缺失', '状态待核实', '已提交 · 未结束']);
 
     applyFilter(nav, 'complete');
     expect(renderedRows(dom)).toHaveLength(0);
@@ -545,7 +539,6 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
       presentRow({
         lineageId: 'contract-desktop-u03-mix-vc-complete',
         lineageStatus: 'TERMINAL',
-        selectedMemberCount: 2,
         terminal: terminalResult({
           coverage: 'VERIFIED_COMPLETE',
           validationSummary: { status: 'ALL_PASSED', passedCount: 2, failedCount: 0 },
@@ -585,5 +578,76 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
 
     applyFilter(nav, 'all');
     expect(renderedRows(dom)).toHaveLength(4);
+  });
+});
+
+describe('UI R0 R3 unconfigured/empty/refusal rendering regression (#353)', () => {
+  async function bootWithAnswer(answer: unknown): Promise<ReadonlyMap<string, FakeElement>> {
+    vi.resetModules();
+    const bridge = { managerRefresh: vi.fn(async () => answer) };
+    const booted = installFakeDom(bridge);
+    await import('../src/renderer/renderer-main.ts');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return booted.dom;
+  }
+
+  it('first-load refusal hides the empty-state and shows the disconnected/error state', async () => {
+    const dom = await bootWithAnswer({
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail:
+        'no Core connection is configured (UNCONFIGURED); the durable S1 job index cannot be read',
+    });
+    // Never "no tasks here" without a successful CONNECTED Core index read.
+    expect(dom.get('empty-state')?.hidden).toBe(true);
+    expect(dom.get('jobs-table')?.hidden).toBe(true);
+    expect(dom.get('notice')?.textContent).toContain('刷新失败');
+    expect(dom.get('connection-line')?.textContent).toContain('未连接');
+  });
+
+  it('a connected zero-row Core index shows the true empty-state', async () => {
+    const dom = await bootWithAnswer({
+      ok: true,
+      document: 'xdownload.desktop.manager.jobs',
+      connection: 'CONNECTED',
+      jobs: [],
+      totalCount: 0,
+      truncated: false,
+      pendingPreview: null,
+    });
+    expect(dom.get('empty-state')?.hidden).toBe(false);
+    expect(dom.get('connection-line')?.textContent).toBe('Core 已连接');
+  });
+
+  it('a later refusal after a successful list keeps the truthful rows and reports the refusal', async () => {
+    let answer: unknown = {
+      ok: true,
+      document: 'xdownload.desktop.manager.jobs',
+      connection: 'CONNECTED',
+      jobs: [presentRow({ lineageId: 'contract-desktop-r3-000001' })],
+      totalCount: 1,
+      truncated: false,
+      pendingPreview: null,
+    };
+    vi.resetModules();
+    const bridge = { managerRefresh: vi.fn(async () => answer) };
+    const { dom } = installFakeDom(bridge);
+    await import('../src/renderer/renderer-main.ts');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(renderedRows(dom)).toHaveLength(1);
+
+    answer = {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail:
+        'the Core is disconnected; the durable S1 job index could not be read (no empty list is rendered)',
+    };
+    // The row-title click re-reads the Core (reopen semantics): the refused
+    // refresh must keep the last truthful rows and surface the refusal.
+    click(childAt(childAt(onlyRow(dom), 0), 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(renderedRows(dom)).toHaveLength(1);
+    expect(dom.get('notice')?.textContent).toContain('刷新失败');
+    expect(dom.get('notice')?.textContent).toContain('disconnected');
   });
 });
