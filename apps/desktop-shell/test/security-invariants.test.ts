@@ -118,7 +118,7 @@ describe('app-level navigation/window guards (main entry)', () => {
 describe('narrow typed preload (the only renderer bridge)', () => {
   const preloadSource = readSource('src/preload/preload.ts');
 
-  /** The frozen T08 bridge surface — the exact set, pinned here. */
+  /** The frozen U05-T03 bridge surface — the exact set, pinned here. */
   const ALLOWLISTED_METHODS = [
     'status',
     'managerRefresh',
@@ -127,8 +127,6 @@ describe('narrow typed preload (the only renderer bridge)', () => {
     'managerDiscardPreview',
     'managerCancelJob',
     'managerRetryJob',
-    'managerChooseDestination',
-    'managerRevealJob',
   ] as const;
 
   it('exposes exactly one frozen bridge under the contract key', () => {
@@ -184,7 +182,7 @@ describe('validated IPC sender/payload (closed channel registry)', () => {
     const channelKeys = [...contractSource.matchAll(/(\w+): 'xdownload:[\w-]+'/g)].map(
       (match) => match[1] ?? '',
     );
-    expect(channelKeys.length).toBe(9);
+    expect(channelKeys.length).toBe(7);
     for (const key of channelKeys) {
       expect(ipcSource.split(`SHELL_IPC_CHANNELS.${key}`).length - 1).toBe(1);
     }
@@ -318,28 +316,75 @@ describe('T08 download-manager renderer (the served page)', () => {
   });
 });
 
-describe('T08 main-process authorities (destination dialog and reveal)', () => {
+describe('U05-T03 main-process authority (NO destination picker, NO reveal)', () => {
   const mainSource = readSource('src/main/main.ts');
   const managerSource = readSource('src/main/manager.ts');
+  const contractSource = readSource('src/main/shell-contract.ts');
 
-  it('keeps the directory picker and the reveal authority in the main process', () => {
-    expect(mainSource).toContain('dialog.showOpenDialog');
-    expect(mainSource).toContain('shell.showItemInFolder');
-    // The renderer receives documents only — no fs/shell API crosses the bridge.
-    const contractSource = readSource('src/main/shell-contract.ts');
+  it('the destination picker and the reveal authority are gone from the main process', () => {
+    expect(mainSource).not.toContain('dialog.showOpenDialog');
+    expect(mainSource).not.toContain('shell.showItemInFolder');
+    expect(mainSource).not.toContain('openDirectory');
+    expect(mainSource).not.toContain('pickDestination');
+    expect(mainSource).not.toContain('revealFolder');
+    expect(managerSource).not.toContain('pickDestination');
+    expect(managerSource).not.toContain('revealFolder');
+    expect(managerSource).not.toContain('revealJob');
+    expect(managerSource).not.toContain('chooseDestination');
+  });
+
+  it('the destination/reveal channels and documents are absent from the contract', () => {
+    expect(contractSource).not.toContain('managerChooseDestination');
+    expect(contractSource).not.toContain('managerRevealJob');
+    expect(contractSource).not.toContain('ManagerDestinationDocument');
+    expect(contractSource).not.toContain('ManagerRevealDocument');
+    expect(contractSource).not.toContain('destination');
     expect(contractSource).not.toContain('showItemInFolder');
     expect(contractSource).not.toContain('showOpenDialog');
   });
 
-  it('gates reveal on a FRESH Core projection proving COMPLETE', () => {
-    expect(managerSource).toContain("view.terminal.requestFulfillment !== 'COMPLETE'");
-    expect(managerSource).toContain('await adapter.attachAggregate(job.lineageId)');
-    expect(managerSource).toContain('the Core projection does not show this job as completed');
+  it('the shell carries no per-download destination field or state at all', () => {
+    // No destination field/interface/variable survives in the manager (the
+    // word may appear only in removal-discipline comments).
+    expect(managerSource).not.toContain('readonly destination');
+    expect(managerSource).not.toContain('destination:');
+    expect(managerSource).not.toContain('SessionJob');
+    // The only lawful output-location phrase is the fixed renderer label.
+    const rendererSources = sourceFilesUnder('src/renderer')
+      .filter((file) => file.endsWith('.ts'))
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n');
+    expect(rendererSources).toContain('保存位置由 Core 配置管理');
+  });
+});
+
+describe('U05-T03 manager enumeration authority (the Core durable S1 index)', () => {
+  const managerSource = readSource('src/main/manager.ts');
+  const contractSource = readSource('src/main/shell-contract.ts');
+  const html = readSource('src/renderer/index.html');
+
+  it('enumerates ONLY through the adapter LIST_S1_JOB_PROJECTIONS index query', () => {
+    expect(managerSource).toContain('listS1JobProjections');
+    expect(managerSource).toContain('projectS1JobRow');
+    // The removed session Map is not the enumeration authority anymore.
+    expect(managerSource).not.toContain('new Map<string');
   });
 
-  it('records destination as session presentation state, never a Core payload field', () => {
-    expect(managerSource).toContain('presentation');
-    expect(managerSource).toContain('state, not truth');
+  it('serves exact totalCount/truncated words and never an empty fake list', () => {
+    expect(contractSource).toContain('totalCount');
+    expect(contractSource).toContain('truncated');
+    expect(managerSource).toContain('MALFORMED_INDEX');
+    expect(managerSource).toContain('no empty list is rendered');
+  });
+
+  it('the S1 confirmation routes through the reviewed adapter executeS1Direct', () => {
+    expect(managerSource).toContain('executeS1Direct');
+    expect(managerSource).toContain('confirmScope');
+  });
+
+  it('the renderer has a first-class visible truncation notice element', () => {
+    expect(html).toContain('id="truncation-notice"');
+    expect(html).toContain('aria-live="polite"');
   });
 });
 

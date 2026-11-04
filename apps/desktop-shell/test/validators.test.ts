@@ -135,20 +135,25 @@ describe('canonicalPipeName', () => {
 });
 
 describe('decodePreviewAddPayload', () => {
-  it('accepts exactly { url } and { url, destination }', () => {
+  it('accepts exactly { url }', () => {
     const bare = decodePreviewAddPayload({ url: 'https://example.com/a.mp4' });
     expect(bare.ok).toBe(true);
     if (bare.ok) {
       expect(bare.value.url).toBe('https://example.com/a.mp4');
-      expect(bare.value.destination).toBeUndefined();
     }
+    const http = decodePreviewAddPayload({ url: 'http://127.0.0.1:8000/x' });
+    expect(http.ok).toBe(true);
+  });
+
+  it('refuses the removed destination field like any unknown field', () => {
     const withDestination = decodePreviewAddPayload({
-      url: 'http://127.0.0.1:8000/x',
+      url: 'https://example.com/a.mp4',
       destination: 'C:/downloads',
     });
-    expect(withDestination.ok).toBe(true);
-    if (withDestination.ok) {
-      expect(withDestination.value.destination).toBe('C:/downloads');
+    expect(withDestination.ok).toBe(false);
+    if (!withDestination.ok) {
+      expect(withDestination.code).toBe('PAYLOAD_REJECTED');
+      expect(withDestination.detail).toContain('destination');
     }
   });
 
@@ -163,7 +168,6 @@ describe('decodePreviewAddPayload', () => {
       { url: 42 },
       { url: 'https://e.com/x\n' },
       { url: 'ftp://example.com/a' },
-      { url: 'https://example.com/a.mp4', destination: 7 },
       { url: 'https://example.com/' + 'a'.repeat(2100) },
     ]) {
       const result = decodePreviewAddPayload(hostile);

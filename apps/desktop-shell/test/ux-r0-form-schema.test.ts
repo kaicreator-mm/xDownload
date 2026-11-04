@@ -73,7 +73,7 @@ describe('UI R0 renderer containment and user navigation', () => {
     }
     expect(html).toContain("default-src 'none'");
     expect(html).toContain('aria-modal="true"');
-    expect(renderer).toContain('暂无可靠字节进度');
+    expect(renderer).toContain('尚无权威字节进度');
     expect(renderer).not.toContain('innerHTML');
   });
   it('describes only the fields that the task search actually indexes', () => {
@@ -116,8 +116,8 @@ describe('UI R0 renderer containment and user navigation', () => {
     expect(renderer).not.toContain('runReveal');
     expect(renderer).not.toContain('managerRevealJob');
     expect(renderer).not.toContain('managerChooseDestination');
-    expect(renderer).toContain('由 Core 配置管理（实际路径尚未提供）');
-    expect(html).toContain('当前不支持按任务自定义目录');
+    expect(renderer).toContain('保存位置由 Core 配置管理');
+    expect(html).toContain('桌面入口不提供按任务选择或修改输出目录');
     expect(html).not.toContain('打开目录');
   });
 
@@ -226,6 +226,7 @@ const RENDERER_IDS = [
   'app',
   'bridge-missing',
   'notice',
+  'truncation-notice',
   'connection-line',
   'add-dialog',
   'add-submit',
@@ -300,17 +301,12 @@ function installFakeDom(bridge: unknown): BootedRenderer {
 function presentRow(overrides: Partial<ManagerJobRowDocument> = {}): ManagerJobRowDocument {
   return {
     lineageId: 'contract-desktop-u03-000001',
-    lane: 'legacy',
-    present: true,
+    lane: 's1',
     contractStatus: 'CONFIRMED',
     revision: 3,
     lineageStatus: 'ACTIVE',
-    selectedMemberCount: 1,
-    failedMemberCount: 0,
-    retriedMemberIds: [],
     terminal: null,
     retry: { available: false, reason: 'NO_FAILED_MEMBERS' },
-    destination: null,
     ...overrides,
   };
 }
@@ -339,6 +335,8 @@ async function bootRenderer(rows: readonly ManagerJobRowDocument[]): Promise<Boo
       document: 'xdownload.desktop.manager.jobs' as const,
       connection: 'CONNECTED' as const,
       jobs: rows,
+      totalCount: rows.length,
+      truncated: false,
       pendingPreview: null,
     })),
   };
@@ -427,7 +425,6 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
     const row = presentRow({
       lineageId: 'contract-desktop-u03-collection-vc',
       lineageStatus: 'TERMINAL',
-      selectedMemberCount: 3,
       terminal: terminalResult({
         coverage: 'VERIFIED_COMPLETE',
         validationSummary: { status: 'ALL_PASSED', passedCount: 3, failedCount: 0 },
@@ -493,7 +490,7 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
     expect(renderedRows(dom)).toHaveLength(3);
   });
 
-  it('CANCELLED-UNKNOWN-01: cancelled, missing-terminal, stale and selected-only rows stay non-complete', async () => {
+  it('CANCELLED-UNKNOWN-01: cancelled, missing-terminal, unrecognized-status and retry-available rows stay non-complete', async () => {
     const rows = [
       presentRow({
         lineageId: 'contract-desktop-u03-cancelled',
@@ -504,20 +501,17 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
         lineageStatus: 'TERMINAL',
         terminal: null,
       }),
+      // An unrecognized Core status word renders as "状态待核实" — the S1
+      // index rows are verified projections, so there is no absent-row form.
       presentRow({
-        lineageId: 'contract-desktop-u03-stale',
-        present: false,
-        contractStatus: null,
-        revision: null,
-        lineageStatus: null,
-        selectedMemberCount: null,
-        failedMemberCount: null,
+        lineageId: 'contract-desktop-u03-unrecognized',
+        lineageStatus: 'UNRECOGNIZED_WORD',
       }),
-      // selectedMemberCount alone never proves completion
+      // Retry availability alone never proves completion.
       presentRow({
-        lineageId: 'contract-desktop-u03-selected-only',
+        lineageId: 'contract-desktop-u03-retry-available',
         lineageStatus: 'ACTIVE',
-        selectedMemberCount: 7,
+        retry: { available: true, reason: null },
       }),
     ];
     const { dom, nav } = await bootRenderer(rows);
@@ -529,7 +523,7 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
 
     // Rows render in projection order.
     const labels = renderedRows(dom).map((row) => statusTagOf(row).textContent);
-    expect(labels).toEqual(['已取消', '已结束 · 终态明细缺失', '状态未知', '已提交 · 未结束']);
+    expect(labels).toEqual(['已取消', '已结束 · 终态明细缺失', '状态待核实', '已提交 · 未结束']);
 
     applyFilter(nav, 'complete');
     expect(renderedRows(dom)).toHaveLength(0);
@@ -545,7 +539,6 @@ describe('UI R0 completion predicate — behavior (#333)', () => {
       presentRow({
         lineageId: 'contract-desktop-u03-mix-vc-complete',
         lineageStatus: 'TERMINAL',
-        selectedMemberCount: 2,
         terminal: terminalResult({
           coverage: 'VERIFIED_COMPLETE',
           validationSummary: { status: 'ALL_PASSED', passedCount: 2, failedCount: 0 },

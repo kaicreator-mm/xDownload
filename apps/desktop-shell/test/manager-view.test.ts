@@ -1,12 +1,16 @@
 /**
- * T08 download-manager renderer state tests — the pure state machine the
+ * U05-T03 download-manager renderer state tests — the pure state machine the
  * renderer page binds to, pinned in the Node vitest run:
  *
  * - loading / ready / empty / error / bridge-missing are first-class states;
- * - the ONLY source of rows and connection words is the shell's answer
- *   document (the Core projection the shell serves);
- * - NO fabricated total, percentage or ETA is ever derivable from the
- *   display text of any row (absent facts render as "unknown" words);
+ * - the ONLY source of rows, connection words and index counters is the
+ *   shell's answer document (the Core S1-index projection the shell serves);
+ * - a refused refresh never clears the previous truthful rows (never an
+ *   empty fake list) and surfaces a typed error notice;
+ * - the visible truncation state is derived ONLY from the Core index
+ *   counters and never claims the visible page is the complete history;
+ * - NO fabricated total, percentage, ETA or destination is ever derivable
+ *   from the display text of any row;
  * - the keyboard flow is modeled: form → preview → confirm/discard (Escape).
  */
 
@@ -23,6 +27,7 @@ import {
   noticeShown,
   previewOpened,
   setBusy,
+  truncationNoticeText,
 } from '../src/renderer/manager-state.ts';
 
 function jobListDocument(overrides: Partial<ManagerJobListDocument> = {}): ManagerJobListDocument {
@@ -31,6 +36,8 @@ function jobListDocument(overrides: Partial<ManagerJobListDocument> = {}): Manag
     document: 'xdownload.desktop.manager.jobs',
     connection: 'CONNECTED',
     jobs: [],
+    totalCount: 0,
+    truncated: false,
     pendingPreview: null,
     ...overrides,
   };
@@ -39,17 +46,12 @@ function jobListDocument(overrides: Partial<ManagerJobListDocument> = {}): Manag
 function presentRow(overrides: Partial<ManagerJobRowDocument> = {}): ManagerJobRowDocument {
   return {
     lineageId: 'contract-desktop-ab12cd34-000001',
-    lane: 'legacy',
-    present: true,
+    lane: 's1',
     contractStatus: 'CONFIRMED',
     revision: 3,
     lineageStatus: 'ACTIVE',
-    selectedMemberCount: 1,
-    failedMemberCount: 0,
-    retriedMemberIds: [],
     terminal: null,
     retry: { available: false, reason: 'NO_FAILED_MEMBERS' },
-    destination: null,
     ...overrides,
   };
 }
@@ -59,29 +61,38 @@ describe('manager renderer states', () => {
     const initial = initialManagerState();
     expect(initial.phase).toBe('loading');
     expect(initial.jobs).toEqual([]);
+    expect(initial.totalCount).toBeNull();
+    expect(initial.truncated).toBe(false);
     const missing = bridgeMissing(initial);
     expect(missing.phase).toBe('bridge-missing');
     expect(missing.jobs).toEqual([]);
   });
 
-  it('applyList adopts the shell document verbatim (rows and connection)', () => {
+  it('applyList adopts the shell document verbatim (rows, counters, connection)', () => {
     const row = presentRow();
-    const next = applyList(initialManagerState(), jobListDocument({ jobs: [row] }));
+    const next = applyList(
+      initialManagerState(),
+      jobListDocument({ jobs: [row], totalCount: 7, truncated: true }),
+    );
     expect(next.phase).toBe('ready');
     expect(next.connection).toBe('CONNECTED');
     expect(next.jobs).toEqual([row]);
+    expect(next.totalCount).toBe(7);
+    expect(next.truncated).toBe(true);
   });
 
-  it('a refresh refusal becomes a typed error notice — never a guessed list', () => {
-    const next = applyList(initialManagerState(), {
+  it('a refresh refusal keeps the previous rows and becomes a typed error notice', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const next = applyList(seeded, {
       ok: false,
       code: 'SHELL_IPC_REFUSED',
-      detail: 'sender is not the shell window main frame',
+      detail: 'the Core is disconnected; the durable S1 job index could not be read',
     });
     expect(next.phase).toBe('ready');
     expect(next.notice?.kind).toBe('error');
-    expect(next.notice?.text).toContain('sender is not the shell window main frame');
-    expect(next.jobs).toEqual([]);
+    expect(next.notice?.text).toContain('the Core is disconnected');
+    // The refusal must NOT wipe the last truthful list (no empty fake list).
+    expect(next.jobs).toEqual([presentRow()]);
   });
 
   it('an unexpected document is refused, not rendered', () => {
@@ -106,12 +117,62 @@ describe('manager renderer states', () => {
   });
 });
 
+describe('visible truncation state (Core index counters only)', () => {
+  it('renders a truncation notice that never claims completeness', () => {
+    const text = truncationNoticeText({ truncated: true, totalCount: 231, visibleCount: 200 });
+    expect(text).toContain('截断');
+    expect(text).toContain('200');
+    expect(text).toContain('231');
+    expect(text).toContain('不是完整历史');
+  });
+
+  it('renders no notice when the Core index is complete', () => {
+    expect(truncationNoticeText({ truncated: false, totalCount: 42, visibleCount: 42 })).toBeNull();
+  });
+
+  it('applyAction carries the list counters through', () => {
+    const next = applyAction(initialManagerState(), {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'cancel',
+      lineageId: 'contract-desktop-ab12cd34-000001',
+      routed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ totalCount: 300, truncated: true }),
+    });
+    expect(next.totalCount).toBe(300);
+    expect(next.truncated).toBe(true);
+  });
+
+  it('an embedded list refusal keeps the previous rows and announces the refusal', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const next = applyAction(seeded, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: 'contract-desktop-ab12cd34-000002',
+      routed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: {
+        ok: false,
+        code: 'SHELL_IPC_REFUSED',
+        detail: 'the Core is disconnected; the durable S1 job index could not be read',
+      },
+    });
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.notice?.kind).toBe('error');
+    expect(next.notice?.text).toContain('accepted by the Core');
+    expect(next.notice?.text).toContain('disconnected');
+  });
+});
+
 describe('preview dialog state (keyboard flow model)', () => {
   const preview = {
     document: 'xdownload.desktop.manager.preview' as const,
     lineageId: 'contract-desktop-ab12cd34-000002',
     url: 'https://example.com/a.mp4',
-    destination: null,
     automationMode: 'ASSISTED',
     confirmationRequests: [
       {
@@ -193,33 +254,20 @@ describe('preview dialog state (keyboard flow model)', () => {
 });
 
 describe('truthful display derivation (no fabricated total/ETA)', () => {
-  it('an absent projection renders "unknown" words, never zeros or figures', () => {
-    const absent = presentRow({
-      present: false,
-      contractStatus: null,
-      revision: null,
-      lineageStatus: null,
-      selectedMemberCount: null,
-      failedMemberCount: null,
-    });
-    expect(jobStatusText(absent)).toBe('no projection available (Core state unknown)');
-    expect(jobProgressText(absent)).toBe('unknown');
-  });
-
-  it('a running row renders the projected status words only', () => {
+  it('a running S1 row renders the projected status words only', () => {
     const running = presentRow();
     const status = jobStatusText(running);
     const progress = jobProgressText(running);
     expect(status).toContain('ACTIVE');
     expect(status).toContain('CONFIRMED');
-    expect(progress).toContain('selected members: 1');
-    for (const fabricated of ['%', 'ETA', 'total bytes', 'estimated']) {
+    expect(progress).toContain('awaiting terminal truth');
+    for (const fabricated of ['%', 'ETA', 'total bytes', 'estimated', 'selected members']) {
       expect(status.includes(fabricated), fabricated).toBe(false);
       expect(progress.includes(fabricated), fabricated).toBe(false);
     }
   });
 
-  it('a terminal row renders the six dimensions verbatim — no success boolean', () => {
+  it('a terminal row renders the dimensions verbatim — no success boolean', () => {
     const done = presentRow({
       lineageStatus: 'CLOSED',
       terminal: {
@@ -238,22 +286,20 @@ describe('truthful display derivation (no fabricated total/ETA)', () => {
     expect(jobProgressText(done)).toContain('ALL_PASSED');
   });
 
-  it('action availability follows the projected facts only', () => {
+  it('action availability follows the projected facts only (no reveal)', () => {
     const running = presentRow();
     const runningActions = jobActions(running);
     expect(runningActions.cancelEnabled).toBe(true);
     expect(runningActions.retryEnabled).toBe(false);
-    expect(runningActions.revealEnabled).toBe(false);
+    expect('revealEnabled' in runningActions).toBe(false);
 
     const failed = presentRow({
-      failedMemberCount: 1,
       retry: { available: true, reason: null },
     });
     expect(jobActions(failed).retryEnabled).toBe(true);
 
     const complete = presentRow({
       lineageStatus: 'CLOSED',
-      destination: 'C:/downloads',
       terminal: {
         requestFulfillment: 'COMPLETE',
         targetResolution: 'RESOLVED',
@@ -266,20 +312,6 @@ describe('truthful display derivation (no fabricated total/ETA)', () => {
     });
     const completeActions = jobActions(complete);
     expect(completeActions.cancelEnabled).toBe(false);
-    expect(completeActions.revealEnabled).toBe(true);
-
-    const completeNoDestination = presentRow({
-      lineageStatus: 'CLOSED',
-      terminal: {
-        requestFulfillment: 'COMPLETE',
-        targetResolution: 'RESOLVED',
-        selectionAcquisition: 'ACQUIRED',
-        coverage: 'VERIFIED_COMPLETE',
-        stopReason: 'NATURAL_END',
-        validationSummary: { status: 'ALL_PASSED', passedCount: 1, failedCount: 0 },
-        recordedAt: '2026-10-31T09:00:00Z',
-      },
-    });
-    expect(jobActions(completeNoDestination).revealEnabled).toBe(false);
+    expect(completeActions.retryEnabled).toBe(false);
   });
 });

@@ -1,54 +1,185 @@
 /**
- * T08 desktop download-manager service tests — behavioral proof over the
- * REAL seam authority server (the way the packaged Core host answers):
+ * U05-T03 desktop download-manager service tests — behavioral proof over the
+ * REAL combined candidate: the T01 Core seam server (schema 1.4.0 S1 job
+ * index + DESKTOP_UI S1 admission) serving the T02 Desktop adapter over a
+ * real loopback transport, with the shell DesktopManager on top.
  *
- * - the add flow routes through the adapter's canonical confirmation
- *   workflow and the preview stays non-authoritative (no command routed);
- * - the job list is built ONLY from Core projections (a failed read renders
- *   the truthful absent row — never a cached or guessed status);
- * - cancel routes as a Core control transition; retry ineligibility is the
- *   adapter's own typed refusal; Core-typed rejections surface verbatim;
- * - reveal is gated on a FRESH projection proving COMPLETE plus the
- *   user-chosen destination — and never claims an artifact path.
+ * The T02 Mock Transport tests are adapter-unit evidence only; THESE tests
+ * are the combined-candidate Core admission gate:
+ *
+ * - the add flow routes the canonical confirmation AND the S1
+ *   direct-acquisition command through the real Core admission;
+ * - managerRefresh enumerates ONLY the Core-owned durable S1 index: a new
+ *   manager instance re-enumerates existing jobs, authorized-surface jobs
+ *   (CLI) are visible, cross-install peers are refused, and a query
+ *   refusal/disconnect is a typed refusal — never an empty successful list;
+ * - exact 0/199/200/201 index semantics with totalCount/truncated;
+ * - cancel/retry remain Core control transitions; Core re-decides and typed
+ *   refusals surface verbatim;
+ * - shared-adapter serialization/coalescing holds over the index read.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createCoreSeamServer,
+  createInMemorySeamJournal,
   createLoopbackClientTransport,
   createLoopbackServerTransport,
+  currentSeamSchemaIdentity,
   type CoreSeamServer,
   type ExpectedPeerScope,
   type SeamListenTarget,
   type SeamServerTransport,
 } from '@xdownload/core-seam';
-import { createDesktopUiAdapter, type DesktopUiAdapter } from '@xdownload/desktop-ui';
+import {
+  createDesktopUiAdapter,
+  type DesktopUiAdapter,
+  type S1JobIndexResult,
+} from '@xdownload/desktop-ui';
 import { DesktopManager } from '../src/main/manager.ts';
-import type { ShellRefusal } from '../src/main/shell-contract.ts';
+import type { ManagerJobListDocument, ShellRefusal } from '../src/main/shell-contract.ts';
 
-const INSTALL_ID = 'mgrtest';
-const USER_ID = 'mgruser';
+const INSTALL_ID = 'install-001';
+const USER_ID = 'user-001';
 const EXPECTED_PEER: ExpectedPeerScope = {
   installId: INSTALL_ID,
   userId: USER_ID,
-  allowedSurfaces: ['DESKTOP_UI'],
+  allowedSurfaces: ['CLI', 'DESKTOP_UI'],
 };
+
+// ---- deterministic localhost fixtures (raw wire shapes, self-contained) -----
+
+const DOMAIN_SCHEMA_ID = 'xdownload.domain-contracts';
+
+function rawSingleResourceContract(contractId: string): Record<string, unknown> {
+  return {
+    schemaIdentity: { schema: DOMAIN_SCHEMA_ID, version: '1.0.0' },
+    contractId,
+    status: 'CONFIRMED',
+    intentType: 'SINGLE_RESOURCE',
+    requestedTarget: 'target-file-001',
+    requestedScope: { kind: 'single_resource', targetId: 'target-file-001' },
+    continuationScope: { kind: 'NONE' },
+    selectionPolicy: { basis: 'ENTIRE_REQUESTED_SCOPE', allowsBatchSelection: false },
+    automationMode: 'AUTO',
+    explorationPermission: 'NONE',
+    budgetProfile: {
+      discovery: {
+        domain: 'discovery',
+        maxGeneratedRequests: 50,
+        maxNavigationActions: 20,
+        maxModelCalls: 5,
+      },
+      transfer: {
+        domain: 'transfer',
+        maxBytes: 1_000_000_000,
+        maxSegments: 5000,
+        maxActiveTransferMs: 3_600_000,
+      },
+      globalSafety: {
+        domain: 'global_safety',
+        maxTotalGeneratedRequests: 500,
+        maxActiveElapsedMs: 7_200_000,
+      },
+    },
+    authorizationContextRef: 'authctx/local-001',
+    validationPolicy: { requiredLayers: ['target', 'transfer', 'format'] },
+    stopPolicy: { globalSafetyPrecedence: 'HIGHEST' },
+    resultPolicy: { requireMultidimensionalResult: true },
+    confirmedAt: '2026-10-04T00:00:00Z',
+  };
+}
+
+function s1ExecutionPayload(): Record<string, unknown> {
+  return {
+    snapshotId: 's1snap-001',
+    memberId: 's1member-001',
+    artifactId: 's1artifact-001',
+    delivery: {
+      locatorUri: 'http://127.0.0.1:9/file.bin',
+      declaredRedirectHosts: ['127.0.0.1:9'],
+      expectedSha256: 'a'.repeat(64),
+    },
+  };
+}
+
+let requestSequence = 0;
+
+function rawCommand(input: {
+  commandType: string;
+  aggregateId: string;
+  payload: unknown;
+  expectedRevision?: number;
+  surface?: 'CLI' | 'DESKTOP_UI';
+  issuedAt?: string;
+}): Record<string, unknown> {
+  requestSequence += 1;
+  return {
+    schemaIdentity: currentSeamSchemaIdentity(),
+    kind: 'command',
+    commandType: input.commandType,
+    peer: { installId: INSTALL_ID, userId: USER_ID, surface: input.surface ?? 'CLI' },
+    requestId: `mgr-req-${String(requestSequence).padStart(4, '0')}`,
+    aggregateId: input.aggregateId,
+    expectedRevision: input.expectedRevision ?? 0,
+    correlation: {},
+    issuedAt: input.issuedAt ?? '2026-10-04T01:00:00Z',
+    payload: input.payload,
+  };
+}
+
+/** Seed one accepted S1 job straight into the real Core (no shell involved). */
+function seedS1(server: CoreSeamServer, aggregateId: string, surface: 'CLI' | 'DESKTOP_UI'): void {
+  const submitted = server.handleFrame(
+    JSON.stringify(
+      rawCommand({
+        commandType: 'SUBMIT_CONTRACT',
+        aggregateId,
+        payload: rawSingleResourceContract(aggregateId),
+        surface,
+      }),
+    ),
+  );
+  expect(submitted.outcome).toBe('ACCEPTED');
+  const executed = server.handleFrame(
+    JSON.stringify(
+      rawCommand({
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId,
+        expectedRevision: 1,
+        payload: s1ExecutionPayload(),
+        surface,
+      }),
+    ),
+  );
+  expect(executed.outcome).toBe('ACCEPTED');
+}
+
+// ---- the real combined-candidate harness ------------------------------------
 
 interface Harness {
   readonly adapter: DesktopUiAdapter;
   readonly manager: DesktopManager;
-  readonly revealed: string[];
+  readonly server: CoreSeamServer;
   /** Stops ONLY the seam server transport (a real Core loss). */
   stopCore(): Promise<void>;
   stop(): Promise<void>;
 }
 
-async function startHarness(): Promise<Harness> {
+async function startHarness(options?: {
+  readonly installId?: string;
+  readonly userId?: string;
+  readonly withJournal?: boolean;
+}): Promise<Harness> {
   const transport: SeamServerTransport = createLoopbackServerTransport({
     host: '127.0.0.1',
     port: 0,
   });
-  const seam = createCoreSeamServer({ expectedPeer: EXPECTED_PEER });
+  const seam = createCoreSeamServer({
+    expectedPeer: EXPECTED_PEER,
+    ...(options?.withJournal === false ? {} : { journal: createInMemorySeamJournal() }),
+    s1DirectAcquisition: { begin() {} },
+  });
   if (!seam.ok) {
     throw new Error('harness seam composition refused');
   }
@@ -62,24 +193,18 @@ async function startHarness(): Promise<Harness> {
   const adapter = createDesktopUiAdapter({
     transport: createLoopbackClientTransport(),
     target,
-    installId: INSTALL_ID,
-    userId: USER_ID,
+    installId: options?.installId ?? INSTALL_ID,
+    userId: options?.userId ?? USER_ID,
     now: () => '2026-10-31T09:00:00Z',
   });
-  const revealed: string[] = [];
   const manager = new DesktopManager({
     getAdapter: () => adapter,
     getConnectionWhenUnconfigured: () => 'UNCONFIGURED',
-    pickDestination: async () => null,
-    revealFolder: (path) => {
-      revealed.push(path);
-      return true;
-    },
   });
   return {
     adapter,
     manager,
-    revealed,
+    server,
     stopCore: () => transport.stop(),
     stop: async () => {
       await adapter.close();
@@ -92,7 +217,23 @@ function isRefusal(answer: unknown): answer is ShellRefusal {
   return (answer as ShellRefusal).ok === false;
 }
 
-describe('DesktopManager add flow (real seam)', () => {
+function expectList(answer: unknown): ManagerJobListDocument {
+  if (isRefusal(answer)) {
+    throw new Error(`expected a list document, got refusal: ${answer.detail}`);
+  }
+  return answer as ManagerJobListDocument;
+}
+
+function expectActionList(action: {
+  readonly list: ManagerJobListDocument | ShellRefusal;
+}): ManagerJobListDocument {
+  if (isRefusal(action.list)) {
+    throw new Error(`expected an embedded list, got refusal: ${action.list.detail}`);
+  }
+  return action.list;
+}
+
+describe('DesktopManager S1 add flow over the real combined Core (T01 seam + T02 adapter)', () => {
   let harness: Harness;
 
   beforeEach(async () => {
@@ -129,7 +270,7 @@ describe('DesktopManager add flow (real seam)', () => {
     expect(isRefusal(second)).toBe(true);
   });
 
-  it('confirm routes the contract and the list row comes from the Core projection', async () => {
+  it('confirm routes SUBMIT_CONTRACT and EXECUTE_S1_DIRECT_ACQUISITION through the real Core S1 admission', async () => {
     await harness.manager.previewAdd({ url: 'https://example.com/a.mp4' });
     const action = await harness.manager.confirmAdd();
     expect(isRefusal(action)).toBe(false);
@@ -139,42 +280,45 @@ describe('DesktopManager add flow (real seam)', () => {
     expect(action.action).toBe('add');
     expect(action.routed).toBe(true);
     expect(action.rejections).toEqual([]);
-    expect(action.list.jobs.length).toBe(1);
-    const row = action.list.jobs[0];
-    expect(row?.present).toBe(true);
-    expect(row?.contractStatus).toBe('CONFIRMED');
+    // The exact admission sequence over the real seam: contract confirmation
+    // first, then the S1 direct-acquisition command with the same identity.
+    expect(harness.adapter.sentCommandEnvelopes().map((envelope) => envelope.commandType)).toEqual([
+      'SUBMIT_CONTRACT',
+      'EXECUTE_S1_DIRECT_ACQUISITION',
+    ]);
+    expect(action.lineageId).toBe(harness.adapter.sentCommandEnvelopes()[1]?.aggregateId ?? null);
+    // The embedded list read the durable index: the row is the Core's S1
+    // projection (not session state), with exact index counters.
+    const list = expectActionList(action);
+    expect(list.totalCount).toBe(1);
+    expect(list.truncated).toBe(false);
+    const row = list.jobs[0];
+    expect(row?.lane).toBe('s1');
     expect(row?.lineageId).toBe(action.lineageId);
-    expect(row?.destination).toBeNull();
-    // The row carries the Core's own status words — never a fabricated one.
-    expect(action.list.connection).toBe('CONNECTED');
+    expect(row?.contractStatus).toBe('CONFIRMED');
+    expect(row?.terminal).toBeNull();
+    expect(list.connection).toBe('CONNECTED');
+    // Pending state holds until a Core projection provides terminal truth:
+    // the fresh row is not terminal and carries no completion claim.
+    expect(list.pendingPreview).toBeNull();
   });
 
-  it('confirm records the chosen destination and the row mirrors it', async () => {
-    await harness.manager.previewAdd({
-      url: 'https://example.com/a.mp4',
-      destination: 'C:/downloads',
-    });
-    const action = await harness.manager.confirmAdd();
-    if (isRefusal(action)) {
-      throw new Error('confirm refused');
-    }
-    expect(action.list.jobs[0]?.destination).toBe('C:/downloads');
-  });
-
-  it('a refresh after a Core loss renders truthful absent rows (no cached status)', async () => {
+  it('a NEW manager instance re-enumerates the existing S1 jobs from the durable index', async () => {
     await harness.manager.previewAdd({ url: 'https://example.com/a.mp4' });
     const action = await harness.manager.confirmAdd();
     if (isRefusal(action)) {
       throw new Error('confirm refused');
     }
-    expect(action.list.jobs[0]?.present).toBe(true);
-    // Kill the Core endpoint for real: the projection read now fails and the
-    // row must say exactly that — never keep the last known status.
-    await harness.stopCore();
-    const list = await harness.manager.list();
-    expect(list.connection).toBe('DISCONNECTED');
-    expect(list.jobs[0]?.present).toBe(false);
-    expect(list.jobs[0]?.contractStatus).toBeNull();
+    // A second manager over the same Core (e.g. a restarted window): no
+    // session state is shared — enumeration comes from the durable index.
+    const secondManager = new DesktopManager({
+      getAdapter: () => harness.adapter,
+      getConnectionWhenUnconfigured: () => 'UNCONFIGURED',
+    });
+    const list = expectList(await secondManager.list());
+    expect(list.totalCount).toBe(1);
+    expect(list.jobs.map((row) => row.lineageId)).toEqual([action.lineageId]);
+    expect(list.jobs[0]?.lane).toBe('s1');
   });
 
   it('discard clears the pending preview without routing anything', async () => {
@@ -188,11 +332,92 @@ describe('DesktopManager add flow (real seam)', () => {
     expect(action.routed).toBe(false);
     expect(harness.adapter.hasDraftIntent()).toBe(false);
     expect(harness.manager.hasPendingPreview()).toBe(false);
-    expect(action.list.pendingPreview).toBeNull();
+    expect(expectActionList(action).pendingPreview).toBeNull();
   });
 });
 
-describe('DesktopManager control transitions (real seam)', () => {
+describe('DesktopManager durable index visibility and isolation (real Core)', () => {
+  let harness: Harness;
+
+  beforeEach(async () => {
+    harness = await startHarness();
+  });
+
+  afterEach(async () => {
+    await harness.stop();
+  });
+
+  it('an authorized-surface (CLI) S1 job from the same install/user is visible to the shell', async () => {
+    seedS1(harness.server, 'contract-cli-0001', 'CLI');
+    const list = expectList(await harness.manager.list());
+    expect(list.totalCount).toBe(1);
+    expect(list.jobs.map((row) => row.lineageId)).toEqual(['contract-cli-0001']);
+    expect(list.jobs[0]?.lane).toBe('s1');
+    // Reopen is a fresh read: a second refresh replays the durable journal
+    // and returns the same truthful projection (no fabricated scope facts).
+    const refreshed = expectList(await harness.manager.list());
+    expect(refreshed.jobs).toEqual(list.jobs);
+  });
+
+  it('a cross-install peer is refused: the refresh is a typed refusal, never an empty successful list', async () => {
+    seedS1(harness.server, 'contract-local-0001', 'CLI');
+    const foreign = await startHarness({ installId: 'install-999' });
+    try {
+      const answer = await foreign.manager.list();
+      expect(isRefusal(answer)).toBe(true);
+      if (isRefusal(answer)) {
+        expect(answer.detail).toContain('rejected');
+      }
+    } finally {
+      await foreign.stop();
+    }
+  });
+
+  it('a Core without the durable journal fails closed: the query refusal is not an empty list', async () => {
+    const noJournal = await startHarness({ withJournal: false });
+    try {
+      const answer = await noJournal.manager.list();
+      expect(isRefusal(answer)).toBe(true);
+      if (isRefusal(answer)) {
+        expect(answer.detail).toContain('rejected');
+      }
+    } finally {
+      await noJournal.stop();
+    }
+  });
+
+  it('a Core loss mid-session renders a typed refusal, not an empty successful list', async () => {
+    seedS1(harness.server, 'contract-local-0001', 'CLI');
+    const before = expectList(await harness.manager.list());
+    expect(before.jobs).toHaveLength(1);
+    await harness.stopCore();
+    const answer = await harness.manager.list();
+    expect(isRefusal(answer)).toBe(true);
+    if (isRefusal(answer)) {
+      expect(answer.detail).toContain('disconnected');
+    }
+  });
+
+  it.each([0, 199, 200, 201])(
+    'keeps exact 0/199/200/201 index semantics at %i jobs',
+    async (count) => {
+      for (let index = 1; index <= count; index += 1) {
+        seedS1(harness.server, `contract-${String(index).padStart(3, '0')}`, 'CLI');
+      }
+      const document = expectList(await harness.manager.list());
+      expect(document.totalCount).toBe(count);
+      expect(document.jobs).toHaveLength(Math.min(count, 200));
+      expect(document.truncated).toBe(count > 200);
+      if (count > 0) {
+        // Latest durable commit first.
+        expect(document.jobs[0]?.lineageId).toBe(`contract-${String(count).padStart(3, '0')}`);
+      }
+    },
+    20_000,
+  );
+});
+
+describe('DesktopManager control transitions remain Core commands (real Core)', () => {
   let harness: Harness;
   let lineageId: string;
 
@@ -219,7 +444,7 @@ describe('DesktopManager control transitions (real seam)', () => {
     expect(action.action).toBe('cancel');
     expect(action.routed).toBe(true);
     expect(action.rejections).toEqual([]);
-    expect(action.list.jobs[0]?.lineageStatus).toBe('CANCELLED');
+    expect(expectActionList(action).jobs[0]?.lineageStatus).toBe('CANCELLED');
   });
 
   it('retry without projected failed members is the typed ineligible refusal', async () => {
@@ -233,135 +458,17 @@ describe('DesktopManager control transitions (real seam)', () => {
     expect(action.rejections).toEqual([]);
   });
 
-  it('cancel/retry on an untracked lineage is a typed refusal (no routing)', async () => {
+  it('control on an unknown lineage is a typed refusal (Core re-decides; nothing fabricated)', async () => {
     const cancel = await harness.manager.cancelJob({ lineageId: 'contract-unknown-000001' });
-    expect(isRefusal(cancel)).toBe(true);
-    const retry = await harness.manager.retryJob({ lineageId: 'contract-unknown-000001' });
-    expect(isRefusal(retry)).toBe(true);
-  });
-});
-
-describe('DesktopManager reveal and destination gating', () => {
-  interface StubHarness {
-    readonly manager: DesktopManager;
-    readonly revealed: string[];
-    readonly jobs: Map<string, { lineageId: string; destination: string | null }>;
-  }
-
-  /** A manager over a stub adapter whose projection is read live from the holder. */
-  function stubManager(holder: {
-    current: ReturnType<typeof stubProjectionView> | null;
-  }): StubHarness {
-    const stubAdapter = {
-      attachAggregate: async () => undefined,
-      currentProjectionView: () => holder.current,
-    } as unknown as DesktopUiAdapter;
-    const revealed: string[] = [];
-    const manager = new DesktopManager({
-      getAdapter: () => stubAdapter,
-      getConnectionWhenUnconfigured: () => 'CONNECTED',
-      pickDestination: async () => null,
-      revealFolder: (path) => {
-        revealed.push(path);
-        return true;
-      },
-    });
-    const jobs = (
-      manager as unknown as {
-        jobs: Map<string, { lineageId: string; destination: string | null }>;
-      }
-    ).jobs;
-    return { manager, revealed, jobs };
-  }
-
-  it('reveal is refused for an untracked lineage (nothing revealed)', async () => {
-    const harness = stubManager({ current: null });
-    const answer = await harness.manager.revealJob({ lineageId: 'contract-none-000001' });
-    expect(isRefused(answer)).toBe(true);
-    expect(harness.revealed).toEqual([]);
-  });
-
-  it('reveal opens the destination folder only for a COMPLETE projection', async () => {
-    const holder: { current: ReturnType<typeof stubProjectionView> | null } = { current: null };
-    const harness = stubManager(holder);
-    harness.jobs.set('contract-complete-000001', {
-      lineageId: 'contract-complete-000001',
-      destination: 'C:/downloads',
-    });
-
-    // Not completed per the fresh projection: refused, nothing revealed.
-    holder.current = stubProjectionView('PARTIAL');
-    const refused = await harness.manager.revealJob({ lineageId: 'contract-complete-000001' });
-    expect(isRefused(refused)).toBe(true);
-    expect(harness.revealed).toEqual([]);
-
-    // COMPLETE per the fresh projection: the destination folder reveals.
-    holder.current = stubProjectionView('COMPLETE');
-    const ok = await harness.manager.revealJob({ lineageId: 'contract-complete-000001' });
-    expect(isRefused(ok)).toBe(false);
-    if (!isRefused(ok)) {
-      expect(ok.revealed).toBe('destination-folder');
-      expect(ok.destination).toBe('C:/downloads');
+    expect(isRefusal(cancel)).toBe(false);
+    if (!isRefusal(cancel)) {
+      expect(cancel.routed).toBe(false);
+      expect(cancel.refusalDetail).toContain('no live Core projection');
     }
-    expect(harness.revealed).toEqual(['C:/downloads']);
-
-    // No destination recorded: refused even when COMPLETE.
-    harness.jobs.set('contract-nodest-000001', {
-      lineageId: 'contract-nodest-000001',
-      destination: null,
-    });
-    const noDestination = await harness.manager.revealJob({ lineageId: 'contract-nodest-000001' });
-    expect(isRefused(noDestination)).toBe(true);
-    expect(harness.revealed).toEqual(['C:/downloads']);
   });
 });
 
-function isRefused(answer: unknown): answer is ShellRefusal {
-  return (answer as ShellRefusal).ok === false;
-}
-
-/** Minimal legacy projection view stub for the reveal gate tests. */
-function stubProjectionView(requestFulfillment: 'COMPLETE' | 'PARTIAL'): {
-  contract: { contractId: string; status: string; intentType: string; revision: number };
-  lineage: {
-    status: string;
-    failedMemberCount: number;
-    failedMemberIds: string[];
-    retriedMemberIds: string[];
-  };
-  terminal: {
-    requestFulfillment: string;
-    coverage: string;
-    stopReason: string;
-    validationSummary: { status: string; passedCount: number; failedCount: number };
-    recordedAt: string;
-  };
-} {
-  return {
-    contract: {
-      contractId: 'contract-complete-000001',
-      status: 'CONFIRMED',
-      intentType: 'SINGLE_RESOURCE',
-      revision: 1,
-    },
-    lineage: {
-      status: 'CLOSED',
-      failedMemberCount: 0,
-      failedMemberIds: [],
-      retriedMemberIds: [],
-    },
-    terminal: {
-      requestFulfillment,
-      coverage: 'VERIFIED_COMPLETE',
-      stopReason: 'NATURAL_END',
-      validationSummary: { status: 'ALL_PASSED', passedCount: 1, failedCount: 0 },
-      recordedAt: '2026-10-31T09:00:00Z',
-    },
-  };
-}
-
-const LINEAGE_A = 'contract-a-000001';
-const LINEAGE_B = 'contract-b-000002';
+// ---- shared-adapter serialization over the S1 index read ---------------------
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -379,228 +486,138 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
-interface AttachOutcome {
-  readonly display: { readonly connection: 'CONNECTED' };
-}
+const EMPTY_INDEX: S1JobIndexResult = { ok: true, items: [], totalCount: 0, truncated: false };
 
-class DeferredAdapter {
-  readonly attachCalls: string[] = [];
-  readonly controlCalls: { readonly action: 'cancel' | 'retry'; readonly lineageId: string }[] = [];
-  maxActiveAttaches = 0;
-  private activeAttaches = 0;
-  private currentLineageId: string | null = null;
-  private readonly pendingAttaches: {
-    readonly lineageId: string;
-    readonly deferred: Deferred<AttachOutcome>;
-  }[] = [];
+/**
+ * A stub adapter whose index read is deferred: proves the manager serializes
+ * list/control operations and never overlaps two index reads.
+ */
+class DeferredIndexAdapter {
+  readonly indexReads: Deferred<S1JobIndexResult>[] = [];
+  maxActiveIndexReads = 0;
+  private activeIndexReads = 0;
 
-  constructor(readonly views: Map<string, ReturnType<typeof stubProjectionView>>) {}
-
-  attachAggregate(lineageId: string): Promise<AttachOutcome> {
-    this.attachCalls.push(lineageId);
-    this.currentLineageId = lineageId;
-    this.activeAttaches += 1;
-    this.maxActiveAttaches = Math.max(this.maxActiveAttaches, this.activeAttaches);
-    const deferred = createDeferred<AttachOutcome>();
-    this.pendingAttaches.push({ lineageId, deferred });
+  listS1JobProjections(): Promise<S1JobIndexResult> {
+    this.activeIndexReads += 1;
+    this.maxActiveIndexReads = Math.max(this.maxActiveIndexReads, this.activeIndexReads);
+    const deferred = createDeferred<S1JobIndexResult>();
+    this.indexReads.push(deferred);
     return deferred.promise.finally(() => {
-      this.activeAttaches -= 1;
+      this.activeIndexReads -= 1;
     });
   }
 
-  hasPendingAttach(lineageId: string): boolean {
-    return this.pendingAttaches.some((pending) => pending.lineageId === lineageId);
-  }
-
-  resolveAttach(lineageId: string): void {
-    const pending = this.takePendingAttach(lineageId);
-    this.currentLineageId = lineageId;
-    pending.deferred.resolve({ display: { connection: 'CONNECTED' } });
-  }
-
-  rejectAttach(lineageId: string, error: Error): void {
-    this.takePendingAttach(lineageId).deferred.reject(error);
-  }
-
-  currentProjectionView(): ReturnType<typeof stubProjectionView> | null {
-    return this.currentLineageId === null ? null : (this.views.get(this.currentLineageId) ?? null);
+  async attachAggregate(): Promise<{
+    readonly display: { readonly connection: 'CONNECTED' };
+    readonly routed: readonly [];
+    readonly rejections: readonly [];
+    readonly refusals: readonly [];
+  }> {
+    return {
+      display: { connection: 'CONNECTED' },
+      routed: [],
+      rejections: [],
+      refusals: [],
+    };
   }
 
   async cancel(): Promise<{
-    readonly routed: string[];
-    readonly rejections: [];
-    readonly refusals: [];
+    readonly routed: readonly { commandType: string; aggregateId: string; requestId: string }[];
+    readonly rejections: readonly [];
+    readonly refusals: readonly [];
   }> {
-    return this.routeControl('cancel');
+    return {
+      routed: [{ commandType: 'CANCEL_LINEAGE', aggregateId: 'x', requestId: 'r' }],
+      rejections: [],
+      refusals: [],
+    };
   }
 
   async retryFailed(): Promise<{
-    readonly routed: string[];
-    readonly rejections: [];
-    readonly refusals: [];
+    readonly routed: readonly [];
+    readonly rejections: readonly [];
+    readonly refusals: readonly [];
   }> {
-    return this.routeControl('retry');
+    return { routed: [], rejections: [], refusals: [] };
   }
 
-  private routeControl(action: 'cancel' | 'retry'): {
-    readonly routed: string[];
-    readonly rejections: [];
-    readonly refusals: [];
-  } {
-    if (this.currentLineageId === null) {
-      throw new Error('no attached lineage');
-    }
-    const lineageId = this.currentLineageId;
-    this.controlCalls.push({ action, lineageId });
-    return { routed: [lineageId], rejections: [], refusals: [] };
+  currentDraftView(): null {
+    return null;
   }
-
-  private takePendingAttach(lineageId: string): {
-    readonly lineageId: string;
-    readonly deferred: Deferred<AttachOutcome>;
-  } {
-    const index = this.pendingAttaches.findIndex((pending) => pending.lineageId === lineageId);
-    const pending = this.pendingAttaches[index];
-    if (index < 0 || pending === undefined) {
-      throw new Error(`no pending attach for ${lineageId}`);
-    }
-    this.pendingAttaches.splice(index, 1);
-    return pending;
-  }
-}
-
-function lineageProjection(
-  lineageId: string,
-  revision: number,
-): ReturnType<typeof stubProjectionView> {
-  const view = stubProjectionView('PARTIAL');
-  view.contract.contractId = lineageId;
-  view.contract.revision = revision;
-  return view;
 }
 
 function startDeferredManager(): {
-  readonly adapter: DeferredAdapter;
+  readonly adapter: DeferredIndexAdapter;
   readonly manager: DesktopManager;
 } {
-  const adapter = new DeferredAdapter(
-    new Map([
-      [LINEAGE_A, lineageProjection(LINEAGE_A, 11)],
-      [LINEAGE_B, lineageProjection(LINEAGE_B, 22)],
-    ]),
-  );
+  const adapter = new DeferredIndexAdapter();
   const manager = new DesktopManager({
     getAdapter: () => adapter as unknown as DesktopUiAdapter,
     getConnectionWhenUnconfigured: () => 'CONNECTED',
-    pickDestination: async () => null,
-    revealFolder: () => true,
   });
-  const jobs = (
-    manager as unknown as {
-      jobs: Map<string, { lineageId: string; destination: string | null }>;
-    }
-  ).jobs;
-  jobs.set(LINEAGE_A, { lineageId: LINEAGE_A, destination: 'C:/downloads/a' });
-  jobs.set(LINEAGE_B, { lineageId: LINEAGE_B, destination: 'C:/downloads/b' });
   return { adapter, manager };
 }
 
-async function resolveNextAttach(adapter: DeferredAdapter, lineageId: string): Promise<void> {
-  await vi.waitFor(() => {
-    expect(adapter.hasPendingAttach(lineageId)).toBe(true);
-  });
-  adapter.resolveAttach(lineageId);
-}
-
-function expectLineageRows(document: {
-  readonly jobs: readonly { readonly lineageId: string; readonly revision: number | null }[];
-}): void {
-  expect(document.jobs.map((row) => [row.lineageId, row.revision])).toEqual([
-    [LINEAGE_A, 11],
-    [LINEAGE_B, 22],
-  ]);
-}
-
-async function expectSerializedControl(action: 'cancel' | 'retry'): Promise<void> {
-  const { adapter, manager } = startDeferredManager();
-  const refresh = manager.list();
-  await resolveNextAttach(adapter, LINEAGE_A);
-  await vi.waitFor(() => {
-    expect(adapter.hasPendingAttach(LINEAGE_B)).toBe(true);
-  });
-
-  const control =
-    action === 'cancel'
-      ? manager.cancelJob({ lineageId: LINEAGE_A })
-      : manager.retryJob({ lineageId: LINEAGE_A });
-  await Promise.resolve();
-  adapter.resolveAttach(LINEAGE_B);
-  await refresh;
-
-  await resolveNextAttach(adapter, LINEAGE_A);
-  await vi.waitFor(() => {
-    expect(adapter.controlCalls).toHaveLength(1);
-  });
-  await resolveNextAttach(adapter, LINEAGE_A);
-  await resolveNextAttach(adapter, LINEAGE_B);
-  const answer = await control;
-
-  expect(adapter.maxActiveAttaches).toBe(1);
-  expect(adapter.controlCalls).toEqual([{ action, lineageId: LINEAGE_A }]);
-  expect(isRefusal(answer)).toBe(false);
-  if (isRefusal(answer)) {
-    throw new Error('control unexpectedly refused');
-  }
-  expect(answer.action).toBe(action);
-  expect(answer.lineageId).toBe(LINEAGE_A);
-  expect(answer.routed).toBe(true);
-  expectLineageRows(answer.list);
-}
-
-describe('DesktopManager shared-adapter serialization', () => {
-  it('keeps a delayed A/B list refresh from overlapping or retargeting Cancel A', async () => {
-    await expectSerializedControl('cancel');
-  });
-
-  it('keeps a delayed A/B list refresh from overlapping or retargeting Retry A', async () => {
-    await expectSerializedControl('retry');
-  });
-
-  it('binds every list row to its own lineage projection', async () => {
-    const { adapter, manager } = startDeferredManager();
-    const list = manager.list();
-    await resolveNextAttach(adapter, LINEAGE_A);
-    await resolveNextAttach(adapter, LINEAGE_B);
-    expectLineageRows(await list);
-  });
-
-  it('coalesces concurrent public list requests into one in-flight refresh', async () => {
+describe('DesktopManager shared-adapter serialization over the index read', () => {
+  it('coalesces concurrent public list requests into one in-flight index read', async () => {
     const { adapter, manager } = startDeferredManager();
     const first = manager.list();
     const second = manager.list();
     expect(second).toBe(first);
-
-    await resolveNextAttach(adapter, LINEAGE_A);
-    await resolveNextAttach(adapter, LINEAGE_B);
-    const document = await first;
+    // The serialized operation starts on a microtask after the call.
+    await vi.waitFor(() => {
+      expect(adapter.indexReads).toHaveLength(1);
+    });
+    adapter.indexReads[0]?.resolve(EMPTY_INDEX);
+    const document = expectList(await first);
     expect(await second).toBe(document);
-    expect(adapter.attachCalls).toEqual([LINEAGE_A, LINEAGE_B]);
-    expectLineageRows(document);
+    expect(adapter.indexReads).toHaveLength(1);
+    expect(adapter.maxActiveIndexReads).toBe(1);
   });
 
-  it('recovers the queue and list single-flight state after an adapter rejection', async () => {
+  it('serializes a control action behind an in-flight index read (one index read at a time)', async () => {
+    const { adapter, manager } = startDeferredManager();
+    const list = manager.list();
+    await vi.waitFor(() => {
+      expect(adapter.indexReads).toHaveLength(1);
+    });
+
+    const control = manager.cancelJob({ lineageId: 'contract-a-000001' });
+    // The control waits behind the in-flight list: no second index read yet.
+    expect(adapter.indexReads).toHaveLength(1);
+    adapter.indexReads[0]?.resolve(EMPTY_INDEX);
+    await list;
+
+    // Now the control proceeds: attach + cancel + its embedded fresh list.
+    await vi.waitFor(() => {
+      expect(adapter.indexReads).toHaveLength(2);
+    });
+    expect(adapter.maxActiveIndexReads).toBe(1);
+    adapter.indexReads[1]?.resolve(EMPTY_INDEX);
+    const answer = await control;
+    expect(isRefusal(answer)).toBe(false);
+    if (!isRefusal(answer)) {
+      expect(answer.action).toBe('cancel');
+      expect(answer.routed).toBe(true);
+      expect(expectActionList(answer).totalCount).toBe(0);
+    }
+  });
+
+  it('recovers the single-flight state after a rejected index read', async () => {
     const { adapter, manager } = startDeferredManager();
     const failed = manager.list();
     await vi.waitFor(() => {
-      expect(adapter.hasPendingAttach(LINEAGE_A)).toBe(true);
+      expect(adapter.indexReads).toHaveLength(1);
     });
-    adapter.rejectAttach(LINEAGE_A, new Error('deferred projection refused'));
-    await expect(failed).rejects.toThrow('deferred projection refused');
+    adapter.indexReads[0]?.reject(new Error('index read refused'));
+    await expect(failed).rejects.toThrow('index read refused');
 
     const recovered = manager.list();
     expect(recovered).not.toBe(failed);
-    await resolveNextAttach(adapter, LINEAGE_A);
-    await resolveNextAttach(adapter, LINEAGE_B);
-    expectLineageRows(await recovered);
+    await vi.waitFor(() => {
+      expect(adapter.indexReads).toHaveLength(2);
+    });
+    adapter.indexReads[1]?.resolve(EMPTY_INDEX);
+    expectList(await recovered);
   });
 });

@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 /**
- * T08 download-manager renderer page binding — the thin DOM layer over the
- * pure state machine (`manager-state.ts`).
+ * U05-T03 download-manager renderer page binding — the thin DOM layer over
+ * the pure state machine (`manager-state.ts`).
  *
  * Security discipline (pinned by the static security-invariant tests):
  * - The ONLY privileged surface is the typed preload bridge
@@ -10,13 +10,14 @@
  *   import, no eval, no inline handlers, no HTML-injection API: every text
  *   node is written with `textContent`, every listener with
  *   `addEventListener`.
- * - The page never invents transfer progress or output paths. Friendly status
- *   labels are conservative mappings of explicit Core projection dimensions.
+ * - The page never invents transfer progress, output paths or destinations.
+ *   U05-T03: the only rendered output-location string is the fixed label
+ *   "保存位置由 Core 配置管理" — the page holds no picker, no reveal, no path.
  *
  * Accessibility: the add flow is fully keyboard-operable (Enter submits the
  * form, Escape discards the preview dialog, all actions are native buttons);
- * state changes are announced through an aria-live region; empty, loading
- * and error states are first-class.
+ * state changes are announced through an aria-live region; empty, loading,
+ * truncated and error states are first-class.
  */
 /* global window, document */
 
@@ -31,11 +32,14 @@ import {
   jobStatusText,
   previewOpened,
   setBusy,
+  truncationNoticeText,
   type ManagerRendererState,
 } from './manager-state.ts';
 
 const BRIDGE = window.xdownloadShell;
 const REFRESH_INTERVAL_MS = 2000;
+/** U05-T03: the one lawful output-location string; never a path, never guessed. */
+const DESTINATION_LABEL = '保存位置由 Core 配置管理';
 
 let state: ManagerRendererState = initialManagerState();
 let refreshTimer = 0;
@@ -49,7 +53,6 @@ const taskDisplayNames = new Map<string, string>();
 function verifiedComplete(row: ManagerJobRowDocument): boolean {
   const terminal = row.terminal;
   return (
-    row.present &&
     row.lineageStatus === 'TERMINAL' &&
     terminal !== null &&
     terminal.targetResolution === 'RESOLVED' &&
@@ -64,20 +67,18 @@ function verifiedComplete(row: ManagerJobRowDocument): boolean {
 }
 
 function isActive(row: ManagerJobRowDocument): boolean {
-  return row.present && row.lineageStatus === 'ACTIVE' && row.terminal === null;
+  return row.lineageStatus === 'ACTIVE' && row.terminal === null;
 }
 
 function isFailed(row: ManagerJobRowDocument): boolean {
   return (
-    row.present &&
-    (row.lineageStatus === 'CANCELLED' ||
-      (row.terminal !== null && !verifiedComplete(row)) ||
-      (row.lineageStatus === 'TERMINAL' && row.terminal === null))
+    row.lineageStatus === 'CANCELLED' ||
+    (row.terminal !== null && !verifiedComplete(row)) ||
+    (row.lineageStatus === 'TERMINAL' && row.terminal === null)
   );
 }
 
 function statusLabel(row: ManagerJobRowDocument): string {
-  if (!row.present) return '状态未知';
   if (row.lineageStatus === 'CANCELLED') return '已取消';
   if (verifiedComplete(row)) return '已完成';
   if (row.terminal !== null) return '已结束 · 未完成';
@@ -101,14 +102,13 @@ function taskLabel(row: ManagerJobRowDocument): string {
 }
 
 function progressSummary(row: ManagerJobRowDocument): string {
-  if (!row.present) return 'Core 尚未返回可验证的任务状态';
   if (row.terminal === null) {
     if (row.lineageStatus === 'CANCELLED') return 'Core 已标记取消 · 终态明细尚未返回';
     if (row.lineageStatus === 'TERMINAL') return 'Core 已标记终结 · 终态明细缺失';
     if (row.lineageStatus !== 'ACTIVE') return 'Core 尚未确认任务状态';
-    return row.selectedMemberCount === null
-      ? '尚未获得终态 · 暂无可靠字节进度'
-      : 'Core 已记录 ' + row.selectedMemberCount + ' 个目标 · 尚未获得终态 · 暂无可靠字节进度';
+    // The S1 lane projection carries no authoritative byte sample: no
+    // percentage, speed or ETA is ever derived here.
+    return '已提交 Core · 尚无权威字节进度 · 终态以 Core 投影为准';
   }
   const validation = row.terminal.validationSummary;
   const validationLabel =
@@ -264,10 +264,9 @@ function renderDetails(): void {
   byId('details-title').textContent = taskLabel(current);
   byId('details-status').textContent = statusLabel(current);
   byId('details-progress').textContent = progressSummary(current);
-  byId('details-destination').textContent = '由 Core 配置管理（实际路径尚未提供）';
+  byId('details-destination').textContent = DESTINATION_LABEL;
   byId('details-lineage').textContent = current.lineageId;
-  byId('details-revision').textContent =
-    current.revision === null ? '未知' : String(current.revision);
+  byId('details-revision').textContent = String(current.revision);
   byId('details-reason').textContent = current.terminal?.stopReason ?? '暂无';
 }
 
@@ -296,6 +295,17 @@ function render(): void {
   const notice = byId('notice');
   notice.textContent = state.notice === null ? '' : localizeNotice(state.notice.text);
   notice.dataset.kind = state.notice === null ? 'none' : state.notice.kind;
+
+  // U05-T03: the truncation banner states plainly that the visible page is
+  // not the complete history — words come only from the Core index counters.
+  const truncation = byId('truncation-notice');
+  const truncationText = truncationNoticeText({
+    truncated: state.truncated,
+    totalCount: state.totalCount,
+    visibleCount: state.jobs.length,
+  });
+  truncation.textContent = truncationText ?? '';
+  truncation.hidden = truncationText === null;
 
   const connectionLine = byId('connection-line');
   const connected = state.connection === 'CONNECTED';
@@ -329,7 +339,7 @@ function renderPreview(): void {
   preview.hidden = false;
   preview.dataset.open = 'true';
   byId('preview-url').textContent = pending.url;
-  byId('preview-destination').textContent = '由 Core 配置管理（实际路径尚未提供）';
+  byId('preview-destination').textContent = DESTINATION_LABEL;
   const requests = byId('preview-requests');
   requests.textContent = '';
   for (const request of pending.confirmationRequests) {
@@ -407,8 +417,12 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   title.textContent = taskLabel(row);
   title.setAttribute('aria-label', '查看' + taskLabel(row) + '详情');
   title.addEventListener('click', () => {
+    // Reopen: the row's facts are re-read from the Core on the next
+    // managerRefresh (the index replays the durable journal per query); the
+    // detail panel renders the freshest listed projection of this aggregate.
     selectedLineage = row.lineageId;
     renderDetails();
+    void refresh();
   });
   lineage.append(title);
   tr.appendChild(lineage);
@@ -416,8 +430,7 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   const status = document.createElement('td');
   const tag = document.createElement('span');
   tag.className =
-    'status-tag ' +
-    (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : !row.present ? 'unknown' : '');
+    'status-tag ' + (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : '');
   tag.textContent = statusLabel(row);
   tag.title = 'Core 原始状态：' + jobStatusText(row);
   status.appendChild(tag);
@@ -433,7 +446,7 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
-  destination.textContent = '由 Core 配置管理（实际路径尚未提供）';
+  destination.textContent = DESTINATION_LABEL;
   tr.appendChild(destination);
 
   const actions = document.createElement('td');

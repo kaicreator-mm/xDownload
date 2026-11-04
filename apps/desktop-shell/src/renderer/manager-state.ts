@@ -1,13 +1,15 @@
 /**
- * T08 download-manager renderer state — the pure, DOM-free state machine the
- * renderer page binds to (unit-testable in the Node vitest run; no electron,
- * no DOM, no network).
+ * U05-T03 download-manager renderer state — the pure, DOM-free state machine
+ * the renderer page binds to (unit-testable in the Node vitest run; no
+ * electron, no DOM, no network).
  *
  * The machine holds ONLY presentation state (which phase the page is in,
- * the last documents the shell answered with, one transient notice). It has
- * no status truth of its own: every job row is the shell's verbatim Core
- * projection document, and the machine never derives totals, percentages,
- * ETAs or completion claims from it.
+ * the last documents the shell answered with, one transient notice, the
+ * Core index counters). It has no status truth of its own: every job row is
+ * the shell's verbatim Core S1-index projection document, and the machine
+ * never derives totals, percentages, ETAs or completion claims from it.
+ * U05-T03: no destination/reveal state exists at all — the shell carries no
+ * per-download output location.
  */
 
 import type {
@@ -32,6 +34,13 @@ export interface ManagerRendererState {
   /** The shell's Core connection word, verbatim from the last list answer. */
   readonly connection: string | null;
   readonly jobs: readonly ManagerJobRowDocument[];
+  /**
+   * The Core durable index counters from the last successful list answer
+   * (null until the first one arrives — never guessed).
+   */
+  readonly totalCount: number | null;
+  /** True when the Core truncated the index page (visible rows ≠ history). */
+  readonly truncated: boolean;
   readonly pendingPreview: ManagerPreviewDocument | null;
   readonly notice: ManagerNotice | null;
   /** True while an action/refresh is in flight (buttons disabled). */
@@ -43,6 +52,8 @@ export function initialManagerState(): ManagerRendererState {
     phase: 'loading',
     connection: null,
     jobs: [],
+    totalCount: null,
+    truncated: false,
     pendingPreview: null,
     notice: null,
     busy: false,
@@ -60,12 +71,14 @@ function isRefusal(
   return document.ok === false;
 }
 
-/** Apply one refresh answer (the ONLY source of rows and connection). */
+/** Apply one refresh answer (the ONLY source of rows, counters, connection). */
 export function applyList(
   state: ManagerRendererState,
   answer: ManagerJobListDocument | ShellRefusal,
 ): ManagerRendererState {
   if (isRefusal(answer)) {
+    // A refused index read never clears the rows: the previous truthful list
+    // stays visible and the refusal is announced (never an empty fake list).
     return {
       ...state,
       phase: 'ready',
@@ -87,6 +100,8 @@ export function applyList(
     busy: false,
     connection: answer.connection,
     jobs: [...answer.jobs],
+    totalCount: answer.totalCount,
+    truncated: answer.truncated,
     pendingPreview: answer.pendingPreview,
   };
 }
@@ -125,12 +140,23 @@ export function applyAction(
       notice: { kind: 'error', text: `action refused: ${answer.detail}` },
     };
   }
+  // The embedded fresh list may itself be a typed refusal (the Core could
+  // not serve the index at that moment): the previous truthful rows stay,
+  // and the refusal is announced — never replaced by a fake empty list.
+  const list = answer.list;
+  const listRefused = isRefusal(list);
   let nextState: ManagerRendererState = {
     ...state,
     busy: false,
-    connection: answer.list.connection,
-    jobs: [...answer.list.jobs],
-    pendingPreview: answer.list.pendingPreview,
+    ...(listRefused
+      ? {}
+      : {
+          connection: list.connection,
+          jobs: [...list.jobs],
+          totalCount: list.totalCount,
+          truncated: list.truncated,
+          pendingPreview: list.pendingPreview,
+        }),
     notice: null,
   };
   if (answer.action !== 'discard-preview') {
@@ -149,6 +175,14 @@ export function applyAction(
         notice: {
           kind: 'error',
           text: `the ${answer.action} was not routed: ${answer.refusalDetail ?? 'refused'}`,
+        },
+      };
+    } else if (listRefused) {
+      nextState = {
+        ...nextState,
+        notice: {
+          kind: 'error',
+          text: `the ${answer.action} was accepted by the Core, but the fresh job list was refused: ${list.detail}`,
         },
       };
     } else {
@@ -179,49 +213,57 @@ export function noticeShown(
 // ---- display derivation (verbatim-only text; nothing fabricated) ----------
 
 /**
- * The truthful status text of one row. Absent projection facts render as
- * "unknown" words — never as 0, a percentage, a total or an ETA.
+ * The truthful status text of one S1 row. The row is a verified Core
+ * projection (the index validated it before the shell served it): its words
+ * are rendered verbatim — never a guessed or cached status.
  */
 export function jobStatusText(row: ManagerJobRowDocument): string {
-  if (!row.present) {
-    return 'no projection available (Core state unknown)';
-  }
   if (row.terminal !== null) {
     return `terminal — request fulfillment: ${row.terminal.requestFulfillment} — stop reason: ${row.terminal.stopReason}`;
   }
-  return `lineage ${row.lineageStatus ?? 'unknown'} (contract ${row.contractStatus ?? 'unknown'}, revision ${row.revision === null ? 'unknown' : String(row.revision)})`;
+  return `lineage ${row.lineageStatus} (contract ${row.contractStatus}, revision ${String(row.revision)})`;
 }
 
 /**
- * The truthful progress text of one row. The legacy lane projection carries
- * no authoritative byte sample, so NO byte/percent/ETA figure is ever shown
- * here (no fabricated total/ETA).
+ * The truthful progress text of one S1 row. The U05 S1 lane projection
+ * carries NO authoritative byte sample, member count, ETA or completion
+ * percentage, so none is ever shown: a non-terminal row states exactly that
+ * it awaits terminal truth from the Core.
  */
 export function jobProgressText(row: ManagerJobRowDocument): string {
-  if (!row.present) {
-    return 'unknown';
-  }
   if (row.terminal !== null) {
     if (row.terminal.requestFulfillment === 'COMPLETE') {
       return `validated: ${row.terminal.validationSummary.status} (passed ${String(row.terminal.validationSummary.passedCount)}, failed ${String(row.terminal.validationSummary.failedCount)})`;
     }
     return `coverage: ${row.terminal.coverage}`;
   }
-  const selected = row.selectedMemberCount;
-  return `selected members: ${selected === null ? 'unknown' : String(selected)}`;
+  return 'awaiting terminal truth from the Core (no authoritative byte progress)';
 }
 
-/** The action availability hints of one row (presentation only). */
+/** The action availability hints of one S1 row (presentation only). */
 export function jobActions(row: ManagerJobRowDocument): {
   readonly cancelEnabled: boolean;
   readonly retryEnabled: boolean;
-  readonly revealEnabled: boolean;
 } {
-  const terminal = row.terminal !== null;
-  const complete = terminal && row.terminal?.requestFulfillment === 'COMPLETE';
   return {
-    cancelEnabled: row.present && !terminal,
-    retryEnabled: row.present && row.retry.available,
-    revealEnabled: complete === true && row.destination !== null,
+    cancelEnabled: row.terminal === null,
+    retryEnabled: row.retry.available,
   };
+}
+
+/**
+ * The visible truncation notice text. Words only from the Core index
+ * counters: when truncated, the visible page is explicitly NOT the complete
+ * history; when not truncated, the count is the complete enumeration.
+ */
+export function truncationNoticeText(state: {
+  readonly truncated: boolean;
+  readonly totalCount: number | null;
+  readonly visibleCount: number;
+}): string | null {
+  if (!state.truncated) {
+    return null;
+  }
+  const total = state.totalCount === null ? 'unknown' : String(state.totalCount);
+  return `列表已截断：仅显示最近 ${String(state.visibleCount)} 条任务，Core 共记录 ${total} 条；此处不是完整历史`;
 }

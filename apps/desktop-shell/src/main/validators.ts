@@ -61,16 +61,17 @@ export const MANAGER_LINEAGE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$
 /** Upper bound for one user-supplied download URL (mirrors the UI rule). */
 export const MANAGER_MAX_URL_LENGTH = 2048;
 
-/** Upper bound for one user-chosen destination directory string. */
-export const MANAGER_MAX_DESTINATION_LENGTH = 1024;
-
-/** Exact payload of `managerPreviewAdd`. */
+/**
+ * Exact payload of `managerPreviewAdd` (U05-T03): exactly `{ url }`. The
+ * per-download destination field was removed with the destination picker —
+ * the shell carries no output location, so a `destination` key is an
+ * unknown field and is refused like any other widening.
+ */
 export interface PreviewAddPayload {
   readonly url: string;
-  readonly destination?: string;
 }
 
-/** Exact payload of the lineage-addressed methods (cancel/retry/reveal). */
+/** Exact payload of the lineage-addressed methods (cancel/retry). */
 export interface LineageRefPayload {
   readonly lineageId: string;
 }
@@ -95,15 +96,16 @@ function boundedCleanString(value: unknown, max: number): value is string {
 }
 
 /**
- * Exact-shape decode of the `managerPreviewAdd` payload: exactly
- * `{ url, destination? }`; the URL must be a bounded http(s) URL and the
- * optional destination a bounded clean string. Anything else is refused.
+ * Exact-shape decode of the `managerPreviewAdd` payload: exactly `{ url }`;
+ * the URL must be a bounded http(s) URL. Anything else — non-objects,
+ * unknown fields (including any removed `destination` key), wrong types —
+ * is refused.
  */
 export function decodePreviewAddPayload(payload: unknown): DecodeResult<PreviewAddPayload> {
   if (!isPlainObject(payload)) {
     return { ok: false, code: 'PAYLOAD_REJECTED', detail: 'payload must be a JSON object' };
   }
-  const unknownKeys = Object.keys(payload).filter((key) => key !== 'url' && key !== 'destination');
+  const unknownKeys = Object.keys(payload).filter((key) => key !== 'url');
   if (unknownKeys.length > 0) {
     return {
       ok: false,
@@ -128,21 +130,7 @@ export function decodePreviewAddPayload(payload: unknown): DecodeResult<PreviewA
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     return { ok: false, code: 'PAYLOAD_REJECTED', detail: 'only http(s) URLs are admissible' };
   }
-  const destination = payload['destination'];
-  if (
-    destination !== undefined &&
-    !boundedCleanString(destination, MANAGER_MAX_DESTINATION_LENGTH)
-  ) {
-    return {
-      ok: false,
-      code: 'PAYLOAD_REJECTED',
-      detail: 'destination must be a bounded string without control characters',
-    };
-  }
-  return {
-    ok: true,
-    value: destination === undefined ? { url } : { url, destination: destination as string },
-  };
+  return { ok: true, value: { url } };
 }
 
 /**

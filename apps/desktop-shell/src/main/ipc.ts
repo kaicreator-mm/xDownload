@@ -6,9 +6,10 @@
  * Discipline:
  * - The registry is closed: every `ipcMain.handle` is registered here from
  *   the `SHELL_IPC_CHANNELS` allowlist; no dynamic channel names exist. The
- *   registration loop below is the ONE registration site (T08 extends the
- *   table, never the mechanism: same sender gate, same payload gate, same
- *   typed-refusal answers for every entry).
+ *   registration loop below is the ONE registration site (U05-T03 shrinks the
+ *   table by removing the destination/reveal channels, never the mechanism:
+ *   same sender gate, same payload gate, same typed-refusal answers for
+ *   every entry).
  * - Every call passes the sender gate (the caller must be the main frame of
  *   the one shell window) and the payload gate (the method's declared
  *   exact-shape decoder) before any answer is built.
@@ -109,14 +110,6 @@ export function registerShellIpc(options: ShellIpcOptions): void {
     [
       SHELL_IPC_CHANNELS.managerRetryJob,
       entry(decodeLineageRefPayload, (value: LineageRefPayload) => manager.retryJob(value)),
-    ],
-    [
-      SHELL_IPC_CHANNELS.managerChooseDestination,
-      entry(decodeUnitPayload, () => manager.chooseDestination()),
-    ],
-    [
-      SHELL_IPC_CHANNELS.managerRevealJob,
-      entry(decodeLineageRefPayload, (value: LineageRefPayload) => manager.revealJob(value)),
     ],
   ];
   const registry = new Map(entries);
