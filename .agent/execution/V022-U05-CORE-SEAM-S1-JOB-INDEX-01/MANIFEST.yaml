@@ -1,4 +1,4 @@
-pack_id: "V022-U05-T01-CORE-SEAM-S1-JOB-INDEX@ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
+pack_id: "V022-U05-T01-CORE-SEAM-S1-JOB-INDEX-R1@ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
 task_id: "V022-U05-CORE-SEAM-S1-JOB-INDEX-01"
 repository: "kaicreator-mm/xDownload"
 version: "v0.2.2"
@@ -6,24 +6,26 @@ parent_issue: "#310"
 task_issue: "#351"
 parent_dag_issue: "#310"
 architecture_tracking_issue: "#337"
+amendment_issue: "#354"
+owner_authorization_ref: "xDownload#354 comment 6623288615"
 base_branch: "wip/v0.2.2-ui-rebuild-r0"
 base_sha: "ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
 base_tree: "870657c54eecae9721a6b06221828a6bdfdfbb0d"
-task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U05-CORE-SEAM-S1-JOB-INDEX.md@planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d#blob:dc71c5f260325fca17712e90f20e0e940d0694b1"
-task_pack_blob: "dc71c5f260325fca17712e90f20e0e940d0694b1"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U05-CORE-SEAM-S1-JOB-INDEX-R1.md@planning/v0.2.2-u05-r1@39fe921308459a26a29068362757825ed3335147#blob:60fc7f977228801723674d81976f2fca4d889b1c"
+task_pack_blob: "60fc7f977228801723674d81976f2fca4d889b1c"
+dag_ref: "docs/architecture/v0.2.2/U05_DESKTOP_S1_IMPLEMENTATION_DAG_R1.md@planning/v0.2.2-u05-r1@39fe921308459a26a29068362757825ed3335147#blob:0048b5b4f6df2b2bad30a93f55450311b304a8bc"
 task_branch: "task/v0.2.2-u05-core-seam-s1-job-index"
-execution_branch: "execution/v0.2.2-u05-core-seam-s1-job-index-r1"
+execution_branch: "execution/v0.2.2-u05-core-seam-s1-job-index-r2"
 execution_pack_path: ".agent/execution/V022-U05-CORE-SEAM-S1-JOB-INDEX-01/MANIFEST.yaml"
 execution_profile: "LOCAL_BUILDER"
 execution_environment: "LOCAL"
 agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
 pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
-owner_authorization_ref: "xDownload#310 comment 6616747471 (U05 Product/L2 scope)"
 product_l2_freeze_ref: "planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d"
-dispatch_admission: "OWNER_SCOPE_AUTHORIZED_TASK_PACK_REVIEW_PASS_FRESH_LOCAL_BUILDER_CLAIM_REQUIRED"
+dispatch_admission: "OWNER_APPROVED_R1_TASK_PACK_INDEPENDENT_REVIEW_PASS_FRESH_GENERATION_2_LOCAL_BUILDER_CLAIM_REQUIRED"
 claim:
   protected_claim_key: "kaicreator-mm/xDownload#351:builder:__default__"
-  claim_generation: 1
+  claim_generation: 2
   required_event: "DISPATCH_CLAIMED"
   claim_owner: "actual Local Builder identity"
   source_mutation_before_accepted_claim: false
@@ -33,24 +35,38 @@ allowed_write_set:
   - packages/core-seam/test/envelope-wire-compatibility.test.ts
   - packages/core-seam/test/projection-read-side.test.ts
   - packages/core-seam/test/s1-job-index.test.ts
-goal: "Implement the frozen read-only LIST_S1_JOB_PROJECTIONS query using only the existing accepted-command journal and projectAggregate. Exact reserved subject core:s1-job-index; schema 1.4+ for new query while preserving 1.3 compatibility; same verified installId/userId filtering; durable journal order and deduplication; latest 200 reverse durable order; truthful totalCount/truncated; fail closed on missing projection."
+  - packages/core-seam/test/s3-closed-wire-admission.test.ts
+  - packages/core-seam/test/s4-closed-wire-admission.test.ts
+  - packages/core-seam/test/s4-seam12-payload.test.ts
+  - packages/core-seam/test/verified-session.test.ts
+  - packages/core-seam/test/s1-command-surface.test.ts
+goal: "Implement the read-only LIST_S1_JOB_PROJECTIONS query and schema 1.4.0 compatibility, plus admit exactly CLI and DESKTOP_UI for the existing EXECUTE_S1_DIRECT_ACQUISITION command. Preserve every existing per-frame Peer authorization, accepted-contract/Lineage, redirect, budget, digest, request identity, runtime and fail-closed gate. No other command surface is widened."
 acceptance:
-  - "Cover exact sentinel/schema compatibility, peer scope, empty list, dedup/order, 199/200/201 limits, exact totalCount/truncated, missing projection/journal inconsistency, and restart replay."
+  - "Cover exact sentinel/schema compatibility, peer scope, empty list, dedup/order, 199/200/201 limits, totalCount/truncated, missing projection and restart replay."
+  - "Update only stale expected-current-version assertions in the four newly admitted legacy tests; preserve all historical compatibility assertions."
+  - "Test CLI and DESKTOP_UI positive admission and every other defined Peer surface negative admission; prove authorizePeer still executes."
   - "Only exact paths in allowed_write_set may change."
   - "Preserve frozen Product/L2 blobs and existing SDK/Core authority; no scope expansion."
-  - "The Builder must write exact HEAD/tree, commands, exit codes, test counts and Woodpecker Build ID to Task Issue #351."
+  - "Write exact HEAD/tree, commands, exit codes, test counts and Woodpecker Build ID to #351."
+worktree_reconciliation:
+  previous_generation: 1
+  prior_implementation: "UNCOMMITTED_LOCAL_WORKTREE_REPORTED; preserve, do not reset/discard"
+  required_before_mutation:
+    - "Inspect dirty worktree and verify every changed path is within the R1 ten-path write set."
+    - "Preserve existing compatible implementation."
+    - "Publish fresh accepted generation-2 DISPATCH_CLAIMED bound to this R1 pack and exact base before further source mutation."
+    - "Stop if any out-of-scope dirty path or base mismatch exists."
 pre_ci:
-  - "Verify task branch base SHA/tree equals ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd and pack/task refs are current."
-  - "Acquire a fresh accepted generation-1 LOCAL_BUILDER CAS Claim before source edits."
-  - "Run Node v24 syntax preflight on all changed JS/TS files before CI."
+  - "Verify task branch and WIP exact base/tree equal ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd / 870657c54eecae9721a6b06221828a6bdfdfbb0d."
+  - "Independent R1 Task Pack review must PASS before Builder Claim."
+  - "Acquire fresh accepted generation-2 LOCAL_BUILDER CAS Claim before further source edits."
+  - "Run Node v24 syntax preflight on all changed JS/TS files."
   - "Run changed-file Prettier before CI."
-  - "Run focused task tests, typecheck, aggregate pnpm run ci:verify, then local Docker Woodpecker exact-SHA."
-  - "No standalone LOCAL_VALIDATION task; Builder owns implementation, repair, and all validation."
+  - "Run focused tests, typecheck, aggregate pnpm run ci:verify, then local Docker Woodpecker exact-SHA."
+  - "No standalone LOCAL_VALIDATION; Builder owns implementation, repair and all validation."
 forbidden:
-  - "No new index/store/authority/status model, no renderer scope/filter/path, no state.ts/peer.ts/projection.ts/Core Runtime, no package manifest/lockfile/Desktop/shell/Host, no real download or Native Host."
-  - "main"
-  - "version/v0.2.1"
-  - "tag/release/deployment"
-  - "Any write outside allowed_write_set"
-  - "Merge or WIP integration; requires later independent Exact-SHA review and separate Owner authorization."
-status: "PACK_PREPARED_AWAITING_PACK_CI_AND_BUILDER_CLAIM"
+  - "No new index/store/authority/status model, no renderer scope/filter/path, no state.ts/peer.ts/projection.ts/Core Runtime/CLI/Desktop/shell/Host/package manifest/lockfile."
+  - "No real external download, Native Host, registry, main/version, tag/release/deployment."
+  - "Any write outside allowed_write_set."
+  - "Merge or WIP integration; requires later independent Exact-SHA review and separate Owner authorization naming exact candidate HEAD/tree."
+status: "R1_EXECUTION_PACK_PREPARED_WAITING_INDEPENDENT_PACK_REVIEW_AND_BUILDER_CLAIM"
