@@ -74,6 +74,17 @@ No other paths are permitted. In particular, do not edit Core Seam protocol/clie
 - `TERMINAL` rows must not expose Cancel or Retry, even if a stale/legacy retry summary says available.
 - Do not change or broaden retry member identity derivation.
 
+### 4.4 Action-level acknowledgement semantics
+
+- Apply acknowledgement-only `routed` semantics consistently to every Desktop adapter command path that returns `InteractionOutcome`; `attempted` is a separate diagnostic list.
+- For the shell Add action, `ManagerActionDocument.routed=true` only when both the contract submission and S1 execution have valid Core acknowledgements. A contract acknowledgement followed by S1 UNKNOWN or REJECTED is not a successful Add action.
+- Add a typed `deliveryState` to the shell action document and a small main-process preview stage (READY / CONTRACT_UNKNOWN / S1_UNKNOWN) to the existing preview document. This is data on existing IPC documents, not a new IPC method/channel.
+- If contract submission is UNKNOWN, keep the preview in CONTRACT_UNKNOWN and replay the exact contract envelope on the next confirmation.
+- If contract submission is acknowledged but S1 is UNKNOWN, keep the preview in S1_UNKNOWN; the next confirmation attaches the same aggregate and replays the exact retained S1 envelope only.
+- If S1 is definitively REJECTED, surface the Core rejection, do not claim Add success, and do not resubmit the already-acknowledged contract. Any visible row must come only from the fresh Core index.
+- The renderer must label reconciliation explicitly (not “Confirm” as if a new command), keep the unresolved preview, and disable Discard while disposition is unknown. The action notice must state `SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED`.
+- For Cancel/Retry, action-level `routed=true` only for a Core-acknowledged control response; UNKNOWN remains false and must not produce an accepted notice.
+
 ## 5. Required regression matrix
 
 1. Core unavailable before Add confirmation: no acknowledged command, no accepted notice, no confirmed job row; explicit typed unknown/refusal state.
@@ -86,6 +97,7 @@ No other paths are permitted. In particular, do not edit Core Seam protocol/clie
 8. Successful Core acknowledgement: existing accepted behavior remains; projection remains the only source of task status/terminal truth.
 9. #319 matrix: ACTIVE / CANCELLED / TERMINAL (including TERMINAL with missing terminal detail and TERMINAL with retryable failed-member facts); only the allowed states expose controls.
 10. Renderer unknown-state notice, preview label and discard/confirm enabled state agree with the main-process delivery state.
+11. Contract ACK + S1 typed REJECTED is not an accepted Add; the contract is not resubmitted, rejection remains visible, and any row comes only from the fresh Core index.
 
 Use the real Core Seam path for the lost-response test: a transport wrapper may forward a command to the real disposable Core and drop the first response, then allow the exact same request frame to be replayed. Assert exact requestId/frame identity and exactly one accepted logical command. Do not simulate “accepted” by mutating renderer state.
 
