@@ -127,9 +127,15 @@ export interface RoutedCommand {
   readonly requestId: string;
 }
 
+export type CommandDeliveryState = 'NOT_ATTEMPTED' | 'ACKNOWLEDGED' | 'REJECTED' | 'UNKNOWN';
+
 export interface InteractionOutcome {
   readonly display: SurfaceView;
+  /** Commands for which this interaction received a valid Core acknowledgement. */
   readonly routed: readonly RoutedCommand[];
+  /** Commands attempted by this interaction; an attempt is not an acknowledgement. */
+  readonly attempted: readonly RoutedCommand[];
+  readonly deliveryState: CommandDeliveryState;
   /** Core-typed rejections surfaced verbatim. */
   readonly rejections: readonly TypedRejection[];
   /** Adapter-level fail-closed refusals (no command routed). */
@@ -166,6 +172,13 @@ interface S1ExecutionRecord {
   readonly envelope: CommandEnvelope;
 }
 
+type PendingControlAction = 'CANCEL_LINEAGE' | 'RETRY_FAILED_MEMBERS';
+
+interface PendingControl {
+  readonly action: PendingControlAction;
+  readonly envelope: CommandEnvelope;
+}
+
 interface AggregateRecord {
   /**
    * The exact payload Core accepted for a contract this surface submitted
@@ -186,6 +199,13 @@ interface AggregateRecord {
    */
   submittedLocatorUri: string | null;
   s1Execution: S1ExecutionRecord | null;
+  /** Exact unresolved Cancel/Retry envelope; replayed before new-action guards. */
+  pendingControl: PendingControl | null;
+}
+
+interface DraftSubmission {
+  readonly envelope: CommandEnvelope;
+  readonly contract: AcquisitionContract;
 }
 
 interface DraftState {
@@ -193,6 +213,8 @@ interface DraftState {
   readonly contractId: string;
   readonly plan: ConfirmationPlan;
   readonly materialDecisions: Map<string, 'CONFIRMED' | 'REJECTED'>;
+  /** Retained only while SUBMIT_CONTRACT delivery is unknown. */
+  readonly submission: DraftSubmission | null;
 }
 
 export interface DesktopUiAdapterOptions {
@@ -223,6 +245,9 @@ export class DesktopUiAdapter {
   private lastRejections: readonly TypedRejection[] = [];
   private lastRefusals: readonly string[] = [];
   private readonly sentEnvelopes: CommandEnvelope[] = [];
+  private interactionAttempted: RoutedCommand[] = [];
+  private interactionRouted: RoutedCommand[] = [];
+  private deliveryState: CommandDeliveryState = 'NOT_ATTEMPTED';
 
   constructor(options: DesktopUiAdapterOptions) {
     this.peer = createDesktopPeer({ installId: options.installId, userId: options.userId });
@@ -275,17 +300,19 @@ export class DesktopUiAdapter {
     return this.render();
   }
 
+  /** Commands acknowledged by Core during the most recent interaction only. */
   lastRouted(): readonly RoutedCommand[] {
-    return this.sentEnvelopes.map((envelope) => ({
-      commandType: envelope.commandType,
-      aggregateId: envelope.aggregateId,
-      requestId: envelope.requestId,
-    }));
+    return [...this.interactionRouted];
+  }
+
+  /** Commands attempted during the most recent interaction (not acknowledgement evidence). */
+  lastAttempted(): readonly RoutedCommand[] {
+    return [...this.interactionAttempted];
   }
 
   /**
-   * Observation of the exact routed envelopes (test/debug ergonomics).
-   * Re-submitting one of these unchanged converges through seam idempotency.
+   * Cumulative exact envelopes attempted by this adapter (diagnostic/test only).
+   * Re-submitting one unchanged converges through seam idempotency.
    */
   sentCommandEnvelopes(): readonly CommandEnvelope[] {
     return [...this.sentEnvelopes];
@@ -307,8 +334,13 @@ export class DesktopUiAdapter {
    */
   discardDraft(): InteractionOutcome {
     this.beginInteraction();
+    if (this.draft?.submission !== null && this.draft?.submission !== undefined) {
+      return this.refusalOutcome([
+        'SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED: the exact contract request must be replayed before its unresolved preview can be discarded',
+      ]);
+    }
     this.draft = null;
-    return this.outcome([]);
+    return this.outcome();
   }
 
   /** True while a draft intent is pending (the preview step is open). */
@@ -359,7 +391,7 @@ export class DesktopUiAdapter {
       return this.refusalOutcome([`unknown aggregate '${contractId}'`]);
     }
     this.currentAggregateId = contractId;
-    return this.outcome([]);
+    return this.outcome();
   }
 
   /**
@@ -371,7 +403,7 @@ export class DesktopUiAdapter {
     this.beginInteraction();
     this.currentAggregateId = contractId;
     await this.readProjection(contractId);
-    return this.outcome([]);
+    return this.outcome();
   }
 
   // ---- intent entry + confirmation flow ----------------------------------
@@ -413,8 +445,9 @@ export class DesktopUiAdapter {
       contractId,
       plan,
       materialDecisions: new Map(),
+      submission: null,
     };
-    return this.outcome([]);
+    return this.outcome();
   }
 
   /** Answer the plan's single SCOPE_LEVEL request: submit the confirmed contract. */
@@ -425,7 +458,7 @@ export class DesktopUiAdapter {
       return guard;
     }
     const routed = await this.submitIntentContract();
-    return this.outcome(routed);
+    return this.outcome();
   }
 
   /** AUTO with sufficient Core evidence: no confirmation prompts exist; submit directly. */
@@ -441,7 +474,7 @@ export class DesktopUiAdapter {
       ]);
     }
     const routed = await this.submitIntentContract();
-    return this.outcome(routed);
+    return this.outcome();
   }
 
   /**
@@ -461,7 +494,7 @@ export class DesktopUiAdapter {
       requestedMemberIds: memberRefs,
       selectedMemberIds: memberRefs,
     });
-    return this.outcome(routed);
+    return this.outcome();
   }
 
   /** Answer one MATERIAL_ITEM request within the canonical bound (≤3). */
@@ -478,7 +511,7 @@ export class DesktopUiAdapter {
       ]);
     }
     draft.materialDecisions.set(memberRef, decision);
-    return this.outcome([]);
+    return this.outcome();
   }
 
   /** Route the selection after every planned material item has been answered. */
@@ -507,7 +540,7 @@ export class DesktopUiAdapter {
       requestedMemberIds: itemRefs,
       selectedMemberIds: selected,
     });
-    return this.outcome(routed);
+    return this.outcome();
   }
 
   /**
@@ -536,7 +569,7 @@ export class DesktopUiAdapter {
       requestedMemberIds: candidates,
       selectedMemberIds: [...selectedRefs],
     });
-    return this.outcome(routed);
+    return this.outcome();
   }
 
   // ---- successor transitions (never in-place mutation) -------------------
@@ -583,14 +616,14 @@ export class DesktopUiAdapter {
       }),
     );
     if (response === null) {
-      return this.outcome(this.lastRouted());
+      return this.outcome();
     }
     if (response.outcome === 'REJECTED') {
       return this.rejectedOutcome(response);
     }
     this.openAggregate(aggregateId, confirmed.value, null);
-    await this.refresh();
-    return this.outcome(this.lastRouted());
+    await this.readProjection(aggregateId);
+    return this.outcome();
   }
 
   /** Route a new opaque authorization context as an authorization successor. */
@@ -617,36 +650,62 @@ export class DesktopUiAdapter {
   async cancel(): Promise<InteractionOutcome> {
     this.beginInteraction();
     const record = this.requireConfirmedRecord();
-    if (record === null || record.projection === null) {
+    if (record === null) {
+      return this.refusalOutcome(['no confirmed Core aggregate is held; cancellation cannot be routed']);
+    }
+    const aggregateId = record.projection?.contract.contractId ?? record.contractEcho?.contractId ?? this.currentAggregateId;
+    if (aggregateId === null) {
+      return this.refusalOutcome(['no aggregate identity is held; cancellation cannot be routed']);
+    }
+
+    const pending = record.pendingControl;
+    if (pending !== null) {
+      if (pending.action !== 'CANCEL_LINEAGE') {
+        return this.refusalOutcome([
+          'another control command has an unresolved delivery disposition; reconcile that exact command first',
+        ]);
+      }
+      const response = await this.submitOrDisconnect(pending.envelope);
+      if (response === null) {
+        return this.outcome();
+      }
+      record.pendingControl = null;
+      await this.readProjection(aggregateId);
+      return response.outcome === 'REJECTED' ? this.rejectedOutcome(response) : this.outcome();
+    }
+
+    const projection = record.projection;
+    if (
+      this.connection !== 'CONNECTED' ||
+      projection === null ||
+      projection.lineage.status !== 'ACTIVE' ||
+      projection.terminal !== undefined
+    ) {
       return this.refusalOutcome([
-        'no live Core projection is held; cancellation cannot be routed',
+        'Cancel requires a fresh Core projection with ACTIVE lineage and no terminal result',
       ]);
     }
-    const aggregateId = record.projection.contract.contractId;
-    const response = await this.submitOrDisconnect(
-      desktopCommand({
-        facts: {
-          peer: this.peer,
-          aggregateId,
-          expectedRevision: record.projection.contract.revision,
-          requestId: this.ids.requestId(),
-          issuedAt: this.now(),
-          correlation: { contractId: aggregateId },
-        },
-        commandType: 'CANCEL_LINEAGE',
-        payload: {},
-      }),
-    );
+
+    const envelope = desktopCommand({
+      facts: {
+        peer: this.peer,
+        aggregateId,
+        expectedRevision: projection.contract.revision,
+        requestId: this.ids.requestId(),
+        issuedAt: this.now(),
+        correlation: { contractId: aggregateId },
+      },
+      commandType: 'CANCEL_LINEAGE',
+      payload: {},
+    });
+    record.pendingControl = { action: 'CANCEL_LINEAGE', envelope };
+    const response = await this.submitOrDisconnect(envelope);
     if (response === null) {
-      return this.outcome(this.lastRouted());
+      return this.outcome();
     }
-    if (response.outcome === 'REJECTED') {
-      // Re-sync so the display reflects Core state, then surface the rejection.
-      await this.refresh();
-      return this.rejectedOutcome(response);
-    }
-    await this.refresh();
-    return this.outcome(this.lastRouted());
+    record.pendingControl = null;
+    await this.readProjection(aggregateId);
+    return response.outcome === 'REJECTED' ? this.rejectedOutcome(response) : this.outcome();
   }
 
   /**
@@ -657,10 +716,40 @@ export class DesktopUiAdapter {
   async retryFailed(): Promise<InteractionOutcome> {
     this.beginInteraction();
     const record = this.requireConfirmedRecord();
-    if (record === null || record.projection === null) {
-      return this.refusalOutcome(['no live Core projection is held; retry cannot be routed']);
+    if (record === null) {
+      return this.refusalOutcome(['no confirmed Core aggregate is held; retry cannot be routed']);
     }
+    const aggregateId = record.projection?.contract.contractId ?? record.contractEcho?.contractId ?? this.currentAggregateId;
+    if (aggregateId === null) {
+      return this.refusalOutcome(['no aggregate identity is held; retry cannot be routed']);
+    }
+
+    const pending = record.pendingControl;
+    if (pending !== null) {
+      if (pending.action !== 'RETRY_FAILED_MEMBERS') {
+        return this.refusalOutcome([
+          'another control command has an unresolved delivery disposition; reconcile that exact command first',
+        ]);
+      }
+      const response = await this.submitOrDisconnect(pending.envelope);
+      if (response === null) {
+        return this.outcome();
+      }
+      record.pendingControl = null;
+      await this.readProjection(aggregateId);
+      return response.outcome === 'REJECTED' ? this.rejectedOutcome(response) : this.outcome();
+    }
+
     const projection = record.projection;
+    if (
+      this.connection !== 'CONNECTED' ||
+      projection === null ||
+      (projection.lineage.status !== 'ACTIVE' && projection.lineage.status !== 'CANCELLED')
+    ) {
+      return this.refusalOutcome([
+        'Retry requires a fresh Core projection with ACTIVE or CANCELLED lineage',
+      ]);
+    }
     const domain = deriveRetryDomain({
       selectedMemberIds: projection.snapshot?.selectedMemberIds ?? [],
       retriedMemberIds: projection.lineage.retriedMemberIds,
@@ -669,30 +758,27 @@ export class DesktopUiAdapter {
     if (domain.kind === 'UNAVAILABLE') {
       return this.refusalOutcome([`retry unavailable: ${domain.reason}`]);
     }
-    const aggregateId = projection.contract.contractId;
-    const response = await this.submitOrDisconnect(
-      desktopCommand({
-        facts: {
-          peer: this.peer,
-          aggregateId,
-          expectedRevision: projection.contract.revision,
-          requestId: this.ids.requestId(),
-          issuedAt: this.now(),
-          correlation: { contractId: aggregateId },
-        },
-        commandType: 'RETRY_FAILED_MEMBERS',
-        payload: { memberIds: [...domain.memberIds] },
-      }),
-    );
+
+    const envelope = desktopCommand({
+      facts: {
+        peer: this.peer,
+        aggregateId,
+        expectedRevision: projection.contract.revision,
+        requestId: this.ids.requestId(),
+        issuedAt: this.now(),
+        correlation: { contractId: aggregateId },
+      },
+      commandType: 'RETRY_FAILED_MEMBERS',
+      payload: { memberIds: [...domain.memberIds] },
+    });
+    record.pendingControl = { action: 'RETRY_FAILED_MEMBERS', envelope };
+    const response = await this.submitOrDisconnect(envelope);
     if (response === null) {
-      return this.outcome(this.lastRouted());
+      return this.outcome();
     }
-    if (response.outcome === 'REJECTED') {
-      await this.refresh();
-      return this.rejectedOutcome(response);
-    }
-    await this.refresh();
-    return this.outcome(this.lastRouted());
+    record.pendingControl = null;
+    await this.readProjection(aggregateId);
+    return response.outcome === 'REJECTED' ? this.rejectedOutcome(response) : this.outcome();
   }
 
   // ---- S1 direct acquisition (U05-T02) ------------------------------------
@@ -722,11 +808,6 @@ export class DesktopUiAdapter {
         'no confirmed contract submitted by this surface is held; S1 direct acquisition requires a task this surface confirmed',
       ]);
     }
-    if (record.projection === null) {
-      return this.refusalOutcome([
-        'no live Core projection is held for this task; refresh from Core before starting an S1 acquisition',
-      ]);
-    }
     const contract = record.contractEcho;
     if (
       contract.intentType !== 'SINGLE_RESOURCE' ||
@@ -740,6 +821,11 @@ export class DesktopUiAdapter {
       // Retry/reconnect or duplicate interaction: re-send the identical
       // envelope (same request identity, same derived identities).
       return this.submitS1Execution(record.s1Execution.envelope);
+    }
+    if (this.connection !== 'CONNECTED' || record.projection === null) {
+      return this.refusalOutcome([
+        'no fresh Core projection is held for this task; refresh from Core before starting a new S1 acquisition',
+      ]);
     }
     if (record.submittedLocatorUri === null) {
       return this.refusalOutcome([
@@ -831,16 +917,20 @@ export class DesktopUiAdapter {
     if (response === null) {
       // Disconnected: the retained envelope keeps the logical command alive
       // for the idempotent re-send; nothing is fabricated locally.
-      return this.outcome(this.lastRouted());
+      return this.outcome();
     }
     if (response.outcome === 'REJECTED') {
-      // Core refused admission: surface the typed rejection verbatim and
-      // re-sync the display from the projection (no acceptance-as-success).
-      await this.refresh();
+      // Core definitively rejected this exact envelope; a later explicit
+      // attempt may mint a new request identity after the rejection is shown.
+      const record = this.aggregates.get(envelope.aggregateId);
+      if (record !== undefined) {
+        record.s1Execution = null;
+      }
+      await this.readProjection(envelope.aggregateId);
       return this.rejectedOutcome(response);
     }
-    await this.refresh();
-    return this.outcome(this.lastRouted());
+    await this.readProjection(envelope.aggregateId);
+    return this.outcome();
   }
 
   // ---- projection re-sync -------------------------------------------------
@@ -851,7 +941,7 @@ export class DesktopUiAdapter {
     if (this.currentAggregateId !== null) {
       await this.readProjection(this.currentAggregateId);
     }
-    return this.outcome([]);
+    return this.outcome();
   }
 
   private async readProjection(aggregateId: string): Promise<
@@ -902,6 +992,7 @@ export class DesktopUiAdapter {
         projection: verified.view,
         submittedLocatorUri: null,
         s1Execution: null,
+        pendingControl: null,
       });
     }
     this.connection = 'CONNECTED';
@@ -913,37 +1004,50 @@ export class DesktopUiAdapter {
 
   private async submitIntentContract(): Promise<readonly RoutedCommand[]> {
     const draft = this.draft!;
-    const contract = buildConfirmedContractPayload({
-      intent: draft.intent,
-      contractId: draft.contractId,
-      confirmedAt: this.now(),
-    });
-    if (!contract.ok) {
-      return this.coreRejectionOutcome(contract.diagnostics.map(toDomainTypedRejection)).routed;
+    let submission = draft.submission;
+    if (submission === null) {
+      const contract = buildConfirmedContractPayload({
+        intent: draft.intent,
+        contractId: draft.contractId,
+        confirmedAt: this.now(),
+      });
+      if (!contract.ok) {
+        return this.coreRejectionOutcome(contract.diagnostics.map(toDomainTypedRejection)).routed;
+      }
+      submission = {
+        contract: contract.value,
+        envelope: desktopCommand({
+          facts: {
+            peer: this.peer,
+            aggregateId: draft.contractId,
+            expectedRevision: 0,
+            requestId: this.ids.requestId(),
+            issuedAt: this.now(),
+          },
+          commandType: 'SUBMIT_CONTRACT',
+          payload: contract.value,
+        }),
+      };
+      this.draft = { ...draft, submission };
     }
-    const response = await this.submitOrDisconnect(
-      desktopCommand({
-        facts: {
-          peer: this.peer,
-          aggregateId: draft.contractId,
-          expectedRevision: 0,
-          requestId: this.ids.requestId(),
-          issuedAt: this.now(),
-        },
-        commandType: 'SUBMIT_CONTRACT',
-        payload: contract.value,
-      }),
-    );
+
+    const response = await this.submitOrDisconnect(submission.envelope);
     if (response === null) {
+      // Ambiguous delivery: retain the exact envelope/requestId for replay.
       return this.lastRouted();
     }
     if (response.outcome === 'REJECTED') {
+      // A typed Core rejection is definitive; a later explicit attempt may
+      // build a new envelope after the rejection has been surfaced.
+      if (this.draft !== null) {
+        this.draft = { ...this.draft, submission: null };
+      }
       this.recordRejections(response);
       return this.lastRouted();
     }
-    this.openAggregate(draft.contractId, contract.value, draft.intent.targetRef);
+    this.openAggregate(draft.contractId, submission.contract, draft.intent.targetRef);
     this.draft = null;
-    await this.refresh();
+    await this.readProjection(draft.contractId);
     return this.lastRouted();
   }
 
@@ -1006,10 +1110,27 @@ export class DesktopUiAdapter {
 
   private async submitOrDisconnect(envelope: CommandEnvelope): Promise<SeamResponse | null> {
     this.sentEnvelopes.push(envelope);
+    this.interactionAttempted.push({
+      commandType: envelope.commandType,
+      aggregateId: envelope.aggregateId,
+      requestId: envelope.requestId,
+    });
     try {
-      return await this.client.submitCommand(envelope);
+      const response = await this.client.submitCommand(envelope);
+      if (response.outcome === 'REJECTED') {
+        this.deliveryState = 'REJECTED';
+      } else {
+        this.deliveryState = 'ACKNOWLEDGED';
+        this.interactionRouted.push({
+          commandType: envelope.commandType,
+          aggregateId: envelope.aggregateId,
+          requestId: envelope.requestId,
+        });
+      }
+      return response;
     } catch {
       this.connection = 'DISCONNECTED';
+      this.deliveryState = 'UNKNOWN';
       return null;
     }
   }
@@ -1025,6 +1146,7 @@ export class DesktopUiAdapter {
       projection: null,
       submittedLocatorUri,
       s1Execution: null,
+      pendingControl: null,
     });
     this.currentAggregateId = aggregateId;
   }
@@ -1035,17 +1157,18 @@ export class DesktopUiAdapter {
 
   private rejectedOutcome(response: SeamResponse): InteractionOutcome {
     this.recordRejections(response);
-    return this.outcome([]);
+    this.deliveryState = 'REJECTED';
+    return this.outcome();
   }
 
   private coreRejectionOutcome(rejections: readonly TypedRejection[]): InteractionOutcome {
     this.lastRejections = rejections;
-    return this.outcome([]);
+    return this.outcome();
   }
 
   private refusalOutcome(messages: readonly string[]): InteractionOutcome {
     this.lastRefusals = [...messages];
-    return this.outcome([]);
+    return this.outcome();
   }
 
   // ---- draft guards --------------------------------------------------------
@@ -1103,12 +1226,17 @@ export class DesktopUiAdapter {
   private beginInteraction(): void {
     this.lastRejections = [];
     this.lastRefusals = [];
+    this.interactionAttempted = [];
+    this.interactionRouted = [];
+    this.deliveryState = 'NOT_ATTEMPTED';
   }
 
-  private outcome(routed: readonly RoutedCommand[]): InteractionOutcome {
+  private outcome(): InteractionOutcome {
     return {
       display: this.render(),
-      routed,
+      routed: [...this.interactionRouted],
+      attempted: [...this.interactionAttempted],
+      deliveryState: this.deliveryState,
       rejections: this.lastRejections,
       refusals: this.lastRefusals,
     };
