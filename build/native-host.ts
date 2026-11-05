@@ -148,7 +148,22 @@ export function parseWindowsRegistrationProbe(raw: string | null): RegistrationP
   if (raw === null) {
     return { registered: false, manifestPath: null, raw: null };
   }
-  const match = /^\s*\(Default\)\s+REG_SZ\s+([^\r\n]+)\s*$/mi.exec(raw);
+
+  // `reg query <key>` can include child-key sections. Only the first/root
+  // key section owns the registration default value; never mistake a
+  // descendant's (Default) value for the requested host registration.
+  const lines = raw.split(/\r?\n/u);
+  const rootHeaderIndex = lines.findIndex((line) => /^\s*HKEY_[A-Z_]+\\/iu.test(line));
+  if (rootHeaderIndex === -1) {
+    return { registered: true, manifestPath: null, raw };
+  }
+  const childHeaderIndex = lines.findIndex(
+    (line, index) => index > rootHeaderIndex && /^\s*HKEY_[A-Z_]+\\/iu.test(line),
+  );
+  const rootSection = lines
+    .slice(rootHeaderIndex + 1, childHeaderIndex === -1 ? undefined : childHeaderIndex)
+    .join('\n');
+  const match = /^\s*\(Default\)\s+REG_SZ\s+([^\r\n]+)\s*$/mi.exec(rootSection);
   return {
     registered: true,
     manifestPath: match === null ? null : (match[1]?.trim() ?? null),
@@ -213,6 +228,22 @@ export async function registerWindowsNativeHost(input: {
       detail: 'the native-host manifest already exists without this registration; refusing to overwrite it',
     };
   }
+
+  // Recheck after exclusive file creation and immediately before reg add. If
+  // another process registered this host in the meantime, preserve our file:
+  // it may now be the manifest referenced by that registration.
+  const registrationAfterManifestCreate = await probeWindowsRegistration(
+    input.hostName ?? NATIVE_HOST_NAME,
+  );
+  if (registrationAfterManifestCreate.registered) {
+    return {
+      action: 'already-registered',
+      key,
+      manifestPath: registrationAfterManifestCreate.manifestPath ?? 'unknown',
+      detail: `a registration appeared after manifest creation and was not modified; the newly created manifest was preserved at ${manifestPath}`,
+    };
+  }
+
   try {
     await execFileAsync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath'], {
       windowsHide: true,
