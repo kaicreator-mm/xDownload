@@ -229,6 +229,71 @@ describe('visible truncation state (Core index counters only)', () => {
     expect(next.truncated).toBe(true);
   });
 
+  it('an unknown Add contract keeps the preview and binds reconciliation to the same requestId', () => {
+    const preview = {
+      document: 'xdownload.desktop.manager.preview' as const,
+      lineageId: 'contract-desktop-ab12cd34-000009',
+      url: 'https://example.com/unknown-submit.mp4',
+      automationMode: 'ASSISTED',
+      confirmationRequests: [],
+    };
+    const unknown = {
+      status: 'UNKNOWN' as const,
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: preview.lineageId,
+      requestId: 'request-submit-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const next = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: unknown,
+      previewConsumed: false,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: preview, pendingCommand: unknown }),
+    });
+    expect(next.pendingPreview).toEqual(preview);
+    expect(next.pendingCommand).toEqual(unknown);
+    expect(next.notice?.text).toContain('request-submit-unknown');
+    expect(next.notice?.text).toContain('提交状态不确定');
+  });
+
+  it('an unknown S1 command consumes the accepted preview and keeps only its exact reconciliation identity', () => {
+    const preview = {
+      document: 'xdownload.desktop.manager.preview' as const,
+      lineageId: 'contract-desktop-ab12cd34-000010',
+      url: 'https://example.com/unknown-s1.mp4',
+      automationMode: 'ASSISTED',
+      confirmationRequests: [],
+    };
+    const unknown = {
+      status: 'UNKNOWN' as const,
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId: preview.lineageId,
+      requestId: 'request-s1-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const next = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: unknown,
+      previewConsumed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: null, pendingCommand: unknown }),
+    });
+    expect(next.pendingPreview).toBeNull();
+    expect(next.pendingCommand).toEqual(unknown);
+    expect(next.notice?.text).toContain('request-s1-unknown');
+  });
+
   it('a refused Core action also invalidates the last-known connection snapshot', () => {
     const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const next = applyAction(seeded, {
@@ -532,8 +597,53 @@ describe('truthful display derivation (no fabricated total/ETA)', () => {
     });
     expect(jobActions(failed).retryEnabled).toBe(true);
 
+    const cancelled = presentRow({
+      lineageStatus: 'CANCELLED',
+      retry: { available: true, reason: null },
+    });
+    expect(jobActions(cancelled)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: true,
+    });
+
+    const terminalWithoutDetail = presentRow({
+      lineageStatus: 'TERMINAL',
+      retry: { available: true, reason: null },
+    });
+    expect(jobActions(terminalWithoutDetail)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: false,
+    });
+
+    const unknownStatus = presentRow({
+      lineageStatus: 'UNKNOWN_CORE_STATUS',
+      retry: { available: true, reason: null },
+    });
+    expect(jobActions(unknownStatus)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: false,
+    });
+
+    const terminalPresent = presentRow({
+      lineageStatus: 'ACTIVE',
+      retry: { available: true, reason: null },
+      terminal: {
+        requestFulfillment: 'COMPLETE',
+        targetResolution: 'RESOLVED',
+        selectionAcquisition: 'ACQUIRED',
+        coverage: 'VERIFIED_COMPLETE',
+        stopReason: 'NATURAL_END',
+        validationSummary: { status: 'ALL_PASSED', passedCount: 1, failedCount: 0 },
+        recordedAt: '2026-10-31T09:00:00Z',
+      },
+    });
+    expect(jobActions(terminalPresent)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: false,
+    });
+
     const complete = presentRow({
-      lineageStatus: 'CLOSED',
+      lineageStatus: 'TERMINAL',
       terminal: {
         requestFulfillment: 'COMPLETE',
         targetResolution: 'RESOLVED',
