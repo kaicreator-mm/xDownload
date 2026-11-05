@@ -314,11 +314,7 @@ function render(): void {
     visibleCount: state.jobs.length,
   });
   truncation.textContent =
-    truncationText === null
-      ? ''
-      : stale
-        ? `上次成功读取：${truncationText}`
-        : truncationText;
+    truncationText === null ? '' : stale ? `上次成功读取：${truncationText}` : truncationText;
   truncation.hidden = truncationText === null;
 
   const connectionLine = byId('connection-line');

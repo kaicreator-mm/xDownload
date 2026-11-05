@@ -99,7 +99,6 @@ describe('manager renderer states', () => {
     expect(next.jobs).toEqual([presentRow()]);
   });
 
-
   it('a first-load refusal remains unavailable and never invents an empty successful index', () => {
     const next = applyList(initialManagerState(), {
       ok: false,
@@ -113,7 +112,10 @@ describe('manager renderer states', () => {
   });
 
   it('a successful index read recovers a stale snapshot with new Core facts', () => {
-    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()], totalCount: 1 }));
+    const seeded = applyList(
+      initialManagerState(),
+      jobListDocument({ jobs: [presentRow()], totalCount: 1 }),
+    );
     const stale = applyList(seeded, {
       ok: false,
       code: 'SHELL_IPC_REFUSED',
@@ -134,6 +136,23 @@ describe('manager renderer states', () => {
     expect(next.snapshotFreshness).toBe('stale');
     expect(next.jobs).toEqual([presentRow()]);
     expect(next.notice?.text).toContain('malformed job list');
+  });
+
+  it.each([
+    { jobs: [{}] },
+    { jobs: [{ ...presentRow(), retry: null }] },
+    { jobs: [{ ...presentRow(), terminal: { requestFulfillment: 'COMPLETE' } }] },
+    { pendingPreview: {} },
+  ])('rejects malformed nested list facts and recovers from a later valid read: %j', (bad) => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const malformed = { ...jobListDocument(), ...bad } as unknown as ManagerJobListDocument;
+    const stale = applyList(seeded, malformed);
+    expect(stale.snapshotFreshness).toBe('stale');
+    expect(stale.connection).toBeNull();
+    expect(stale.jobs).toEqual([presentRow()]);
+    const recovered = applyList(stale, jobListDocument());
+    expect(recovered.snapshotFreshness).toBe('fresh');
+    expect(recovered.jobs).toEqual([]);
   });
 
   it('an unexpected document makes a previously successful snapshot stale', () => {
@@ -213,7 +232,10 @@ describe('visible truncation state (Core index counters only)', () => {
       routed: true,
       rejections: [],
       refusalDetail: null,
-      list: { ...jobListDocument(), document: 'xdownload.desktop.manager.unknown' } as unknown as ManagerJobListDocument,
+      list: {
+        ...jobListDocument(),
+        document: 'xdownload.desktop.manager.unknown',
+      } as unknown as ManagerJobListDocument,
     });
     expect(next.connection).toBeNull();
     expect(next.snapshotFreshness).toBe('stale');

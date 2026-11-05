@@ -76,6 +76,59 @@ function isRefusal(document: unknown): document is ShellRefusal {
   return isRecord(document) && document.ok === false;
 }
 
+function isManagerJobRowDocument(value: unknown): value is ManagerJobRowDocument {
+  if (
+    !isRecord(value) ||
+    typeof value.lineageId !== 'string' ||
+    value.lineageId.length === 0 ||
+    value.lane !== 's1' ||
+    typeof value.contractStatus !== 'string' ||
+    !Number.isSafeInteger(value.revision) ||
+    (value.revision as number) < 0 ||
+    typeof value.lineageStatus !== 'string' ||
+    !isRecord(value.retry) ||
+    typeof value.retry.available !== 'boolean' ||
+    !(value.retry.reason === null || typeof value.retry.reason === 'string')
+  )
+    return false;
+  if (value.terminal === null) return true;
+  if (!isRecord(value.terminal)) return false;
+  const terminal = value.terminal;
+  const summary = terminal.validationSummary;
+  if (!isRecord(summary)) return false;
+  return (
+    typeof terminal.requestFulfillment === 'string' &&
+    typeof terminal.targetResolution === 'string' &&
+    typeof terminal.selectionAcquisition === 'string' &&
+    typeof terminal.coverage === 'string' &&
+    typeof terminal.stopReason === 'string' &&
+    typeof terminal.recordedAt === 'string' &&
+    typeof summary.status === 'string' &&
+    Number.isSafeInteger(summary.passedCount) &&
+    (summary.passedCount as number) >= 0 &&
+    Number.isSafeInteger(summary.failedCount) &&
+    (summary.failedCount as number) >= 0
+  );
+}
+
+function isManagerPreviewDocument(value: unknown): value is ManagerPreviewDocument {
+  return (
+    isRecord(value) &&
+    value.document === 'xdownload.desktop.manager.preview' &&
+    typeof value.lineageId === 'string' &&
+    typeof value.url === 'string' &&
+    typeof value.automationMode === 'string' &&
+    Array.isArray(value.confirmationRequests) &&
+    value.confirmationRequests.every(
+      (request) =>
+        isRecord(request) &&
+        typeof request.level === 'string' &&
+        typeof request.description === 'string' &&
+        typeof request.proves === 'string',
+    )
+  );
+}
+
 /** Validate the renderer-facing list envelope before it can become fresh. */
 function isManagerJobListDocument(value: unknown): value is ManagerJobListDocument {
   if (!isRecord(value)) return false;
@@ -93,11 +146,11 @@ function isManagerJobListDocument(value: unknown): value is ManagerJobListDocume
       'REFUSED',
     ].includes(value.connection) &&
     Array.isArray(value.jobs) &&
-    value.jobs.every(isRecord) &&
+    value.jobs.every(isManagerJobRowDocument) &&
     Number.isSafeInteger(value.totalCount) &&
     (value.totalCount as number) >= 0 &&
     typeof value.truncated === 'boolean' &&
-    (value.pendingPreview === null || isRecord(value.pendingPreview))
+    (value.pendingPreview === null || isManagerPreviewDocument(value.pendingPreview))
   );
 }
 
