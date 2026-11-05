@@ -39,6 +39,7 @@ function jobListDocument(overrides: Partial<ManagerJobListDocument> = {}): Manag
     totalCount: 0,
     truncated: false,
     pendingPreview: null,
+    pendingCommand: null,
     ...overrides,
   };
 }
@@ -213,6 +214,13 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'cancel',
       lineageId: 'contract-desktop-ab12cd34-000001',
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: 'contract-desktop-ab12cd34-000001',
+        requestId: 'request-cancel-accepted',
+      },
+      previewConsumed: false,
       rejections: [],
       refusalDetail: null,
       list: jobListDocument({ totalCount: 300, truncated: true }),
@@ -242,6 +250,13 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'cancel',
       lineageId: presentRow().lineageId,
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: presentRow().lineageId,
+        requestId: 'request-cancel-accepted',
+      },
+      previewConsumed: false,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -278,6 +293,13 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'add',
       lineageId: preview.lineageId,
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId: preview.lineageId,
+        requestId: 'request-add-accepted',
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -302,6 +324,13 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'add',
       lineageId: 'contract-desktop-ab12cd34-000002',
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId: 'contract-desktop-ab12cd34-000002',
+        requestId: 'request-add-accepted',
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -359,6 +388,13 @@ describe('preview dialog state (keyboard flow model)', () => {
       action: 'discard-preview',
       lineageId: preview.lineageId,
       routed: false,
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -382,6 +418,13 @@ describe('preview dialog state (keyboard flow model)', () => {
       action: 'add',
       lineageId: preview.lineageId,
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId: preview.lineageId,
+        requestId: 'request-add-accepted',
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: jobListDocument({ pendingPreview: null, jobs: [presentRow()] }),
@@ -399,7 +442,14 @@ describe('preview dialog state (keyboard flow model)', () => {
       document: 'xdownload.desktop.manager.action',
       action: 'cancel',
       lineageId: preview.lineageId,
-      routed: true,
+      routed: false,
+      delivery: {
+        status: 'REJECTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: preview.lineageId,
+        requestId: 'request-cancel-rejected',
+      },
+      previewConsumed: false,
       rejections: [
         {
           code: 'LINEAGE_OWNER_CONFLICT',
@@ -421,6 +471,13 @@ describe('preview dialog state (keyboard flow model)', () => {
       action: 'retry',
       lineageId: 'contract-desktop-ab12cd34-000001',
       routed: false,
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
+      previewConsumed: false,
       rejections: [],
       refusalDetail: 'retry unavailable: NO_FAILED_MEMBERS',
       list: jobListDocument(),
@@ -446,7 +503,7 @@ describe('truthful display derivation (no fabricated total/ETA)', () => {
 
   it('a terminal row renders the dimensions verbatim — no success boolean', () => {
     const done = presentRow({
-      lineageStatus: 'CLOSED',
+      lineageStatus: 'TERMINAL',
       terminal: {
         requestFulfillment: 'COMPLETE',
         targetResolution: 'RESOLVED',
