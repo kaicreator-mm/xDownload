@@ -393,7 +393,18 @@ export class DesktopManager {
       } else {
         // Attach the aggregate id first: the adapter re-reads the fresh Core
         // projection (READ_PROJECTION) and refuses stale/fabricated facts.
-        await adapter.attachAggregate(lineageId);
+        const attached = await adapter.attachAggregate(lineageId);
+        if (attached.display.connection !== 'CONNECTED') {
+          const rejection = attached.rejections[0];
+          const diagnostic =
+            attached.refusals[0] ??
+            (rejection === undefined
+              ? `Core connection is ${String(attached.display.connection)}`
+              : `${rejection.code}: ${rejection.message}`);
+          return refusal(
+            `cannot ${action}: a fresh Core projection was not confirmed (${diagnostic})`,
+          );
+        }
       }
       const outcome = action === 'cancel' ? await adapter.cancel() : await adapter.retryFailed();
       return this.actionDocument(action, lineageId, outcome, false);

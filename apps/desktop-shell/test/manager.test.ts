@@ -452,6 +452,37 @@ describe('DesktopManager control transitions remain Core commands (real Core)', 
     await harness.stop();
   });
 
+  it('does not route cancel or retry when the fresh Core projection read fails', async () => {
+    const commandsBefore = harness.adapter
+      .sentCommandEnvelopes()
+      .map((envelope) => ({ commandType: envelope.commandType, requestId: envelope.requestId }));
+    expect(commandsBefore.map((item) => item.commandType)).toEqual([
+      'SUBMIT_CONTRACT',
+      'EXECUTE_S1_DIRECT_ACQUISITION',
+    ]);
+
+    // The adapter still holds the last successful projection. A failed
+    // re-attach must not let a control command use that stale cached revision.
+    await harness.stopCore();
+
+    const cancel = await harness.manager.cancelJob({ lineageId });
+    expect(isRefusal(cancel)).toBe(true);
+    if (isRefusal(cancel)) {
+      expect(cancel.detail).toContain('fresh Core projection was not confirmed');
+    }
+
+    const retry = await harness.manager.retryJob({ lineageId });
+    expect(isRefusal(retry)).toBe(true);
+    if (isRefusal(retry)) {
+      expect(retry.detail).toContain('fresh Core projection was not confirmed');
+    }
+
+    const commandsAfter = harness.adapter
+      .sentCommandEnvelopes()
+      .map((envelope) => ({ commandType: envelope.commandType, requestId: envelope.requestId }));
+    expect(commandsAfter).toEqual(commandsBefore);
+  });
+
   it('cancel routes a Core control transition; the refreshed row follows the projection', async () => {
     const action = await harness.manager.cancelJob({ lineageId });
     expect(isRefusal(action)).toBe(false);
