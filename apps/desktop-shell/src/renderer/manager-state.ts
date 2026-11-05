@@ -310,6 +310,11 @@ export function applyAction(
       ...nextState,
       notice: { kind: 'error', text: pendingCommandNotice(nextState.pendingCommand) },
     };
+  } else if (answer.action === 'discard-preview') {
+    nextState = {
+      ...nextState,
+      notice: { kind: 'info', text: '已放弃尚未提交的下载预览；没有向 Core 发送命令。' },
+    };
   } else if (answer.delivery.status === 'REJECTED') {
     const first = answer.rejections[0];
     nextState = {
@@ -359,7 +364,7 @@ export function applyAction(
 }
 
 function pendingCommandNotice(command: ManagerCommandDelivery): string {
-  return `SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED: ${command.commandType ?? 'command'} request ${command.requestId ?? 'unknown'} has no Core acknowledgement; reconcile this exact request before starting another command`;
+  return `提交状态不确定：Core 尚未确认 ${command.commandType ?? 'command'}（requestId ${command.requestId ?? 'unknown'}）。请核对同一请求；完成前不能发起其它命令。`;
 }
 
 /** Set/clear the in-flight flag (buttons disable while busy). */
