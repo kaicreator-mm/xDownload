@@ -57,9 +57,8 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
       return connection;
     }
     if (connecting === null) {
-      connecting = options.transport.connect(options.target).then((established) => {
+      const attempt = options.transport.connect(options.target).then((established) => {
         connection = established;
-        connecting = null;
         established.onFrame((frame) => {
           let parsed: unknown;
           try {
@@ -88,6 +87,16 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
         });
         return established;
       });
+      connecting = attempt;
+      // A rejected connect promise must not poison this client permanently.
+      // Keep the cleanup identity-checked so a settled attempt cannot clear a
+      // different in-flight attempt. Both outcomes release the single-flight slot.
+      const clearAttempt = (): void => {
+        if (connecting === attempt) {
+          connecting = null;
+        }
+      };
+      void attempt.then(clearAttempt, clearAttempt);
     }
     return connecting;
   }

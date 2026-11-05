@@ -145,6 +145,78 @@ describe('Core restart with a live client: reconnect + re-submit, no duplicate e
     await reconnected.close();
   });
 
+  it('the same client recovers after an initial connect refusal and reuses the same request identity', async () => {
+    const journal = createInMemorySeamJournal();
+    // Reserve an ephemeral loopback port, then release it to model an endpoint
+    // that is unavailable for the first request but will return on the same port.
+    const reservation = createLoopbackServerTransport({ host: '127.0.0.1', port: 0 });
+    const target = await reservation.start({
+      onFrame: () => undefined,
+      onConnectionEnded: () => undefined,
+    });
+    await reservation.stop();
+
+    let connectAttempts = 0;
+    const loopbackClient = createLoopbackClientTransport();
+    const client = createSeamClient({
+      transport: {
+        connect: (nextTarget) => {
+          connectAttempts += 1;
+          return loopbackClient.connect(nextTarget);
+        },
+      },
+      target,
+      peer: peer('CLI'),
+      maxReconnectAttempts: 0,
+    });
+    const command = stampPeer(
+      rawCommand({
+        commandType: 'SUBMIT_CONTRACT',
+        aggregateId: 'contract-same-client-recovery-001',
+        payload: rawSingleResourceContract({
+          contractId: 'contract-same-client-recovery-001',
+          requestedTarget: 'target-same-client-recovery-001',
+        }),
+        requestId: 'req-same-client-recovery-001',
+      }) as never,
+      peer('CLI'),
+    );
+
+    // The first attempt fails before any Core endpoint is listening.
+    await expect(client.submitCommand(command)).rejects.toThrow();
+    expect(connectAttempts).toBe(1);
+
+    // Restore Core on the exact same endpoint and durable test journal.
+    const restartedServer = server(journal);
+    const restartedTransport = createLoopbackServerTransport({
+      host: target.host,
+      port: target.port,
+    });
+    running.push(restartedTransport);
+    await restartedTransport.start({
+      onFrame: (connection, frame) => {
+        const response = restartedServer.handleFrame(frame);
+        connection.send(JSON.stringify(response));
+      },
+      onConnectionEnded: () => undefined,
+    });
+
+    // The same client and byte-identical command envelope/requestId must make
+    // a fresh transport connection and be accepted by Core exactly once.
+    const recovered = await client.submitCommand(command);
+    expect(recovered.outcome).toBe('ACCEPTED');
+    expect(connectAttempts).toBe(2);
+    expect(restartedServer.acceptedCommandCount).toBe(1);
+
+    // Replaying the same identity converges through Core idempotency.
+    const replayed = await client.submitCommand(command);
+    expect(replayed.outcome).toBe('ACCEPTED');
+    expect(replayed.acceptance?.converged).toBe(true);
+    expect(connectAttempts).toBe(2);
+    expect(restartedServer.acceptedCommandCount).toBe(1);
+    await client.close();
+  });
+
   it('a client request issued against a dead endpoint reconnects to the restarted Core', async () => {
     const journal = createInMemorySeamJournal();
     const firstServer = server(journal);
