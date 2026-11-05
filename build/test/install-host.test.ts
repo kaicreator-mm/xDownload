@@ -22,9 +22,13 @@ import {
   renderLauncherScript,
 } from '../install-host.ts';
 import {
+  cleanupSmokeManifest,
+  parseWindowsRegistrationProbe,
   probeWindowsRegistration,
+  registrationPointsToExpectedManifest,
   unregisterWindowsNativeHost,
   windowsUserManifestDir,
+  writeNativeHostManifestIfAbsent,
 } from '../native-host.ts';
 
 const REAL_ID = 'llclkcnemgccecnmkhligakepaenphim'; // real Chrome-minted shape
@@ -172,6 +176,153 @@ describe('#179 status reads the per-user config', () => {
     const garbage = performStatus(paths);
     expect(garbage.configPresent).toBe(true);
     expect(garbage.configCore).toBeUndefined();
+  });
+});
+
+
+describe('#316 Native Host smoke manifest ownership and cleanup', () => {
+  const unregistered = {
+    action: 'unregistered' as const,
+    key: 'HKCU\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker',
+    detail: 'removed',
+  };
+  const absentRegistration = {
+    registered: false,
+    manifestPath: null,
+    raw: null,
+  };
+
+  it('creates manifests exclusively and never overwrites a pre-existing xDownload file', () => {
+    const dir = fs.mkdtempSync(path.join(tmpdir(), 'xdownload-316-no-clobber-'));
+    try {
+      const manifestPath = path.join(dir, 'com.xdownload.broker.json');
+      fs.writeFileSync(manifestPath, 'pre-existing manifest', 'utf8');
+
+      expect(writeNativeHostManifestIfAbsent(manifestPath, 'replacement')).toBe(false);
+      expect(fs.readFileSync(manifestPath, 'utf8')).toBe('pre-existing manifest');
+
+      const cleanup = cleanupSmokeManifest({
+        manifestPath,
+        manifestExistedBefore: true,
+        createdByAttempt: false,
+        unregisterResult: unregistered,
+        registrationAfter: absentRegistration,
+      });
+      expect(cleanup).toEqual({
+        action: 'preserved',
+        reason: 'manifest existed before this smoke attempt',
+      });
+      expect(fs.readFileSync(manifestPath, 'utf8')).toBe('pre-existing manifest');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('removes only the smoke-owned manifest and preserves sibling files and the directory', () => {
+    const dir = fs.mkdtempSync(path.join(tmpdir(), 'xdownload-316-owned-cleanup-'));
+    try {
+      const manifestPath = path.join(dir, 'com.xdownload.broker.json');
+      const siblingPath = path.join(dir, 'another-host.json');
+      fs.writeFileSync(manifestPath, 'created by this smoke attempt', 'utf8');
+      fs.writeFileSync(siblingPath, 'sibling manifest', 'utf8');
+
+      const cleanup = cleanupSmokeManifest({
+        manifestPath,
+        manifestExistedBefore: false,
+        createdByAttempt: true,
+        unregisterResult: unregistered,
+        registrationAfter: absentRegistration,
+      });
+
+      expect(cleanup).toEqual({ action: 'removed' });
+      expect(fs.existsSync(manifestPath)).toBe(false);
+      expect(fs.readFileSync(siblingPath, 'utf8')).toBe('sibling manifest');
+      expect(fs.existsSync(dir)).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves the manifest when registry deletion fails or read-back still finds a registration', () => {
+    const dir = fs.mkdtempSync(path.join(tmpdir(), 'xdownload-316-failed-cleanup-'));
+    try {
+      const manifestPath = path.join(dir, 'com.xdownload.broker.json');
+      fs.writeFileSync(manifestPath, 'referenced manifest', 'utf8');
+
+      const failedDelete = cleanupSmokeManifest({
+        manifestPath,
+        manifestExistedBefore: false,
+        createdByAttempt: true,
+        unregisterResult: {
+          action: 'failed',
+          key: unregistered.key,
+          detail: 'access denied',
+        },
+        registrationAfter: {
+          registered: true,
+          manifestPath,
+          raw: 'still registered',
+        },
+      });
+      expect(failedDelete.action).toBe('preserved');
+      expect(fs.readFileSync(manifestPath, 'utf8')).toBe('referenced manifest');
+
+      const staleReadBack = cleanupSmokeManifest({
+        manifestPath,
+        manifestExistedBefore: false,
+        createdByAttempt: true,
+        unregisterResult: unregistered,
+        registrationAfter: {
+          registered: true,
+          manifestPath,
+          raw: 'still registered',
+        },
+      });
+      expect(staleReadBack.action).toBe('preserved');
+      expect(fs.readFileSync(manifestPath, 'utf8')).toBe('referenced manifest');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('parses registry manifest paths containing spaces without truncation', () => {
+    const manifestPath =
+      'C:\\\\Users\\\\Jane Doe\\\\.xdownload\\\\native-host\\\\com.xdownload.broker.json';
+    const probe = parseWindowsRegistrationProbe(
+      `HKEY_CURRENT_USER\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker\\n    (Default)    REG_SZ    ${manifestPath}\\n`,
+    );
+
+    expect(probe.registered).toBe(true);
+    expect(probe.manifestPath).toBe(manifestPath);
+    expect(registrationPointsToExpectedManifest(probe, manifestPath)).toBe(true);
+    expect(
+      registrationPointsToExpectedManifest(probe, 'C:\\\\Users\\\\Other User\\\\manifest.json'),
+    ).toBe(false);
+  });
+
+  it('does not treat an unregistered read-back as proof of successful unregister', () => {
+    const dir = fs.mkdtempSync(path.join(tmpdir(), 'xdownload-316-uncertain-cleanup-'));
+    try {
+      const manifestPath = path.join(dir, 'com.xdownload.broker.json');
+      fs.writeFileSync(manifestPath, 'possibly referenced manifest', 'utf8');
+
+      const cleanup = cleanupSmokeManifest({
+        manifestPath,
+        manifestExistedBefore: false,
+        createdByAttempt: true,
+        unregisterResult: {
+          action: 'not-registered',
+          key: unregistered.key,
+          detail: 'registry query returned no key',
+        },
+        registrationAfter: absentRegistration,
+      });
+
+      expect(cleanup.action).toBe('preserved');
+      expect(fs.existsSync(manifestPath)).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
