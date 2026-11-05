@@ -289,8 +289,8 @@ describe('#316 Native Host smoke manifest ownership and cleanup', () => {
     const manifestPath = 'C:\\Users\\Jane Doe\\.xdownload\\native-host\\com.xdownload.broker.json';
     const raw = [
       'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
-      \`    (Default)    REG_SZ    \${manifestPath}\`,
-    ].join('\\n');
+      '    (Default)    REG_SZ    ' + manifestPath,
+    ].join('\n');
     const probe = parseWindowsRegistrationProbe(raw);
 
     expect(probe.registered).toBe(true);
