@@ -126,7 +126,7 @@ export function parseWindowsRegistrationProbe(raw: string | null): RegistrationP
   if (raw === null) {
     return { registered: false, manifestPath: null, raw: null };
   }
-  const match = /REG_SZ\\s+([^\\r\\n]+)\\s*$/m.exec(raw);
+  const match = /REG_SZ\s+([^\r\n]+)\s*$/m.exec(raw);
   return {
     registered: true,
     manifestPath: match === null ? null : (match[1]?.trim() ?? null),
@@ -182,7 +182,7 @@ export async function registerWindowsNativeHost(input: {
   const configDir = windowsUserManifestDir();
   fs.mkdirSync(configDir, { recursive: true });
   const manifestPath = path.join(configDir, `${manifest.name}.json`);
-  const manifestContent = `${JSON.stringify(manifest, null, 2)}\\n`;
+  const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
   if (!writeNativeHostManifestIfAbsent(manifestPath, manifestContent)) {
     return {
       action: 'failed',
