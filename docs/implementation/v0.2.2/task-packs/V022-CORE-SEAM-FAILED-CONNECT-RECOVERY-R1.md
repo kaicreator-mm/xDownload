@@ -60,11 +60,11 @@ Forbidden: Desktop renderer/manager/adapter, Core runtime/server, Host, CLI, tra
 
 A. **Same-client recovery after initial connection refusal**
 - Reserve a loopback port and release it so the initial target is unavailable.
-- Create one SeamClient with bounded reconnect attempts set to zero for deterministic first-attempt failure.
-- Submit a command with a fixed requestId; assert the request rejects because the endpoint is unavailable.
+- Wrap the loopback client transport with a connect-attempt counter; create one SeamClient with bounded reconnect attempts set to zero for deterministic first-attempt failure.
+- Submit a command with a fixed requestId; assert the request rejects because the endpoint is unavailable and connect-attempt count is exactly one.
 - Start a Core Seam server on the same host/port and same test journal.
 - Submit the exact same command envelope through the SAME SeamClient instance.
-- Assert the second call makes a new transport connection, returns Core ACCEPTED, and the Core accepted-command count is exactly one.
+- Assert the second call increments connect-attempt count to exactly two, returns Core ACCEPTED, and the Core accepted-command count is exactly one.
 
 B. **Same identity remains idempotent**
 - Replay the exact same command envelope/requestId through the recovered client.
