@@ -114,8 +114,6 @@ export function isRegistryKeyNotFoundError(error: unknown): boolean {
   }
   const output = `${candidate.stdout ?? ''} ${candidate.stderr ?? ''}`;
   return /unable to find the specified registry key or value|cannot find.*registry key/i.test(output);
-    output,
-  );
 }
 
 async function regQuery(key: string): Promise<string | null> {
