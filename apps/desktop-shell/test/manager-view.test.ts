@@ -190,6 +190,19 @@ describe('visible truncation state (Core index counters only)', () => {
     expect(next.truncated).toBe(true);
   });
 
+  it('a refused Core action also invalidates the last-known connection snapshot', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const next = applyAction(seeded, {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail: 'no Core connection is configured; the action cannot be routed',
+    });
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.notice?.text).toContain('action refused');
+  });
+
   it('an embedded malformed list cannot restore freshness or replace cached rows', () => {
     const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const next = applyAction(seeded, {
