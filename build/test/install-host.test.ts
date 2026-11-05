@@ -209,7 +209,7 @@ describe('#316 registry query failure classification', () => {
       'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
       '    OtherValue    REG_SZ    retained-value',
     ].join('\n');
-    const probe = parseWindowsRegistrationProbe(raw);
+    const probe = parseWindowsRegistrationProbe(raw, raw);
 
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBeNull();
@@ -225,7 +225,7 @@ describe('#316 registry query failure classification', () => {
       'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker\\child',
       '    (Default)    REG_SZ    C:\\Users\\Jane Doe\\child-manifest.json',
     ].join('\n');
-    const probe = parseWindowsRegistrationProbe(raw);
+    const probe = parseWindowsRegistrationProbe(raw, raw);
 
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBeNull();
@@ -237,7 +237,7 @@ describe('#316 registry query failure classification', () => {
       'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
       `    (默认)    REG_SZ    ${manifestPath}`,
     ].join('\n');
-    const probe = parseWindowsRegistrationProbe(raw);
+    const probe = parseWindowsRegistrationProbe(raw, raw);
 
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBe(manifestPath);
@@ -252,7 +252,7 @@ describe('#316 registry query failure classification', () => {
       `    (默认)    REG_SZ    ${manifestPath}`,
     ].join('\n');
 
-    expect(parseWindowsRegistrationProbe(raw).manifestPath).toBe(manifestPath);
+    expect(parseWindowsRegistrationProbe(raw, raw).manifestPath).toBe(manifestPath);
   });
 
   it('treats a localized unset-default placeholder as no manifest path', () => {
@@ -265,8 +265,8 @@ describe('#316 registry query failure classification', () => {
       '    (Default)    REG_SZ    (value not set)',
     ].join('\n');
 
-    expect(parseWindowsRegistrationProbe(unsetDefault).manifestPath).toBeNull();
-    expect(parseWindowsRegistrationProbe(englishUnsetDefault).manifestPath).toBeNull();
+    expect(parseWindowsRegistrationProbe(unsetDefault, unsetDefault).manifestPath).toBeNull();
+    expect(parseWindowsRegistrationProbe(englishUnsetDefault, englishUnsetDefault).manifestPath).toBeNull();
   });
 
   it('does not treat a named parenthesized REG_SZ value as the default registration path', () => {
@@ -475,7 +475,7 @@ describe('#316 Native Host smoke manifest ownership and cleanup', () => {
       'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
       '    (Default)    REG_SZ    ' + manifestPath,
     ].join('\n');
-    const probe = parseWindowsRegistrationProbe(raw);
+    const probe = parseWindowsRegistrationProbe(raw, raw);
 
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBe(manifestPath);
