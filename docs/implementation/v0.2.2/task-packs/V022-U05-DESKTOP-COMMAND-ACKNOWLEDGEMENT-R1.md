@@ -52,7 +52,8 @@ No other paths are permitted. In particular, do not edit Core Seam protocol/clie
 ### 4.1 Separate attempt from acknowledgement
 
 - Preserve an explicit per-interaction attempted-command record for diagnostics.
-- `InteractionOutcome.routed` and the shell action document's `routed` flag must mean that a valid Core response acknowledged admission; they must never be derived from a pre-send/cumulative attempt ledger.
+- `InteractionOutcome.routed`, `DesktopUiAdapter.lastRouted()` and the shell action document's `routed` flag must contain only commands with a valid Core acknowledgement; they must never be derived from a pre-send/cumulative attempt ledger.
+- Expose per-interaction attempts separately (for example `InteractionOutcome.attempted` / `lastAttempted()`); `sentCommandEnvelopes()` may remain cumulative diagnostic attempt history. None of these attempt ledgers may be used as acknowledgement evidence.
 - Add an explicit delivery state with at least `NOT_ATTEMPTED`, `ACKNOWLEDGED`, `REJECTED`, and `UNKNOWN`.
 - A typed Core rejection remains `REJECTED`; a transport failure after submission invocation is `UNKNOWN`, never success and never a definitive non-delivery claim.
 - `sentCommandEnvelopes()` may remain diagnostic attempt history, but manager success decisions must not inspect it.
