@@ -212,7 +212,8 @@ interface DraftState {
   readonly contractId: string;
   readonly plan: ConfirmationPlan;
   readonly materialDecisions: Map<string, 'CONFIRMED' | 'REJECTED'>;
-  /** Exact contract envelope retained when its delivery is ambiguous. */
+  /** Exact contract payload/envelope retained when its delivery is ambiguous. */
+  pendingContract: AcquisitionContract | null;
   pendingEnvelope: CommandEnvelope | null;
 }
 
@@ -478,6 +479,7 @@ export class DesktopUiAdapter {
       contractId,
       plan,
       materialDecisions: new Map(),
+      pendingContract: null,
       pendingEnvelope: null,
     };
     return this.outcome([]);
@@ -985,13 +987,18 @@ export class DesktopUiAdapter {
 
   private async submitIntentContract(): Promise<readonly RoutedCommand[]> {
     const draft = this.draft!;
-    const contract = buildConfirmedContractPayload({
-      intent: draft.intent,
-      contractId: draft.contractId,
-      confirmedAt: this.now(),
-    });
-    if (!contract.ok) {
-      return this.coreRejectionOutcome(contract.diagnostics.map(toDomainTypedRejection)).routed;
+    let contractEcho = draft.pendingContract;
+    if (contractEcho === null) {
+      const contract = buildConfirmedContractPayload({
+        intent: draft.intent,
+        contractId: draft.contractId,
+        confirmedAt: this.now(),
+      });
+      if (!contract.ok) {
+        return this.coreRejectionOutcome(contract.diagnostics.map(toDomainTypedRejection)).routed;
+      }
+      contractEcho = contract.value;
+      draft.pendingContract = contractEcho;
     }
     const envelope =
       draft.pendingEnvelope ??
@@ -1004,7 +1011,7 @@ export class DesktopUiAdapter {
           issuedAt: this.now(),
         },
         commandType: 'SUBMIT_CONTRACT',
-        payload: contract.value,
+        payload: contractEcho,
       });
     draft.pendingEnvelope = envelope;
     const response = await this.submitOrDisconnect(envelope);
@@ -1016,7 +1023,7 @@ export class DesktopUiAdapter {
       return this.lastRouted();
     }
     draft.pendingEnvelope = null;
-    this.openAggregate(draft.contractId, contract.value, draft.intent.targetRef);
+    this.openAggregate(draft.contractId, contractEcho, draft.intent.targetRef);
     this.draft = null;
     await this.refreshAfterCommand();
     return this.lastRouted();
@@ -1097,7 +1104,9 @@ export class DesktopUiAdapter {
         requestId: envelope.requestId,
       };
       this.currentDelivery = delivery;
-      this.acknowledgedEnvelopes.push(envelope);
+      if (!this.acknowledgedEnvelopes.some((item) => item.requestId === envelope.requestId)) {
+        this.acknowledgedEnvelopes.push(envelope);
+      }
       if (
         response.outcome === 'ACCEPTED' &&
         !this.acceptedEnvelopes.some((item) => item.requestId === envelope.requestId)
