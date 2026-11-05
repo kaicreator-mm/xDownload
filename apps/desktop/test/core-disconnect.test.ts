@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { SeamClientTransport } from '@xdownload/core-seam';
 import {
   confirmSingleResourceTask,
   coreProjection,
@@ -16,10 +17,71 @@ import {
   projectionPayloadScript,
   scriptedTransport,
   sectionLines,
+  singleResourceIntent,
+  NO_AMBIGUITY,
   startCore,
 } from './helpers.ts';
 import { createDesktopUiAdapter, verifyProjectionPayload } from '../src/index.ts';
 import { FIXED_NOW } from './helpers.ts';
+
+function responseLossTransport(
+  core: Awaited<ReturnType<typeof startCore>>,
+  commandType: string,
+): {
+  readonly transport: SeamClientTransport;
+  readonly requestIds: string[];
+  allowResponses(): void;
+} {
+  let dropResponses = true;
+  const requestIds: string[] = [];
+  const transport: SeamClientTransport = {
+    async connect() {
+      let onFrame: ((frame: string) => void) | undefined;
+      let onEnded: (() => void) | undefined;
+      let ended = false;
+      return {
+        onFrame(handler) {
+          onFrame = handler;
+        },
+        onEnded(handler) {
+          onEnded = handler;
+        },
+        send(requestFrame) {
+          const request = JSON.parse(requestFrame) as {
+            readonly commandType?: string;
+            readonly requestId?: string;
+          };
+          const response = JSON.stringify(core.server.handleFrame(requestFrame));
+          if (dropResponses && request.commandType === commandType) {
+            if (request.requestId !== undefined) requestIds.push(request.requestId);
+            queueMicrotask(() => {
+              if (!ended) {
+                ended = true;
+                onEnded?.();
+              }
+            });
+          } else {
+            queueMicrotask(() => onFrame?.(response));
+          }
+        },
+        close() {
+          if (!ended) {
+            ended = true;
+            onEnded?.();
+          }
+          return Promise.resolve();
+        },
+      };
+    },
+  };
+  return {
+    transport,
+    requestIds,
+    allowResponses() {
+      dropResponses = false;
+    },
+  };
+}
 
 describe('core disconnect behavior', () => {
   it('seam unavailability presents an explicit degraded state with no fabricated progress', async () => {
@@ -56,15 +118,126 @@ describe('core disconnect behavior', () => {
 
     const failed = await adapter.cancel();
     expect(failed.display.connection).toBe('DISCONNECTED');
-    // The cancel attempt is recorded as routed-then-lost, never as accepted:
-    // no CANCELLED state appears in the display.
+    // The command may have reached Core, but no response was received. The
+    // attempt ledger is diagnostic only and cannot make it accepted.
+    expect(failed.delivery.status).toBe('UNKNOWN');
+    expect(failed.routed.some((command) => command.commandType === 'CANCEL_LINEAGE')).toBe(false);
     expect(sectionLines(failed.display, 'Selection / progress')).not.toContain(
       'lineage status: CANCELLED',
     );
     expect(failed.display.sections.some((s) => s.title.startsWith('Core rejections'))).toBe(false);
-    expect(adapter.lastRouted().length).toBe(routesBefore + 1);
+    expect(adapter.lastRouted().length).toBe(routesBefore);
+    expect(adapter.pendingCommandInfo()).toMatchObject({
+      status: 'UNKNOWN',
+      commandType: 'CANCEL_LINEAGE',
+    });
+    expect(
+      adapter.sentCommandEnvelopes().filter((envelope) => envelope.commandType === 'CANCEL_LINEAGE'),
+    ).toHaveLength(1);
     expect(projectionBefore?.lineage.status).toBe('ACTIVE');
     await adapter.close();
+  });
+
+  it('reconciles a response-lost command with the exact same envelope and requestId', async () => {
+    const core = await startCore();
+    const responseLoss = responseLossTransport(core, 'CANCEL_LINEAGE');
+    const adapter = createDesktopUiAdapter({
+      transport: responseLoss.transport,
+      target: core.target,
+      installId: 'install-001',
+      userId: 'user-001',
+      now: () => FIXED_NOW,
+    });
+    const confirmed = await confirmSingleResourceTask(adapter);
+    const contractId = confirmed.routed[0]?.aggregateId ?? '';
+    const routesBeforeCancel = adapter.lastRouted().length;
+
+    // The transport invokes the real Core handler, then drops every response
+    // for CANCEL_LINEAGE. Core has accepted the command, but the adapter must
+    // remain UNKNOWN because it received no acknowledgement.
+    const unknown = await adapter.cancel();
+    expect(unknown.delivery.status).toBe('UNKNOWN');
+    expect(adapter.lastRouted()).toHaveLength(routesBeforeCancel);
+    expect(coreProjection(core, contractId)?.lineage.status).toBe('CANCELLED');
+    const pending = adapter.pendingCommandInfo();
+    expect(pending).toMatchObject({
+      status: 'UNKNOWN',
+      commandType: 'CANCEL_LINEAGE',
+      aggregateId: contractId,
+    });
+    const requestId = pending?.requestId;
+    expect(requestId).toBeTruthy();
+
+    // Explicit re-entry now receives the idempotent response for the exact
+    // same envelope. Core does not apply a second cancel transition.
+    responseLoss.allowResponses();
+    const reconciled = await adapter.cancel();
+    expect(reconciled.delivery).toMatchObject({
+      status: 'ACCEPTED',
+      commandType: 'CANCEL_LINEAGE',
+      aggregateId: contractId,
+      requestId,
+    });
+    expect(adapter.pendingCommandInfo()).toBeNull();
+    expect(adapter.lastRouted().filter((command) => command.commandType === 'CANCEL_LINEAGE'))
+      .toHaveLength(1);
+    expect(responseLoss.requestIds.length).toBeGreaterThan(1);
+    expect(new Set(responseLoss.requestIds)).toStrictEqual(new Set([requestId]));
+    expect(coreProjection(core, contractId)?.lineage.cancelOrder).toBe(1);
+
+    await adapter.close();
+    await core.stop();
+  });
+
+  it('a lost SUBMIT_CONTRACT response retains the exact contract envelope until acknowledged', async () => {
+    const core = await startCore();
+    const responseLoss = responseLossTransport(core, 'SUBMIT_CONTRACT');
+    const adapter = createDesktopUiAdapter({
+      transport: responseLoss.transport,
+      target: core.target,
+      installId: 'install-001',
+      userId: 'user-001',
+      now: () => FIXED_NOW,
+    });
+    const entered = adapter.enterIntent({
+      intent: singleResourceIntent(),
+      workflowFacts: NO_AMBIGUITY,
+    });
+    expect(entered.refusals).toStrictEqual([]);
+    const contractId = adapter.currentDraftView()?.contractId ?? '';
+
+    const unknown = await adapter.confirmScope();
+    expect(unknown.delivery.status).toBe('UNKNOWN');
+    expect(unknown.routed).toStrictEqual([]);
+    expect(adapter.currentDraftView()?.contractId).toBe(contractId);
+    const pending = adapter.pendingCommandInfo();
+    expect(pending).toMatchObject({
+      status: 'UNKNOWN',
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: contractId,
+    });
+    const requestId = pending?.requestId;
+    expect(requestId).toBeTruthy();
+    // Core accepted the contract even though every transport response was lost.
+    expect(coreProjection(core, contractId)?.contract.status).toBe('CONFIRMED');
+
+    responseLoss.allowResponses();
+    const accepted = await adapter.confirmScope();
+    expect(accepted.delivery).toMatchObject({
+      status: 'ACCEPTED',
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: contractId,
+      requestId,
+    });
+    expect(adapter.currentDraftView()).toBeNull();
+    expect(adapter.pendingCommandInfo()).toBeNull();
+    expect(responseLoss.requestIds.length).toBeGreaterThan(1);
+    expect(new Set(responseLoss.requestIds)).toStrictEqual(new Set([requestId]));
+    expect(adapter.acknowledgedCommandEnvelopes().filter((envelope) => envelope.commandType === 'SUBMIT_CONTRACT'))
+      .toHaveLength(1);
+
+    await adapter.close();
+    await core.stop();
   });
 
   it('reconnect/re-entry restores the UI from Core projections without UI-local durable truth', async () => {
