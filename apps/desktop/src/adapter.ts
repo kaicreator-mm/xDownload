@@ -246,7 +246,6 @@ export class DesktopUiAdapter {
   private lastRefusals: readonly string[] = [];
   private readonly sentEnvelopes: CommandEnvelope[] = [];
   private readonly acknowledgedEnvelopes: CommandEnvelope[] = [];
-  private readonly acceptedEnvelopes: CommandEnvelope[] = [];
   private pendingCommandEnvelope: CommandEnvelope | null = null;
   private currentDelivery: CommandDelivery = NOT_ATTEMPTED_DELIVERY;
 
@@ -301,8 +300,15 @@ export class DesktopUiAdapter {
     return this.render();
   }
 
+  /**
+   * Routed commands: every envelope with a resolved Core disposition
+   * (ACCEPTED or REJECTED acknowledgement, one entry per logical requestId).
+   * A command whose response was lost (UNKNOWN) or that was never attempted
+   * (NOT_ATTEMPTED) is not a routed observation; acceptance truth itself is
+   * carried by `delivery`, never by this list.
+   */
   lastRouted(): readonly RoutedCommand[] {
-    return this.acceptedEnvelopes.map((envelope) => ({
+    return this.acknowledgedEnvelopes.map((envelope) => ({
       commandType: envelope.commandType,
       aggregateId: envelope.aggregateId,
       requestId: envelope.requestId,
@@ -1155,12 +1161,6 @@ export class DesktopUiAdapter {
       this.currentDelivery = delivery;
       if (!this.acknowledgedEnvelopes.some((item) => item.requestId === envelope.requestId)) {
         this.acknowledgedEnvelopes.push(envelope);
-      }
-      if (
-        response.outcome === 'ACCEPTED' &&
-        !this.acceptedEnvelopes.some((item) => item.requestId === envelope.requestId)
-      ) {
-        this.acceptedEnvelopes.push(envelope);
       }
       if (this.pendingCommandEnvelope === envelope) {
         this.pendingCommandEnvelope = null;

@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { SeamClientTransport } from '@xdownload/core-seam';
+import { currentSeamSchemaIdentity, type SeamClientTransport } from '@xdownload/core-seam';
 import {
   confirmSingleResourceTask,
   coreProjection,
@@ -21,7 +21,12 @@ import {
   NO_AMBIGUITY,
   startCore,
 } from './helpers.ts';
-import { createDesktopUiAdapter, verifyProjectionPayload } from '../src/index.ts';
+import {
+  SINGLE_RESOURCE_WORKFLOW_FACTS,
+  createDesktopUiAdapter,
+  singleResourceUrlIntent,
+  verifyProjectionPayload,
+} from '../src/index.ts';
 import { FIXED_NOW } from './helpers.ts';
 
 function responseLossTransport(
@@ -86,6 +91,113 @@ function responseLossTransport(
   };
 }
 
+interface MockWireEnvelope {
+  readonly kind?: string;
+  readonly commandType?: string;
+  readonly requestId: string;
+  readonly aggregateId: string;
+}
+
+/**
+ * Deterministic mock Core stand-in for the S1 acknowledgement lifecycle.
+ * The loopback Core composition installs no S1 driver (core-authority
+ * evidence: `EXECUTE_S1_DIRECT_ACQUISITION` fails closed there), so the
+ * response-lost S1 disposition runs over this mock composition, the same
+ * shape the S1 adapter suite uses. `loseS1Responses()` ends the connection
+ * without a response for every S1 send (the response-lost disposition);
+ * the flag flips back for the idempotent reconciliation.
+ */
+function s1AckMockCore(): {
+  readonly transport: SeamClientTransport;
+  readonly s1RequestIds: readonly string[];
+  loseS1Responses(): void;
+  answerS1Responses(): void;
+} {
+  const s1RequestIds: string[] = [];
+  const revisions = new Map<string, number>();
+  let dropS1 = false;
+  const handleCommand = (envelope: MockWireEnvelope): Record<string, unknown> => {
+    const revision = (revisions.get(envelope.aggregateId) ?? 0) + 1;
+    revisions.set(envelope.aggregateId, revision);
+    return {
+      outcome: 'ACCEPTED',
+      acceptance: {
+        requestId: envelope.requestId,
+        aggregateId: envelope.aggregateId,
+        revision,
+        converged: false,
+      },
+    };
+  };
+  const handleQuery = (envelope: MockWireEnvelope): Record<string, unknown> => ({
+    outcome: 'PROJECTION',
+    projection: {
+      schemaIdentity: { schema: 'xdownload.domain-contracts', version: '1.0.0' },
+      contract: {
+        contractId: envelope.aggregateId,
+        status: 'CONFIRMED',
+        intentType: 'SINGLE_RESOURCE',
+        revision: revisions.get(envelope.aggregateId) ?? 1,
+      },
+      lineage: {
+        status: 'ACTIVE',
+        failedMemberCount: 0,
+        failedMemberIds: [],
+        retriedMemberIds: [],
+      },
+    },
+  });
+  const transport: SeamClientTransport = {
+    connect() {
+      let onFrame: ((frame: string) => void) | undefined;
+      let onEnded: (() => void) | undefined;
+      return Promise.resolve({
+        onFrame(handler) {
+          onFrame = handler;
+        },
+        onEnded(handler) {
+          onEnded = handler;
+        },
+        send(frame) {
+          const parsed = JSON.parse(frame) as MockWireEnvelope;
+          const isS1 = parsed.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION';
+          if (isS1) {
+            s1RequestIds.push(parsed.requestId);
+          }
+          queueMicrotask(() => {
+            if (dropS1 && isS1) {
+              onEnded?.();
+              return;
+            }
+            const response = parsed.kind === 'query' ? handleQuery(parsed) : handleCommand(parsed);
+            onFrame?.(
+              JSON.stringify({
+                schemaIdentity: currentSeamSchemaIdentity(),
+                kind: 'response',
+                inReplyTo: parsed.requestId,
+                ...response,
+              }),
+            );
+          });
+        },
+        close() {
+          return Promise.resolve();
+        },
+      });
+    },
+  };
+  return {
+    transport,
+    s1RequestIds,
+    loseS1Responses() {
+      dropS1 = true;
+    },
+    answerS1Responses() {
+      dropS1 = false;
+    },
+  };
+}
+
 describe('core disconnect behavior', () => {
   it('seam unavailability presents an explicit degraded state with no fabricated progress', async () => {
     const core = await startCore();
@@ -135,7 +247,9 @@ describe('core disconnect behavior', () => {
       commandType: 'CANCEL_LINEAGE',
     });
     expect(
-      adapter.sentCommandEnvelopes().filter((envelope) => envelope.commandType === 'CANCEL_LINEAGE'),
+      adapter
+        .sentCommandEnvelopes()
+        .filter((envelope) => envelope.commandType === 'CANCEL_LINEAGE'),
     ).toHaveLength(1);
     expect(projectionBefore?.lineage.status).toBe('ACTIVE');
     await adapter.close();
@@ -210,8 +324,9 @@ describe('core disconnect behavior', () => {
       requestId,
     });
     expect(adapter.pendingCommandInfo()).toBeNull();
-    expect(adapter.lastRouted().filter((command) => command.commandType === 'CANCEL_LINEAGE'))
-      .toHaveLength(1);
+    expect(
+      adapter.lastRouted().filter((command) => command.commandType === 'CANCEL_LINEAGE'),
+    ).toHaveLength(1);
     expect(responseLoss.requestIds.length).toBeGreaterThan(1);
     expect(new Set(responseLoss.requestIds)).toStrictEqual(new Set([requestId]));
     expect(coreProjection(core, contractId)?.lineage.cancelOrder).toBe(1);
@@ -270,27 +385,39 @@ describe('core disconnect behavior', () => {
     expect(new Set(contractAttempts.map((envelope) => envelope.requestId))).toStrictEqual(
       new Set([requestId]),
     );
-    expect(new Set(contractAttempts.map((envelope) => JSON.stringify(envelope.payload))).size).toBe(1);
-    expect(adapter.acknowledgedCommandEnvelopes().filter((envelope) => envelope.commandType === 'SUBMIT_CONTRACT'))
-      .toHaveLength(1);
+    expect(new Set(contractAttempts.map((envelope) => JSON.stringify(envelope.payload))).size).toBe(
+      1,
+    );
+    expect(
+      adapter
+        .acknowledgedCommandEnvelopes()
+        .filter((envelope) => envelope.commandType === 'SUBMIT_CONTRACT'),
+    ).toHaveLength(1);
 
     await adapter.close();
     await core.stop();
   });
 
   it('reconciles a response-lost S1 execution with the exact same envelope and requestId', async () => {
-    const core = await startCore();
-    const responseLoss = responseLossTransport(core, 'EXECUTE_S1_DIRECT_ACQUISITION');
+    const mock = s1AckMockCore();
     const adapter = createDesktopUiAdapter({
-      transport: responseLoss.transport,
-      target: core.target,
+      transport: mock.transport,
+      target: { host: '127.0.0.1', port: 0 },
       installId: 'install-001',
       userId: 'user-001',
       now: () => FIXED_NOW,
     });
+    // The S1 lane requires the submitted locator to be a valid URL; the stock
+    // fixture target is a logical id and refuses at the S1 payload gate
+    // before any routing (core-authority.test.ts).
+    const intent = singleResourceUrlIntent('https://example.com/media/clip.mp4');
+    expect(intent.ok).toBe(true);
+    if (!intent.ok) {
+      return;
+    }
     adapter.enterIntent({
-      intent: singleResourceIntent(),
-      workflowFacts: NO_AMBIGUITY,
+      intent: intent.value,
+      workflowFacts: SINGLE_RESOURCE_WORKFLOW_FACTS,
     });
 
     const contract = await adapter.confirmScope();
@@ -303,6 +430,7 @@ describe('core disconnect behavior', () => {
 
     // Core processes the S1 command, but its response is lost. The Desktop
     // keeps the exact envelope UNKNOWN and does not report it as accepted.
+    mock.loseS1Responses();
     const unknown = await adapter.executeS1Direct();
     expect(unknown.delivery).toMatchObject({
       status: 'UNKNOWN',
@@ -310,7 +438,9 @@ describe('core disconnect behavior', () => {
       aggregateId,
     });
     expect(
-      adapter.lastRouted().some((command) => command.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION'),
+      adapter
+        .lastRouted()
+        .some((command) => command.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION'),
     ).toBe(false);
     const pending = adapter.pendingCommandInfo();
     expect(pending).toMatchObject({
@@ -321,7 +451,7 @@ describe('core disconnect behavior', () => {
     const requestId = pending?.requestId;
     expect(requestId).toBeTruthy();
 
-    responseLoss.allowResponses();
+    mock.answerS1Responses();
     const reconciled = await adapter.executeS1Direct();
     expect(reconciled.delivery).toMatchObject({
       status: 'ACCEPTED',
@@ -331,15 +461,19 @@ describe('core disconnect behavior', () => {
     });
     expect(adapter.pendingCommandInfo()).toBeNull();
 
-    const attempts = adapter.sentCommandEnvelopes().filter(
-      (envelope) => envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION',
-    );
+    const attempts = adapter
+      .sentCommandEnvelopes()
+      .filter((envelope) => envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION');
     expect(attempts).toHaveLength(2);
     expect(new Set(attempts.map((envelope) => envelope.requestId))).toStrictEqual(
       new Set([requestId]),
     );
-    expect(responseLoss.requestIds).toHaveLength(2);
-    expect(new Set(responseLoss.requestIds)).toStrictEqual(new Set([requestId]));
+    expect(new Set(attempts.map((envelope) => JSON.stringify(envelope.payload))).size).toBe(1);
+    // Every wire send carries the one logical requestId (the seam client's
+    // bounded reconnect budget re-sends the identical envelope); the exact
+    // wire count is transport policy, the identity is the invariant.
+    expect(mock.s1RequestIds.length).toBeGreaterThan(1);
+    expect(new Set(mock.s1RequestIds)).toStrictEqual(new Set([requestId]));
     expect(
       adapter
         .acknowledgedCommandEnvelopes()
@@ -347,7 +481,6 @@ describe('core disconnect behavior', () => {
     ).toHaveLength(1);
 
     await adapter.close();
-    await core.stop();
   });
 
   it('reconnect/re-entry restores the UI from Core projections without UI-local durable truth', async () => {

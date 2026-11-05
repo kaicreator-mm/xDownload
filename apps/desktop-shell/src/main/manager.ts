@@ -116,7 +116,9 @@ export class DesktopManager {
         return refusal('no Core connection is configured; downloads cannot be added');
       }
       if (adapter.pendingCommandInfo() !== null) {
-        return refusal('a command is awaiting Core acknowledgement; reconcile it before creating another preview');
+        return refusal(
+          'a command is awaiting Core acknowledgement; reconcile it before creating another preview',
+        );
       }
       if (this.pending !== null) {
         return refusal('a preview is already pending; confirm or discard it first');
@@ -230,7 +232,9 @@ export class DesktopManager {
       const adapter = this.options.getAdapter();
       const pendingCommand = adapter?.pendingCommandInfo();
       if (pendingCommand !== null && pendingCommand !== undefined) {
-        return refusal('a command is awaiting Core acknowledgement; the preview cannot be discarded until that exact request is reconciled');
+        return refusal(
+          'a command is awaiting Core acknowledgement; the preview cannot be discarded until that exact request is reconciled',
+        );
       }
       if (adapter !== undefined) {
         adapter.discardDraft();
@@ -436,7 +440,7 @@ export class DesktopManager {
       })),
       refusalDetail:
         outcome.delivery.status === 'NOT_ATTEMPTED'
-          ? firstRefusal ?? 'the command was not attempted'
+          ? (firstRefusal ?? 'the command was not attempted')
           : null,
       list: await this.listUnlocked(),
     };

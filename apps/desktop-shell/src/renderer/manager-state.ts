@@ -284,8 +284,7 @@ export function applyAction(
       ...nextState,
       connection: null,
       snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
-      pendingCommand:
-        answer.delivery.status === 'UNKNOWN' ? answer.delivery : state.pendingCommand,
+      pendingCommand: answer.delivery.status === 'UNKNOWN' ? answer.delivery : state.pendingCommand,
     };
   } else {
     nextState = {
@@ -297,8 +296,7 @@ export function applyAction(
       truncated: list.truncated,
       pendingPreview: list.pendingPreview,
       pendingCommand:
-        list.pendingCommand ??
-        (answer.delivery.status === 'UNKNOWN' ? answer.delivery : null),
+        list.pendingCommand ?? (answer.delivery.status === 'UNKNOWN' ? answer.delivery : null),
     };
   }
 

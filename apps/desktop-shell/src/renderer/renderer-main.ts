@@ -400,9 +400,7 @@ function renderPreview(): void {
     state.pendingCommand?.status === 'UNKNOWN' &&
     state.pendingCommand.commandType === 'SUBMIT_CONTRACT';
   confirm.textContent = reconcilingContract ? '核对提交' : '确认并开始';
-  confirm.disabled =
-    state.busy ||
-    (state.pendingCommand !== null && !reconcilingContract);
+  confirm.disabled = state.busy || (state.pendingCommand !== null && !reconcilingContract);
   discard.disabled = state.busy || state.pendingCommand !== null;
   if (wasClosed) {
     confirm.focus();
@@ -558,9 +556,7 @@ function actionButton(
   const snapshotUnavailable = state.snapshotFreshness !== 'fresh';
   button.textContent = reconciling ? `核对${label}` : label;
   button.disabled =
-    state.busy ||
-    blockedByPending ||
-    (!reconciling && (!enabled || snapshotUnavailable));
+    state.busy || blockedByPending || (!reconciling && (!enabled || snapshotUnavailable));
   if (reconciling && pending !== null) {
     button.title = `使用同一 requestId 核对 ${pending.requestId}；不会创建新的控制命令`;
   } else if (blockedByPending) {

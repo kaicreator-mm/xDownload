@@ -37,7 +37,11 @@ import {
   type S1JobIndexResult,
 } from '@xdownload/desktop-ui';
 import { DesktopManager } from '../src/main/manager.ts';
-import type { ManagerCommandDelivery, ManagerJobListDocument, ShellRefusal } from '../src/main/shell-contract.ts';
+import type {
+  ManagerCommandDelivery,
+  ManagerJobListDocument,
+  ShellRefusal,
+} from '../src/main/shell-contract.ts';
 
 const INSTALL_ID = 'install-001';
 const USER_ID = 'user-001';
@@ -896,18 +900,12 @@ describe('DesktopManager ambiguous Add delivery', () => {
         s1Calls += 1;
         s1RequestIds.push(s1RequestId);
         if (unknownAt === 's1' && s1Calls === 1) {
-          const unknown = commandDelivery(
-            'UNKNOWN',
-            'EXECUTE_S1_DIRECT_ACQUISITION',
-            s1RequestId,
-          );
+          const unknown = commandDelivery('UNKNOWN', 'EXECUTE_S1_DIRECT_ACQUISITION', s1RequestId);
           pending = unknown;
           return outcome(unknown);
         }
         pending = null;
-        return outcome(
-          commandDelivery('ACCEPTED', 'EXECUTE_S1_DIRECT_ACQUISITION', s1RequestId),
-        );
+        return outcome(commandDelivery('ACCEPTED', 'EXECUTE_S1_DIRECT_ACQUISITION', s1RequestId));
       },
       listS1JobProjections: async () => EMPTY_INDEX,
     } as unknown as DesktopUiAdapter;
