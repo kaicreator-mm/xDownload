@@ -500,6 +500,35 @@ describe('preview dialog state (keyboard flow model)', () => {
     expect(confirmed.notice?.text).toContain('admission');
   });
 
+  it('does not mislabel an accepted command when a later projection read has diagnostics', () => {
+    const accepted = applyAction(initialManagerState(), {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'cancel',
+      lineageId: preview.lineageId,
+      routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: preview.lineageId,
+        requestId: 'request-cancel-accepted',
+      },
+      previewConsumed: false,
+      rejections: [
+        {
+          code: 'PROJECTION_READ_REJECTED',
+          message: 'the command was accepted but the follow-up projection read was refused',
+        },
+      ],
+      refusalDetail: null,
+      list: jobListDocument(),
+    });
+
+    expect(accepted.notice?.kind).toBe('info');
+    expect(accepted.notice?.text).toContain('accepted by the Core');
+    expect(accepted.notice?.text).not.toContain('rejected');
+  });
+
   it('a Core-typed rejection surfaces VERBATIM (code and message)', () => {
     const opened = previewOpened(initialManagerState(), preview);
     const rejected = applyAction(opened, {
