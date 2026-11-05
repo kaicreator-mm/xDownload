@@ -185,36 +185,36 @@ describe('Core restart with a live client: reconnect + re-submit, no duplicate e
     try {
       // The first attempt fails before any Core endpoint is listening.
       await expect(client.submitCommand(command)).rejects.toThrow();
-    expect(connectAttempts).toBe(1);
+      expect(connectAttempts).toBe(1);
 
-    // Restore Core on the exact same endpoint and durable test journal.
-    const restartedServer = server(journal);
-    const restartedTransport = createLoopbackServerTransport({
-      host: target.host,
-      port: target.port,
-    });
-    running.push(restartedTransport);
-    await restartedTransport.start({
-      onFrame: (connection, frame) => {
-        const response = restartedServer.handleFrame(frame);
-        connection.send(JSON.stringify(response));
-      },
-      onConnectionEnded: () => undefined,
-    });
+      // Restore Core on the exact same endpoint and durable test journal.
+      const restartedServer = server(journal);
+      const restartedTransport = createLoopbackServerTransport({
+        host: target.host,
+        port: target.port,
+      });
+      running.push(restartedTransport);
+      await restartedTransport.start({
+        onFrame: (connection, frame) => {
+          const response = restartedServer.handleFrame(frame);
+          connection.send(JSON.stringify(response));
+        },
+        onConnectionEnded: () => undefined,
+      });
 
-    // The same client and byte-identical command envelope/requestId must make
-    // a fresh transport connection and be accepted by Core exactly once.
-    const recovered = await client.submitCommand(command);
-    expect(recovered.outcome).toBe('ACCEPTED');
-    expect(connectAttempts).toBe(2);
-    expect(restartedServer.acceptedCommandCount).toBe(1);
+      // The same client and byte-identical command envelope/requestId must make
+      // a fresh transport connection and be accepted by Core exactly once.
+      const recovered = await client.submitCommand(command);
+      expect(recovered.outcome).toBe('ACCEPTED');
+      expect(connectAttempts).toBe(2);
+      expect(restartedServer.acceptedCommandCount).toBe(1);
 
-    // Replaying the same identity converges through Core idempotency.
-    const replayed = await client.submitCommand(command);
-    expect(replayed.outcome).toBe('ACCEPTED');
-    expect(replayed.acceptance?.converged).toBe(true);
-    expect(connectAttempts).toBe(2);
-    expect(restartedServer.acceptedCommandCount).toBe(1);
+      // Replaying the same identity converges through Core idempotency.
+      const replayed = await client.submitCommand(command);
+      expect(replayed.outcome).toBe('ACCEPTED');
+      expect(replayed.acceptance?.converged).toBe(true);
+      expect(connectAttempts).toBe(2);
+      expect(restartedServer.acceptedCommandCount).toBe(1);
     } finally {
       await client.close();
     }
