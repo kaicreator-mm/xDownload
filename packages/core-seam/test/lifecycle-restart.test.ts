@@ -182,8 +182,9 @@ describe('Core restart with a live client: reconnect + re-submit, no duplicate e
       peer('CLI'),
     );
 
-    // The first attempt fails before any Core endpoint is listening.
-    await expect(client.submitCommand(command)).rejects.toThrow();
+    try {
+      // The first attempt fails before any Core endpoint is listening.
+      await expect(client.submitCommand(command)).rejects.toThrow();
     expect(connectAttempts).toBe(1);
 
     // Restore Core on the exact same endpoint and durable test journal.
@@ -214,7 +215,9 @@ describe('Core restart with a live client: reconnect + re-submit, no duplicate e
     expect(replayed.acceptance?.converged).toBe(true);
     expect(connectAttempts).toBe(2);
     expect(restartedServer.acceptedCommandCount).toBe(1);
-    await client.close();
+    } finally {
+      await client.close();
+    }
   });
 
   it('a client request issued against a dead endpoint reconnects to the restarted Core', async () => {
