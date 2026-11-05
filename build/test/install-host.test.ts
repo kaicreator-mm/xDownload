@@ -34,6 +34,10 @@ import {
 
 const REAL_ID = 'llclkcnemgccecnmkhligakepaenphim'; // real Chrome-minted shape
 const PLACEHOLDER_ID = 'a'.repeat(32);
+// Registry integration is an explicit opt-in because it mutates HKCU and the
+// per-user manifest directory. Ordinary focused/CI validation must stay pure.
+const RUN_WINDOWS_REGISTRY_SELFTEST =
+  process.platform === 'win32' && process.env.XDOWNLOAD_RUN_NATIVE_HOST_REGISTRY_SELFTEST === '1';
 
 describe('#179 extension origin binding', () => {
   it('binds the exact origin of a real 32-letter browser-minted id', () => {
@@ -346,7 +350,7 @@ describe('#316 Native Host smoke manifest ownership and cleanup', () => {
   });
 });
 
-describe.skipIf(process.platform !== 'win32')(
+describe.skipIf(!RUN_WINDOWS_REGISTRY_SELFTEST)(
   '#179 windows registration round-trip (throwaway host name)',
   () => {
     const home = fs.mkdtempSync(path.join(tmpdir(), 'i179-win-'));
