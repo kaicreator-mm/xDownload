@@ -246,6 +246,13 @@ export function applyAction(
       pendingPreview: list.pendingPreview,
     };
   }
+  // confirmAdd clears the main-process draft once the S1 command is routed.
+  // If its follow-up index read is refused/malformed, there is no list payload
+  // from which to observe pendingPreview=null; do not leave a stale Confirm UI
+  // that could invite a duplicate submission.
+  if (answer.action === 'add' && answer.routed) {
+    nextState = { ...nextState, pendingPreview: null };
+  }
   if (answer.action === 'discard-preview') {
     // The main process clears its local draft before attempting the follow-up
     // index read. A refused/malformed list must not leave a stale confirm dialog.
