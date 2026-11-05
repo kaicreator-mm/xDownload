@@ -254,6 +254,7 @@ function trapDialogTab(event: KeyboardEvent, root: HTMLElement): void {
 
 function renderDetails(): void {
   const panel = byId('job-details');
+  const stale = state.snapshotFreshness === 'stale';
   const current = state.jobs.find((row) => row.lineageId === selectedLineage);
   if (current === undefined) {
     selectedLineage = null;
@@ -262,12 +263,19 @@ function renderDetails(): void {
   }
   panel.hidden = false;
   byId('details-title').textContent = taskLabel(current);
-  byId('details-status').textContent = statusLabel(current);
-  byId('details-progress').textContent = progressSummary(current);
+  byId('details-status').textContent = stale
+    ? `上次成功读取：${statusLabel(current)}`
+    : statusLabel(current);
+  byId('details-progress').textContent = stale
+    ? `上次成功读取：${progressSummary(current)}`
+    : progressSummary(current);
   byId('details-destination').textContent = DESTINATION_LABEL;
   byId('details-lineage').textContent = current.lineageId;
-  byId('details-revision').textContent = String(current.revision);
-  byId('details-reason').textContent = current.terminal?.stopReason ?? '暂无';
+  byId('details-revision').textContent = stale
+    ? `上次成功读取：${String(current.revision)}`
+    : String(current.revision);
+  const reason = current.terminal?.stopReason ?? '暂无';
+  byId('details-reason').textContent = stale ? `上次成功读取：${reason}` : reason;
 }
 
 function byId(id: string): HTMLElement {
@@ -294,6 +302,7 @@ function render(): void {
 
   const notice = byId('notice');
   notice.textContent = state.notice === null ? '' : localizeNotice(state.notice.text);
+  const stale = state.snapshotFreshness === 'stale';
   notice.dataset.kind = state.notice === null ? 'none' : state.notice.kind;
 
   // U05-T03: the truncation banner states plainly that the visible page is
@@ -304,22 +313,22 @@ function render(): void {
     totalCount: state.totalCount,
     visibleCount: state.jobs.length,
   });
-  truncation.textContent = truncationText ?? '';
+  truncation.textContent =
+    truncationText === null ? '' : stale ? `上次成功读取：${truncationText}` : truncationText;
   truncation.hidden = truncationText === null;
 
   const connectionLine = byId('connection-line');
-  const connected = state.connection === 'CONNECTED';
-  connectionLine.textContent = connected
-    ? 'Core 已连接'
-    : state.connection === null
-      ? // R3-02: a ready page that never achieved a successful Core index
-        // read (first-load unconfigured/refused) shows the disconnected
-        // state — never an implied "connecting" or an empty task list.
-        state.phase === 'ready'
-        ? 'Core 未连接（无权威任务列表）'
-        : '正在连接 Core…'
-      : 'Core 状态：' + state.connection;
-  connectionLine.dataset.status = connected ? 'connected' : 'disconnected';
+  const connected = state.snapshotFreshness === 'fresh' && state.connection === 'CONNECTED';
+  connectionLine.textContent = stale
+    ? 'Core 状态未确认 · 以下为上次成功读取的数据（已过期）'
+    : connected
+      ? 'Core 已连接'
+      : state.connection === null
+        ? state.phase === 'ready'
+          ? 'Core 未连接（尚无权威任务列表）'
+          : '正在连接 Core…'
+        : 'Core 状态：' + state.connection;
+  connectionLine.dataset.status = connected ? 'connected' : stale ? 'stale' : 'disconnected';
   byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
 
   const addSubmit = byId('add-submit') as HTMLButtonElement;
@@ -381,7 +390,12 @@ function renderJobs(): void {
     ['summary-active', activeCount],
     ['summary-complete', completeCount],
   ] as const) {
-    byId(id).textContent = String(count);
+    byId(id).textContent =
+      state.snapshotFreshness === 'stale'
+        ? `上次 ${String(count)}`
+        : state.snapshotFreshness === 'unavailable'
+          ? '—'
+          : String(count);
   }
   for (const button of document.querySelectorAll<HTMLButtonElement>('.nav-item[data-filter]')) {
     const selected = button.dataset.filter === taskFilter;
@@ -408,7 +422,11 @@ function renderJobs(): void {
   // R3-02: "no tasks here" is truthful ONLY after a successful CONNECTED
   // Core index read returned zero rows. An unconfigured/refused Core (or a
   // not-yet-successful first load) shows the connection/error state instead.
-  empty.hidden = !(state.connection === 'CONNECTED' && allCount === 0);
+  empty.hidden = !(
+    state.snapshotFreshness === 'fresh' &&
+    state.connection === 'CONNECTED' &&
+    allCount === 0
+  );
   filterEmpty.hidden = allCount === 0 || matching.length !== 0;
   table.hidden = matching.length === 0;
   for (const row of matching) body.appendChild(jobRowElement(row));
@@ -437,20 +455,25 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
 
   const status = document.createElement('td');
   const tag = document.createElement('span');
-  tag.className =
-    'status-tag ' + (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : '');
-  tag.textContent = statusLabel(row);
-  tag.title = 'Core 原始状态：' + jobStatusText(row);
+  const stale = state.snapshotFreshness === 'stale';
+  tag.className = stale
+    ? 'status-tag stale'
+    : 'status-tag ' + (verifiedComplete(row) ? 'complete' : isFailed(row) ? 'failed' : '');
+  tag.textContent = stale ? `上次成功读取：${statusLabel(row)}` : statusLabel(row);
+  tag.title = stale
+    ? `上次成功读取时的 Core 原始状态：${jobStatusText(row)}；当前状态未确认`
+    : 'Core 原始状态：' + jobStatusText(row);
   status.appendChild(tag);
   tr.appendChild(status);
 
   const progress = document.createElement('td');
   // “已验证完成” claims measured coverage evidence; NOT_APPLICABLE rows are
   // completed without it, so they keep the honest coverage detail text.
-  progress.textContent =
+  const progressText =
     verifiedComplete(row) && row.terminal !== null && row.terminal.coverage === 'VERIFIED_COMPLETE'
       ? '已验证完成'
       : progressSummary(row);
+  progress.textContent = stale ? `上次成功读取：${progressText}` : progressText;
   tr.appendChild(progress);
 
   const destination = document.createElement('td');
@@ -490,8 +513,13 @@ function actionButton(
   button.type = 'button';
   button.textContent = label;
   button.dataset.lineage = lineageId;
-  button.disabled = !enabled || state.busy;
-  if (!enabled) button.title = 'Core 当前未证明此操作可用';
+  const snapshotUnavailable = state.snapshotFreshness !== 'fresh';
+  button.disabled = !enabled || state.busy || snapshotUnavailable;
+  if (snapshotUnavailable) {
+    button.title = 'Core 当前状态未确认；刷新成功后才能操作';
+  } else if (!enabled) {
+    button.title = 'Core 当前未证明此操作可用';
+  }
   button.addEventListener('click', onClick);
   return button;
 }
