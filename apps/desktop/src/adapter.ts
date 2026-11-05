@@ -619,6 +619,11 @@ export class DesktopUiAdapter {
     readonly justification: SuccessorJustification;
   }): Promise<InteractionOutcome> {
     this.beginInteraction();
+    if (this.pendingCommandEnvelope !== null) {
+      return this.refusalOutcome([
+        'a command is awaiting Core acknowledgement; reconcile the exact request before creating a successor',
+      ]);
+    }
     const record = this.requireConfirmedRecord();
     if (record === null || record.contractEcho === null) {
       return this.refusalOutcome([
@@ -692,21 +697,28 @@ export class DesktopUiAdapter {
     }
     const aggregateId = record.projection.contract.contractId;
     const pending = this.pendingCommandEnvelope;
+    if (
+      pending !== null &&
+      (pending.commandType !== 'CANCEL_LINEAGE' || pending.aggregateId !== aggregateId)
+    ) {
+      return this.refusalOutcome([
+        'a different command is awaiting Core acknowledgement; reconcile that exact request before cancellation',
+      ]);
+    }
     const envelope =
-      pending?.commandType === 'CANCEL_LINEAGE' && pending.aggregateId === aggregateId
-        ? pending
-        : desktopCommand({
-            facts: {
-              peer: this.peer,
-              aggregateId,
-              expectedRevision: record.projection.contract.revision,
-              requestId: this.ids.requestId(),
-              issuedAt: this.now(),
-              correlation: { contractId: aggregateId },
-            },
-            commandType: 'CANCEL_LINEAGE',
-            payload: {},
-          });
+      pending ??
+      desktopCommand({
+        facts: {
+          peer: this.peer,
+          aggregateId,
+          expectedRevision: record.projection.contract.revision,
+          requestId: this.ids.requestId(),
+          issuedAt: this.now(),
+          correlation: { contractId: aggregateId },
+        },
+        commandType: 'CANCEL_LINEAGE',
+        payload: {},
+      });
     const response = await this.submitOrDisconnect(envelope);
     if (response === null) {
       return this.outcome(this.lastRouted());
@@ -732,31 +744,43 @@ export class DesktopUiAdapter {
       return this.refusalOutcome(['no live Core projection is held; retry cannot be routed']);
     }
     const projection = record.projection;
-    const domain = deriveRetryDomain({
-      selectedMemberIds: projection.snapshot?.selectedMemberIds ?? [],
-      retriedMemberIds: projection.lineage.retriedMemberIds,
-      failedMemberCount: projection.lineage.failedMemberCount,
-    });
-    if (domain.kind === 'UNAVAILABLE') {
-      return this.refusalOutcome([`retry unavailable: ${domain.reason}`]);
-    }
     const aggregateId = projection.contract.contractId;
     const pending = this.pendingCommandEnvelope;
-    const envelope =
-      pending?.commandType === 'RETRY_FAILED_MEMBERS' && pending.aggregateId === aggregateId
-        ? pending
-        : desktopCommand({
-            facts: {
-              peer: this.peer,
-              aggregateId,
-              expectedRevision: projection.contract.revision,
-              requestId: this.ids.requestId(),
-              issuedAt: this.now(),
-              correlation: { contractId: aggregateId },
-            },
-            commandType: 'RETRY_FAILED_MEMBERS',
-            payload: { memberIds: [...domain.memberIds] },
-          });
+    if (
+      pending !== null &&
+      (pending.commandType !== 'RETRY_FAILED_MEMBERS' || pending.aggregateId !== aggregateId)
+    ) {
+      return this.refusalOutcome([
+        'a different command is awaiting Core acknowledgement; reconcile that exact request before retrying',
+      ]);
+    }
+    let envelope: CommandEnvelope;
+    if (pending !== null) {
+      // Exact reconciliation must not re-derive the retry domain from a
+      // projection that may already reflect the original accepted retry.
+      envelope = pending;
+    } else {
+      const domain = deriveRetryDomain({
+        selectedMemberIds: projection.snapshot?.selectedMemberIds ?? [],
+        retriedMemberIds: projection.lineage.retriedMemberIds,
+        failedMemberCount: projection.lineage.failedMemberCount,
+      });
+      if (domain.kind === 'UNAVAILABLE') {
+        return this.refusalOutcome([`retry unavailable: ${domain.reason}`]);
+      }
+      envelope = desktopCommand({
+        facts: {
+          peer: this.peer,
+          aggregateId,
+          expectedRevision: projection.contract.revision,
+          requestId: this.ids.requestId(),
+          issuedAt: this.now(),
+          correlation: { contractId: aggregateId },
+        },
+        commandType: 'RETRY_FAILED_MEMBERS',
+        payload: { memberIds: [...domain.memberIds] },
+      });
+    }
     const response = await this.submitOrDisconnect(envelope);
     if (response === null) {
       return this.outcome(this.lastRouted());
@@ -802,6 +826,16 @@ export class DesktopUiAdapter {
       ]);
     }
     const contract = record.contractEcho;
+    const pending = this.pendingCommandEnvelope;
+    if (
+      pending !== null &&
+      (pending.commandType !== 'EXECUTE_S1_DIRECT_ACQUISITION' ||
+        pending.aggregateId !== contract.contractId)
+    ) {
+      return this.refusalOutcome([
+        'a different command is awaiting Core acknowledgement; reconcile that exact request before starting S1',
+      ]);
+    }
     if (
       contract.intentType !== 'SINGLE_RESOURCE' ||
       contract.requestedScope.kind !== 'single_resource'
@@ -987,6 +1021,16 @@ export class DesktopUiAdapter {
 
   private async submitIntentContract(): Promise<readonly RoutedCommand[]> {
     const draft = this.draft!;
+    if (
+      this.pendingCommandEnvelope !== null &&
+      this.pendingCommandEnvelope !== draft.pendingEnvelope
+    ) {
+      this.lastRefusals = [
+        ...this.lastRefusals,
+        'a different command is awaiting Core acknowledgement; reconcile it before submitting this contract',
+      ];
+      return this.lastRouted();
+    }
     let contractEcho = draft.pendingContract;
     if (contractEcho === null) {
       const contract = buildConfirmedContractPayload({
@@ -1035,6 +1079,11 @@ export class DesktopUiAdapter {
     readonly selectedMemberIds: readonly string[];
   }): Promise<readonly RoutedCommand[]> {
     await this.submitIntentContract();
+    if (this.pendingCommandEnvelope !== null) {
+      // The contract disposition is still unknown; do not mint a snapshot
+      // identity or issue a second command until the exact contract is reconciled.
+      return this.lastRouted();
+    }
     const record = this.requireConfirmedRecord();
     if (record === null || record.projection === null || record.contractEcho === null) {
       // Contract was not accepted (or Core is unreachable): no snapshot routes.
@@ -1235,9 +1284,17 @@ export class DesktopUiAdapter {
 
   /** Re-read projection after a command without erasing that command's disposition. */
   private async refreshAfterCommand(): Promise<void> {
+    const delivery = this.currentDelivery;
+    const rejections = this.lastRejections;
+    const refusals = this.lastRefusals;
     if (this.currentAggregateId !== null) {
       await this.readProjection(this.currentAggregateId);
     }
+    // Projection-read diagnostics are not command acknowledgements/rejections.
+    // Keep the action's disposition and diagnostics bound to that action.
+    this.currentDelivery = delivery;
+    this.lastRejections = rejections;
+    this.lastRefusals = refusals;
   }
 
   private outcome(routed: readonly RoutedCommand[]): InteractionOutcome {
