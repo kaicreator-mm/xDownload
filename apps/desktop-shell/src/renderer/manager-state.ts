@@ -33,6 +33,8 @@ export interface ManagerRendererState {
   readonly phase: ManagerPhase;
   /** The shell's Core connection word, verbatim from the last list answer. */
   readonly connection: string | null;
+  /** Freshness of the last Core-owned index snapshot; stale rows are last-known only. */
+  readonly snapshotFreshness: 'unavailable' | 'fresh' | 'stale';
   readonly jobs: readonly ManagerJobRowDocument[];
   /**
    * The Core durable index counters from the last successful list answer
@@ -51,6 +53,7 @@ export function initialManagerState(): ManagerRendererState {
   return {
     phase: 'loading',
     connection: null,
+    snapshotFreshness: 'unavailable',
     jobs: [],
     totalCount: null,
     truncated: false,
@@ -77,12 +80,14 @@ export function applyList(
   answer: ManagerJobListDocument | ShellRefusal,
 ): ManagerRendererState {
   if (isRefusal(answer)) {
-    // A refused index read never clears the rows: the previous truthful list
-    // stays visible and the refusal is announced (never an empty fake list).
+    // Preserve the last-known snapshot, but never present it as current after
+    // a failed Core index read. A first-load refusal remains unavailable.
     return {
       ...state,
       phase: 'ready',
       busy: false,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
       notice: { kind: 'error', text: `refresh refused: ${answer.detail}` },
     };
   }
@@ -91,6 +96,8 @@ export function applyList(
       ...state,
       phase: 'ready',
       busy: false,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
       notice: { kind: 'error', text: 'refresh refused: unexpected document' },
     };
   }
@@ -99,6 +106,7 @@ export function applyList(
     phase: 'ready',
     busy: false,
     connection: answer.connection,
+    snapshotFreshness: 'fresh',
     jobs: [...answer.jobs],
     totalCount: answer.totalCount,
     truncated: answer.truncated,
@@ -149,9 +157,13 @@ export function applyAction(
     ...state,
     busy: false,
     ...(listRefused
-      ? {}
+      ? {
+          connection: null,
+          snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
+        }
       : {
           connection: list.connection,
+          snapshotFreshness: 'fresh',
           jobs: [...list.jobs],
           totalCount: list.totalCount,
           truncated: list.truncated,
