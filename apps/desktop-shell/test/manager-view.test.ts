@@ -126,12 +126,16 @@ describe('manager renderer states', () => {
     expect(recovered.jobs).toEqual([recoveredRow]);
   });
 
-  it('an unexpected document is refused, not rendered', () => {
+  it('an unexpected document makes a previously successful snapshot stale', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const forged = {
       ok: true,
       document: 'xdownload.desktop.manager.unknown',
     } as unknown as ManagerJobListDocument;
-    const next = applyList(initialManagerState(), forged);
+    const next = applyList(seeded, forged);
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
     expect(next.notice?.kind).toBe('error');
     expect(next.notice?.text).toContain('unexpected document');
   });
