@@ -325,7 +325,7 @@ function render(): void {
       ? 'Core 已连接'
       : state.connection === null
         ? state.phase === 'ready'
-          ? 'Core 状态未确认（尚无权威任务列表）'
+          ? 'Core 未连接（尚无权威任务列表）'
           : '正在连接 Core…'
         : 'Core 状态：' + state.connection;
   connectionLine.dataset.status = connected ? 'connected' : stale ? 'stale' : 'disconnected';
