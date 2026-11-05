@@ -394,12 +394,19 @@ export class DesktopManager {
         // Attach the aggregate id first: the adapter re-reads the fresh Core
         // projection (READ_PROJECTION) and refuses stale/fabricated facts.
         const attached = await adapter.attachAggregate(lineageId);
-        if (attached.display.connection !== 'CONNECTED') {
+        const freshRead = attached.display.connection;
+        // A transport failure or an unverified payload leaves a possibly
+        // stale cached projection in play: no control command may be
+        // submitted. A typed Core read rejection (REJECTED_PROJECTION, e.g.
+        // an unknown lineage) is Core's authoritative fresh answer — Core
+        // re-decides, and the adapter itself routes nothing without a live
+        // projection ('no live Core projection is held').
+        if (freshRead !== 'CONNECTED' && freshRead !== 'REJECTED_PROJECTION') {
           const rejection = attached.rejections[0];
           const diagnostic =
             attached.refusals[0] ??
             (rejection === undefined
-              ? `Core connection is ${String(attached.display.connection)}`
+              ? `Core connection is ${String(freshRead)}`
               : `${rejection.code}: ${rejection.message}`);
           return refusal(
             `cannot ${action}: a fresh Core projection was not confirmed (${diagnostic})`,
