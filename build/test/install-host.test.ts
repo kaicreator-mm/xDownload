@@ -183,7 +183,7 @@ describe('#179 status reads the per-user config', () => {
 describe('#316 Native Host smoke manifest ownership and cleanup', () => {
   const unregistered = {
     action: 'unregistered' as const,
-    key: 'HKCU\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker',
+    key: 'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
     detail: 'removed',
   };
   const absentRegistration = {
@@ -286,17 +286,18 @@ describe('#316 Native Host smoke manifest ownership and cleanup', () => {
   });
 
   it('parses registry manifest paths containing spaces without truncation', () => {
-    const manifestPath =
-      'C:\\\\Users\\\\Jane Doe\\\\.xdownload\\\\native-host\\\\com.xdownload.broker.json';
-    const probe = parseWindowsRegistrationProbe(
-      `HKEY_CURRENT_USER\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker\\n    (Default)    REG_SZ    ${manifestPath}\\n`,
-    );
+    const manifestPath = 'C:\\Users\\Jane Doe\\.xdownload\\native-host\\com.xdownload.broker.json';
+    const raw = [
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
+      \`    (Default)    REG_SZ    \${manifestPath}\`,
+    ].join('\\n');
+    const probe = parseWindowsRegistrationProbe(raw);
 
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBe(manifestPath);
     expect(registrationPointsToExpectedManifest(probe, manifestPath)).toBe(true);
     expect(
-      registrationPointsToExpectedManifest(probe, 'C:\\\\Users\\\\Other User\\\\manifest.json'),
+      registrationPointsToExpectedManifest(probe, 'C:\\Users\\Other User\\manifest.json'),
     ).toBe(false);
   });
 
