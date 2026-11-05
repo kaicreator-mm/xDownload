@@ -138,6 +138,34 @@ describe('core disconnect behavior', () => {
     await adapter.close();
   });
 
+  it('classifies a first-ever Core connect refusal as NOT_ATTEMPTED', async () => {
+    const transport: SeamClientTransport = {
+      async connect() {
+        throw new Error('no Core listener');
+      },
+    };
+    const adapter = createDesktopUiAdapter({
+      transport,
+      target: { host: '127.0.0.1', port: 65432 },
+      installId: 'install-001',
+      userId: 'user-001',
+      now: () => FIXED_NOW,
+    });
+    adapter.enterIntent({
+      intent: singleResourceIntent(),
+      workflowFacts: NO_AMBIGUITY,
+    });
+
+    const result = await adapter.confirmScope();
+    expect(result.delivery.status).toBe('NOT_ATTEMPTED');
+    expect(result.routed).toStrictEqual([]);
+    expect(adapter.pendingCommandInfo()).toBeNull();
+    expect(adapter.currentDraftView()).not.toBeNull();
+    expect(adapter.sentCommandEnvelopes()).toHaveLength(1);
+
+    await adapter.close();
+  });
+
   it('reconciles a response-lost command with the exact same envelope and requestId', async () => {
     const core = await startCore();
     const responseLoss = responseLossTransport(core, 'CANCEL_LINEAGE');
@@ -233,6 +261,13 @@ describe('core disconnect behavior', () => {
     expect(adapter.pendingCommandInfo()).toBeNull();
     expect(responseLoss.requestIds.length).toBeGreaterThan(1);
     expect(new Set(responseLoss.requestIds)).toStrictEqual(new Set([requestId]));
+    const contractAttempts = adapter
+      .sentCommandEnvelopes()
+      .filter((envelope) => envelope.commandType === 'SUBMIT_CONTRACT');
+    expect(new Set(contractAttempts.map((envelope) => envelope.requestId))).toStrictEqual(
+      new Set([requestId]),
+    );
+    expect(new Set(contractAttempts.map((envelope) => JSON.stringify(envelope.payload)))).toHaveLength(1);
     expect(adapter.acknowledgedCommandEnvelopes().filter((envelope) => envelope.commandType === 'SUBMIT_CONTRACT'))
       .toHaveLength(1);
 
