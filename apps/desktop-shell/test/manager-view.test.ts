@@ -119,7 +119,7 @@ describe('manager renderer states', () => {
       code: 'SHELL_IPC_REFUSED',
       detail: 'the Core is disconnected',
     });
-    const recoveredRow = presentRow({ lineageStatus: 'CANCELLED' });
+    const recoveredRow = presentRow({ revision: 4 });
     const recovered = applyList(stale, jobListDocument({ jobs: [recoveredRow], totalCount: 1 }));
     expect(recovered.snapshotFreshness).toBe('fresh');
     expect(recovered.connection).toBe('CONNECTED');
