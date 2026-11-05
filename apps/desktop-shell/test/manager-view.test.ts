@@ -63,6 +63,7 @@ describe('manager renderer states', () => {
     expect(initial.jobs).toEqual([]);
     expect(initial.totalCount).toBeNull();
     expect(initial.truncated).toBe(false);
+    expect(initial.snapshotFreshness).toBe('unavailable');
     const missing = bridgeMissing(initial);
     expect(missing.phase).toBe('bridge-missing');
     expect(missing.jobs).toEqual([]);
@@ -76,6 +77,7 @@ describe('manager renderer states', () => {
     );
     expect(next.phase).toBe('ready');
     expect(next.connection).toBe('CONNECTED');
+    expect(next.snapshotFreshness).toBe('fresh');
     expect(next.jobs).toEqual([row]);
     expect(next.totalCount).toBe(7);
     expect(next.truncated).toBe(true);
@@ -89,20 +91,94 @@ describe('manager renderer states', () => {
       detail: 'the Core is disconnected; the durable S1 job index could not be read',
     });
     expect(next.phase).toBe('ready');
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
     expect(next.notice?.kind).toBe('error');
     expect(next.notice?.text).toContain('the Core is disconnected');
     // The refusal must NOT wipe the last truthful list (no empty fake list).
     expect(next.jobs).toEqual([presentRow()]);
   });
 
-  it('an unexpected document is refused, not rendered', () => {
+  it('a first-load refusal remains unavailable and never invents an empty successful index', () => {
+    const next = applyList(initialManagerState(), {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail: 'no Core connection is configured',
+    });
+    expect(next.snapshotFreshness).toBe('unavailable');
+    expect(next.connection).toBeNull();
+    expect(next.jobs).toEqual([]);
+    expect(next.totalCount).toBeNull();
+  });
+
+  it('a successful index read recovers a stale snapshot with new Core facts', () => {
+    const seeded = applyList(
+      initialManagerState(),
+      jobListDocument({ jobs: [presentRow()], totalCount: 1 }),
+    );
+    const stale = applyList(seeded, {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail: 'the Core is disconnected',
+    });
+    const recoveredRow = presentRow({ revision: 4 });
+    const recovered = applyList(stale, jobListDocument({ jobs: [recoveredRow], totalCount: 1 }));
+    expect(recovered.snapshotFreshness).toBe('fresh');
+    expect(recovered.connection).toBe('CONNECTED');
+    expect(recovered.jobs).toEqual([recoveredRow]);
+  });
+
+  it('a malformed list envelope cannot replace a previously successful snapshot', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const malformed = { ...jobListDocument(), jobs: null } as unknown as ManagerJobListDocument;
+    const next = applyList(seeded, malformed);
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.notice?.text).toContain('malformed job list');
+  });
+
+  it.each([
+    { jobs: [{}] },
+    { jobs: [{ ...presentRow(), retry: null }] },
+    { jobs: [{ ...presentRow(), terminal: { requestFulfillment: 'COMPLETE' } }] },
+    { pendingPreview: {} },
+  ])('rejects malformed nested list facts and recovers from a later valid read: %j', (bad) => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const malformed = { ...jobListDocument(), ...bad } as unknown as ManagerJobListDocument;
+    const stale = applyList(seeded, malformed);
+    expect(stale.snapshotFreshness).toBe('stale');
+    expect(stale.connection).toBeNull();
+    expect(stale.jobs).toEqual([presentRow()]);
+    const recovered = applyList(stale, jobListDocument());
+    expect(recovered.snapshotFreshness).toBe('fresh');
+    expect(recovered.jobs).toEqual([]);
+  });
+
+  it('a successful list envelope cannot claim freshness while Core is disconnected', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const contradictory = {
+      ...jobListDocument(),
+      connection: 'DISCONNECTED',
+    } as unknown as ManagerJobListDocument;
+    const next = applyList(seeded, contradictory);
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.connection).toBeNull();
+    expect(next.jobs).toEqual([presentRow()]);
+  });
+
+  it('an unexpected document makes a previously successful snapshot stale', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const forged = {
       ok: true,
       document: 'xdownload.desktop.manager.unknown',
     } as unknown as ManagerJobListDocument;
-    const next = applyList(initialManagerState(), forged);
+    const next = applyList(seeded, forged);
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
     expect(next.notice?.kind).toBe('error');
-    expect(next.notice?.text).toContain('unexpected document');
+    expect(next.notice?.text).toContain('malformed job list document');
   });
 
   it('busy flags gate the controls without changing any displayed truth', () => {
@@ -145,6 +221,79 @@ describe('visible truncation state (Core index counters only)', () => {
     expect(next.truncated).toBe(true);
   });
 
+  it('a refused Core action also invalidates the last-known connection snapshot', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const next = applyAction(seeded, {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail: 'no Core connection is configured; the action cannot be routed',
+    });
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.notice?.text).toContain('action refused');
+  });
+
+  it('an embedded malformed list cannot restore freshness or replace cached rows', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const next = applyAction(seeded, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'cancel',
+      lineageId: presentRow().lineageId,
+      routed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: {
+        ...jobListDocument(),
+        document: 'xdownload.desktop.manager.unknown',
+      } as unknown as ManagerJobListDocument,
+    });
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.notice?.kind).toBe('error');
+    expect(next.notice?.text).toContain('malformed');
+  });
+
+  it('an accepted add with a refused index clears the consumed confirmation preview', () => {
+    const preview = {
+      document: 'xdownload.desktop.manager.preview' as const,
+      lineageId: 'contract-desktop-ab12cd34-000002',
+      url: 'https://example.com/a.mp4',
+      automationMode: 'ASSISTED',
+      confirmationRequests: [
+        {
+          level: 'SCOPE_LEVEL',
+          description: 'SCOPE_LEVEL (single_resource:)',
+          proves: 'the download target',
+        },
+      ],
+    };
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const withPreview = previewOpened(seeded, preview);
+    const next = applyAction(withPreview, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: {
+        ok: false,
+        code: 'SHELL_IPC_REFUSED',
+        detail: 'the Core is disconnected; the durable S1 job index could not be read',
+      },
+    });
+
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.connection).toBeNull();
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.pendingPreview).toBeNull();
+    expect(next.notice?.text).toContain('fresh job list was refused');
+  });
+
   it('an embedded list refusal keeps the previous rows and announces the refusal', () => {
     const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const next = applyAction(seeded, {
@@ -162,6 +311,8 @@ describe('visible truncation state (Core index counters only)', () => {
       },
     });
     expect(next.jobs).toEqual([presentRow()]);
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
     expect(next.notice?.kind).toBe('error');
     expect(next.notice?.text).toContain('accepted by the Core');
     expect(next.notice?.text).toContain('disconnected');
@@ -195,6 +346,32 @@ describe('preview dialog state (keyboard flow model)', () => {
     expect(refused.pendingPreview).toBeNull();
     expect(refused.notice?.kind).toBe('error');
     expect(refused.notice?.text).toContain('only http(s) download URLs are admissible');
+  });
+
+  it('discard closes the local preview even when the follow-up index read is refused', () => {
+    const opened = previewOpened(
+      applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()], totalCount: 1 })),
+      preview,
+    );
+    const discarded = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'discard-preview',
+      lineageId: preview.lineageId,
+      routed: false,
+      rejections: [],
+      refusalDetail: null,
+      list: {
+        ok: false,
+        code: 'SHELL_IPC_REFUSED',
+        detail: 'the Core is disconnected; the durable S1 job index could not be read',
+      },
+    });
+    expect(discarded.pendingPreview).toBeNull();
+    expect(discarded.snapshotFreshness).toBe('stale');
+    expect(discarded.connection).toBeNull();
+    expect(discarded.jobs).toEqual([presentRow()]);
+    expect(discarded.totalCount).toBe(1);
   });
 
   it('confirm routes the action and closes the dialog from the fresh list', () => {

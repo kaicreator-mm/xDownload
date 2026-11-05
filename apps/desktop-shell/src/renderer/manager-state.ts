@@ -31,8 +31,10 @@ export interface ManagerNotice {
 
 export interface ManagerRendererState {
   readonly phase: ManagerPhase;
-  /** The shell's Core connection word, verbatim from the last list answer. */
+  /** Current Core connection word; null when the latest snapshot is stale or unavailable. */
   readonly connection: string | null;
+  /** Freshness of the last Core-owned index snapshot; stale rows are last-known only. */
+  readonly snapshotFreshness: 'unavailable' | 'fresh' | 'stale';
   readonly jobs: readonly ManagerJobRowDocument[];
   /**
    * The Core durable index counters from the last successful list answer
@@ -51,6 +53,7 @@ export function initialManagerState(): ManagerRendererState {
   return {
     phase: 'loading',
     connection: null,
+    snapshotFreshness: 'unavailable',
     jobs: [],
     totalCount: null,
     truncated: false,
@@ -65,10 +68,83 @@ export function bridgeMissing(state: ManagerRendererState): ManagerRendererState
   return { ...state, phase: 'bridge-missing', jobs: [], pendingPreview: null };
 }
 
-function isRefusal(
-  document: ManagerJobListDocument | ShellRefusal | ManagerActionDocument,
-): document is ShellRefusal {
-  return document.ok === false;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRefusal(document: unknown): document is ShellRefusal {
+  return isRecord(document) && document.ok === false;
+}
+
+function isManagerJobRowDocument(value: unknown): value is ManagerJobRowDocument {
+  if (
+    !isRecord(value) ||
+    typeof value.lineageId !== 'string' ||
+    value.lineageId.length === 0 ||
+    value.lane !== 's1' ||
+    typeof value.contractStatus !== 'string' ||
+    !Number.isSafeInteger(value.revision) ||
+    (value.revision as number) < 0 ||
+    typeof value.lineageStatus !== 'string' ||
+    !isRecord(value.retry) ||
+    typeof value.retry.available !== 'boolean' ||
+    !(value.retry.reason === null || typeof value.retry.reason === 'string')
+  )
+    return false;
+  if (value.terminal === null) return true;
+  if (!isRecord(value.terminal)) return false;
+  const terminal = value.terminal;
+  const summary = terminal.validationSummary;
+  if (!isRecord(summary)) return false;
+  return (
+    typeof terminal.requestFulfillment === 'string' &&
+    typeof terminal.targetResolution === 'string' &&
+    typeof terminal.selectionAcquisition === 'string' &&
+    typeof terminal.coverage === 'string' &&
+    typeof terminal.stopReason === 'string' &&
+    typeof terminal.recordedAt === 'string' &&
+    typeof summary.status === 'string' &&
+    Number.isSafeInteger(summary.passedCount) &&
+    (summary.passedCount as number) >= 0 &&
+    Number.isSafeInteger(summary.failedCount) &&
+    (summary.failedCount as number) >= 0
+  );
+}
+
+function isManagerPreviewDocument(value: unknown): value is ManagerPreviewDocument {
+  return (
+    isRecord(value) &&
+    value.document === 'xdownload.desktop.manager.preview' &&
+    typeof value.lineageId === 'string' &&
+    typeof value.url === 'string' &&
+    typeof value.automationMode === 'string' &&
+    Array.isArray(value.confirmationRequests) &&
+    value.confirmationRequests.every(
+      (request) =>
+        isRecord(request) &&
+        typeof request.level === 'string' &&
+        typeof request.description === 'string' &&
+        typeof request.proves === 'string',
+    )
+  );
+}
+
+/** Validate the renderer-facing list envelope before it can become fresh. */
+function isManagerJobListDocument(value: unknown): value is ManagerJobListDocument {
+  if (!isRecord(value)) return false;
+  return (
+    value.ok === true &&
+    value.document === 'xdownload.desktop.manager.jobs' &&
+    // DesktopManager emits a successful list only after a fresh Core index read.
+    // Any non-CONNECTED word contradicts ok=true and must fail closed.
+    value.connection === 'CONNECTED' &&
+    Array.isArray(value.jobs) &&
+    value.jobs.every(isManagerJobRowDocument) &&
+    Number.isSafeInteger(value.totalCount) &&
+    (value.totalCount as number) >= 0 &&
+    typeof value.truncated === 'boolean' &&
+    (value.pendingPreview === null || isManagerPreviewDocument(value.pendingPreview))
+  );
 }
 
 /** Apply one refresh answer (the ONLY source of rows, counters, connection). */
@@ -77,21 +153,25 @@ export function applyList(
   answer: ManagerJobListDocument | ShellRefusal,
 ): ManagerRendererState {
   if (isRefusal(answer)) {
-    // A refused index read never clears the rows: the previous truthful list
-    // stays visible and the refusal is announced (never an empty fake list).
+    // Preserve the last-known snapshot, but never present it as current after
+    // a failed Core index read. A first-load refusal remains unavailable.
     return {
       ...state,
       phase: 'ready',
       busy: false,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
       notice: { kind: 'error', text: `refresh refused: ${answer.detail}` },
     };
   }
-  if (answer.document !== 'xdownload.desktop.manager.jobs') {
+  if (!isManagerJobListDocument(answer)) {
     return {
       ...state,
       phase: 'ready',
       busy: false,
-      notice: { kind: 'error', text: 'refresh refused: unexpected document' },
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
+      notice: { kind: 'error', text: 'refresh refused: malformed job list document' },
     };
   }
   return {
@@ -99,6 +179,7 @@ export function applyList(
     phase: 'ready',
     busy: false,
     connection: answer.connection,
+    snapshotFreshness: 'fresh',
     jobs: [...answer.jobs],
     totalCount: answer.totalCount,
     truncated: answer.truncated,
@@ -137,6 +218,8 @@ export function applyAction(
     return {
       ...state,
       busy: false,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
       notice: { kind: 'error', text: `action refused: ${answer.detail}` },
     };
   }
@@ -145,21 +228,36 @@ export function applyAction(
   // and the refusal is announced — never replaced by a fake empty list.
   const list = answer.list;
   const listRefused = isRefusal(list);
-  let nextState: ManagerRendererState = {
-    ...state,
-    busy: false,
-    ...(listRefused
-      ? {}
-      : {
-          connection: list.connection,
-          jobs: [...list.jobs],
-          totalCount: list.totalCount,
-          truncated: list.truncated,
-          pendingPreview: list.pendingPreview,
-        }),
-    notice: null,
-  };
-  if (answer.action !== 'discard-preview') {
+  let nextState: ManagerRendererState = { ...state, busy: false, notice: null };
+  if (listRefused || !isManagerJobListDocument(list)) {
+    nextState = {
+      ...nextState,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
+    };
+  } else {
+    nextState = {
+      ...nextState,
+      connection: list.connection,
+      snapshotFreshness: 'fresh',
+      jobs: [...list.jobs],
+      totalCount: list.totalCount,
+      truncated: list.truncated,
+      pendingPreview: list.pendingPreview,
+    };
+  }
+  // confirmAdd clears the main-process draft once the S1 command is routed.
+  // If its follow-up index read is refused/malformed, there is no list payload
+  // from which to observe pendingPreview=null; do not leave a stale Confirm UI
+  // that could invite a duplicate submission.
+  if (answer.action === 'add' && answer.routed) {
+    nextState = { ...nextState, pendingPreview: null };
+  }
+  if (answer.action === 'discard-preview') {
+    // The main process clears its local draft before attempting the follow-up
+    // index read. A refused/malformed list must not leave a stale confirm dialog.
+    nextState = { ...nextState, pendingPreview: null };
+  } else {
     if (answer.rejections.length > 0) {
       const first = answer.rejections[0];
       nextState = {
@@ -183,6 +281,14 @@ export function applyAction(
         notice: {
           kind: 'error',
           text: `the ${answer.action} was accepted by the Core, but the fresh job list was refused: ${list.detail}`,
+        },
+      };
+    } else if (!isManagerJobListDocument(list)) {
+      nextState = {
+        ...nextState,
+        notice: {
+          kind: 'error',
+          text: `the ${answer.action} was accepted by the Core, but the fresh job list was malformed`,
         },
       };
     } else {
