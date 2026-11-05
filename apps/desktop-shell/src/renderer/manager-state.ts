@@ -231,26 +231,24 @@ export function applyAction(
   // and the refusal is announced — never replaced by a fake empty list.
   const list = answer.list;
   const listRefused = isRefusal(list);
-  const listValid = isManagerJobListDocument(list);
-  const listUnavailable = listRefused || !listValid;
-  let nextState: ManagerRendererState = {
-    ...state,
-    busy: false,
-    ...(listUnavailable
-      ? {
-          connection: null,
-          snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
-        }
-      : {
-          connection: list.connection,
-          snapshotFreshness: 'fresh',
-          jobs: [...list.jobs],
-          totalCount: list.totalCount,
-          truncated: list.truncated,
-          pendingPreview: list.pendingPreview,
-        }),
-    notice: null,
-  };
+  let nextState: ManagerRendererState = { ...state, busy: false, notice: null };
+  if (listRefused || !isManagerJobListDocument(list)) {
+    nextState = {
+      ...nextState,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
+    };
+  } else {
+    nextState = {
+      ...nextState,
+      connection: list.connection,
+      snapshotFreshness: 'fresh',
+      jobs: [...list.jobs],
+      totalCount: list.totalCount,
+      truncated: list.truncated,
+      pendingPreview: list.pendingPreview,
+    };
+  }
   if (answer.action !== 'discard-preview') {
     if (answer.rejections.length > 0) {
       const first = answer.rejections[0];
@@ -277,7 +275,7 @@ export function applyAction(
           text: `the ${answer.action} was accepted by the Core, but the fresh job list was refused: ${list.detail}`,
         },
       };
-    } else if (!listValid) {
+    } else if (!isManagerJobListDocument(list)) {
       nextState = {
         ...nextState,
         notice: {
