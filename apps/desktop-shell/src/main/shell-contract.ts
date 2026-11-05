@@ -145,6 +145,8 @@ export interface ManagerPreviewDocument {
   readonly lineageId: string;
   readonly url: string;
   readonly automationMode: string;
+  /** Main-process reconciliation stage; UNKNOWN stages replay the same request identity. */
+  readonly submissionStage: 'READY' | 'CONTRACT_UNKNOWN' | 'S1_UNKNOWN';
   /** The Core-produced confirmation plan, rendered verbatim. */
   readonly confirmationRequests: readonly {
     readonly level: string;
@@ -179,12 +181,16 @@ export interface ManagerActionDocument {
   readonly document: 'xdownload.desktop.manager.action';
   readonly action: 'add' | 'cancel' | 'retry' | 'discard-preview';
   readonly lineageId: string | null;
-  /** True when the command was routed to the Core (admission, not success). */
+  /** True only when every command required by this action was Core-acknowledged. */
   readonly routed: boolean;
+  /** Per-action command delivery state; UNKNOWN is never rendered as acceptance. */
+  readonly deliveryState: 'NOT_ATTEMPTED' | 'ACKNOWLEDGED' | 'REJECTED' | 'UNKNOWN';
   /** Core-typed rejections, verbatim (e.g. a typed v0.2 cancel refusal). */
   readonly rejections: readonly { readonly code: string; readonly message: string }[];
   /** Adapter-level fail-closed refusal detail (nothing was routed). */
   readonly refusalDetail: string | null;
+  /** Current main-process preview state, independent of the list-read result. */
+  readonly pendingPreview: ManagerPreviewDocument | null;
   /**
    * The fresh list after the action — or a typed refusal when the Core could
    * not serve the durable index at that moment (never a fake empty list).
