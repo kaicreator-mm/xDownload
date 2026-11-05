@@ -200,6 +200,7 @@ describe('#316 registry query failure classification', () => {
       }),
     ).toBe(false);
     expect(isRegistryKeyNotFoundError({ code: 5, stderr: 'Access is denied.' })).toBe(false);
+    expect(isRegistryKeyNotFoundError(null)).toBe(false);
   });
 });
 
