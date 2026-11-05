@@ -147,7 +147,7 @@ describe('manager renderer states', () => {
     expect(next.snapshotFreshness).toBe('stale');
     expect(next.jobs).toEqual([presentRow()]);
     expect(next.notice?.kind).toBe('error');
-    expect(next.notice?.text).toContain('unexpected document');
+    expect(next.notice?.text).toContain('malformed job list document');
   });
 
   it('busy flags gate the controls without changing any displayed truth', () => {
