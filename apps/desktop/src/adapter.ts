@@ -1096,7 +1096,7 @@ export class DesktopUiAdapter {
       return this.lastRouted();
     }
     if (response.outcome === 'REJECTED') {
-      await this.refresh();
+      await this.readProjection(aggregateId);
       this.recordRejections(response);
       return this.lastRouted();
     }
@@ -1104,7 +1104,7 @@ export class DesktopUiAdapter {
       snapshotId,
       selectedMemberIds: [...input.selectedMemberIds],
     };
-    await this.refresh();
+    await this.readProjection(aggregateId);
     return this.lastRouted();
   }
 
