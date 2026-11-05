@@ -267,7 +267,7 @@ describe('core disconnect behavior', () => {
     expect(new Set(contractAttempts.map((envelope) => envelope.requestId))).toStrictEqual(
       new Set([requestId]),
     );
-    expect(new Set(contractAttempts.map((envelope) => JSON.stringify(envelope.payload)))).toHaveLength(1);
+    expect(new Set(contractAttempts.map((envelope) => JSON.stringify(envelope.payload))).size).toBe(1);
     expect(adapter.acknowledgedCommandEnvelopes().filter((envelope) => envelope.commandType === 'SUBMIT_CONTRACT'))
       .toHaveLength(1);
 
