@@ -45,9 +45,10 @@ No source mutation is permitted until this Task Pack receives independent PACK_P
 ### 3.1 Attempt and acknowledgement are different facts
 
 - An envelope added to an attempt/debug ledger is not proof of delivery or acceptance.
+- A local validation/guard that prevents submitCommand from being invoked is NOT_ATTEMPTED; it must not create a command attempt or accepted signal.
 - Only a valid Core response with outcome ACCEPTED establishes accepted command delivery.
 - A valid Core response with outcome REJECTED establishes an acknowledged rejection; surface the Core diagnostics verbatim.
-- A transport exception after submission may have occurred is ambiguous. Report SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED. Do not report success or definitive non-delivery.
+- Once submitCommand has been invoked, a transport exception is ambiguous because the command may have reached Core. Report SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED. Do not report success or definitive non-delivery.
 - Interaction results must carry an explicit delivery disposition and bind it to commandType, aggregateId and requestId. Do not infer it from cumulative history length or presence in sentCommandEnvelopes().
 - Keep attempt history for diagnostics, but maintain an independent acknowledgement record. Any compatibility field named routed must be true only when the current command has a valid Core ACCEPTED response; rejected and unknown commands are not accepted/routed.
 
@@ -127,7 +128,7 @@ Forbidden paths and effects:
 
 ### Delivery and identity
 
-1. Core unavailable before send: delivery is UNKNOWN only if a command attempt may have occurred; no accepted notice or confirmed row.
+1. A pre-send local guard refusal is NOT_ATTEMPTED; it produces no accepted notice or confirmed row. If submitCommand was invoked and transport then failed, classify it UNKNOWN.
 2. Request may have reached Core but response is lost: explicit UNKNOWN; exact envelope and requestId retained.
 3. Exact-envelope reconciliation after Core reconnect: same requestId, same aggregate, same payload; Core idempotency converges; no second logical command.
 4. Core ACCEPTED response: current action is accepted and only then appears in the acknowledged ledger.
