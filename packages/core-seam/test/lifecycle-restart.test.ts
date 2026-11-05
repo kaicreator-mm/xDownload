@@ -220,6 +220,98 @@ describe('Core restart with a live client: reconnect + re-submit, no duplicate e
     }
   });
 
+  it('retries bounded reconnect attempts after an established client loses Core', async () => {
+    const journal = createInMemorySeamJournal();
+    const firstServer = server(journal);
+    const firstTransport = createLoopbackServerTransport({ host: '127.0.0.1', port: 0 });
+    running.push(firstTransport);
+    const target = await firstTransport.start({
+      onFrame: (connection, frame) => {
+        const response = firstServer.handleFrame(frame);
+        connection.send(JSON.stringify(response));
+      },
+      onConnectionEnded: () => undefined,
+    });
+
+    const restartedServer = server(journal);
+    const restartedTransport = createLoopbackServerTransport({
+      host: target.host,
+      port: target.port,
+    });
+    let connectAttempts = 0;
+    const loopbackClient = createLoopbackClientTransport();
+    const client = createSeamClient({
+      transport: {
+        connect: async (nextTarget) => {
+          connectAttempts += 1;
+          if (connectAttempts === 3) {
+            running.push(restartedTransport);
+            await restartedTransport.start({
+              onFrame: (connection, frame) => {
+                const response = restartedServer.handleFrame(frame);
+                connection.send(JSON.stringify(response));
+              },
+              onConnectionEnded: () => undefined,
+            });
+          }
+          return loopbackClient.connect(nextTarget);
+        },
+      },
+      target,
+      peer: peer('CLI'),
+      maxReconnectAttempts: 2,
+    });
+    const firstCommand = stampPeer(
+      rawCommand({
+        commandType: 'SUBMIT_CONTRACT',
+        aggregateId: 'contract-established-before-reconnect-001',
+        payload: rawSingleResourceContract({
+          contractId: 'contract-established-before-reconnect-001',
+          requestedTarget: 'target-established-before-reconnect-001',
+        }),
+        requestId: 'req-established-before-reconnect-001',
+      }) as never,
+      peer('CLI'),
+    );
+    const reconnectCommand = stampPeer(
+      rawCommand({
+        commandType: 'SUBMIT_CONTRACT',
+        aggregateId: 'contract-bounded-reconnect-001',
+        payload: rawSingleResourceContract({
+          contractId: 'contract-bounded-reconnect-001',
+          requestedTarget: 'target-bounded-reconnect-001',
+        }),
+        requestId: 'req-bounded-reconnect-001',
+      }) as never,
+      peer('CLI'),
+    );
+
+    try {
+      const firstResponse = await client.submitCommand(firstCommand);
+      expect(firstResponse.outcome).toBe('ACCEPTED');
+      expect(connectAttempts).toBe(1);
+
+      // The same client has already connected once. A first reconnect refusal
+      // must consume one retry rather than terminate the request immediately.
+      await firstTransport.stop();
+      const stoppedIndex = running.indexOf(firstTransport);
+      if (stoppedIndex >= 0) running.splice(stoppedIndex, 1);
+
+      const recovered = await client.submitCommand(reconnectCommand);
+      expect(recovered.outcome).toBe('ACCEPTED');
+      expect(connectAttempts).toBe(3);
+      expect(restartedServer.acceptedCommandCount).toBe(1);
+
+      const replayed = await client.submitCommand(reconnectCommand);
+      expect(replayed.outcome).toBe('ACCEPTED');
+      expect(replayed.acceptance?.converged).toBe(true);
+      expect(connectAttempts).toBe(3);
+      expect(restartedServer.acceptedCommandCount).toBe(1);
+    } finally {
+      await client.close();
+    }
+  });
+
   it('a client request issued against a dead endpoint reconnects to the restarted Core', async () => {
     const journal = createInMemorySeamJournal();
     const firstServer = server(journal);
