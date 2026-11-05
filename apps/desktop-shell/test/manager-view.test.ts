@@ -257,6 +257,19 @@ describe('visible truncation state (Core index counters only)', () => {
   });
 
   it('an accepted add with a refused index clears the consumed confirmation preview', () => {
+    const preview = {
+      document: 'xdownload.desktop.manager.preview' as const,
+      lineageId: 'contract-desktop-ab12cd34-000002',
+      url: 'https://example.com/a.mp4',
+      automationMode: 'ASSISTED',
+      confirmationRequests: [
+        {
+          level: 'SCOPE_LEVEL',
+          description: 'SCOPE_LEVEL (single_resource:)',
+          proves: 'the download target',
+        },
+      ],
+    };
     const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const withPreview = previewOpened(seeded, preview);
     const next = applyAction(withPreview, {
