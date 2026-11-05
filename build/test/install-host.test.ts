@@ -266,11 +266,14 @@ describe('#316 registry query failure classification', () => {
     ].join('\n');
 
     expect(parseWindowsRegistrationProbe(unsetDefault, unsetDefault).manifestPath).toBeNull();
-    expect(parseWindowsRegistrationProbe(englishUnsetDefault, englishUnsetDefault).manifestPath).toBeNull();
+    expect(
+      parseWindowsRegistrationProbe(englishUnsetDefault, englishUnsetDefault).manifestPath,
+    ).toBeNull();
   });
 
   it('does not treat a named parenthesized REG_SZ value as the default registration path', () => {
-    const key = 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
+    const key =
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
     const expected = 'C:\\Users\\Jane Doe\\.xdownload\\native-host\\com.xdownload.broker.json';
     const misleading = 'C:\\Users\\Other User\\foreign-manifest.json';
     const fullQuery = [
@@ -280,9 +283,7 @@ describe('#316 registry query failure classification', () => {
     ].join('\n');
     const defaultValueQuery = [key, `    (默认)    REG_SZ    ${expected}`].join('\n');
 
-    expect(parseWindowsRegistrationProbe(fullQuery, defaultValueQuery).manifestPath).toBe(
-      expected,
-    );
+    expect(parseWindowsRegistrationProbe(fullQuery, defaultValueQuery).manifestPath).toBe(expected);
 
     const noDefault = [key, `    (Backup)    REG_SZ    ${expected}`].join('\n');
     const unresolved = parseWindowsRegistrationProbe(noDefault, null);
@@ -307,8 +308,7 @@ describe('#316 locale-independent registry absence proof', () => {
   });
 
   it('proves absence when the NativeMessagingHosts parent key is itself missing', async () => {
-    const target =
-      'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
+    const target = 'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
     const localizedNotFound = Object.assign(new Error('localized key-not-found'), { code: 1 });
     const queryRegistry = async (key: string): Promise<string> => {
       if (key.endsWith('\\NativeMessagingHosts')) {
@@ -327,8 +327,7 @@ describe('#316 locale-independent registry absence proof', () => {
   });
 
   it('does not convert an access-denied parent query into proof of absence', async () => {
-    const target =
-      'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
+    const target = 'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
     const accessDenied = Object.assign(new Error('Access is denied'), { code: 5 });
     const queryRegistry = async (): Promise<string> => {
       throw accessDenied;

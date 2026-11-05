@@ -286,15 +286,12 @@ export function parseWindowsRegistrationProbe(
   ) {
     return { registered: true, manifestPath: null, raw };
   }
-  const matches = [
-    ...defaultValue.content.matchAll(/^\s*\([^()]*\)\s+REG_SZ\s+([^\r\n]+)\s*$/gim),
-  ];
+  const matches = [...defaultValue.content.matchAll(/^\s*\([^()]*\)\s+REG_SZ\s+([^\r\n]+)\s*$/gim)];
   if (matches.length !== 1) {
     return { registered: true, manifestPath: null, raw };
   }
   const captured = matches[0]?.[1]?.trim() ?? null;
-  const manifestPath =
-    captured !== null && !/^\([^()]*\)$/u.test(captured) ? captured : null;
+  const manifestPath = captured !== null && !/^\([^()]*\)$/u.test(captured) ? captured : null;
   return {
     registered: true,
     manifestPath,
