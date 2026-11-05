@@ -104,6 +104,9 @@ export function writeNativeHostManifestIfAbsent(
 
 /** Distinguish a genuinely absent registry key from access/query failures. */
 export function isRegistryKeyNotFoundError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
   const candidate = error as {
     code?: number | string;
     stdout?: string;
