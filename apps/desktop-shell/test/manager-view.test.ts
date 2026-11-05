@@ -126,6 +126,16 @@ describe('manager renderer states', () => {
     expect(recovered.jobs).toEqual([recoveredRow]);
   });
 
+  it('a malformed list envelope cannot replace a previously successful snapshot', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const malformed = { ...jobListDocument(), jobs: null } as unknown as ManagerJobListDocument;
+    const next = applyList(seeded, malformed);
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.notice?.text).toContain('malformed job list');
+  });
+
   it('an unexpected document makes a previously successful snapshot stale', () => {
     const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const forged = {
@@ -178,6 +188,25 @@ describe('visible truncation state (Core index counters only)', () => {
     });
     expect(next.totalCount).toBe(300);
     expect(next.truncated).toBe(true);
+  });
+
+  it('an embedded malformed list cannot restore freshness or replace cached rows', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const next = applyAction(seeded, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'cancel',
+      lineageId: presentRow().lineageId,
+      routed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: { ...jobListDocument(), document: 'xdownload.desktop.manager.unknown' } as unknown as ManagerJobListDocument,
+    });
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.notice?.kind).toBe('error');
+    expect(next.notice?.text).toContain('malformed');
   });
 
   it('an embedded list refusal keeps the previous rows and announces the refusal', () => {
