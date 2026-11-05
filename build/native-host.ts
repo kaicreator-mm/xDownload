@@ -121,7 +121,7 @@ export function isRegistryKeyNotFoundError(error: unknown): boolean {
 
 async function regQuery(key: string): Promise<string | null> {
   try {
-    const result = await execFileAsync('reg', ['query', key, '/ve'], {
+    const result = await execFileAsync('reg', ['query', key], {
       encoding: 'utf8',
       windowsHide: true,
     });
@@ -148,7 +148,7 @@ export function parseWindowsRegistrationProbe(raw: string | null): RegistrationP
   if (raw === null) {
     return { registered: false, manifestPath: null, raw: null };
   }
-  const match = /REG_SZ\s+([^\r\n]+)\s*$/m.exec(raw);
+  const match = /^\s*\(Default\)\s+REG_SZ\s+([^\r\n]+)\s*$/mi.exec(raw);
   return {
     registered: true,
     manifestPath: match === null ? null : (match[1]?.trim() ?? null),
@@ -214,7 +214,7 @@ export async function registerWindowsNativeHost(input: {
     };
   }
   try {
-    await execFileAsync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath, '/f'], {
+    await execFileAsync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath'], {
       windowsHide: true,
     });
     return {
