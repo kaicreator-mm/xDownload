@@ -1117,8 +1117,19 @@ export class DesktopUiAdapter {
         this.pendingCommandEnvelope = null;
       }
       return response;
-    } catch {
+    } catch (error) {
       this.connection = 'DISCONNECTED';
+      // The seam client distinguishes a first-ever connect refusal from a
+      // loss after an established connection. The former occurs before any
+      // frame can be sent; every later transport loss remains ambiguous.
+      if (error instanceof Error && error.name === 'InitialConnectRefusedError') {
+        this.currentDelivery = NOT_ATTEMPTED_DELIVERY;
+        this.lastRefusals = [
+          ...this.lastRefusals,
+          'the Core refused the initial connection before command transmission; no command was attempted',
+        ];
+        return null;
+      }
       this.pendingCommandEnvelope = envelope;
       this.currentDelivery = {
         status: 'UNKNOWN',
