@@ -24,6 +24,7 @@ import {
 import {
   cleanupSmokeManifest,
   isRegistryKeyNotFoundError,
+  parentListingOmitsChild,
   parseWindowsRegistrationProbe,
   probeWindowsRegistration,
   registrationPointsToExpectedManifest,
@@ -184,7 +185,6 @@ describe('#179 status reads the per-user config', () => {
   });
 });
 
-
 describe('#316 registry query failure classification', () => {
   it('treats only a known missing-key result as absence', () => {
     expect(
@@ -212,9 +212,9 @@ describe('#316 registry query failure classification', () => {
 
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBeNull();
-    expect(
-      registrationPointsToExpectedManifest(probe, 'C:\\Users\\Expected\\manifest.json'),
-    ).toBe(false);
+    expect(registrationPointsToExpectedManifest(probe, 'C:\\Users\\Expected\\manifest.json')).toBe(
+      false,
+    );
   });
   it('does not mistake a child-key default value for the host registration value', () => {
     const raw = [
@@ -228,6 +228,46 @@ describe('#316 registry query failure classification', () => {
 
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBeNull();
+  });
+});
+
+describe('#316 locale-independent registry absence proof', () => {
+  const PARENT_LISTING = [
+    'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts',
+    '    (Default)    REG_SZ    (value not set)',
+    '',
+    'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.other-host',
+  ].join('\n');
+
+  it('proves absence structurally when a localized not-found error cannot be text-matched', () => {
+    // reg.exe diagnostics are localized (a zh-CN host prints the missing-key
+    // error in GBK, which arrives as mojibake), so classification must not
+    // depend on the error text: enumerating the parent key is locale-free.
+    expect(parentListingOmitsChild(PARENT_LISTING, 'com.xdownload.broker')).toBe(true);
+  });
+
+  it('refuses to call a listed child absent (unqueryable stays fail-closed)', () => {
+    const listing = `${PARENT_LISTING}\nHKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\COM.XDOWNLOAD.BROKER`;
+    expect(parentListingOmitsChild(listing, 'com.xdownload.broker')).toBe(false);
+  });
+
+  it('does not mistake a suffix-extending sibling key for the child', () => {
+    const listing = [
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts',
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker-2',
+    ].join('\n');
+    expect(parentListingOmitsChild(listing, 'com.xdownload.broker')).toBe(true);
+  });
+
+  it('fails closed on an enumeration without any key listing line', () => {
+    expect(parentListingOmitsChild('', 'com.xdownload.broker')).toBe(false);
+    expect(parentListingOmitsChild('    (Default)    REG_SZ    stray-value', 'host')).toBe(false);
+  });
+
+  it('parses CRLF listings and requires a non-empty child name', () => {
+    const crlfListing = `HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\r\nHKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker\r\n`;
+    expect(parentListingOmitsChild(crlfListing, 'com.xdownload.broker')).toBe(false);
+    expect(parentListingOmitsChild(PARENT_LISTING, '   ')).toBe(false);
   });
 });
 
@@ -274,7 +314,9 @@ describe('#316 Native Host smoke manifest ownership and cleanup', () => {
     try {
       const manifestPath = path.join(dir, 'com.xdownload.broker.json');
       const siblingPath = path.join(dir, 'another-host.json');
-      expect(writeNativeHostManifestIfAbsent(manifestPath, 'created by this smoke attempt')).toBe(true);
+      expect(writeNativeHostManifestIfAbsent(manifestPath, 'created by this smoke attempt')).toBe(
+        true,
+      );
       fs.writeFileSync(siblingPath, 'sibling manifest', 'utf8');
 
       const cleanup = cleanupSmokeManifest({
@@ -393,14 +435,22 @@ describe.skipIf(!RUN_WINDOWS_REGISTRY_SELFTEST)(
     // registration must be left exactly as found.
     const manifestFile = path.join(windowsUserManifestDir(), 'com.xdownload.broker.json');
     let manifestAsFound: string | null = null;
+    let manifestExistedBefore = false;
     beforeAll(async () => {
-      manifestAsFound = fs.existsSync(manifestFile) ? fs.readFileSync(manifestFile, 'utf8') : null;
+      manifestExistedBefore = fs.existsSync(manifestFile);
+      manifestAsFound = manifestExistedBefore ? fs.readFileSync(manifestFile, 'utf8') : null;
       await unregisterWindowsNativeHost(SELFTEST_HOST);
     });
     afterAll(async () => {
       await unregisterWindowsNativeHost(SELFTEST_HOST);
       if (manifestAsFound !== null) {
         fs.writeFileSync(manifestFile, manifestAsFound, 'utf8');
+      } else if (!manifestExistedBefore && fs.existsSync(manifestFile)) {
+        // This attempt created the manifest on a machine where none existed:
+        // remove exactly this file (never the shared directory), mirroring
+        // the absent-before + created-by-this-attempt ownership rule, so the
+        // selftest stays rerunnable.
+        fs.rmSync(manifestFile, { force: true });
       }
     });
     fs.writeFileSync(path.join(distDir, 'marker'), 'x');

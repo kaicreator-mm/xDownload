@@ -563,7 +563,8 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
     checks.push({
       id: 'native-host-windows-registration-roundtrip',
       status: 'NOT_EXECUTED',
-      detail: 'Windows HKCU registration is unavailable on this platform; no registry or user manifest filesystem state was touched',
+      detail:
+        'Windows HKCU registration is unavailable on this platform; no registry or user manifest filesystem state was touched',
     });
   } else {
     let manifestPathForEvidence: string | null = null;
@@ -622,9 +623,7 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
               fs.existsSync(registered.manifestPath) &&
               fs.readFileSync(registered.manifestPath, 'utf8').includes(allowedOrigin);
             const registrationOk =
-              probe.registered &&
-              probe.manifestPath === registered.manifestPath &&
-              manifestOk;
+              probe.registered && probe.manifestPath === registered.manifestPath && manifestOk;
             checks.push({
               id: 'native-host-windows-registration-roundtrip',
               status: registrationOk ? 'PASS' : 'FAIL',
@@ -660,7 +659,7 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
               unregisterOutcome = removed.action;
               const after = await probeWindowsRegistration();
               registryAfterState = after.registered
-                ? after.manifestPath ?? 'registered-with-unresolved-path'
+                ? (after.manifestPath ?? 'registered-with-unresolved-path')
                 : 'absent';
               const cleanup = cleanupSmokeManifest({
                 manifestPath: registered.manifestPath,
@@ -689,7 +688,9 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
       }
     } catch (error) {
       const manifestExistsNow =
-        manifestPathForEvidence === null ? 'unknown' : String(fs.existsSync(manifestPathForEvidence));
+        manifestPathForEvidence === null
+          ? 'unknown'
+          : String(fs.existsSync(manifestPathForEvidence));
       checks.push(
         failedCheck(
           'native-host-windows-registration-roundtrip',

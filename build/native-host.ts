@@ -87,10 +87,7 @@ export function windowsRegistryKey(hostName: string = NATIVE_HOST_NAME): string 
  * Write a manifest only when this exact path does not already exist.
  * The exclusive-create flag closes the exists-then-overwrite race.
  */
-export function writeNativeHostManifestIfAbsent(
-  manifestPath: string,
-  content: string,
-): boolean {
+export function writeNativeHostManifestIfAbsent(manifestPath: string, content: string): boolean {
   try {
     fs.writeFileSync(manifestPath, content, { encoding: 'utf8', flag: 'wx' });
     return true;
@@ -116,7 +113,77 @@ export function isRegistryKeyNotFoundError(error: unknown): boolean {
     return false;
   }
   const output = `${candidate.stdout ?? ''} ${candidate.stderr ?? ''}`;
-  return /unable to find the specified registry key or value|cannot find.*registry key/i.test(output);
+  return /unable to find the specified registry key or value|cannot find.*registry key/i.test(
+    output,
+  );
+}
+
+function registryExitCode(error: unknown): number | null {
+  if (typeof error !== 'object' || error === null) {
+    return null;
+  }
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'number') {
+    return code;
+  }
+  if (typeof code === 'string' && /^\d+$/u.test(code)) {
+    return Number(code);
+  }
+  return null;
+}
+
+/** Split a registry key path into its parent path and final child name. */
+function splitParentChildKey(key: string): { parentKey: string; childName: string } | null {
+  const trimmed = key.trim();
+  const cut = trimmed.lastIndexOf('\\');
+  if (cut <= 0 || cut === trimmed.length - 1) {
+    return null;
+  }
+  return { parentKey: trimmed.slice(0, cut), childName: trimmed.slice(cut + 1) };
+}
+
+/**
+ * Locale-free absence evidence: does a parent-key enumeration list this
+ * child key? reg.exe diagnostics are locale-specific (a zh-CN host prints
+ * the key-not-found error in GBK Chinese, which arrives as mojibake under
+ * utf8 decoding), so text matching alone cannot classify an exit-1 query.
+ * A successful parent enumeration that does not list the child key is
+ * positive structural evidence that the child key is absent; any listing
+ * line that is not the child keeps the decision fail-closed for callers.
+ */
+export function parentListingOmitsChild(parentQueryStdout: string, childName: string): boolean {
+  const child = childName.trim().toLowerCase();
+  if (child === '') {
+    return false;
+  }
+  const suffix = `\\${child}`;
+  let sawKeyListing = false;
+  for (const line of parentQueryStdout.split(/\r?\n/u)) {
+    const candidate = line.trim().toLowerCase();
+    if (!candidate.startsWith('hkey')) {
+      continue;
+    }
+    sawKeyListing = true;
+    if (candidate.endsWith(suffix)) {
+      return false;
+    }
+  }
+  return sawKeyListing;
+}
+
+async function parentKeyProvesChildAbsent(key: string): Promise<boolean> {
+  const segments = splitParentChildKey(key);
+  if (segments === null) {
+    return false;
+  }
+  const parentQuery = await execFileAsync('reg', ['query', segments.parentKey], {
+    encoding: 'utf8',
+    windowsHide: true,
+  }).catch(() => null);
+  if (parentQuery === null) {
+    return false;
+  }
+  return parentListingOmitsChild(parentQuery.stdout, segments.childName);
 }
 
 async function regQuery(key: string): Promise<string | null> {
@@ -128,6 +195,13 @@ async function regQuery(key: string): Promise<string | null> {
     return result.stdout;
   } catch (error) {
     if (isRegistryKeyNotFoundError(error)) {
+      return null;
+    }
+    // reg.exe exit code 1 covers key-not-found on every locale, but the
+    // diagnostic text is localized. Resolve it structurally: a successful
+    // parent-key enumeration that omits this child proves the key is
+    // absent regardless of the OS language.
+    if (registryExitCode(error) === 1 && (await parentKeyProvesChildAbsent(key))) {
       return null;
     }
     // Access denied, malformed output and all other query failures are not
@@ -163,7 +237,7 @@ export function parseWindowsRegistrationProbe(raw: string | null): RegistrationP
   const rootSection = lines
     .slice(rootHeaderIndex + 1, childHeaderIndex === -1 ? undefined : childHeaderIndex)
     .join('\n');
-  const match = /^\s*\(Default\)\s+REG_SZ\s+([^\r\n]+)\s*$/mi.exec(rootSection);
+  const match = /^\s*\(Default\)\s+REG_SZ\s+([^\r\n]+)\s*$/im.exec(rootSection);
   return {
     registered: true,
     manifestPath: match === null ? null : (match[1]?.trim() ?? null),
@@ -225,7 +299,8 @@ export async function registerWindowsNativeHost(input: {
       action: 'failed',
       key,
       manifestPath,
-      detail: 'the native-host manifest already exists without this registration; refusing to overwrite it',
+      detail:
+        'the native-host manifest already exists without this registration; refusing to overwrite it',
     };
   }
 
@@ -245,7 +320,7 @@ export async function registerWindowsNativeHost(input: {
   }
 
   try {
-    await execFileAsync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath'], {
+    await execFileAsync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath], {
       windowsHide: true,
     });
     return {
