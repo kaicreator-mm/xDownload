@@ -159,6 +159,16 @@ export interface ManagerPreviewDocument {
  * own words — when truncated is true the visible rows are NOT the complete
  * history and the renderer must say so.
  */
+export type ManagerCommandDeliveryStatus = 'NOT_ATTEMPTED' | 'ACCEPTED' | 'REJECTED' | 'UNKNOWN';
+
+/** Command identity and disposition only; never carries the command payload. */
+export interface ManagerCommandDelivery {
+  readonly status: ManagerCommandDeliveryStatus;
+  readonly commandType: string | null;
+  readonly aggregateId: string | null;
+  readonly requestId: string | null;
+}
+
 export interface ManagerJobListDocument {
   readonly ok: true;
   readonly document: 'xdownload.desktop.manager.jobs';
@@ -171,19 +181,25 @@ export interface ManagerJobListDocument {
   readonly truncated: boolean;
   /** The pending unconfirmed preview, mirrored so the UI state survives. */
   readonly pendingPreview: ManagerPreviewDocument | null;
+  /** An unresolved command whose exact request must be reconciled before new actions. */
+  readonly pendingCommand: ManagerCommandDelivery | null;
 }
 
-/** Outcome of one routed manager action (add/cancel/retry). */
+/** Outcome of one manager action (add/cancel/retry/discard). */
 export interface ManagerActionDocument {
   readonly ok: true;
   readonly document: 'xdownload.desktop.manager.action';
   readonly action: 'add' | 'cancel' | 'retry' | 'discard-preview';
   readonly lineageId: string | null;
-  /** True when the command was routed to the Core (admission, not success). */
+  /** True only when the current command received a Core ACCEPTED response. */
   readonly routed: boolean;
+  /** Explicit current-command disposition; attempts alone never imply acceptance. */
+  readonly delivery: ManagerCommandDelivery;
+  /** True when the current preview was consumed by an acknowledged contract. */
+  readonly previewConsumed: boolean;
   /** Core-typed rejections, verbatim (e.g. a typed v0.2 cancel refusal). */
   readonly rejections: readonly { readonly code: string; readonly message: string }[];
-  /** Adapter-level fail-closed refusal detail (nothing was routed). */
+  /** Adapter-level fail-closed refusal detail (nothing was attempted). */
   readonly refusalDetail: string | null;
   /**
    * The fresh list after the action — or a typed refusal when the Core could
