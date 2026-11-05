@@ -256,6 +256,31 @@ describe('visible truncation state (Core index counters only)', () => {
     expect(next.notice?.text).toContain('malformed');
   });
 
+  it('an accepted add with a refused index clears the consumed confirmation preview', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const withPreview = previewOpened(seeded, preview);
+    const next = applyAction(withPreview, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: {
+        ok: false,
+        code: 'SHELL_IPC_REFUSED',
+        detail: 'the Core is disconnected; the durable S1 job index could not be read',
+      },
+    });
+
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.connection).toBeNull();
+    expect(next.jobs).toEqual([presentRow()]);
+    expect(next.pendingPreview).toBeNull();
+    expect(next.notice?.text).toContain('fresh job list was refused');
+  });
+
   it('an embedded list refusal keeps the previous rows and announces the refusal', () => {
     const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const next = applyAction(seeded, {
