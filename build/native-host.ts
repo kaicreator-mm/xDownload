@@ -112,8 +112,8 @@ export function isRegistryKeyNotFoundError(error: unknown): boolean {
   if (candidate.code !== 1 && candidate.code !== '1') {
     return false;
   }
-  const output = `${candidate.stdout ?? ''}\\n${candidate.stderr ?? ''}`;
-  return /unable to find the specified registry key or value|cannot find[^\\r\\n]*registry key/i.test(
+  const output = `${candidate.stdout ?? ''} ${candidate.stderr ?? ''}`;
+  return /unable to find the specified registry key or value|cannot find.*registry key/i.test(output);
     output,
   );
 }
