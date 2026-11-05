@@ -171,19 +171,43 @@ export function parentListingOmitsChild(parentQueryStdout: string, childName: st
   return sawKeyListing;
 }
 
-async function parentKeyProvesChildAbsent(key: string): Promise<boolean> {
+type RegistryQuery = (key: string) => Promise<string>;
+
+async function queryRegistryKey(key: string, valueOnly = false): Promise<string> {
+  const args = valueOnly ? ['query', key, '/ve'] : ['query', key];
+  const result = await execFileAsync('reg', args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  return result.stdout;
+}
+
+/**
+ * Prove a key absent without relying on localized reg.exe diagnostics.
+ * If its immediate parent is also absent, walk upward until an existing
+ * ancestor can enumerate the missing path segment. Access/query failures
+ * that cannot be resolved structurally remain unknown (false).
+ */
+export async function parentKeyProvesChildAbsent(
+  key: string,
+  queryRegistry: RegistryQuery = (parentKey) => queryRegistryKey(parentKey),
+): Promise<boolean> {
   const segments = splitParentChildKey(key);
   if (segments === null) {
     return false;
   }
-  const parentQuery = await execFileAsync('reg', ['query', segments.parentKey], {
-    encoding: 'utf8',
-    windowsHide: true,
-  }).catch(() => null);
-  if (parentQuery === null) {
+  try {
+    const parentListing = await queryRegistry(segments.parentKey);
+    return parentListingOmitsChild(parentListing, segments.childName);
+  } catch (error) {
+    if (isRegistryKeyNotFoundError(error)) {
+      return true;
+    }
+    if (registryExitCode(error) === 1) {
+      return parentKeyProvesChildAbsent(segments.parentKey, queryRegistry);
+    }
     return false;
   }
-  return parentListingOmitsChild(parentQuery.stdout, segments.childName);
 }
 
 async function regQuery(key: string): Promise<string | null> {
@@ -217,36 +241,60 @@ export interface RegistrationProbe {
   readonly raw: string | null;
 }
 
-/** Parse a registry query result without truncating profile paths containing spaces. */
-export function parseWindowsRegistrationProbe(raw: string | null): RegistrationProbe {
-  if (raw === null) {
-    return { registered: false, manifestPath: null, raw: null };
-  }
-
-  // `reg query <key>` can include child-key sections. Only the first/root
-  // key section owns the registration default value; never mistake a
-  // descendant's default value for the requested host registration.
+function rootRegistrySection(
+  raw: string,
+): { readonly rootKey: string; readonly content: string } | null {
   const lines = raw.split(/\r?\n/u);
   const rootHeaderIndex = lines.findIndex((line) => /^\s*HKEY_[A-Z_]+\\/iu.test(line));
   if (rootHeaderIndex === -1) {
-    return { registered: true, manifestPath: null, raw };
+    return null;
   }
+  const rootKey = lines[rootHeaderIndex]?.trim() ?? '';
   const childHeaderIndex = lines.findIndex(
     (line, index) => index > rootHeaderIndex && /^\s*HKEY_[A-Z_]+\\/iu.test(line),
   );
-  const rootSection = lines
-    .slice(rootHeaderIndex + 1, childHeaderIndex === -1 ? undefined : childHeaderIndex)
-    .join('\n');
-  // The default value's display NAME is localized by reg.exe ("(Default)"
-  // on en-US, "(默认)" on zh-CN, ...), so the parse anchors on the
-  // parenthesized-name shape instead of a locale-specific word. On this
-  // self-owned key the default is the only parenthesized-name REG_SZ entry
-  // the root section can carry. An unset default is displayed as a
-  // parenthesized placeholder ("(value not set)", "(值未设置)", ...) — also
-  // fully parenthesized — and therefore resolves to no manifest path.
-  const match = /^\s*\([^()]*\)\s+REG_SZ\s+([^\r\n]+)\s*$/im.exec(rootSection);
-  const captured = match === null ? null : (match[1]?.trim() ?? null);
-  const manifestPath = captured !== null && !/^\([^()]*\)$/u.test(captured) ? captured : null;
+  return {
+    rootKey,
+    content: lines
+      .slice(rootHeaderIndex + 1, childHeaderIndex === -1 ? undefined : childHeaderIndex)
+      .join('\n'),
+  };
+}
+
+/**
+ * Parse the full-key query plus the separate `reg query <key> /ve` result.
+ * The full query establishes key existence; /ve isolates the unnamed default
+ * value so a named value such as "(Backup)" cannot impersonate it. The
+ * default value's display name is localized, so only its parenthesized label
+ * is shape-matched. Unset, unreadable or malformed defaults stay unresolved.
+ */
+export function parseWindowsRegistrationProbe(
+  raw: string | null,
+  defaultValueRaw: string | null = raw,
+): RegistrationProbe {
+  if (raw === null) {
+    return { registered: false, manifestPath: null, raw: null };
+  }
+  const fullKey = rootRegistrySection(raw);
+  if (fullKey === null || defaultValueRaw === null) {
+    return { registered: true, manifestPath: null, raw };
+  }
+  const defaultValue = rootRegistrySection(defaultValueRaw);
+  if (
+    defaultValue === null ||
+    defaultValue.rootKey.toLowerCase() !== fullKey.rootKey.toLowerCase()
+  ) {
+    return { registered: true, manifestPath: null, raw };
+  }
+  const matches = [
+    ...defaultValue.content.matchAll(/^\s*\([^()]*\)\s+REG_SZ\s+([^\r\n]+)\s*$/gim),
+  ];
+  if (matches.length !== 1) {
+    return { registered: true, manifestPath: null, raw };
+  }
+  const captured = matches[0]?.[1]?.trim() ?? null;
+  const manifestPath =
+    captured !== null && !/^\([^()]*\)$/u.test(captured) ? captured : null;
   return {
     registered: true,
     manifestPath,
@@ -266,8 +314,16 @@ export function registrationPointsToExpectedManifest(
 export async function probeWindowsRegistration(
   hostName: string = NATIVE_HOST_NAME,
 ): Promise<RegistrationProbe> {
-  const raw = await regQuery(windowsRegistryKey(hostName));
-  return parseWindowsRegistrationProbe(raw);
+  const key = windowsRegistryKey(hostName);
+  const raw = await regQuery(key);
+  if (raw === null) {
+    return parseWindowsRegistrationProbe(null);
+  }
+  // Query the complete key first so a missing default value is never
+  // confused with an absent key. /ve then returns only the unnamed default
+  // value, avoiding false identity matches against arbitrary named values.
+  const defaultValueRaw = await queryRegistryKey(key, true).catch(() => null);
+  return parseWindowsRegistrationProbe(raw, defaultValueRaw);
 }
 
 export interface WindowsRegistrationResult {
