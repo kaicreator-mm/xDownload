@@ -202,6 +202,20 @@ describe('#316 registry query failure classification', () => {
     expect(isRegistryKeyNotFoundError({ code: 5, stderr: 'Access is denied.' })).toBe(false);
     expect(isRegistryKeyNotFoundError(null)).toBe(false);
   });
+
+  it('treats an existing registry key without a default value as registered but unresolved', () => {
+    const raw = [
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
+      '    OtherValue    REG_SZ    retained-value',
+    ].join('\n');
+    const probe = parseWindowsRegistrationProbe(raw);
+
+    expect(probe.registered).toBe(true);
+    expect(probe.manifestPath).toBeNull();
+    expect(
+      registrationPointsToExpectedManifest(probe, 'C:\\Users\\Expected\\manifest.json'),
+    ).toBe(false);
+  });
 });
 
 describe('#316 Native Host smoke manifest ownership and cleanup', () => {
