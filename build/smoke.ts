@@ -559,131 +559,139 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
   // Windows HKCU registration round-trip on the real mechanism, preserving
   // all state that was present before this attempt. The shared directory is
   // never removed; cleanup is limited to this attempt's exact manifest.
-  let manifestPathForEvidence: string | null = null;
-  let manifestDirExistedBeforeForEvidence: boolean | null = null;
-  let manifestExistedBeforeForEvidence: boolean | null = null;
-  try {
-    const manifestDir = windowsUserManifestDir();
-    const manifestPath = path.join(manifestDir, `${NATIVE_HOST_NAME}.json`);
-    const manifestDirExistedBefore = fs.existsSync(manifestDir);
-    const manifestExistedBefore = fs.existsSync(manifestPath);
-    manifestPathForEvidence = manifestPath;
-    manifestDirExistedBeforeForEvidence = manifestDirExistedBefore;
-    manifestExistedBeforeForEvidence = manifestExistedBefore;
-    const before = await probeWindowsRegistration();
-
-    if (before.registered) {
-      checks.push({
-        id: 'native-host-windows-registration-roundtrip',
-        status: 'NOT_EXECUTED',
-        command: ['reg', 'query', windowsRegistryKey()],
-        detail: `an existing registration is present (${before.manifestPath ?? 'unknown manifest'}); no registry or filesystem state was changed; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestExistedBefore=${manifestExistedBefore}`,
-      });
-    } else if (manifestExistedBefore) {
-      checks.push({
-        id: 'native-host-windows-registration-roundtrip',
-        status: 'NOT_EXECUTED',
-        command: ['reg', 'query', windowsRegistryKey()],
-        detail: `the xDownload manifest already exists without a current registration; it was preserved and registration was not attempted; manifestPath=${manifestPath}; manifestDirExistedBefore=${manifestDirExistedBefore}`,
-      });
-    } else {
-      const registered = await registerWindowsNativeHost({
-        launcherPath: path.join(distDir, 'native-host', 'bin', 'xdownload-broker-host.cmd'),
-        allowedOrigins: [allowedOrigin],
-      });
-
-      if (registered.action === 'already-registered') {
+  if (process.platform !== 'win32') {
+    checks.push({
+      id: 'native-host-windows-registration-roundtrip',
+      status: 'NOT_EXECUTED',
+      detail: 'Windows HKCU registration is unavailable on this platform; no registry or user manifest filesystem state was touched',
+    });
+  } else {
+    let manifestPathForEvidence: string | null = null;
+    let manifestDirExistedBeforeForEvidence: boolean | null = null;
+    let manifestExistedBeforeForEvidence: boolean | null = null;
+    try {
+      const manifestDir = windowsUserManifestDir();
+      const manifestPath = path.join(manifestDir, `${NATIVE_HOST_NAME}.json`);
+      const manifestDirExistedBefore = fs.existsSync(manifestDir);
+      const manifestExistedBefore = fs.existsSync(manifestPath);
+      manifestPathForEvidence = manifestPath;
+      manifestDirExistedBeforeForEvidence = manifestDirExistedBefore;
+      manifestExistedBeforeForEvidence = manifestExistedBefore;
+      const before = await probeWindowsRegistration();
+  
+      if (before.registered) {
         checks.push({
           id: 'native-host-windows-registration-roundtrip',
           status: 'NOT_EXECUTED',
           command: ['reg', 'query', windowsRegistryKey()],
-          detail: `a registration appeared before the write completed; it was not modified; detail=${registered.detail}`,
+          detail: `an existing registration is present (${before.manifestPath ?? 'unknown manifest'}); no registry or filesystem state was changed; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestExistedBefore=${manifestExistedBefore}`,
         });
-      } else if (registered.action === 'failed') {
-        const afterFailure = await probeWindowsRegistration();
-        checks.push(
-          failedCheck(
-            'native-host-windows-registration-roundtrip',
-            `registration failed; no cleanup was attempted because ownership was not established; registryAfter=${afterFailure.registered ? (afterFailure.manifestPath ?? 'registered with unresolved path') : 'absent'}; manifestExistsAfter=${fs.existsSync(manifestPath)}; manifest preserved; detail=${registered.detail}`,
-          ),
-        );
+      } else if (manifestExistedBefore) {
+        checks.push({
+          id: 'native-host-windows-registration-roundtrip',
+          status: 'NOT_EXECUTED',
+          command: ['reg', 'query', windowsRegistryKey()],
+          detail: `the xDownload manifest already exists without a current registration; it was preserved and registration was not attempted; manifestPath=${manifestPath}; manifestDirExistedBefore=${manifestDirExistedBefore}`,
+        });
       } else {
-        try {
-          const probe = await probeWindowsRegistration();
-          const manifestOk =
-            registered.manifestPath === manifestPath &&
-            fs.existsSync(registered.manifestPath) &&
-            fs.readFileSync(registered.manifestPath, 'utf8').includes(allowedOrigin);
-          const registrationOk =
-            probe.registered &&
-            probe.manifestPath === registered.manifestPath &&
-            manifestOk;
+        const registered = await registerWindowsNativeHost({
+          launcherPath: path.join(distDir, 'native-host', 'bin', 'xdownload-broker-host.cmd'),
+          allowedOrigins: [allowedOrigin],
+        });
+  
+        if (registered.action === 'already-registered') {
           checks.push({
             id: 'native-host-windows-registration-roundtrip',
-            status: registrationOk ? 'PASS' : 'FAIL',
-            command: [
-              'reg',
-              'add',
-              windowsRegistryKey(),
-              '/ve',
-              '/t',
-              'REG_SZ',
-              '/d',
-              registered.manifestPath,
-              '/f',
-            ],
-            detail: `HKCU registration read-back ${registrationOk ? 'matches' : 'does not match'} the exact smoke-owned manifest; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestExistedBefore=${manifestExistedBefore}; registryPath=${probe.manifestPath ?? 'unresolved'}; manifestExists=${fs.existsSync(registered.manifestPath)}`,
+            status: 'NOT_EXECUTED',
+            command: ['reg', 'query', windowsRegistryKey()],
+            detail: `a registration appeared before the write completed; it was not modified; detail=${registered.detail}`,
           });
-        } catch (error) {
+        } else if (registered.action === 'failed') {
+          const afterFailure = await probeWindowsRegistration();
           checks.push(
             failedCheck(
               'native-host-windows-registration-roundtrip',
-              error instanceof Error ? error.message : 'registration verification failed',
+              `registration failed; no cleanup was attempted because ownership was not established; registryAfter=${afterFailure.registered ? (afterFailure.manifestPath ?? 'registered with unresolved path') : 'absent'}; manifestExistsAfter=${fs.existsSync(manifestPath)}; manifest preserved; detail=${registered.detail}`,
             ),
           );
-        } finally {
-          // Always capture cleanup outcome after a successful registration.
-          // A failed/mismatched unregister preserves the referenced manifest.
+        } else {
           try {
-            const removed = await unregisterWindowsNativeHost(
-              NATIVE_HOST_NAME,
-              registered.manifestPath,
-            );
-            const after = await probeWindowsRegistration();
-            const cleanup = cleanupSmokeManifest({
-              manifestPath: registered.manifestPath,
-              manifestExistedBefore,
-              createdByAttempt: true,
-              unregisterResult: removed,
-              registrationAfter: after,
-            });
-            const manifestExistsAfter = fs.existsSync(registered.manifestPath);
+            const probe = await probeWindowsRegistration();
+            const manifestOk =
+              registered.manifestPath === manifestPath &&
+              fs.existsSync(registered.manifestPath) &&
+              fs.readFileSync(registered.manifestPath, 'utf8').includes(allowedOrigin);
+            const registrationOk =
+              probe.registered &&
+              probe.manifestPath === registered.manifestPath &&
+              manifestOk;
             checks.push({
-              id: 'native-host-windows-unregistration-restores-state',
-              status: cleanup.action === 'removed' ? 'PASS' : 'FAIL',
-              command: ['reg', 'delete', windowsRegistryKey(), '/f'],
-              detail: `cleanup=${cleanup.action}; reason=${cleanup.reason ?? 'exact smoke-owned manifest removed'}; unregister=${removed.action}; registryAfter=${after.registered ? (after.manifestPath ?? 'registered with unresolved path') : 'absent'}; manifestExistsAfter=${manifestExistsAfter}; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestDirExistsAfter=${fs.existsSync(manifestDir)}`,
+              id: 'native-host-windows-registration-roundtrip',
+              status: registrationOk ? 'PASS' : 'FAIL',
+              command: [
+                'reg',
+                'add',
+                windowsRegistryKey(),
+                '/ve',
+                '/t',
+                'REG_SZ',
+                '/d',
+                registered.manifestPath,
+                '/f',
+              ],
+              detail: `HKCU registration read-back ${registrationOk ? 'matches' : 'does not match'} the exact smoke-owned manifest; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestExistedBefore=${manifestExistedBefore}; registryPath=${probe.manifestPath ?? 'unresolved'}; manifestExists=${fs.existsSync(registered.manifestPath)}`,
             });
           } catch (error) {
             checks.push(
               failedCheck(
-                'native-host-windows-unregistration-restores-state',
-                `cleanup failed; manifest was preserved where present; manifestPath=${registered.manifestPath}; manifestExistsAfter=${fs.existsSync(registered.manifestPath)}; error=${error instanceof Error ? error.message : 'registry cleanup failed'}`,
+                'native-host-windows-registration-roundtrip',
+                error instanceof Error ? error.message : 'registration verification failed',
               ),
             );
+          } finally {
+            // Always capture cleanup outcome after a successful registration.
+            // A failed/mismatched unregister preserves the referenced manifest.
+            try {
+              const removed = await unregisterWindowsNativeHost(
+                NATIVE_HOST_NAME,
+                registered.manifestPath,
+              );
+              const after = await probeWindowsRegistration();
+              const cleanup = cleanupSmokeManifest({
+                manifestPath: registered.manifestPath,
+                manifestExistedBefore,
+                createdByAttempt: true,
+                unregisterResult: removed,
+                registrationAfter: after,
+              });
+              const manifestExistsAfter = fs.existsSync(registered.manifestPath);
+              checks.push({
+                id: 'native-host-windows-unregistration-restores-state',
+                status: cleanup.action === 'removed' ? 'PASS' : 'FAIL',
+                command: ['reg', 'delete', windowsRegistryKey(), '/f'],
+                detail: `cleanup=${cleanup.action}; reason=${cleanup.reason ?? 'exact smoke-owned manifest removed'}; unregister=${removed.action}; registryAfter=${after.registered ? (after.manifestPath ?? 'registered with unresolved path') : 'absent'}; manifestExistsAfter=${manifestExistsAfter}; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestDirExistsAfter=${fs.existsSync(manifestDir)}`,
+              });
+            } catch (error) {
+              checks.push(
+                failedCheck(
+                  'native-host-windows-unregistration-restores-state',
+                  `cleanup failed; manifest was preserved where present; manifestPath=${registered.manifestPath}; manifestExistsAfter=${fs.existsSync(registered.manifestPath)}; error=${error instanceof Error ? error.message : 'registry cleanup failed'}`,
+                ),
+              );
+            }
           }
         }
       }
+    } catch (error) {
+      const manifestExistsNow =
+        manifestPathForEvidence === null ? 'unknown' : String(fs.existsSync(manifestPathForEvidence));
+      checks.push(
+        failedCheck(
+          'native-host-windows-registration-roundtrip',
+          `registry/registration state could not be completed; manifestPath=${manifestPathForEvidence ?? 'unknown'}; manifestDirExistedBefore=${manifestDirExistedBeforeForEvidence ?? 'unknown'}; manifestExistedBefore=${manifestExistedBeforeForEvidence ?? 'unknown'}; manifestExistsNow=${manifestExistsNow}; manifest was not deleted by the catch path; error=${error instanceof Error ? error.message : 'registry access failed'}`,
+        ),
+      );
     }
-  } catch (error) {
-    const manifestExistsNow =
-      manifestPathForEvidence === null ? 'unknown' : String(fs.existsSync(manifestPathForEvidence));
-    checks.push(
-      failedCheck(
-        'native-host-windows-registration-roundtrip',
-        `registry/registration state could not be completed; manifestPath=${manifestPathForEvidence ?? 'unknown'}; manifestDirExistedBefore=${manifestDirExistedBeforeForEvidence ?? 'unknown'}; manifestExistedBefore=${manifestExistedBeforeForEvidence ?? 'unknown'}; manifestExistsNow=${manifestExistsNow}; manifest was not deleted by the catch path; error=${error instanceof Error ? error.message : 'registry access failed'}`,
-      ),
-    );
   }
 
   writeEvidence('windows-native-host-smoke', checks);
