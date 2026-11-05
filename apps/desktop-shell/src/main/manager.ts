@@ -44,6 +44,7 @@ import {
 } from '@xdownload/desktop-ui';
 import type {
   ManagerActionDocument,
+  ManagerCommandDelivery,
   ManagerJobListDocument,
   ManagerJobRowDocument,
   ManagerPreviewDocument,
@@ -114,6 +115,9 @@ export class DesktopManager {
       if (adapter === undefined) {
         return refusal('no Core connection is configured; downloads cannot be added');
       }
+      if (adapter.pendingCommandInfo() !== null) {
+        return refusal('a command is awaiting Core acknowledgement; reconcile it before creating another preview');
+      }
       if (this.pending !== null) {
         return refusal('a preview is already pending; confirm or discard it first');
       }
@@ -171,48 +175,48 @@ export class DesktopManager {
    */
   async confirmAdd(): Promise<ManagerActionDocument | ShellRefusal> {
     return this.runSerialized(async () => {
-      const pending = this.pending;
-      if (pending === null) {
-        return refusal('no preview is pending; nothing to confirm');
-      }
       const adapter = this.options.getAdapter();
       if (adapter === undefined) {
         return refusal('no Core connection is configured; the preview cannot be confirmed');
       }
-      const historyBeforeConfirm = adapter.sentCommandEnvelopes().length;
-      const confirmOutcome = await adapter.confirmScope();
-      const confirmCommands = adapter.sentCommandEnvelopes().slice(historyBeforeConfirm);
-      const confirmBound = confirmCommands.some(
-        (envelope) =>
-          envelope.commandType === 'SUBMIT_CONTRACT' && envelope.aggregateId === pending.lineageId,
-      );
-      if (!confirmBound) {
-        // The current contract was NOT submitted. Keep the pending preview,
-        // route nothing further, and surface the current rejection/refusal
-        // verbatim — an old aggregate's command history is never attributed
-        // to this lineage.
-        return this.actionDocument('add', pending.lineageId, false, {
-          rejections: confirmOutcome.rejections,
-          refusals: confirmOutcome.refusals,
-        });
+      const pending = this.pending;
+      if (pending === null) {
+        // After the contract was accepted, an ambiguous S1 response consumes
+        // the preview. The visible Add control becomes the exact-envelope
+        // reconciliation entry point; no second contract or request identity
+        // is created.
+        const unresolved = adapter.pendingCommandInfo();
+        if (
+          unresolved?.status === 'UNKNOWN' &&
+          unresolved.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' &&
+          unresolved.aggregateId !== null
+        ) {
+          const outcome = await adapter.executeS1Direct();
+          return this.actionDocument('add', unresolved.aggregateId, outcome, true);
+        }
+        return refusal('no preview is pending; there is no unresolved S1 command to reconcile');
       }
-      // The confirmed contract is held (with its fresh projection and the
-      // submitted locator) by the adapter — route the S1 execution with the
-      // exact identity the adapter derived. A repeat/disconnect path re-sends
-      // the identical envelope through seam idempotency.
-      const historyBeforeS1 = adapter.sentCommandEnvelopes().length;
+
+      const confirmOutcome = await adapter.confirmScope();
+      if (confirmOutcome.delivery.status !== 'ACCEPTED') {
+        // An unknown contract keeps its preview and exact envelope. A typed
+        // rejection is acknowledged but is not acceptance; no S1 command is
+        // issued until the contract itself is ACCEPTED.
+        return this.actionDocument('add', pending.lineageId, confirmOutcome, false);
+      }
+
       const s1Outcome = await adapter.executeS1Direct();
-      const s1Commands = adapter.sentCommandEnvelopes().slice(historyBeforeS1);
-      const s1Bound = s1Commands.some(
-        (envelope) =>
-          envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' &&
-          envelope.aggregateId === pending.lineageId,
-      );
       this.pending = null;
-      return this.actionDocument('add', pending.lineageId, s1Bound, {
-        rejections: [...confirmOutcome.rejections, ...s1Outcome.rejections],
-        refusals: s1Outcome.refusals,
-      });
+      return this.actionDocument(
+        'add',
+        pending.lineageId,
+        {
+          delivery: s1Outcome.delivery,
+          rejections: [...confirmOutcome.rejections, ...s1Outcome.rejections],
+          refusals: s1Outcome.refusals,
+        },
+        true,
+      );
     });
   }
 
@@ -224,6 +228,9 @@ export class DesktopManager {
         return refusal('no preview is pending');
       }
       const adapter = this.options.getAdapter();
+      if (adapter?.pendingCommandInfo() !== null && adapter?.pendingCommandInfo() !== undefined) {
+        return refusal('a command is awaiting Core acknowledgement; the preview cannot be discarded until that exact request is reconciled');
+      }
       if (adapter !== undefined) {
         adapter.discardDraft();
       }
@@ -234,6 +241,13 @@ export class DesktopManager {
         action: 'discard-preview',
         lineageId: pending.lineageId,
         routed: false,
+        delivery: {
+          status: 'NOT_ATTEMPTED',
+          commandType: null,
+          aggregateId: null,
+          requestId: null,
+        },
+        previewConsumed: true,
         rejections: [],
         refusalDetail: null,
         list: await this.listUnlocked(),
@@ -313,6 +327,7 @@ export class DesktopManager {
       totalCount: index.totalCount,
       truncated: index.truncated,
       pendingPreview: this.pendingDocument(adapter),
+      pendingCommand: adapter.pendingCommandInfo(),
     };
   }
 
@@ -356,13 +371,27 @@ export class DesktopManager {
       if (adapter === undefined) {
         return refusal('no Core connection is configured; the action cannot be routed');
       }
-      // Attach the aggregate id first: the adapter re-reads the fresh Core
-      // projection (READ_PROJECTION) and refuses the control when no live
-      // projection is held — never acting on stale or fabricated facts.
-      await adapter.attachAggregate(lineageId);
+      const unresolved = adapter.pendingCommandInfo();
+      const expectedCommand = action === 'cancel' ? 'CANCEL_LINEAGE' : 'RETRY_FAILED_MEMBERS';
+      if (unresolved !== null) {
+        if (
+          unresolved.status !== 'UNKNOWN' ||
+          unresolved.commandType !== expectedCommand ||
+          unresolved.aggregateId !== lineageId
+        ) {
+          return refusal(
+            'another command is awaiting Core acknowledgement; reconcile that exact request before starting this action',
+          );
+        }
+        // Same row + same action is the explicit exact-envelope reconciliation
+        // path. Do not attach/rebuild a projection or mint a new requestId.
+      } else {
+        // Attach the aggregate id first: the adapter re-reads the fresh Core
+        // projection (READ_PROJECTION) and refuses stale/fabricated facts.
+        await adapter.attachAggregate(lineageId);
+      }
       const outcome = action === 'cancel' ? await adapter.cancel() : await adapter.retryFailed();
-      const routed = outcome.routed.length > 0;
-      return this.actionDocument(action, lineageId, routed, outcome);
+      return this.actionDocument(action, lineageId, outcome, false);
     });
   }
 
@@ -383,12 +412,14 @@ export class DesktopManager {
   private async actionDocument(
     action: 'add' | 'cancel' | 'retry',
     lineageId: string | null,
-    routed: boolean,
     outcome: {
+      readonly delivery: ManagerCommandDelivery;
       readonly rejections: readonly { readonly code: string; readonly message: string }[];
       readonly refusals: readonly string[];
     },
+    previewConsumed: boolean,
   ): Promise<ManagerActionDocument> {
+    const routed = outcome.delivery.status === 'ACCEPTED';
     const firstRefusal = outcome.refusals[0];
     return {
       ok: true,
@@ -396,11 +427,16 @@ export class DesktopManager {
       action,
       lineageId,
       routed,
+      delivery: outcome.delivery,
+      previewConsumed,
       rejections: outcome.rejections.map((rejection) => ({
         code: rejection.code,
         message: rejection.message,
       })),
-      refusalDetail: routed || firstRefusal === undefined ? null : firstRefusal,
+      refusalDetail:
+        outcome.delivery.status === 'NOT_ATTEMPTED'
+          ? firstRefusal ?? 'the command was not attempted'
+          : null,
       list: await this.listUnlocked(),
     };
   }
