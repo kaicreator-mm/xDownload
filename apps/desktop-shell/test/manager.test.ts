@@ -499,7 +499,19 @@ describe('DesktopManager R3 repairs (review PR #365 BLOCK P1-01/P1-02)', () => {
     const secondLineageId = 'contract-second-000002';
     const adapter = {
       sentCommandEnvelopes: () => [...sent],
-      enterIntent: () => ({ display: {}, routed: [], rejections: [], refusals: [] }),
+      pendingCommandInfo: () => null,
+      enterIntent: () => ({
+        display: {},
+        routed: [],
+        delivery: {
+          status: 'NOT_ATTEMPTED',
+          commandType: null,
+          aggregateId: null,
+          requestId: null,
+        },
+        rejections: [],
+        refusals: [],
+      }),
       currentDraftView: () => ({
         contractId: secondLineageId,
         automationMode: 'ASSISTED',
@@ -513,6 +525,12 @@ describe('DesktopManager R3 repairs (review PR #365 BLOCK P1-01/P1-02)', () => {
         // The defective discriminant the review flagged: the FIRST add's
         // commands resurface even though the second submit never routed.
         routed: [...sent],
+        delivery: {
+          status: 'REJECTED',
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: secondLineageId,
+          requestId: 'request-second-rejected',
+        },
         rejections: [
           {
             code: 'REQUEST_IDENTITY_CONFLICT',
@@ -528,7 +546,18 @@ describe('DesktopManager R3 repairs (review PR #365 BLOCK P1-01/P1-02)', () => {
           aggregateId: 'contract-first-000001',
           requestId: 'r3',
         });
-        return { display: {}, routed: [...sent], rejections: [], refusals: [] };
+        return {
+          display: {},
+          routed: [...sent],
+          delivery: {
+            status: 'ACCEPTED',
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+            aggregateId: 'contract-first-000001',
+            requestId: 'r3',
+          },
+          rejections: [],
+          refusals: [],
+        };
       },
       listS1JobProjections: async () => ({
         ok: true as const,
@@ -631,15 +660,31 @@ class DeferredIndexAdapter {
     });
   }
 
+  pendingCommandInfo(): null {
+    return null;
+  }
+
   async attachAggregate(): Promise<{
     readonly display: { readonly connection: 'CONNECTED' };
     readonly routed: readonly [];
+    readonly delivery: {
+      readonly status: 'NOT_ATTEMPTED';
+      readonly commandType: null;
+      readonly aggregateId: null;
+      readonly requestId: null;
+    };
     readonly rejections: readonly [];
     readonly refusals: readonly [];
   }> {
     return {
       display: { connection: 'CONNECTED' },
       routed: [],
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
       rejections: [],
       refusals: [],
     };
@@ -647,11 +692,23 @@ class DeferredIndexAdapter {
 
   async cancel(): Promise<{
     readonly routed: readonly { commandType: string; aggregateId: string; requestId: string }[];
+    readonly delivery: {
+      readonly status: 'ACCEPTED';
+      readonly commandType: 'CANCEL_LINEAGE';
+      readonly aggregateId: 'x';
+      readonly requestId: 'r';
+    };
     readonly rejections: readonly [];
     readonly refusals: readonly [];
   }> {
     return {
       routed: [{ commandType: 'CANCEL_LINEAGE', aggregateId: 'x', requestId: 'r' }],
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: 'x',
+        requestId: 'r',
+      },
       rejections: [],
       refusals: [],
     };
@@ -659,10 +716,26 @@ class DeferredIndexAdapter {
 
   async retryFailed(): Promise<{
     readonly routed: readonly [];
+    readonly delivery: {
+      readonly status: 'NOT_ATTEMPTED';
+      readonly commandType: null;
+      readonly aggregateId: null;
+      readonly requestId: null;
+    };
     readonly rejections: readonly [];
     readonly refusals: readonly [];
   }> {
-    return { routed: [], rejections: [], refusals: [] };
+    return {
+      routed: [],
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
+      rejections: [],
+      refusals: [],
+    };
   }
 
   currentDraftView(): null {
