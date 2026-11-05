@@ -72,3 +72,35 @@
   - `apps/desktop-shell/test/ux-r0-form-schema.test.ts`
 - #333 uses the Owner-approved LOCAL_BUILDER/LOCAL route under ADS v4.18.0; the worker's accepted claim remains required.
 - The fix must preserve all authoritative completion dimensions, treat NOT_APPLICABLE as complete only when the remaining dimensions prove success, and never alter the domain contract or fabricate coverage.
+
+
+
+## Adjacent architecture track — A01 Domain Package / Host cleanup (2026-11-03)
+
+> This is a cross-cutting architecture lane, not a renumbering or expansion of the Owner-approved U00–U06 UI map. The full DAG remains CANDIDATE_NOT_FROZEN. No user-visible Product capability is added.
+
+- Goal: apply DomainHarness #1465 / PR #1466 to the current xDownload v0.2.2 successor; remove the App↔Host package cycle, move physical Host storage/bridges and production assembly to Host/Core, and make K / Seam / Route Projection / Lineage ownership explicit.
+- Source baseline: `wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334`, Tree `ba48b805697ad19c36a6eb3a5e54b6d601b36120`.
+- Formal Task Issue: [#335](https://github.com/kaicreator-mm/xDownload/issues/335), currently `state:planned` / `DISPATCH=NOT_DISPATCHED`.
+- **Historical R0 planning only — SUPERSEDED, DO NOT DISPATCH:** `docs/implementation/v0.2.2/task-packs/V022-A01-DOMAIN-PACKAGE-ARCHITECTURE-CLEANUP.md` (blob `e254a710388a98e2773bc7d4d85176fe2d868375`). Its broad candidate write set below is retained only as history and is not an execution contract.
+- **Current authoritative R1 A01 Task Pack:** `docs/implementation/v0.2.2/task-packs/V022-A01-DOMAIN-CONTRACTS-NEUTRAL-BOUNDARY.md` (blob `60b73fc67022cf6cc6ee45d878d57a163187f778`); exact A01 write set is only `packages/domain-contracts/src/download-host/**`, `packages/domain-contracts/src/index.ts` (additive export only), and `packages/domain-contracts/test/download-host/**`. App/Host/Core/manifest/lockfile paths are forbidden in A01.
+- Historical R0 broad write set (superseded; do not use): `packages/download-domain-app/**`, `packages/download-domain-host/**`, `packages/domain-contracts/**`, `packages/core-runtime/**`, directly related tests, manifests and lockfile.
+- This lane is disjoint from U02/U03/U04 UI renderer/popup/harness write sets. UI work may continue in parallel; integration must rebind to the current WIP SHA and rerun exact-SHA gates.
+- No DomainHarness SDK/API/ABI change, no v0.2.1/main mutation, no Product capability expansion, no new permission/IPC/Provider, no release or deployment.
+- Authority rule: do not blindly merge K Store, Seam Journal, RouteLog and T09 LineageLedger; prove production ownership and UNKNOWN/recovery semantics first.
+
+
+## Domain Package refinement lane R1 — A00 audit materialized (2026-11-03)
+
+> Append-only architecture-lane update. The existing U00–U06 responsibility map and UI task identities remain unchanged. This does not freeze the UI DAG, authorize Product/L2 changes, or dispatch source implementation.
+
+- Parent tracking: [#337](https://github.com/kaicreator-mm/xDownload/issues/337).
+- A00 read-only audit: [#338](https://github.com/kaicreator-mm/xDownload/issues/338); exact audit baseline `wip/v0.2.2-ui-rebuild-r0@9e3ccd382311619e60b8d2a7373e8a7d34733334`, Tree `ba48b805697ad19c36a6eb3a5e54b6d601b36120`.
+- Audit report: `docs/architecture/v0.2.2/A00_DOMAIN_PACKAGE_ARCHITECTURE_AUDIT_R1.md`.
+- Implementation plan: `docs/architecture/v0.2.2/DOMAIN_PACKAGE_REFINEMENT_IMPLEMENTATION_PLAN_R1.md`.
+- Architecture DAG: `docs/architecture/v0.2.2/DOMAIN_PACKAGE_REFINEMENT_DAG_R1.md`.
+- A00 confirmed the App↔Host manifest cycle and both deep-import directions. Core Runtime remains the active production Domain App composition root but imports deep App/Host paths.
+- A00 corrected the authority map: RouteLog CLAIM is the current new-K route ownership fact; ATTEMPT is route history; OUTCOME is derived from K receipt. K Effect Journal/Permit and Core Seam Journal retain separate authorities.
+- T09 LineageLedger is exported but no active production Core Runtime caller was found in the inspected baseline. It must not be activated as a second authority or described as a proven duplicate writer.
+- A01–A04 source Tasks remain undispatched. A01 (#335) is narrowed to neutral Host-contract extraction and awaits independent Task Pack review; A02/A03 can run in parallel after A01; A04 follows both. A05 (#339) has six documentation drafts committed at planning HEAD `3b22c1cef7e1ee12e21623ab9fa207c55e660263`; independent review is pending.
+- UI work may continue in parallel. All architecture implementation Tasks must re-read current WIP and use disjoint exact write sets.
