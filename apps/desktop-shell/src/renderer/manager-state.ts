@@ -137,9 +137,16 @@ function isManagerJobListDocument(value: unknown): value is ManagerJobListDocume
     !isRecord(value) ||
     value.ok !== true ||
     value.document !== 'xdownload.desktop.manager.jobs' ||
-    !['CONNECTED', 'DISCONNECTED', 'REJECTED_PROJECTION', 'STALE_PROJECTION', 'UNPARSEABLE_PROJECTION', 'UNCONFIGURED', 'REFUSED'].includes(
-      String(value.connection),
-    ) ||
+    typeof value.connection !== 'string' ||
+    ![
+      'CONNECTED',
+      'DISCONNECTED',
+      'REJECTED_PROJECTION',
+      'STALE_PROJECTION',
+      'UNPARSEABLE_PROJECTION',
+      'UNCONFIGURED',
+      'REFUSED',
+    ].includes(value.connection) ||
     !Array.isArray(value.jobs) ||
     !value.jobs.every(isManagerJobRowDocument) ||
     !Number.isSafeInteger(value.totalCount) ||
