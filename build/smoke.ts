@@ -578,7 +578,7 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
       manifestDirExistedBeforeForEvidence = manifestDirExistedBefore;
       manifestExistedBeforeForEvidence = manifestExistedBefore;
       const before = await probeWindowsRegistration();
-  
+
       if (before.registered) {
         checks.push({
           id: 'native-host-windows-registration-roundtrip',
@@ -598,13 +598,13 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
           launcherPath: path.join(distDir, 'native-host', 'bin', 'xdownload-broker-host.cmd'),
           allowedOrigins: [allowedOrigin],
         });
-  
+
         if (registered.action === 'already-registered') {
           checks.push({
             id: 'native-host-windows-registration-roundtrip',
             status: 'NOT_EXECUTED',
             command: ['reg', 'query', windowsRegistryKey()],
-            detail: `a registration appeared before the write completed; it was not modified; detail=${registered.detail}`,
+            detail: `a registration appeared before the write completed; it was not modified; newly-created manifest=${manifestPath}; manifestExists=${fs.existsSync(manifestPath)}; manifest preserved; detail=${registered.detail}`,
           });
         } else if (registered.action === 'failed') {
           const afterFailure = await probeWindowsRegistration();
