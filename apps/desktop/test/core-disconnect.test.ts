@@ -52,8 +52,11 @@ function responseLossTransport(
             readonly requestId?: string;
           };
           const response = JSON.stringify(core.server.handleFrame(requestFrame));
-          if (dropResponses && request.commandType === commandType) {
-            if (request.requestId !== undefined) requestIds.push(request.requestId);
+          const isTargetCommand = request.commandType === commandType;
+          if (isTargetCommand && request.requestId !== undefined) {
+            requestIds.push(request.requestId);
+          }
+          if (dropResponses && isTargetCommand) {
             queueMicrotask(() => {
               if (!ended) {
                 ended = true;
@@ -270,6 +273,78 @@ describe('core disconnect behavior', () => {
     expect(new Set(contractAttempts.map((envelope) => JSON.stringify(envelope.payload))).size).toBe(1);
     expect(adapter.acknowledgedCommandEnvelopes().filter((envelope) => envelope.commandType === 'SUBMIT_CONTRACT'))
       .toHaveLength(1);
+
+    await adapter.close();
+    await core.stop();
+  });
+
+  it('reconciles a response-lost S1 execution with the exact same envelope and requestId', async () => {
+    const core = await startCore();
+    const responseLoss = responseLossTransport(core, 'EXECUTE_S1_DIRECT_ACQUISITION');
+    const adapter = createDesktopUiAdapter({
+      transport: responseLoss.transport,
+      target: core.target,
+      installId: 'install-001',
+      userId: 'user-001',
+      now: () => FIXED_NOW,
+    });
+    adapter.enterIntent({
+      intent: singleResourceIntent(),
+      workflowFacts: NO_AMBIGUITY,
+    });
+
+    const contract = await adapter.confirmScope();
+    expect(contract.delivery).toMatchObject({
+      status: 'ACCEPTED',
+      commandType: 'SUBMIT_CONTRACT',
+    });
+    const aggregateId = contract.delivery.aggregateId;
+    expect(aggregateId).toBeTruthy();
+
+    // Core processes the S1 command, but its response is lost. The Desktop
+    // keeps the exact envelope UNKNOWN and does not report it as accepted.
+    const unknown = await adapter.executeS1Direct();
+    expect(unknown.delivery).toMatchObject({
+      status: 'UNKNOWN',
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId,
+    });
+    expect(
+      adapter.lastRouted().some((command) => command.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION'),
+    ).toBe(false);
+    const pending = adapter.pendingCommandInfo();
+    expect(pending).toMatchObject({
+      status: 'UNKNOWN',
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId,
+    });
+    const requestId = pending?.requestId;
+    expect(requestId).toBeTruthy();
+
+    responseLoss.allowResponses();
+    const reconciled = await adapter.executeS1Direct();
+    expect(reconciled.delivery).toMatchObject({
+      status: 'ACCEPTED',
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId,
+      requestId,
+    });
+    expect(adapter.pendingCommandInfo()).toBeNull();
+
+    const attempts = adapter.sentCommandEnvelopes().filter(
+      (envelope) => envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION',
+    );
+    expect(attempts).toHaveLength(2);
+    expect(new Set(attempts.map((envelope) => envelope.requestId))).toStrictEqual(
+      new Set([requestId]),
+    );
+    expect(responseLoss.requestIds).toHaveLength(2);
+    expect(new Set(responseLoss.requestIds)).toStrictEqual(new Set([requestId]));
+    expect(
+      adapter
+        .acknowledgedCommandEnvelopes()
+        .filter((envelope) => envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION'),
+    ).toHaveLength(1);
 
     await adapter.close();
     await core.stop();
