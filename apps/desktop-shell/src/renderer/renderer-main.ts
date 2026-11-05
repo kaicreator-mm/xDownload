@@ -220,13 +220,15 @@ function renderFormFields(): void {
 function openAdd(): void {
   const pending = state.pendingCommand;
   if (pending !== null) {
-    if (
-      pending.status === 'UNKNOWN' &&
-      pending.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION'
-    ) {
+    if (pending.status !== 'UNKNOWN' || pending.aggregateId === null) return;
+    if (pending.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION') {
       // The contract was already accepted; this existing Add entry point
       // explicitly reconciles the exact retained S1 envelope.
       void confirmPreview();
+    } else if (pending.commandType === 'CANCEL_LINEAGE') {
+      void runControl('cancel', pending.aggregateId);
+    } else if (pending.commandType === 'RETRY_FAILED_MEMBERS') {
+      void runControl('retry', pending.aggregateId);
     }
     return;
   }
@@ -345,11 +347,14 @@ function render(): void {
   const pendingCommand = state.pendingCommand;
   const newDownload = byId('new-download') as HTMLButtonElement;
   const emptyAdd = byId('empty-add') as HTMLButtonElement;
-  const reconcileS1 =
+  const canReconcileFromToolbar =
     pendingCommand?.status === 'UNKNOWN' &&
-    pendingCommand.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION';
-  newDownload.textContent = reconcileS1 ? '核对上次提交' : '新建下载';
-  newDownload.disabled = state.busy || (pendingCommand !== null && !reconcileS1);
+    pendingCommand.aggregateId !== null &&
+    (pendingCommand.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' ||
+      pendingCommand.commandType === 'CANCEL_LINEAGE' ||
+      pendingCommand.commandType === 'RETRY_FAILED_MEMBERS');
+  newDownload.textContent = canReconcileFromToolbar ? '核对待处理命令' : '新建下载';
+  newDownload.disabled = state.busy || (pendingCommand !== null && !canReconcileFromToolbar);
   emptyAdd.disabled = state.busy || pendingCommand !== null;
 
   byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
