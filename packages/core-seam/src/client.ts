@@ -82,22 +82,22 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
           connection = established;
           hasEstablishedConnection = true;
           established.onFrame((frame) => {
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(frame) as unknown;
-          } catch {
-            return;
-          }
-          const decoded = decodeSeamResponse(parsed);
-          if (!decoded.ok) {
-            return;
-          }
-          const waiting = pending.get(decoded.value.inReplyTo);
-          if (waiting !== undefined) {
-            pending.delete(decoded.value.inReplyTo);
-            waiting.resolve(decoded.value);
-          }
-        });
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(frame) as unknown;
+            } catch {
+              return;
+            }
+            const decoded = decodeSeamResponse(parsed);
+            if (!decoded.ok) {
+              return;
+            }
+            const waiting = pending.get(decoded.value.inReplyTo);
+            if (waiting !== undefined) {
+              pending.delete(decoded.value.inReplyTo);
+              waiting.resolve(decoded.value);
+            }
+          });
           established.onEnded(() => {
             connection = null;
             // Connection loss fails in-flight waiters immediately so
