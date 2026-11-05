@@ -14,6 +14,7 @@
 
 import type {
   ManagerActionDocument,
+  ManagerCommandDelivery,
   ManagerJobListDocument,
   ManagerJobRowDocument,
   ManagerPreviewDocument,
@@ -44,6 +45,8 @@ export interface ManagerRendererState {
   /** True when the Core truncated the index page (visible rows ≠ history). */
   readonly truncated: boolean;
   readonly pendingPreview: ManagerPreviewDocument | null;
+  /** An unresolved command; only its exact reconciliation action may remain enabled. */
+  readonly pendingCommand: ManagerCommandDelivery | null;
   readonly notice: ManagerNotice | null;
   /** True while an action/refresh is in flight (buttons disabled). */
   readonly busy: boolean;
@@ -58,6 +61,7 @@ export function initialManagerState(): ManagerRendererState {
     totalCount: null,
     truncated: false,
     pendingPreview: null,
+    pendingCommand: null,
     notice: null,
     busy: false,
   };
@@ -74,6 +78,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isRefusal(document: unknown): document is ShellRefusal {
   return isRecord(document) && document.ok === false;
+}
+
+function isManagerCommandDelivery(value: unknown): value is ManagerCommandDelivery {
+  if (
+    !isRecord(value) ||
+    !['NOT_ATTEMPTED', 'ACCEPTED', 'REJECTED', 'UNKNOWN'].includes(String(value.status)) ||
+    !(value.commandType === null || typeof value.commandType === 'string') ||
+    !(value.aggregateId === null || typeof value.aggregateId === 'string') ||
+    !(value.requestId === null || typeof value.requestId === 'string')
+  ) {
+    return false;
+  }
+  if (value.status === 'NOT_ATTEMPTED') {
+    return value.commandType === null && value.aggregateId === null && value.requestId === null;
+  }
+  return (
+    typeof value.commandType === 'string' &&
+    value.commandType.length > 0 &&
+    typeof value.aggregateId === 'string' &&
+    value.aggregateId.length > 0 &&
+    typeof value.requestId === 'string' &&
+    value.requestId.length > 0
+  );
 }
 
 function isManagerJobRowDocument(value: unknown): value is ManagerJobRowDocument {
@@ -143,7 +170,9 @@ function isManagerJobListDocument(value: unknown): value is ManagerJobListDocume
     Number.isSafeInteger(value.totalCount) &&
     (value.totalCount as number) >= 0 &&
     typeof value.truncated === 'boolean' &&
-    (value.pendingPreview === null || isManagerPreviewDocument(value.pendingPreview))
+    (value.pendingPreview === null || isManagerPreviewDocument(value.pendingPreview)) &&
+    (value.pendingCommand === null ||
+      (isManagerCommandDelivery(value.pendingCommand) && value.pendingCommand.status === 'UNKNOWN'))
   );
 }
 
@@ -184,6 +213,14 @@ export function applyList(
     totalCount: answer.totalCount,
     truncated: answer.truncated,
     pendingPreview: answer.pendingPreview,
+    pendingCommand: answer.pendingCommand,
+    notice:
+      answer.pendingCommand === null
+        ? null
+        : {
+            kind: 'error',
+            text: pendingCommandNotice(answer.pendingCommand),
+          },
   };
 }
 
@@ -223,17 +260,31 @@ export function applyAction(
       notice: { kind: 'error', text: `action refused: ${answer.detail}` },
     };
   }
-  // The embedded fresh list may itself be a typed refusal (the Core could
-  // not serve the index at that moment): the previous truthful rows stay,
-  // and the refusal is announced — never replaced by a fake empty list.
+  if (
+    !isManagerCommandDelivery(answer.delivery) ||
+    typeof answer.previewConsumed !== 'boolean' ||
+    answer.routed !== (answer.delivery.status === 'ACCEPTED')
+  ) {
+    return {
+      ...state,
+      busy: false,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
+      notice: { kind: 'error', text: 'action refused: malformed command delivery document' },
+    };
+  }
+
   const list = answer.list;
   const listRefused = isRefusal(list);
+  const listValid = !listRefused && isManagerJobListDocument(list);
   let nextState: ManagerRendererState = { ...state, busy: false, notice: null };
-  if (listRefused || !isManagerJobListDocument(list)) {
+  if (!listValid) {
     nextState = {
       ...nextState,
       connection: null,
       snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
+      pendingCommand:
+        answer.delivery.status === 'UNKNOWN' ? answer.delivery : state.pendingCommand,
     };
   } else {
     nextState = {
@@ -244,64 +295,71 @@ export function applyAction(
       totalCount: list.totalCount,
       truncated: list.truncated,
       pendingPreview: list.pendingPreview,
+      pendingCommand:
+        list.pendingCommand ??
+        (answer.delivery.status === 'UNKNOWN' ? answer.delivery : null),
     };
   }
-  // confirmAdd clears the main-process draft once the S1 command is routed.
-  // If its follow-up index read is refused/malformed, there is no list payload
-  // from which to observe pendingPreview=null; do not leave a stale Confirm UI
-  // that could invite a duplicate submission.
-  if (answer.action === 'add' && answer.routed) {
+
+  if (answer.previewConsumed || answer.action === 'discard-preview') {
     nextState = { ...nextState, pendingPreview: null };
   }
-  if (answer.action === 'discard-preview') {
-    // The main process clears its local draft before attempting the follow-up
-    // index read. A refused/malformed list must not leave a stale confirm dialog.
-    nextState = { ...nextState, pendingPreview: null };
+
+  if (nextState.pendingCommand !== null) {
+    nextState = {
+      ...nextState,
+      notice: { kind: 'error', text: pendingCommandNotice(nextState.pendingCommand) },
+    };
+  } else if (answer.delivery.status === 'REJECTED') {
+    const first = answer.rejections[0];
+    nextState = {
+      ...nextState,
+      notice: {
+        kind: 'error',
+        text:
+          first === undefined
+            ? `the Core acknowledged rejection of ${answer.delivery.commandType} (request ${answer.delivery.requestId})`
+            : `the Core refused the ${answer.action} (${String(first.code)}): ${String(first.message)}`,
+      },
+    };
+  } else if (answer.delivery.status === 'NOT_ATTEMPTED') {
+    nextState = {
+      ...nextState,
+      notice: {
+        kind: 'error',
+        text: `the ${answer.action} was not attempted: ${answer.refusalDetail ?? 'refused before Core submission'}`,
+      },
+    };
+  } else if (listRefused) {
+    nextState = {
+      ...nextState,
+      notice: {
+        kind: 'error',
+        text: `the ${answer.action} was accepted by the Core, but the fresh job list was refused: ${list.detail}`,
+      },
+    };
+  } else if (!listValid) {
+    nextState = {
+      ...nextState,
+      notice: {
+        kind: 'error',
+        text: `the ${answer.action} was accepted by the Core, but the fresh job list was malformed`,
+      },
+    };
   } else {
-    if (answer.rejections.length > 0) {
-      const first = answer.rejections[0];
-      nextState = {
-        ...nextState,
-        notice: {
-          kind: 'error',
-          text: `the Core refused the ${answer.action} (${String(first?.code)}): ${String(first?.message)}`,
-        },
-      };
-    } else if (!answer.routed) {
-      nextState = {
-        ...nextState,
-        notice: {
-          kind: 'error',
-          text: `the ${answer.action} was not routed: ${answer.refusalDetail ?? 'refused'}`,
-        },
-      };
-    } else if (listRefused) {
-      nextState = {
-        ...nextState,
-        notice: {
-          kind: 'error',
-          text: `the ${answer.action} was accepted by the Core, but the fresh job list was refused: ${list.detail}`,
-        },
-      };
-    } else if (!isManagerJobListDocument(list)) {
-      nextState = {
-        ...nextState,
-        notice: {
-          kind: 'error',
-          text: `the ${answer.action} was accepted by the Core, but the fresh job list was malformed`,
-        },
-      };
-    } else {
-      nextState = {
-        ...nextState,
-        notice: {
-          kind: 'info',
-          text: `the ${answer.action} was accepted by the Core (admission — the job list below shows the Core's projection)`,
-        },
-      };
-    }
+    nextState = {
+      ...nextState,
+      notice: {
+        kind: 'info',
+        text: `the ${answer.action} was accepted by the Core (admission — the job list below shows the Core's projection)`,
+      },
+    };
   }
   return nextState;
+}
+
+function pendingCommandNotice(command: ManagerCommandDelivery): string {
+  return `SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED: ${command.commandType ?? 'command'} request ${command.requestId ?? 'unknown'} has no Core acknowledgement; reconcile this exact request before starting another command`;
 }
 
 /** Set/clear the in-flight flag (buttons disable while busy). */
@@ -351,9 +409,15 @@ export function jobActions(row: ManagerJobRowDocument): {
   readonly cancelEnabled: boolean;
   readonly retryEnabled: boolean;
 } {
+  const hasNoTerminal = row.terminal === null;
+  const cancellable = row.lineageStatus === 'ACTIVE' && hasNoTerminal;
+  const retryable =
+    (row.lineageStatus === 'ACTIVE' || row.lineageStatus === 'CANCELLED') &&
+    hasNoTerminal &&
+    row.retry.available;
   return {
-    cancelEnabled: row.terminal === null,
-    retryEnabled: row.retry.available,
+    cancelEnabled: cancellable,
+    retryEnabled: retryable,
   };
 }
 
