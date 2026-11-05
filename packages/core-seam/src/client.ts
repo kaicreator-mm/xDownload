@@ -73,10 +73,15 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
       return connection;
     }
     if (connecting === null) {
-      const attempt = options.transport.connect(options.target).then((established) => {
-        connection = established;
-        hasEstablishedConnection = true;
-        established.onFrame((frame) => {
+      // Capture connection history when this attempt starts. A later
+      // concurrent success must not reclassify an earlier initial refusal.
+      const wasPreviouslyConnected = hasEstablishedConnection;
+      const attempt = Promise.resolve()
+        .then(() => options.transport.connect(options.target))
+        .then((established) => {
+          connection = established;
+          hasEstablishedConnection = true;
+          established.onFrame((frame) => {
           let parsed: unknown;
           try {
             parsed = JSON.parse(frame) as unknown;
@@ -93,21 +98,29 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
             waiting.resolve(decoded.value);
           }
         });
-        established.onEnded(() => {
-          connection = null;
-          // Connection loss fails in-flight in-flight waiters immediately so
-          // the caller's reconnect loop re-sends with the same identity.
-          for (const [id, waiting] of pending) {
-            pending.delete(id);
-            waiting.reject(new Error(`seam connection lost during request '${id}'`));
+          established.onEnded(() => {
+            connection = null;
+            // Connection loss fails in-flight waiters immediately so
+            // the caller's reconnect loop re-sends with the same identity.
+            for (const [id, waiting] of pending) {
+              pending.delete(id);
+              waiting.reject(new Error(`seam connection lost during request '${id}'`));
+            }
+          });
+          return established;
+        })
+        .catch((error: unknown) => {
+          if (!wasPreviouslyConnected) {
+            throw new InitialConnectRefusedError(
+              error instanceof Error ? error.message : 'seam initial connect refused',
+            );
           }
+          throw error instanceof Error ? error : new Error('seam reconnect failed');
         });
-        return established;
-      });
       connecting = attempt;
       // A rejected connect promise must not poison this client permanently.
-      // Keep the cleanup identity-checked so a settled attempt cannot clear a
-      // different in-flight attempt. Both outcomes release the single-flight slot.
+      // Keep cleanup identity-checked so a settled attempt cannot clear a
+      // different in-flight connection. Both outcomes release the single-flight slot.
       const clearAttempt = (): void => {
         if (connecting === attempt) {
           connecting = null;
@@ -123,19 +136,7 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
     requestId: string,
     timeoutMs: number,
   ): Promise<SeamResponse> {
-    let established: SeamClientConnection;
-    try {
-      established = await ensureConnection();
-    } catch (error) {
-      if (!hasEstablishedConnection) {
-        throw new InitialConnectRefusedError(
-          error instanceof Error ? error.message : 'seam initial connect refused',
-        );
-      }
-      // Once this client has connected successfully, a refused reconnect is
-      // still a connection-loss retry and remains inside the bounded budget.
-      throw error instanceof Error ? error : new Error('seam reconnect failed');
-    }
+    const established = await ensureConnection();
     return new Promise<SeamResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(requestId);
