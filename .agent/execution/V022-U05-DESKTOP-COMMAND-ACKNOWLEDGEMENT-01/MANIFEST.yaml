@@ -1,0 +1,75 @@
+pack_id: "V022-U05-DESKTOP-COMMAND-ACKNOWLEDGEMENT-R1@990cb144a53298d06a4e948555aebbecfda61ccf"
+task_id: "V022-U05-DESKTOP-COMMAND-ACKNOWLEDGEMENT-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+parent_issue: "#310"
+task_issue: "#317"
+related_issues:
+  - "#319"
+superseded_issue: "#320"
+parent_dag_issue: "#305"
+tracking_issue: "#310"
+base_branch: "wip/v0.2.2-ui-rebuild-r0"
+base_sha: "9d344bad27f3f687188a9ed021a54c95a188003f"
+base_tree: "6ee458c2fc03f9aff5149967aa37d64ec53eed67"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U05-DESKTOP-COMMAND-ACKNOWLEDGEMENT-R1.md@planning/v0.2.2-ui-r0@62983e674a586b312c653739625f6d4b14042177#blob:990cb144a53298d06a4e948555aebbecfda61ccf"
+task_pack_blob: "990cb144a53298d06a4e948555aebbecfda61ccf"
+task_pack_review_required: false
+task_branch: "task/v0.2.2-u05-command-ack-r1"
+source_branch: "task/v0.2.2-u05-command-ack-r1"
+execution_branch: "execution/v0.2.2-u05-command-ack-r1"
+execution_pack_path: ".agent/execution/V022-U05-DESKTOP-COMMAND-ACKNOWLEDGEMENT-01/MANIFEST.yaml"
+execution_profile: "WEB_BUILDER_BOUNDED_SOURCE_REPAIR"
+execution_environment: "WEB_SOURCE_EDIT_LOCAL_NODE24_CI_AND_PACKAGED_WINDOWS_ACCEPTANCE_REQUIRED"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+claim:
+  protected_claim_key: "kaicreator-mm/xDownload#317:builder:__default__"
+  claim_generation: 1
+  required_event: "DISPATCH_CLAIMED"
+  claim_owner: "other:chatgpt-xdownload-u05-command-ack-r1"
+  source_mutation_before_accepted_claim: false
+allowed_write_set:
+  - apps/desktop/src/adapter.ts
+  - apps/desktop-shell/src/main/manager.ts
+  - apps/desktop-shell/src/main/shell-contract.ts
+  - apps/desktop-shell/src/renderer/manager-state.ts
+  - apps/desktop-shell/src/renderer/renderer-main.ts
+  - apps/desktop/test/core-disconnect.test.ts
+  - apps/desktop-shell/test/manager.test.ts
+  - apps/desktop-shell/test/manager-view.test.ts
+repair_focus:
+  - apps/desktop/src/adapter.ts
+  - apps/desktop-shell/src/main/manager.ts
+  - apps/desktop-shell/src/main/shell-contract.ts
+  - apps/desktop-shell/src/renderer/manager-state.ts
+  - apps/desktop-shell/src/renderer/renderer-main.ts
+execution_scope: "U05 P1 attempt-vs-Core-acknowledgement (#317) plus the overlapping P2 terminal Cancel/Retry availability defect (#319); one bounded action-state lane and one writer"
+dispatch_admission: "TASK_PACK_REVIEW_PASS / EXACT_BASE_FROZEN"
+status: "READY_FOR_GENERATION_1_WEB_BUILDER_CLAIM"
+required_gates:
+  - "Re-read current WIP HEAD/tree, Task Pack blob, execution manifest and task branch; require exact base 9d344bad27f3f687188a9ed021a54c95a188003f / 6ee458c2fc03f9aff5149967aa37d64ec53eed67."
+  - "Publish and read back accepted generation-1 CAS DISPATCH_CLAIMED before source mutation."
+  - "Node 24.21.0 syntax preflight on all changed JS/TS files."
+  - "Changed-file Prettier before focused tests or CI."
+  - "Run focused core-disconnect, manager and manager-view suites."
+  - "Run pnpm run typecheck and pnpm run ci:verify."
+  - "Run tools/task-check.sh if present; otherwise NOT_AVAILABLE, do not create."
+  - "Run local Docker Woodpecker .woodpecker/xd-ui-r0-verify.yaml; assert CI_COMMIT_SHA equals final HEAD and record Build/Pipeline ID and every step exit code."
+  - "Run packaged Windows acceptance with disposable Core and localhost fixture for lost-response replay, no duplicate aggregate, Add/Cancel/Retry acknowledgement semantics and terminal action availability."
+  - "Obtain fresh independent Exact-SHA review after all source/local gates; reviewer may repair only within the eight-path write set."
+  - "Record all final SHA-bound evidence and PASS/FAIL/NOT_RUN results on Issue #317 and update #319."
+forbidden:
+  - "No writes outside the exact eight-path allowed_write_set."
+  - "No Core Seam protocol/client, Core Runtime, Product/L2, Domain Package, SDK/vendor, package manifest, lockfile, Browser Popup, Native Host, CI or release files."
+  - "No new K/Ks, commands, queries, request identity scheme, retry protocol, journal, local durable store or authority."
+  - "No new IPC method/channel, permission, reveal action, destination picker or outputRoot."
+  - "No real external download, production Core, installer setup/uninstall, registry/HKCU or Native Host side effect."
+  - "No main/version, tag, release, deployment or WIP merge before exact-SHA gates and independent review PASS."
+task_pack_review:
+  result: "PASS"
+  pull_request: "#377"
+  review_id: "5789984246"
+  reviewed_head: "4b6e815c0fdd9910389c80f8c1d53e2b3ffa8e01"
+  task_pack_blob: "990cb144a53298d06a4e948555aebbecfda61ccf"
+source_mutation_authorized: false
