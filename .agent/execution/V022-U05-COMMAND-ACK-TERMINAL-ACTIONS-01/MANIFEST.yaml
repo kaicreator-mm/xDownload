@@ -78,5 +78,33 @@ task_pack_review:
   review_comment: "#6666028127"
   merged_to_planning: true
   planning_merge_sha: "2f07021672f966b58b3df7a5a8439ffb1a0ca6de"
-status: "READY_FOR_GENERATION_1_WEB_BUILDER_CLAIM"
-source_mutation_authorized: false
+builder_receipt:
+  source_branch: "task/v0.2.2-u05-command-ack-terminal-actions-r1"
+  source_head: "5d12fdc783110c8b3835e1107c1a5ea63131da83"
+  source_tree: "aef69aaca6e9fc10228b985e34ef3d79a6c77368"
+  diff_base_sha: "9d344bad27f3f687188a9ed021a54c95a188003f"
+  changed_paths_exact: true
+  implementation_summary:
+    - "Only Core ACCEPTED establishes accepted delivery; attempt history is diagnostic only."
+    - "UNKNOWN retains exact command envelope/requestId and exposes explicit reconciliation through existing manager actions."
+    - "SUBMIT_CONTRACT and S1 Add stages retain separate acknowledgement/preview-consumption semantics."
+    - "Cancel/Retry reconciliation reuses the exact envelope; Retry no longer re-derives an already-pending retry domain."
+    - "Projection refresh preserves the current command disposition and command-scoped diagnostics."
+    - "Renderer blocks unrelated actions during UNKNOWN and uses canonical ACTIVE/CANCELLED/TERMINAL action gating."
+  regression_coverage_added:
+    - "Core response loss after processing: Cancel exact requestId replay."
+    - "Core response loss after processing: SUBMIT_CONTRACT exact requestId and immutable payload replay."
+    - "Core response loss after processing: S1 exact requestId replay."
+    - "DesktopManager unknown contract preview retention and unknown S1 preview consumption/reconciliation."
+    - "Renderer unknown-delivery notice, accepted-vs-projection-diagnostic distinction and terminal action matrix."
+  local_validation:
+    node24_syntax: "PENDING"
+    changed_file_prettier: "PENDING"
+    focused_tests: "PENDING"
+    typecheck: "PENDING"
+    ci_verify: "PENDING"
+    task_check: "PENDING"
+    woodpecker: "NOT_TRIGGERED_BEFORE_PREFLIGHT"
+    packaged_windows_acceptance: "PENDING"
+status: "BUILDER_SOURCE_IMPLEMENTED_AWAITING_LOCAL_PREFLIGHT"
+source_mutation_authorized: true
