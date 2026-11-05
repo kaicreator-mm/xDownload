@@ -42,6 +42,21 @@ interface PendingRequest {
   readonly reject: (error: Error) => void;
 }
 
+/**
+ * Internal marker for a transport that refused the initial connect of a
+ * request. The bounded reconnect loop retries connection LOSS after a
+ * successful connect; an endpoint that refuses the first attempt fails the
+ * request immediately instead of burning retries, while the released
+ * single-flight slot still lets a LATER request attempt a fresh connection
+ * (Issue #370).
+ */
+class InitialConnectRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InitialConnectRefusedError';
+  }
+}
+
 export function createSeamClient(options: SeamClientOptions): SeamClient {
   const maxAttempts = options.maxReconnectAttempts ?? 3;
   let connection: SeamClientConnection | null = null;
@@ -106,7 +121,14 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
     requestId: string,
     timeoutMs: number,
   ): Promise<SeamResponse> {
-    const established = await ensureConnection();
+    let established: SeamClientConnection;
+    try {
+      established = await ensureConnection();
+    } catch (error) {
+      throw new InitialConnectRefusedError(
+        error instanceof Error ? error.message : 'seam initial connect refused',
+      );
+    }
     return new Promise<SeamResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(requestId);
@@ -143,6 +165,11 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('seam request failed');
         dropConnection();
+        // A refused initial connect is terminal for this request; bounded
+        // retries remain for connection loss after a successful connect.
+        if (error instanceof InitialConnectRefusedError) {
+          break;
+        }
       }
     }
     throw lastError;
