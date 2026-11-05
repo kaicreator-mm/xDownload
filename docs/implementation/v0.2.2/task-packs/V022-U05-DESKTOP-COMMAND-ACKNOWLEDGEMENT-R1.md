@@ -63,6 +63,7 @@ No other paths are permitted. In particular, do not edit Core Seam protocol/clie
 - The manager must not route `EXECUTE_S1_DIRECT_ACQUISITION` unless `SUBMIT_CONTRACT` is Core-acknowledged.
 - The existing pre-send retained S1 envelope must be reused after an unknown S1 result. Keep the manager's add preview in an explicit reconciliation stage until the same S1 request is acknowledged or definitively rejected; the next confirmation action must replay the exact S1 envelope rather than resubmit the contract or mint a new requestId.
 - Cancel and Retry must retain an unresolved exact envelope per aggregate/action. Repeating the same action replays the same envelope/requestId. A different control action must be refused while another control's disposition remains unknown.
+- Before replaying an unknown control, a fresh Core projection may resolve it only when it proves the exact requested effect: `CANCELLED` for the pending Cancel, or every exact pending retry member identity appears in Core's `retriedMemberIds`. Otherwise retain the unknown envelope; do not infer acceptance from a revision/count change. A terminal row never regains Cancel/Retry merely to reconcile an old request; it remains explicitly unknown unless the Core projection proves the effect.
 - The Core Seam client's existing bounded reconnect loop already re-sends the same serialized frame/requestId. Reuse it; do not add a second retry loop, request-ID generator, local durable store, journal or reconciliation protocol.
 - Unknown state must be visible as `SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED`. Do not render “accepted by Core”, create a confirmed row from an attempt, clear an unresolved preview, or invite a fresh command identity.
 - Discarding an unresolved add preview must be disabled/refused until the same request's disposition is reconciled.
@@ -94,10 +95,11 @@ No other paths are permitted. In particular, do not edit Core Seam protocol/clie
 5. Contract acknowledgement followed by S1 response loss: preview enters S1 reconciliation stage; repeat reuses the exact S1 envelope/requestId and does not resubmit the contract.
 6. Cancel transport loss after possible delivery: unknown, no false accepted notice; same-action retry uses same requestId; a different action is refused until reconciliation.
 7. Retry transport loss after possible delivery: same semantics as Cancel.
-8. Successful Core acknowledgement: existing accepted behavior remains; projection remains the only source of task status/terminal truth.
-9. #319 matrix: ACTIVE / CANCELLED / TERMINAL (including TERMINAL with missing terminal detail and TERMINAL with retryable failed-member facts); only the allowed states expose controls.
-10. Renderer unknown-state notice, preview label and discard/confirm enabled state agree with the main-process delivery state.
-11. Contract ACK + S1 typed REJECTED is not an accepted Add; the contract is not resubmitted, rejection remains visible, and any row comes only from the fresh Core index.
+8. Fresh Core projection after unknown Cancel/Retry resolves only when it proves the exact effect; otherwise no false acknowledgement or new request identity is created.
+9. Successful Core acknowledgement: existing accepted behavior remains; projection remains the only source of task status/terminal truth.
+10. #319 matrix: ACTIVE / CANCELLED / TERMINAL (including TERMINAL with missing terminal detail and TERMINAL with retryable failed-member facts); only the allowed states expose controls.
+11. Renderer unknown-state notice, preview label and discard/confirm enabled state agree with the main-process delivery state.
+12. Contract ACK + S1 typed REJECTED is not an accepted Add; the contract is not resubmitted, rejection remains visible, and any row comes only from the fresh Core index.
 
 Use the real Core Seam path for the lost-response test: a transport wrapper may forward a command to the real disposable Core and drop the first response, then allow the exact same request frame to be replayed. Assert exact requestId/frame identity and exactly one accepted logical command. Do not simulate “accepted” by mutating renderer state.
 
