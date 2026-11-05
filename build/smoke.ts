@@ -637,7 +637,6 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
                 'REG_SZ',
                 '/d',
                 registered.manifestPath,
-                '/f',
               ],
               detail: `HKCU registration read-back ${registrationOk ? 'matches' : 'does not match'} the exact smoke-owned manifest; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestExistedBefore=${manifestExistedBefore}; registryPath=${probe.manifestPath ?? 'unresolved'}; manifestExists=${fs.existsSync(registered.manifestPath)}`,
             });
