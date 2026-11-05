@@ -83,6 +83,25 @@ export function windowsRegistryKey(hostName: string = NATIVE_HOST_NAME): string 
   return `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${hostName}`;
 }
 
+/**
+ * Write a manifest only when this exact path does not already exist.
+ * The exclusive-create flag closes the exists-then-overwrite race.
+ */
+export function writeNativeHostManifestIfAbsent(
+  manifestPath: string,
+  content: string,
+): boolean {
+  try {
+    fs.writeFileSync(manifestPath, content, { encoding: 'utf8', flag: 'wx' });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function regQuery(key: string): Promise<string | null> {
   try {
     const result = await execFileAsync('reg', ['query', key, '/ve'], {
@@ -102,21 +121,33 @@ export interface RegistrationProbe {
   readonly raw: string | null;
 }
 
+/** Parse a registry query result without truncating profile paths containing spaces. */
+export function parseWindowsRegistrationProbe(raw: string | null): RegistrationProbe {
+  if (raw === null) {
+    return { registered: false, manifestPath: null, raw: null };
+  }
+  const match = /REG_SZ\\s+([^\\r\\n]+)\\s*$/m.exec(raw);
+  return {
+    registered: true,
+    manifestPath: match === null ? null : (match[1]?.trim() ?? null),
+    raw,
+  };
+}
+
+/** True only when the current registry default value names this exact manifest. */
+export function registrationPointsToExpectedManifest(
+  probe: RegistrationProbe,
+  expectedManifestPath: string,
+): boolean {
+  return probe.registered && probe.manifestPath === expectedManifestPath;
+}
+
 /** Read the current Windows registration state for the host. */
 export async function probeWindowsRegistration(
   hostName: string = NATIVE_HOST_NAME,
 ): Promise<RegistrationProbe> {
-  const key = windowsRegistryKey(hostName);
-  const raw = await regQuery(key);
-  if (raw === null) {
-    return { registered: false, manifestPath: null, raw: null };
-  }
-  const match = /REG_SZ\s+(\S+)/.exec(raw);
-  return {
-    registered: true,
-    manifestPath: match === null ? null : (match[1] ?? null),
-    raw,
-  };
+  const raw = await regQuery(windowsRegistryKey(hostName));
+  return parseWindowsRegistrationProbe(raw);
 }
 
 export interface WindowsRegistrationResult {
@@ -151,7 +182,15 @@ export async function registerWindowsNativeHost(input: {
   const configDir = windowsUserManifestDir();
   fs.mkdirSync(configDir, { recursive: true });
   const manifestPath = path.join(configDir, `${manifest.name}.json`);
-  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  const manifestContent = `${JSON.stringify(manifest, null, 2)}\\n`;
+  if (!writeNativeHostManifestIfAbsent(manifestPath, manifestContent)) {
+    return {
+      action: 'failed',
+      key,
+      manifestPath,
+      detail: 'the native-host manifest already exists without this registration; refusing to overwrite it',
+    };
+  }
   try {
     await execFileAsync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath, '/f'], {
       windowsHide: true,
@@ -163,11 +202,13 @@ export async function registerWindowsNativeHost(input: {
       detail: 'HKCU registration written and manifest generated',
     };
   } catch (error) {
+    // The manifest is deliberately preserved: a failed reg.exe result may
+    // be ambiguous, and deleting it could break a registration that landed.
     return {
       action: 'failed',
       key,
       manifestPath,
-      detail: error instanceof Error ? error.message : 'reg add failed',
+      detail: error instanceof Error ? error.message : 'reg add failed; manifest preserved',
     };
   }
 }
@@ -184,11 +225,22 @@ export interface UnregistrationResult {
  */
 export async function unregisterWindowsNativeHost(
   hostName: string = NATIVE_HOST_NAME,
+  expectedManifestPath?: string,
 ): Promise<UnregistrationResult> {
   const key = windowsRegistryKey(hostName);
   const existing = await probeWindowsRegistration(hostName);
   if (!existing.registered) {
     return { action: 'not-registered', key, detail: 'no registration present' };
+  }
+  if (
+    expectedManifestPath !== undefined &&
+    !registrationPointsToExpectedManifest(existing, expectedManifestPath)
+  ) {
+    return {
+      action: 'failed',
+      key,
+      detail: `current registration does not point to the expected manifest '${expectedManifestPath}'; refusing to delete it`,
+    };
   }
   try {
     await execFileAsync('reg', ['delete', key, '/f'], { windowsHide: true });
@@ -200,6 +252,39 @@ export async function unregisterWindowsNativeHost(
       detail: error instanceof Error ? error.message : 'reg delete failed',
     };
   }
+}
+
+/**
+ * Remove only a manifest that this smoke attempt can prove it owns.
+ * The shared manifest directory is intentionally never removed.
+ */
+export function cleanupSmokeManifest(input: {
+  manifestPath: string;
+  manifestExistedBefore: boolean;
+  createdByAttempt: boolean;
+  unregisterResult: UnregistrationResult;
+  registrationAfter: RegistrationProbe;
+}): { readonly action: 'removed' | 'preserved'; readonly reason?: string } {
+  if (input.manifestExistedBefore) {
+    return { action: 'preserved', reason: 'manifest existed before this smoke attempt' };
+  }
+  if (!input.createdByAttempt) {
+    return { action: 'preserved', reason: 'this smoke attempt did not create the manifest' };
+  }
+  if (input.unregisterResult.action !== 'unregistered') {
+    return {
+      action: 'preserved',
+      reason: `registry cleanup did not succeed (${input.unregisterResult.action})`,
+    };
+  }
+  if (input.registrationAfter.registered) {
+    return {
+      action: 'preserved',
+      reason: `registry still references a manifest (${input.registrationAfter.manifestPath ?? 'unresolved path'})`,
+    };
+  }
+  fs.unlinkSync(input.manifestPath);
+  return { action: 'removed' };
 }
 
 /**
