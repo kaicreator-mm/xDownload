@@ -228,7 +228,8 @@ export class DesktopManager {
         return refusal('no preview is pending');
       }
       const adapter = this.options.getAdapter();
-      if (adapter?.pendingCommandInfo() !== null && adapter?.pendingCommandInfo() !== undefined) {
+      const pendingCommand = adapter?.pendingCommandInfo();
+      if (pendingCommand !== null && pendingCommand !== undefined) {
         return refusal('a command is awaiting Core acknowledgement; the preview cannot be discarded until that exact request is reconciled');
       }
       if (adapter !== undefined) {
