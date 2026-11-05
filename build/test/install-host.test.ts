@@ -229,6 +229,44 @@ describe('#316 registry query failure classification', () => {
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBeNull();
   });
+
+  it('resolves the default value under a localized display name (zh-CN)', () => {
+    const manifestPath = 'C:\\Users\\Jane Doe\\.xdownload\\native-host\\com.xdownload.broker.json';
+    const raw = [
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
+      `    (默认)    REG_SZ    ${manifestPath}`,
+    ].join('\n');
+    const probe = parseWindowsRegistrationProbe(raw);
+
+    expect(probe.registered).toBe(true);
+    expect(probe.manifestPath).toBe(manifestPath);
+    expect(registrationPointsToExpectedManifest(probe, manifestPath)).toBe(true);
+  });
+
+  it('resolves a manifest path that itself contains parentheses', () => {
+    const manifestPath =
+      'C:\\Program Files (x86)\\.xdownload\\native-host\\com.xdownload.broker.json';
+    const raw = [
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
+      `    (默认)    REG_SZ    ${manifestPath}`,
+    ].join('\n');
+
+    expect(parseWindowsRegistrationProbe(raw).manifestPath).toBe(manifestPath);
+  });
+
+  it('treats a localized unset-default placeholder as no manifest path', () => {
+    const unsetDefault = [
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
+      '    (默认)    REG_SZ    (值未设置)',
+    ].join('\n');
+    const englishUnsetDefault = [
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
+      '    (Default)    REG_SZ    (value not set)',
+    ].join('\n');
+
+    expect(parseWindowsRegistrationProbe(unsetDefault).manifestPath).toBeNull();
+    expect(parseWindowsRegistrationProbe(englishUnsetDefault).manifestPath).toBeNull();
+  });
 });
 
 describe('#316 locale-independent registry absence proof', () => {

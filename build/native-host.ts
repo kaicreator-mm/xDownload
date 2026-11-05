@@ -225,7 +225,7 @@ export function parseWindowsRegistrationProbe(raw: string | null): RegistrationP
 
   // `reg query <key>` can include child-key sections. Only the first/root
   // key section owns the registration default value; never mistake a
-  // descendant's (Default) value for the requested host registration.
+  // descendant's default value for the requested host registration.
   const lines = raw.split(/\r?\n/u);
   const rootHeaderIndex = lines.findIndex((line) => /^\s*HKEY_[A-Z_]+\\/iu.test(line));
   if (rootHeaderIndex === -1) {
@@ -237,10 +237,19 @@ export function parseWindowsRegistrationProbe(raw: string | null): RegistrationP
   const rootSection = lines
     .slice(rootHeaderIndex + 1, childHeaderIndex === -1 ? undefined : childHeaderIndex)
     .join('\n');
-  const match = /^\s*\(Default\)\s+REG_SZ\s+([^\r\n]+)\s*$/im.exec(rootSection);
+  // The default value's display NAME is localized by reg.exe ("(Default)"
+  // on en-US, "(默认)" on zh-CN, ...), so the parse anchors on the
+  // parenthesized-name shape instead of a locale-specific word. On this
+  // self-owned key the default is the only parenthesized-name REG_SZ entry
+  // the root section can carry. An unset default is displayed as a
+  // parenthesized placeholder ("(value not set)", "(值未设置)", ...) — also
+  // fully parenthesized — and therefore resolves to no manifest path.
+  const match = /^\s*\([^()]*\)\s+REG_SZ\s+([^\r\n]+)\s*$/im.exec(rootSection);
+  const captured = match === null ? null : (match[1]?.trim() ?? null);
+  const manifestPath = captured !== null && !/^\([^()]*\)$/u.test(captured) ? captured : null;
   return {
     registered: true,
-    manifestPath: match === null ? null : (match[1]?.trim() ?? null),
+    manifestPath,
     raw,
   };
 }
