@@ -68,10 +68,88 @@ export function bridgeMissing(state: ManagerRendererState): ManagerRendererState
   return { ...state, phase: 'bridge-missing', jobs: [], pendingPreview: null };
 }
 
-function isRefusal(
-  document: ManagerJobListDocument | ShellRefusal | ManagerActionDocument,
-): document is ShellRefusal {
-  return document.ok === false;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRefusal(document: unknown): document is ShellRefusal {
+  return isRecord(document) && document.ok === false;
+}
+
+function isManagerJobRowDocument(value: unknown): value is ManagerJobRowDocument {
+  if (!isRecord(value)) return false;
+  if (
+    typeof value.lineageId !== 'string' ||
+    value.lineageId.length === 0 ||
+    value.lane !== 's1' ||
+    typeof value.contractStatus !== 'string' ||
+    !Number.isSafeInteger(value.revision) ||
+    (value.revision as number) < 0 ||
+    typeof value.lineageStatus !== 'string' ||
+    !isRecord(value.retry) ||
+    typeof value.retry.available !== 'boolean' ||
+    !(value.retry.reason === null || typeof value.retry.reason === 'string')
+  ) {
+    return false;
+  }
+  if (value.terminal === null) return true;
+  if (!isRecord(value.terminal) || !isRecord(value.terminal.validationSummary)) return false;
+  const terminal = value.terminal;
+  const summary = terminal.validationSummary;
+  return (
+    typeof terminal.requestFulfillment === 'string' &&
+    typeof terminal.targetResolution === 'string' &&
+    typeof terminal.selectionAcquisition === 'string' &&
+    typeof terminal.coverage === 'string' &&
+    typeof terminal.stopReason === 'string' &&
+    typeof terminal.recordedAt === 'string' &&
+    typeof summary.status === 'string' &&
+    Number.isSafeInteger(summary.passedCount) &&
+    (summary.passedCount as number) >= 0 &&
+    Number.isSafeInteger(summary.failedCount) &&
+    (summary.failedCount as number) >= 0
+  );
+}
+
+function isManagerPreviewDocument(value: unknown): value is ManagerPreviewDocument {
+  if (
+    !isRecord(value) ||
+    value.document !== 'xdownload.desktop.manager.preview' ||
+    typeof value.lineageId !== 'string' ||
+    typeof value.url !== 'string' ||
+    typeof value.automationMode !== 'string' ||
+    !Array.isArray(value.confirmationRequests)
+  ) {
+    return false;
+  }
+  return value.confirmationRequests.every(
+    (request) =>
+      isRecord(request) &&
+      typeof request.level === 'string' &&
+      typeof request.description === 'string' &&
+      typeof request.proves === 'string',
+  );
+}
+
+/** Validate the complete renderer-facing list envelope before it can become fresh. */
+function isManagerJobListDocument(value: unknown): value is ManagerJobListDocument {
+  if (
+    !isRecord(value) ||
+    value.ok !== true ||
+    value.document !== 'xdownload.desktop.manager.jobs' ||
+    !['CONNECTED', 'DISCONNECTED', 'REJECTED_PROJECTION', 'STALE_PROJECTION', 'UNPARSEABLE_PROJECTION', 'UNCONFIGURED', 'REFUSED'].includes(
+      String(value.connection),
+    ) ||
+    !Array.isArray(value.jobs) ||
+    !value.jobs.every(isManagerJobRowDocument) ||
+    !Number.isSafeInteger(value.totalCount) ||
+    (value.totalCount as number) < 0 ||
+    typeof value.truncated !== 'boolean' ||
+    !(value.pendingPreview === null || isManagerPreviewDocument(value.pendingPreview))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /** Apply one refresh answer (the ONLY source of rows, counters, connection). */
@@ -91,14 +169,14 @@ export function applyList(
       notice: { kind: 'error', text: `refresh refused: ${answer.detail}` },
     };
   }
-  if (answer.document !== 'xdownload.desktop.manager.jobs') {
+  if (!isManagerJobListDocument(answer)) {
     return {
       ...state,
       phase: 'ready',
       busy: false,
       connection: null,
       snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
-      notice: { kind: 'error', text: 'refresh refused: unexpected document' },
+      notice: { kind: 'error', text: 'refresh refused: malformed job list document' },
     };
   }
   return {
@@ -153,10 +231,12 @@ export function applyAction(
   // and the refusal is announced — never replaced by a fake empty list.
   const list = answer.list;
   const listRefused = isRefusal(list);
+  const listValid = isManagerJobListDocument(list);
+  const listUnavailable = listRefused || !listValid;
   let nextState: ManagerRendererState = {
     ...state,
     busy: false,
-    ...(listRefused
+    ...(listUnavailable
       ? {
           connection: null,
           snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
@@ -195,6 +275,14 @@ export function applyAction(
         notice: {
           kind: 'error',
           text: `the ${answer.action} was accepted by the Core, but the fresh job list was refused: ${list.detail}`,
+        },
+      };
+    } else if (!listValid) {
+      nextState = {
+        ...nextState,
+        notice: {
+          kind: 'error',
+          text: `the ${answer.action} was accepted by the Core, but the fresh job list was malformed`,
         },
       };
     } else {
