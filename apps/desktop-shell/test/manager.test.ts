@@ -398,6 +398,19 @@ describe('DesktopManager durable index visibility and isolation (real Core)', ()
     }
   });
 
+  it('a Core loss after a successful empty index read is detected by the next fresh index query', async () => {
+    const before = expectList(await harness.manager.list());
+    expect(before.connection).toBe('CONNECTED');
+    expect(before.jobs).toEqual([]);
+    expect(before.totalCount).toBe(0);
+    await harness.stopCore();
+    const after = await harness.manager.list();
+    expect(isRefusal(after)).toBe(true);
+    if (isRefusal(after)) {
+      expect(after.detail).toContain('disconnected');
+    }
+  });
+
   it.each([0, 199, 200, 201])(
     'keeps exact 0/199/200/201 index semantics at %i jobs',
     async (count) => {
