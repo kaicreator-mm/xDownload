@@ -23,6 +23,7 @@ import {
 } from '../install-host.ts';
 import {
   cleanupSmokeManifest,
+  isRegistryKeyNotFoundError,
   parseWindowsRegistrationProbe,
   probeWindowsRegistration,
   registrationPointsToExpectedManifest,
@@ -179,6 +180,24 @@ describe('#179 status reads the per-user config', () => {
   });
 });
 
+
+describe('#316 registry query failure classification', () => {
+  it('treats only a known missing-key result as absence', () => {
+    expect(
+      isRegistryKeyNotFoundError({
+        code: 1,
+        stderr: 'ERROR: The system was unable to find the specified registry key or value.',
+      }),
+    ).toBe(true);
+    expect(
+      isRegistryKeyNotFoundError({
+        code: 1,
+        stderr: 'ERROR: Access is denied.',
+      }),
+    ).toBe(false);
+    expect(isRegistryKeyNotFoundError({ code: 5, stderr: 'Access is denied.' })).toBe(false);
+  });
+});
 
 describe('#316 Native Host smoke manifest ownership and cleanup', () => {
   const unregistered = {
