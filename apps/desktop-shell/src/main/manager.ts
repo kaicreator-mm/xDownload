@@ -69,6 +69,7 @@ export interface DesktopManagerOptions {
 interface PendingPreview {
   readonly lineageId: string;
   readonly url: string;
+  readonly stage: ManagerPreviewDocument['submissionStage'];
 }
 
 function refusal(detail: string): ShellRefusal {
@@ -139,12 +140,14 @@ export class DesktopManager {
       this.pending = {
         lineageId: draft.contractId,
         url: draft.targetRef,
+        stage: 'READY',
       };
       return {
         document: 'xdownload.desktop.manager.preview',
         lineageId: draft.contractId,
         url: draft.targetRef,
         automationMode: draft.automationMode,
+        submissionStage: 'READY',
         confirmationRequests: draft.requests.map((request) => ({
           level: request.level,
           description: request.description,
@@ -155,19 +158,9 @@ export class DesktopManager {
   }
 
   /**
-   * Confirm the pending preview: submit the confirmed contract through the
-   * adapter's canonical confirmation, then route the S1 direct-acquisition
-   * command via the reviewed Desktop adapter (the real Core DESKTOP_UI S1
-   * admission). Both routings are admission receipts, never final success —
-   * the truthful outcome lands in the Core projection the list reads.
-   *
-   * R3-01: the adapter's `InteractionOutcome.routed` is CUMULATIVE over its
-   * full sent-envelope history, not a per-call delta. Each step therefore
-   * snapshots the history length and attributes ONLY newly appended commands
-   * whose commandType AND aggregateId bind to the current pending lineage. A
-   * rejected second confirmation after a prior successful add must never
-   * execute S1 against the previous aggregate, claim the new lineage was
-   * routed, or clear the current pending preview.
+   * Confirm the pending preview. Only a valid Core acknowledgement counts as
+   * routed. Unknown contract/S1 delivery keeps the preview in a same-envelope
+   * reconciliation stage; S1 is never sent before contract acknowledgement.
    */
   async confirmAdd(): Promise<ManagerActionDocument | ShellRefusal> {
     return this.runSerialized(async () => {
@@ -179,37 +172,97 @@ export class DesktopManager {
       if (adapter === undefined) {
         return refusal('no Core connection is configured; the preview cannot be confirmed');
       }
-      const historyBeforeConfirm = adapter.sentCommandEnvelopes().length;
+
+      if (pending.stage === 'S1_UNKNOWN') {
+        const attached = await adapter.attachAggregate(pending.lineageId);
+        if (attached.display.connection !== 'CONNECTED') {
+          this.pending = { ...pending, stage: 'S1_UNKNOWN' };
+          return this.actionDocument('add', pending.lineageId, false, {
+            deliveryState: 'NOT_ATTEMPTED',
+            rejections: attached.rejections,
+            refusals: attached.refusals.length > 0
+              ? attached.refusals
+              : ['the confirmed contract exists, but a fresh Core projection is unavailable; reconnect before continuing S1'],
+          });
+        }
+        const s1Outcome = await adapter.executeS1Direct();
+        const s1Bound = s1Outcome.routed.some(
+          (command) =>
+            command.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' &&
+            command.aggregateId === pending.lineageId,
+        );
+        if (s1Outcome.deliveryState === 'ACKNOWLEDGED' && s1Bound) {
+          this.pending = null;
+          return this.actionDocument('add', pending.lineageId, true, {
+            deliveryState: 'ACKNOWLEDGED',
+            rejections: s1Outcome.rejections,
+            refusals: s1Outcome.refusals,
+          });
+        }
+        if (s1Outcome.deliveryState === 'REJECTED') {
+          this.pending = null;
+        } else {
+          this.pending = { ...pending, stage: 'S1_UNKNOWN' };
+        }
+        return this.actionDocument('add', pending.lineageId, false, {
+          deliveryState: s1Outcome.deliveryState,
+          rejections: s1Outcome.rejections,
+          refusals: s1Outcome.refusals,
+        });
+      }
+
       const confirmOutcome = await adapter.confirmScope();
-      const confirmCommands = adapter.sentCommandEnvelopes().slice(historyBeforeConfirm);
-      const confirmBound = confirmCommands.some(
-        (envelope) =>
-          envelope.commandType === 'SUBMIT_CONTRACT' && envelope.aggregateId === pending.lineageId,
+      const confirmBound = confirmOutcome.routed.some(
+        (command) =>
+          command.commandType === 'SUBMIT_CONTRACT' &&
+          command.aggregateId === pending.lineageId,
       );
       if (!confirmBound) {
-        // The current contract was NOT submitted. Keep the pending preview,
-        // route nothing further, and surface the current rejection/refusal
-        // verbatim — an old aggregate's command history is never attributed
-        // to this lineage.
+        if (confirmOutcome.deliveryState === 'UNKNOWN') {
+          this.pending = { ...pending, stage: 'CONTRACT_UNKNOWN' };
+        } else {
+          this.pending = { ...pending, stage: 'READY' };
+        }
         return this.actionDocument('add', pending.lineageId, false, {
+          deliveryState: confirmOutcome.deliveryState,
           rejections: confirmOutcome.rejections,
           refusals: confirmOutcome.refusals,
         });
       }
-      // The confirmed contract is held (with its fresh projection and the
-      // submitted locator) by the adapter — route the S1 execution with the
-      // exact identity the adapter derived. A repeat/disconnect path re-sends
-      // the identical envelope through seam idempotency.
-      const historyBeforeS1 = adapter.sentCommandEnvelopes().length;
+
+      // Contract ACK is necessary but not sufficient for a completed Add.
+      // If its follow-up projection is not fresh, keep the preview and resume
+      // only the S1 stage after reconnect; never route from stale facts.
+      if (confirmOutcome.display.connection !== 'CONNECTED') {
+        this.pending = { ...pending, stage: 'S1_UNKNOWN' };
+        return this.actionDocument('add', pending.lineageId, false, {
+          deliveryState: 'NOT_ATTEMPTED',
+          rejections: confirmOutcome.rejections,
+          refusals: ['the contract was acknowledged by Core, but its fresh projection is unavailable; reconnect before continuing S1'],
+        });
+      }
+
       const s1Outcome = await adapter.executeS1Direct();
-      const s1Commands = adapter.sentCommandEnvelopes().slice(historyBeforeS1);
-      const s1Bound = s1Commands.some(
-        (envelope) =>
-          envelope.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' &&
-          envelope.aggregateId === pending.lineageId,
+      const s1Bound = s1Outcome.routed.some(
+        (command) =>
+          command.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' &&
+          command.aggregateId === pending.lineageId,
       );
-      this.pending = null;
-      return this.actionDocument('add', pending.lineageId, s1Bound, {
+      if (s1Outcome.deliveryState === 'ACKNOWLEDGED' && s1Bound) {
+        this.pending = null;
+        return this.actionDocument('add', pending.lineageId, true, {
+          deliveryState: 'ACKNOWLEDGED',
+          rejections: [...confirmOutcome.rejections, ...s1Outcome.rejections],
+          refusals: s1Outcome.refusals,
+        });
+      }
+      if (s1Outcome.deliveryState === 'REJECTED') {
+        this.pending = null;
+      } else {
+        this.pending = { ...pending, stage: 'S1_UNKNOWN' };
+      }
+      return this.actionDocument('add', pending.lineageId, false, {
+        deliveryState: s1Outcome.deliveryState,
         rejections: [...confirmOutcome.rejections, ...s1Outcome.rejections],
         refusals: s1Outcome.refusals,
       });
@@ -223,9 +276,15 @@ export class DesktopManager {
       if (pending === null) {
         return refusal('no preview is pending');
       }
+      if (pending.stage !== 'READY') {
+        return refusal('SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED: the unresolved contract/S1 request must be reconciled before this preview can be discarded');
+      }
       const adapter = this.options.getAdapter();
       if (adapter !== undefined) {
-        adapter.discardDraft();
+        const discarded = adapter.discardDraft();
+        if (discarded.refusals.length > 0) {
+          return refusal(discarded.refusals[0] ?? 'the adapter refused to discard this unresolved preview');
+        }
       }
       this.pending = null;
       return {
@@ -234,8 +293,10 @@ export class DesktopManager {
         action: 'discard-preview',
         lineageId: pending.lineageId,
         routed: false,
+        deliveryState: 'NOT_ATTEMPTED',
         rejections: [],
         refusalDetail: null,
+        pendingPreview: null,
         list: await this.listUnlocked(),
       };
     });
@@ -361,7 +422,11 @@ export class DesktopManager {
       // projection is held — never acting on stale or fabricated facts.
       await adapter.attachAggregate(lineageId);
       const outcome = action === 'cancel' ? await adapter.cancel() : await adapter.retryFailed();
-      const routed = outcome.routed.length > 0;
+      const routed =
+        outcome.deliveryState === 'ACKNOWLEDGED' &&
+        outcome.routed.some((command) =>
+          command.commandType === (action === 'cancel' ? 'CANCEL_LINEAGE' : 'RETRY_FAILED_MEMBERS'),
+        );
       return this.actionDocument(action, lineageId, routed, outcome);
     });
   }
@@ -376,6 +441,7 @@ export class DesktopManager {
       lineageId: pending.lineageId,
       url: pending.url,
       automationMode: MANAGER_AUTOMATION_MODE,
+      submissionStage: pending.stage,
       confirmationRequests: this.draftRequests(adapter ?? undefined),
     };
   }
@@ -385,6 +451,7 @@ export class DesktopManager {
     lineageId: string | null,
     routed: boolean,
     outcome: {
+      readonly deliveryState: 'NOT_ATTEMPTED' | 'ACKNOWLEDGED' | 'REJECTED' | 'UNKNOWN';
       readonly rejections: readonly { readonly code: string; readonly message: string }[];
       readonly refusals: readonly string[];
     },
@@ -396,11 +463,13 @@ export class DesktopManager {
       action,
       lineageId,
       routed,
+      deliveryState: outcome.deliveryState,
       rejections: outcome.rejections.map((rejection) => ({
         code: rejection.code,
         message: rejection.message,
       })),
       refusalDetail: routed || firstRefusal === undefined ? null : firstRefusal,
+      pendingPreview: this.pendingDocument(this.options.getAdapter() ?? null),
       list: await this.listUnlocked(),
     };
   }
