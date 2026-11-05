@@ -302,6 +302,7 @@ function render(): void {
 
   const notice = byId('notice');
   notice.textContent = state.notice === null ? '' : localizeNotice(state.notice.text);
+  const stale = state.snapshotFreshness === 'stale';
   notice.dataset.kind = state.notice === null ? 'none' : state.notice.kind;
 
   // U05-T03: the truncation banner states plainly that the visible page is
@@ -312,11 +313,15 @@ function render(): void {
     totalCount: state.totalCount,
     visibleCount: state.jobs.length,
   });
-  truncation.textContent = truncationText ?? '';
+  truncation.textContent =
+    truncationText === null
+      ? ''
+      : stale
+        ? `上次成功读取：${truncationText}`
+        : truncationText;
   truncation.hidden = truncationText === null;
 
   const connectionLine = byId('connection-line');
-  const stale = state.snapshotFreshness === 'stale';
   const connected = state.snapshotFreshness === 'fresh' && state.connection === 'CONNECTED';
   connectionLine.textContent = stale
     ? 'Core 状态未确认 · 以下为上次成功读取的数据（已过期）'
@@ -390,7 +395,11 @@ function renderJobs(): void {
     ['summary-complete', completeCount],
   ] as const) {
     byId(id).textContent =
-      state.snapshotFreshness === 'stale' ? `上次 ${String(count)}` : String(count);
+      state.snapshotFreshness === 'stale'
+        ? `上次 ${String(count)}`
+        : state.snapshotFreshness === 'unavailable'
+          ? '—'
+          : String(count);
   }
   for (const button of document.querySelectorAll<HTMLButtonElement>('.nav-item[data-filter]')) {
     const selected = button.dataset.filter === taskFilter;
