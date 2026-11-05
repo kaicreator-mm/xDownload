@@ -171,7 +171,8 @@ function isManagerJobListDocument(value: unknown): value is ManagerJobListDocume
     (value.totalCount as number) >= 0 &&
     typeof value.truncated === 'boolean' &&
     (value.pendingPreview === null || isManagerPreviewDocument(value.pendingPreview)) &&
-    (value.pendingCommand === null ||
+    (value.pendingCommand === undefined ||
+      value.pendingCommand === null ||
       (isManagerCommandDelivery(value.pendingCommand) && value.pendingCommand.status === 'UNKNOWN'))
   );
 }
@@ -213,9 +214,9 @@ export function applyList(
     totalCount: answer.totalCount,
     truncated: answer.truncated,
     pendingPreview: answer.pendingPreview,
-    pendingCommand: answer.pendingCommand,
+    pendingCommand: answer.pendingCommand ?? null,
     notice:
-      answer.pendingCommand === null
+      answer.pendingCommand == null
         ? null
         : {
             kind: 'error',
