@@ -102,6 +102,22 @@ export function writeNativeHostManifestIfAbsent(
   }
 }
 
+/** Distinguish a genuinely absent registry key from access/query failures. */
+export function isRegistryKeyNotFoundError(error: unknown): boolean {
+  const candidate = error as {
+    code?: number | string;
+    stdout?: string;
+    stderr?: string;
+  };
+  if (candidate.code !== 1 && candidate.code !== '1') {
+    return false;
+  }
+  const output = `${candidate.stdout ?? ''}\\n${candidate.stderr ?? ''}`;
+  return /unable to find the specified registry key or value|cannot find[^\\r\\n]*registry key/i.test(
+    output,
+  );
+}
+
 async function regQuery(key: string): Promise<string | null> {
   try {
     const result = await execFileAsync('reg', ['query', key, '/ve'], {
@@ -109,8 +125,13 @@ async function regQuery(key: string): Promise<string | null> {
       windowsHide: true,
     });
     return result.stdout;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isRegistryKeyNotFoundError(error)) {
+      return null;
+    }
+    // Access denied, malformed output and all other query failures are not
+    // evidence of absence. Propagate them so cleanup cannot unlink a manifest.
+    throw error;
   }
 }
 
