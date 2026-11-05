@@ -31,7 +31,7 @@ export interface ManagerNotice {
 
 export interface ManagerRendererState {
   readonly phase: ManagerPhase;
-  /** The shell's Core connection word, verbatim from the last list answer. */
+  /** Current Core connection word; null when the latest snapshot is stale or unavailable. */
   readonly connection: string | null;
   /** Freshness of the last Core-owned index snapshot; stale rows are last-known only. */
   readonly snapshotFreshness: 'unavailable' | 'fresh' | 'stale';
