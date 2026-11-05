@@ -182,7 +182,7 @@ export interface ManagerJobListDocument {
   /** The pending unconfirmed preview, mirrored so the UI state survives. */
   readonly pendingPreview: ManagerPreviewDocument | null;
   /** An unresolved command whose exact request must be reconciled before new actions. */
-  readonly pendingCommand: ManagerCommandDelivery | null;
+  readonly pendingCommand?: ManagerCommandDelivery | null;
 }
 
 /** Outcome of one manager action (add/cancel/retry/discard). */
