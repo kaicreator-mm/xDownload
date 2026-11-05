@@ -29,6 +29,11 @@ export interface ManagerNotice {
   readonly text: string;
 }
 
+export interface PendingControlReconciliation {
+  readonly action: 'cancel' | 'retry';
+  readonly lineageId: string;
+}
+
 export interface ManagerRendererState {
   readonly phase: ManagerPhase;
   /** Current Core connection word; null when the latest snapshot is stale or unavailable. */
@@ -44,6 +49,8 @@ export interface ManagerRendererState {
   /** True when the Core truncated the index page (visible rows ≠ history). */
   readonly truncated: boolean;
   readonly pendingPreview: ManagerPreviewDocument | null;
+  /** A same-action reconciliation request after ambiguous control delivery. */
+  readonly pendingReconciliation: PendingControlReconciliation | null;
   readonly notice: ManagerNotice | null;
   /** True while an action/refresh is in flight (buttons disabled). */
   readonly busy: boolean;
@@ -58,6 +65,7 @@ export function initialManagerState(): ManagerRendererState {
     totalCount: null,
     truncated: false,
     pendingPreview: null,
+    pendingReconciliation: null,
     notice: null,
     busy: false,
   };
@@ -65,7 +73,13 @@ export function initialManagerState(): ManagerRendererState {
 
 /** The bridge is absent: the page renders its fail-closed state and stops. */
 export function bridgeMissing(state: ManagerRendererState): ManagerRendererState {
-  return { ...state, phase: 'bridge-missing', jobs: [], pendingPreview: null };
+  return {
+    ...state,
+    phase: 'bridge-missing',
+    jobs: [],
+    pendingPreview: null,
+    pendingReconciliation: null,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -118,6 +132,9 @@ function isManagerPreviewDocument(value: unknown): value is ManagerPreviewDocume
     typeof value.lineageId === 'string' &&
     typeof value.url === 'string' &&
     typeof value.automationMode === 'string' &&
+    (value.submissionStage === 'READY' ||
+      value.submissionStage === 'CONTRACT_UNKNOWN' ||
+      value.submissionStage === 'S1_UNKNOWN') &&
     Array.isArray(value.confirmationRequests) &&
     value.confirmationRequests.every(
       (request) =>
@@ -209,6 +226,28 @@ export function previewOpened(
   return { ...state, busy: false, pendingPreview: preview, notice: null };
 }
 
+/** Validate the renderer-facing action envelope before it mutates UI state. */
+function isManagerActionDocument(value: unknown): value is ManagerActionDocument {
+  if (
+    !isRecord(value) ||
+    value.ok !== true ||
+    value.document !== 'xdownload.desktop.manager.action' ||
+    !['add', 'cancel', 'retry', 'discard-preview'].includes(String(value.action)) ||
+    !(value.lineageId === null || typeof value.lineageId === 'string') ||
+    typeof value.routed !== 'boolean' ||
+    !['NOT_ATTEMPTED', 'ACKNOWLEDGED', 'REJECTED', 'UNKNOWN'].includes(String(value.deliveryState)) ||
+    !Array.isArray(value.rejections) ||
+    !value.rejections.every(
+      (item) => isRecord(item) && typeof item.code === 'string' && typeof item.message === 'string',
+    ) ||
+    !(value.refusalDetail === null || typeof value.refusalDetail === 'string') ||
+    !(value.pendingPreview === null || isManagerPreviewDocument(value.pendingPreview))
+  ) {
+    return false;
+  }
+  return isRefusal(value.list) || isManagerJobListDocument(value.list);
+}
+
 /** Apply one action answer (add/cancel/retry/discard), notice verbatim. */
 export function applyAction(
   state: ManagerRendererState,
@@ -223,12 +262,28 @@ export function applyAction(
       notice: { kind: 'error', text: `action refused: ${answer.detail}` },
     };
   }
+  if (!isManagerActionDocument(answer)) {
+    return {
+      ...state,
+      busy: false,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
+      notice: { kind: 'error', text: 'action refused: malformed manager action document' },
+    };
+  }
   // The embedded fresh list may itself be a typed refusal (the Core could
   // not serve the index at that moment): the previous truthful rows stay,
   // and the refusal is announced — never replaced by a fake empty list.
   const list = answer.list;
   const listRefused = isRefusal(list);
-  let nextState: ManagerRendererState = { ...state, busy: false, notice: null };
+  let nextState: ManagerRendererState = {
+    ...state,
+    busy: false,
+    notice: null,
+    // The action document carries this independently of list success, so an
+    // unknown submission cannot fall back to a stale READY preview.
+    pendingPreview: answer.pendingPreview,
+  };
   if (listRefused || !isManagerJobListDocument(list)) {
     nextState = {
       ...nextState,
@@ -246,19 +301,30 @@ export function applyAction(
       pendingPreview: list.pendingPreview,
     };
   }
-  // confirmAdd clears the main-process draft once the S1 command is routed.
-  // If its follow-up index read is refused/malformed, there is no list payload
-  // from which to observe pendingPreview=null; do not leave a stale Confirm UI
-  // that could invite a duplicate submission.
-  if (answer.action === 'add' && answer.routed) {
-    nextState = { ...nextState, pendingPreview: null };
+  if (answer.action === 'cancel' || answer.action === 'retry') {
+    if (answer.deliveryState === 'UNKNOWN' && answer.lineageId !== null) {
+      nextState = {
+        ...nextState,
+        pendingReconciliation: { action: answer.action, lineageId: answer.lineageId },
+      };
+    } else if (
+      nextState.pendingReconciliation?.action === answer.action &&
+      nextState.pendingReconciliation.lineageId === answer.lineageId
+    ) {
+      nextState = { ...nextState, pendingReconciliation: null };
+    }
   }
   if (answer.action === 'discard-preview') {
-    // The main process clears its local draft before attempting the follow-up
-    // index read. A refused/malformed list must not leave a stale confirm dialog.
     nextState = { ...nextState, pendingPreview: null };
-  } else {
-    if (answer.rejections.length > 0) {
+  } else if (answer.deliveryState === 'UNKNOWN') {
+    nextState = {
+      ...nextState,
+      notice: {
+        kind: 'error',
+        text: 'SUBMISSION_UNKNOWN / RECONCILIATION_REQUIRED: the request may have reached Core; no acceptance is claimed. Replay the same request identity to reconcile.',
+      },
+    };
+  } else if (answer.rejections.length > 0) {
       const first = answer.rejections[0];
       nextState = {
         ...nextState,
@@ -267,12 +333,20 @@ export function applyAction(
           text: `the Core refused the ${answer.action} (${String(first?.code)}): ${String(first?.message)}`,
         },
       };
+    } else if (answer.deliveryState === 'REJECTED') {
+      nextState = {
+        ...nextState,
+        notice: {
+          kind: 'error',
+          text: `the Core definitively rejected the ${answer.action}; no acceptance is claimed`,
+        },
+      };
     } else if (!answer.routed) {
       nextState = {
         ...nextState,
         notice: {
           kind: 'error',
-          text: `the ${answer.action} was not routed: ${answer.refusalDetail ?? 'refused'}`,
+          text: `the ${answer.action} was not acknowledged: ${answer.refusalDetail ?? 'not attempted'}`,
         },
       };
     } else if (listRefused) {
@@ -352,8 +426,10 @@ export function jobActions(row: ManagerJobRowDocument): {
   readonly retryEnabled: boolean;
 } {
   return {
-    cancelEnabled: row.terminal === null,
-    retryEnabled: row.retry.available,
+    cancelEnabled: row.lineageStatus === 'ACTIVE' && row.terminal === null,
+    retryEnabled:
+      (row.lineageStatus === 'ACTIVE' || row.lineageStatus === 'CANCELLED') &&
+      row.retry.available,
   };
 }
 
