@@ -302,6 +302,18 @@ function render(): void {
 
   const notice = byId('notice');
   notice.textContent = state.notice === null ? '' : localizeNotice(state.notice.text);
+  if (state.pendingReconciliation !== null) {
+    const reconcile = document.createElement('button');
+    reconcile.type = 'button';
+    reconcile.textContent =
+      state.pendingReconciliation.action === 'cancel' ? '核对取消结果' : '核对重试结果';
+    reconcile.disabled = state.busy;
+    reconcile.setAttribute('aria-label', reconcile.textContent + '，重放同一 Core 请求');
+    reconcile.addEventListener('click', () =>
+      void runControl(state.pendingReconciliation!.action, state.pendingReconciliation!.lineageId),
+    );
+    notice.appendChild(reconcile);
+  }
   const stale = state.snapshotFreshness === 'stale';
   notice.dataset.kind = state.notice === null ? 'none' : state.notice.kind;
 
@@ -368,8 +380,22 @@ function renderPreview(): void {
   }
   const confirm = byId('preview-confirm') as HTMLButtonElement;
   const discard = byId('preview-discard') as HTMLButtonElement;
+  confirm.textContent =
+    pending.submissionStage === 'READY'
+      ? '确认并开始'
+      : pending.submissionStage === 'CONTRACT_UNKNOWN'
+        ? '重试同一请求并核对 Core'
+        : '继续 / 核对 S1 请求';
   confirm.disabled = state.busy;
-  discard.disabled = state.busy;
+  discard.disabled = state.busy || pending.submissionStage !== 'READY';
+  if (pending.submissionStage !== 'READY') {
+    const item = document.createElement('li');
+    item.textContent =
+      pending.submissionStage === 'CONTRACT_UNKNOWN'
+        ? '提交结果尚未确认；再次操作会重放相同请求身份，不会创建新任务身份。'
+        : '合同已确认，S1 执行尚未确认；再次操作只会继续/核对原 S1 请求。';
+    requests.appendChild(item);
+  }
   if (wasClosed) {
     confirm.focus();
   }
@@ -514,8 +540,11 @@ function actionButton(
   button.textContent = label;
   button.dataset.lineage = lineageId;
   const snapshotUnavailable = state.snapshotFreshness !== 'fresh';
-  button.disabled = !enabled || state.busy || snapshotUnavailable;
-  if (snapshotUnavailable) {
+  button.disabled =
+    !enabled || state.busy || snapshotUnavailable || state.pendingReconciliation !== null;
+  if (state.pendingReconciliation !== null) {
+    button.title = '存在未确认的控制请求；请先核对原请求结果';
+  } else if (snapshotUnavailable) {
     button.title = 'Core 当前状态未确认；刷新成功后才能操作';
   } else if (!enabled) {
     button.title = 'Core 当前未证明此操作可用';
@@ -597,12 +626,19 @@ async function confirmPreview(): Promise<void> {
   render();
   const input = byId('url') as HTMLInputElement;
   input.value = '';
-  if (addOpen) input.focus();
-  else byId('new-download').focus();
+  if (state.pendingPreview !== null) {
+    (byId('preview-confirm') as HTMLButtonElement).focus();
+  } else {
+    byId('new-download').focus();
+  }
 }
 
 async function discardPreview(): Promise<void> {
-  if (BRIDGE === undefined || BRIDGE === null) {
+  if (
+    BRIDGE === undefined ||
+    BRIDGE === null ||
+    state.pendingPreview?.submissionStage !== 'READY'
+  ) {
     return;
   }
   state = setBusy(state, true);
