@@ -230,6 +230,8 @@ export function applyAction(
     return {
       ...state,
       busy: false,
+      connection: null,
+      snapshotFreshness: state.snapshotFreshness === 'unavailable' ? 'unavailable' : 'stale',
       notice: { kind: 'error', text: `action refused: ${answer.detail}` },
     };
   }
