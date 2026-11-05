@@ -713,10 +713,10 @@ export class DesktopUiAdapter {
     }
     if (response.outcome === 'REJECTED') {
       // Re-sync so the display reflects Core state, then surface the rejection.
-      await this.refresh();
+      await this.refreshAfterCommand();
       return this.rejectedOutcome(response);
     }
-    await this.refresh();
+    await this.refreshAfterCommand();
     return this.outcome(this.lastRouted());
   }
 
@@ -762,10 +762,10 @@ export class DesktopUiAdapter {
       return this.outcome(this.lastRouted());
     }
     if (response.outcome === 'REJECTED') {
-      await this.refresh();
+      await this.refreshAfterCommand();
       return this.rejectedOutcome(response);
     }
-    await this.refresh();
+    await this.refreshAfterCommand();
     return this.outcome(this.lastRouted());
   }
 
@@ -910,10 +910,10 @@ export class DesktopUiAdapter {
     if (response.outcome === 'REJECTED') {
       // Core refused admission: surface the typed rejection verbatim and
       // re-sync the display from the projection (no acceptance-as-success).
-      await this.refresh();
+      await this.refreshAfterCommand();
       return this.rejectedOutcome(response);
     }
-    await this.refresh();
+    await this.refreshAfterCommand();
     return this.outcome(this.lastRouted());
   }
 
@@ -1074,7 +1074,7 @@ export class DesktopUiAdapter {
       return this.lastRouted();
     }
     if (response.outcome === 'REJECTED') {
-      await this.refresh();
+      await this.refreshAfterCommand();
       this.recordRejections(response);
       return this.lastRouted();
     }
@@ -1082,7 +1082,7 @@ export class DesktopUiAdapter {
       snapshotId,
       selectedMemberIds: [...input.selectedMemberIds],
     };
-    await this.refresh();
+    await this.refreshAfterCommand();
     return this.lastRouted();
   }
 
