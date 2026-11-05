@@ -218,12 +218,12 @@ describe('#316 registry query failure classification', () => {
   });
   it('does not mistake a child-key default value for the host registration value', () => {
     const raw = [
-      'HKEY_CURRENT_USER\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker',
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker',
       '    OtherValue    REG_SZ    retained-value',
       '',
-      'HKEY_CURRENT_USER\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker\\\\child',
-      '    (Default)    REG_SZ    C:\\\\Users\\\\Jane Doe\\\\child-manifest.json',
-    ].join('\\n');
+      'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker\\child',
+      '    (Default)    REG_SZ    C:\\Users\\Jane Doe\\child-manifest.json',
+    ].join('\n');
     const probe = parseWindowsRegistrationProbe(raw);
 
     expect(probe.registered).toBe(true);
