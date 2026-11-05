@@ -242,7 +242,7 @@ describe('#316 Native Host smoke manifest ownership and cleanup', () => {
     try {
       const manifestPath = path.join(dir, 'com.xdownload.broker.json');
       const siblingPath = path.join(dir, 'another-host.json');
-      fs.writeFileSync(manifestPath, 'created by this smoke attempt', 'utf8');
+      expect(writeNativeHostManifestIfAbsent(manifestPath, 'created by this smoke attempt')).toBe(true);
       fs.writeFileSync(siblingPath, 'sibling manifest', 'utf8');
 
       const cleanup = cleanupSmokeManifest({
