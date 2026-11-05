@@ -43,12 +43,10 @@ interface PendingRequest {
 }
 
 /**
- * Internal marker for a transport that refused the initial connect of a
- * request. The bounded reconnect loop retries connection LOSS after a
- * successful connect; an endpoint that refuses the first attempt fails the
- * request immediately instead of burning retries, while the released
- * single-flight slot still lets a LATER request attempt a fresh connection
- * (Issue #370).
+ * Internal marker for a transport that refused the first connection
+ * before this client has ever connected. That initial refusal is terminal
+ * for the current request, while later requests may retry after the endpoint
+ * returns (Issue #370).
  */
 class InitialConnectRefusedError extends Error {
   constructor(message: string) {
@@ -61,6 +59,9 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
   const maxAttempts = options.maxReconnectAttempts ?? 3;
   let connection: SeamClientConnection | null = null;
   let connecting: Promise<SeamClientConnection> | null = null;
+  // Distinguish a first-ever endpoint refusal from a reconnect failure after
+  // this client has already established a Core connection.
+  let hasEstablishedConnection = false;
   const pending = new Map<string, PendingRequest>();
 
   function dropConnection(): void {
@@ -74,6 +75,7 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
     if (connecting === null) {
       const attempt = options.transport.connect(options.target).then((established) => {
         connection = established;
+        hasEstablishedConnection = true;
         established.onFrame((frame) => {
           let parsed: unknown;
           try {
@@ -125,9 +127,14 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
     try {
       established = await ensureConnection();
     } catch (error) {
-      throw new InitialConnectRefusedError(
-        error instanceof Error ? error.message : 'seam initial connect refused',
-      );
+      if (!hasEstablishedConnection) {
+        throw new InitialConnectRefusedError(
+          error instanceof Error ? error.message : 'seam initial connect refused',
+        );
+      }
+      // Once this client has connected successfully, a refused reconnect is
+      // still a connection-loss retry and remains inside the bounded budget.
+      throw error instanceof Error ? error : new Error('seam reconnect failed');
     }
     return new Promise<SeamResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -165,8 +172,8 @@ export function createSeamClient(options: SeamClientOptions): SeamClient {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('seam request failed');
         dropConnection();
-        // A refused initial connect is terminal for this request; bounded
-        // retries remain for connection loss after a successful connect.
+        // Only a first-ever connect refusal is terminal. Once this client
+        // has connected, refused reconnect attempts consume the bounded budget.
         if (error instanceof InitialConnectRefusedError) {
           break;
         }
