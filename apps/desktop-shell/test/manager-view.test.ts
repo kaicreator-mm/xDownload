@@ -63,6 +63,7 @@ describe('manager renderer states', () => {
     expect(initial.jobs).toEqual([]);
     expect(initial.totalCount).toBeNull();
     expect(initial.truncated).toBe(false);
+    expect(initial.snapshotFreshness).toBe('unavailable');
     const missing = bridgeMissing(initial);
     expect(missing.phase).toBe('bridge-missing');
     expect(missing.jobs).toEqual([]);
@@ -76,6 +77,7 @@ describe('manager renderer states', () => {
     );
     expect(next.phase).toBe('ready');
     expect(next.connection).toBe('CONNECTED');
+    expect(next.snapshotFreshness).toBe('fresh');
     expect(next.jobs).toEqual([row]);
     expect(next.totalCount).toBe(7);
     expect(next.truncated).toBe(true);
@@ -89,10 +91,39 @@ describe('manager renderer states', () => {
       detail: 'the Core is disconnected; the durable S1 job index could not be read',
     });
     expect(next.phase).toBe('ready');
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
     expect(next.notice?.kind).toBe('error');
     expect(next.notice?.text).toContain('the Core is disconnected');
     // The refusal must NOT wipe the last truthful list (no empty fake list).
     expect(next.jobs).toEqual([presentRow()]);
+  });
+
+
+  it('a first-load refusal remains unavailable and never invents an empty successful index', () => {
+    const next = applyList(initialManagerState(), {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail: 'no Core connection is configured',
+    });
+    expect(next.snapshotFreshness).toBe('unavailable');
+    expect(next.connection).toBeNull();
+    expect(next.jobs).toEqual([]);
+    expect(next.totalCount).toBeNull();
+  });
+
+  it('a successful index read recovers a stale snapshot with new Core facts', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()], totalCount: 1 }));
+    const stale = applyList(seeded, {
+      ok: false,
+      code: 'SHELL_IPC_REFUSED',
+      detail: 'the Core is disconnected',
+    });
+    const recoveredRow = presentRow({ lineageStatus: 'CANCELLED' });
+    const recovered = applyList(stale, jobListDocument({ jobs: [recoveredRow], totalCount: 1 }));
+    expect(recovered.snapshotFreshness).toBe('fresh');
+    expect(recovered.connection).toBe('CONNECTED');
+    expect(recovered.jobs).toEqual([recoveredRow]);
   });
 
   it('an unexpected document is refused, not rendered', () => {
@@ -162,6 +193,8 @@ describe('visible truncation state (Core index counters only)', () => {
       },
     });
     expect(next.jobs).toEqual([presentRow()]);
+    expect(next.connection).toBeNull();
+    expect(next.snapshotFreshness).toBe('stale');
     expect(next.notice?.kind).toBe('error');
     expect(next.notice?.text).toContain('accepted by the Core');
     expect(next.notice?.text).toContain('disconnected');
