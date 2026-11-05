@@ -328,6 +328,15 @@ export function applyAction(
             : `the Core refused the ${answer.action} (${String(first.code)}): ${String(first.message)}`,
       },
     };
+  } else if (answer.rejections.length > 0) {
+    const first = answer.rejections[0]!;
+    nextState = {
+      ...nextState,
+      notice: {
+        kind: 'error',
+        text: `the ${answer.action} was rejected (${String(first.code)}): ${String(first.message)}`,
+      },
+    };
   } else if (answer.delivery.status === 'NOT_ATTEMPTED') {
     nextState = {
       ...nextState,
