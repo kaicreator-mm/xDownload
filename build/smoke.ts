@@ -559,12 +559,18 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
   // Windows HKCU registration round-trip on the real mechanism, preserving
   // all state that was present before this attempt. The shared directory is
   // never removed; cleanup is limited to this attempt's exact manifest.
+  let manifestPathForEvidence: string | null = null;
+  let manifestDirExistedBeforeForEvidence: boolean | null = null;
+  let manifestExistedBeforeForEvidence: boolean | null = null;
   try {
-    const before = await probeWindowsRegistration();
     const manifestDir = windowsUserManifestDir();
     const manifestPath = path.join(manifestDir, `${NATIVE_HOST_NAME}.json`);
     const manifestDirExistedBefore = fs.existsSync(manifestDir);
     const manifestExistedBefore = fs.existsSync(manifestPath);
+    manifestPathForEvidence = manifestPath;
+    manifestDirExistedBeforeForEvidence = manifestDirExistedBefore;
+    manifestExistedBeforeForEvidence = manifestExistedBefore;
+    const before = await probeWindowsRegistration();
 
     if (before.registered) {
       checks.push({
@@ -670,10 +676,12 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
       }
     }
   } catch (error) {
+    const manifestExistsNow =
+      manifestPathForEvidence === null ? 'unknown' : String(fs.existsSync(manifestPathForEvidence));
     checks.push(
       failedCheck(
         'native-host-windows-registration-roundtrip',
-        error instanceof Error ? error.message : 'registry access failed',
+        `registry/registration state could not be completed; manifestPath=${manifestPathForEvidence ?? 'unknown'}; manifestDirExistedBefore=${manifestDirExistedBeforeForEvidence ?? 'unknown'}; manifestExistedBefore=${manifestExistedBeforeForEvidence ?? 'unknown'}; manifestExistsNow=${manifestExistsNow}; manifest was not deleted by the catch path; error=${error instanceof Error ? error.message : 'registry access failed'}`,
       ),
     );
   }
