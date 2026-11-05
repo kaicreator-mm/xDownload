@@ -650,12 +650,18 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
           } finally {
             // Always capture cleanup outcome after a successful registration.
             // A failed/mismatched unregister preserves the referenced manifest.
+            let unregisterOutcome = 'not-returned';
+            let registryAfterState = 'unknown';
             try {
               const removed = await unregisterWindowsNativeHost(
                 NATIVE_HOST_NAME,
                 registered.manifestPath,
               );
+              unregisterOutcome = removed.action;
               const after = await probeWindowsRegistration();
+              registryAfterState = after.registered
+                ? after.manifestPath ?? 'registered-with-unresolved-path'
+                : 'absent';
               const cleanup = cleanupSmokeManifest({
                 manifestPath: registered.manifestPath,
                 manifestExistedBefore,
@@ -668,13 +674,13 @@ async function runNativeHostSmoke(distDir: string): Promise<void> {
                 id: 'native-host-windows-unregistration-restores-state',
                 status: cleanup.action === 'removed' ? 'PASS' : 'FAIL',
                 command: ['reg', 'delete', windowsRegistryKey(), '/f'],
-                detail: `cleanup=${cleanup.action}; reason=${cleanup.reason ?? 'exact smoke-owned manifest removed'}; unregister=${removed.action}; registryAfter=${after.registered ? (after.manifestPath ?? 'registered with unresolved path') : 'absent'}; manifestExistsAfter=${manifestExistsAfter}; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestDirExistsAfter=${fs.existsSync(manifestDir)}`,
+                detail: `cleanup=${cleanup.action}; reason=${cleanup.reason ?? 'exact smoke-owned manifest removed'}; unregister=${removed.action}; registryAfter=${registryAfterState}; manifestExistsAfter=${manifestExistsAfter}; manifestDirExistedBefore=${manifestDirExistedBefore}; manifestDirExistsAfter=${fs.existsSync(manifestDir)}`,
               });
             } catch (error) {
               checks.push(
                 failedCheck(
                   'native-host-windows-unregistration-restores-state',
-                  `cleanup failed; manifest was preserved where present; manifestPath=${registered.manifestPath}; manifestExistsAfter=${fs.existsSync(registered.manifestPath)}; error=${error instanceof Error ? error.message : 'registry cleanup failed'}`,
+                  `cleanup failed; unregister=${unregisterOutcome}; registryAfter=${registryAfterState}; manifestPath=${registered.manifestPath}; manifestExistsAfter=${fs.existsSync(registered.manifestPath)}; manifest preserved; error=${error instanceof Error ? error.message : 'registry cleanup failed'}`,
                 ),
               );
             }
