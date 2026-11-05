@@ -30,6 +30,18 @@
  *   evidence. There is NO fallback to direct popup navigation, CDP popup
  *   APIs or chrome.action.openPopup — those can never count as positive.
  *
+ * --mode=grant --self-test=privacy-inspection-error — focused R3 P2-01
+ *   regression for the optional Chrome-window screenshot privacy check. It
+ *   launches the same real Chrome + extension, then invokes the generated
+ *   toolbar-action script with the U06_PRIVACY_SELFTEST_INSPECTION_ERROR
+ *   seam: a synthetic top-level window whose UIA reads always throw, and a
+ *   forced-pass foreground precondition so the enumeration loop is reached
+ *   on any desktop. The script performs NO native clicks under the seam. The
+ *   run PASSES only if the privacy check records UNKNOWN and skips the
+ *   screenshot (UIA_TOOLBAR_SCREENSHOT_SKIPPED=window_inspection_error:*)
+ *   and never widens the capture. This seam exists solely in this test file
+ *   and is never set by a normal grant run.
+ *
  * In both modes the popup is instrumented BEFORE its scripts execute (CDP
  * auto-attach with waitForDebuggerOnStart): Worker message kinds/counts and
  * chrome.permissions.request counts are recorded, and mere mode/tab
@@ -67,10 +79,26 @@ const MODE = argValue('--mode');
 const CHROME_ARG = argValue('--chrome');
 const EXTENSION_ARG = argValue('--extension');
 const OUT_ARG = argValue('--out');
+const SELF_TEST = argValue('--self-test');
 
 if (MODE !== 'control' && MODE !== 'grant') {
   console.error(
-    'usage: node chrome-toolbar-active-tab.mjs --mode=control|grant [--chrome=exe] [--extension=dir] [--out=evidence-dir]',
+    'usage: node chrome-toolbar-active-tab.mjs --mode=control|grant [--chrome=exe] [--extension=dir] [--out=evidence-dir] [--self-test=privacy-inspection-error|desktop-precheck|foreground-guard]',
+  );
+  process.exit(EXIT.FAIL);
+}
+if (
+  SELF_TEST !== null &&
+  !['privacy-inspection-error', 'desktop-precheck', 'foreground-guard'].includes(SELF_TEST)
+) {
+  console.error(
+    `FAIL: unknown --self-test value: ${SELF_TEST}; supported: privacy-inspection-error, desktop-precheck, foreground-guard`,
+  );
+  process.exit(EXIT.FAIL);
+}
+if (SELF_TEST !== null && MODE !== 'grant') {
+  console.error(
+    'FAIL: --self-test requires --mode=grant (the seam only exists in the grant-mode privacy check)',
   );
   process.exit(EXIT.FAIL);
 }
@@ -208,7 +236,8 @@ const result = {
 // .mjs stays the only repository write path for the harness.
 // --------------------------------------------------------------------------
 const PRECHECK_PS1 = `param(
-  [Parameter(Mandatory=$true)][string]$OutPath
+  [Parameter(Mandatory=$true)][string]$OutPath,
+  [switch]$SelfTest
 )
 Add-Type @'
 using System;
@@ -220,8 +249,34 @@ public static class U06Desktop {
   [DllImport("user32.dll")] public static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex, StringBuilder pvInfo, int nLength, out int lpnLengthNeeded);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
 '@
+function Get-LockState($desktopName, $foregroundOwner, $foregroundText) {
+  $known = -not [string]::IsNullOrWhiteSpace($desktopName) -and
+    -not [string]::IsNullOrWhiteSpace($foregroundOwner)
+  $titleIsLockScreen = $foregroundText -match '锁屏|Lock screen|锁定'
+  $locked = -not $known -or $desktopName -ne 'Default' -or
+    $foregroundOwner -ieq 'LockApp' -or $titleIsLockScreen
+  return [pscustomobject]@{ locked = [bool]$locked; inputCapable = [bool](-not $locked); foregroundIsLockScreen = [bool]$titleIsLockScreen; stateKnown = [bool]$known }
+}
+if ($SelfTest) {
+  $cases = @(
+    @{ name = 'resident_lockapp_chrome'; desktop = 'Default'; owner = 'chrome'; title = 'Chrome'; resident = $true; expected = $false },
+    @{ name = 'foreground_lockapp'; desktop = 'Default'; owner = 'LockApp'; title = ''; resident = $true; expected = $true },
+    @{ name = 'lock_title'; desktop = 'Default'; owner = 'other'; title = 'Lock screen'; resident = $false; expected = $true },
+    @{ name = 'non_default'; desktop = 'Winlogon'; owner = 'chrome'; title = 'Chrome'; resident = $false; expected = $true },
+    @{ name = 'unknown_owner'; desktop = 'Default'; owner = ''; title = ''; resident = $false; expected = $true },
+    @{ name = 'unknown_desktop'; desktop = ''; owner = 'chrome'; title = 'Chrome'; resident = $false; expected = $true }
+  )
+  $results = @($cases | ForEach-Object {
+    $state = Get-LockState $_.desktop $_.owner $_.title
+    [pscustomobject]@{ name = $_.name; lockAppRunning = $_.resident; locked = $state.locked; inputCapable = $state.inputCapable; pass = ($state.locked -eq $_.expected) -and ($state.inputCapable -eq (-not $_.expected)) }
+  })
+  $results | ConvertTo-Json -Depth 4 | Set-Content -Path $OutPath -Encoding UTF8
+  if (@($results | Where-Object { -not $_.pass }).Count -ne 0) { exit 1 }
+  exit 0
+}
 $desktop = [U06Desktop]::OpenInputDesktop(0, $false, 0x0001)
 $desktopName = $null
 if ($desktop -ne [IntPtr]::Zero) {
@@ -234,23 +289,30 @@ if ($desktop -ne [IntPtr]::Zero) {
 }
 $foreground = [U06Desktop]::GetForegroundWindow()
 $foregroundText = ''
+$foregroundPid = [uint32]0
+$foregroundOwner = $null
 if ($foreground -ne [IntPtr]::Zero) {
   $title = New-Object System.Text.StringBuilder 512
   if ([U06Desktop]::GetWindowText($foreground, $title, 512) -gt 0) { $foregroundText = $title.ToString() }
+  [U06Desktop]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid) | Out-Null
+  if ($foregroundPid -ne 0) {
+    $owner = Get-Process -Id $foregroundPid -ErrorAction SilentlyContinue
+    if ($null -ne $owner) { $foregroundOwner = $owner.ProcessName }
+  }
 }
-# The input-desktop name alone can stay 'Default' while the physical console
-# shows the lock screen (native mouse input then cannot reach Chrome). Treat
-# the visible lock screen — LockApp running or a lock-screen foreground — as
-# locked even when the input-desktop query disagrees.
+# A resident LockApp process is diagnostic only; its foreground ownership,
+# known lock-screen titles and a non-Default desktop remain lock indicators.
 $lockAppRunning = $null -ne (Get-Process LockApp -ErrorAction SilentlyContinue | Select-Object -First 1)
-$foregroundIsLockScreen = $foregroundText -match '锁屏|Lock screen|锁定'
-$locked = ($desktopName -ne 'Default') -or $lockAppRunning -or $foregroundIsLockScreen
+$state = Get-LockState $desktopName $foregroundOwner $foregroundText
 [pscustomobject]@{
   inputDesktop = $desktopName
   lockAppRunning = $lockAppRunning
-  foregroundIsLockScreen = $foregroundIsLockScreen
-  locked = $locked
-  inputCapable = -not $locked
+  foregroundIsLockScreen = $state.foregroundIsLockScreen
+  foregroundProcessId = $foregroundPid
+  foregroundProcessName = $foregroundOwner
+  stateKnown = $state.stateKnown
+  locked = $state.locked
+  inputCapable = $state.inputCapable
   foregroundWindowTitle = $foregroundText
   checkedAt = (Get-Date).ToString('o')
 } | ConvertTo-Json -Compress | Set-Content -Path $OutPath -Encoding UTF8
@@ -304,10 +366,249 @@ Write-Output ('UIA_DUMP_EXIT=0 COUNT=' + $rows.Count + ' OUT=' + $OutPath)
 exit 0
 `;
 
+// --------------------------------------------------------------------------
+// R5/R6 foreground admission guard — shared verbatim by UIA_CLICK_PS1 and
+// UIA_TOOLBAR_ACTION_PS1 (each sets $script:Native to its own P/Invoke class).
+// No SetCursorPos/mouse_event unless GetForegroundWindow() readback equals the
+// exact target Chrome HWND, and SetCursorPos failure never falls through to
+// mouse input. Activation denial, readback timeout, HWND change or unreadable
+// HWND returns 'denied' with zero cursor movement and zero mouse input.
+// Under -SelfTest the native APIs are never touched: readback is scripted
+// from a queue and input advances seam counters only.
+// --------------------------------------------------------------------------
+const PS_FOREGROUND_GUARD = String.raw`
+$selfTestGuard = $false
+if ($SelfTest) { $selfTestGuard = $true }
+$script:seamSetCursorPos = 0
+$script:seamMouseEvent = 0
+$script:seamMouseDown = 0
+$script:seamMouseUp = 0
+$script:seamReadbackScript = @()
+$script:seamSetCursorPosResult = $true
+function Read-Foreground {
+  if ($selfTestGuard) {
+    if ($script:seamReadbackScript.Count -gt 0) {
+      $next = $script:seamReadbackScript[0]
+      $script:seamReadbackScript = @($script:seamReadbackScript | Select-Object -Skip 1)
+      if ($next -is [string] -and $next -eq '__THROW__') { throw 'synthetic foreground readback failure' }
+      return $next
+    }
+    return [IntPtr]::Zero
+  }
+  return $script:Native::GetForegroundWindow()
+}
+function Assert-Foreground($targetHwnd) {
+  if ($targetHwnd -eq [IntPtr]::Zero) { return 'denied' }
+  if (-not $selfTestGuard) { $script:Native::SetForegroundWindow($targetHwnd) | Out-Null }
+  $deadline = (Get-Date).AddSeconds(2)
+  while ((Get-Date) -lt $deadline) {
+    if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
+    if ($selfTestGuard) { break }
+    Start-Sleep -Milliseconds 100
+    $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
+  }
+  if ($selfTestGuard) { return 'denied' }
+  # Activation retry via AttachThreadInput: attaching to the current
+  # foreground thread lets this background thread legitimately request
+  # activation. No input is synthesized; the readback below still decides,
+  # and any denial keeps cursor movement and mouse input at zero. The attach
+  # is paired only on success and guaranteed detached in finally.
+  $fg = $script:Native::GetForegroundWindow()
+  if ($fg -ne [IntPtr]::Zero -and $fg -ne $targetHwnd) {
+    $dummyPid = [uint32]0
+    $fgThread = $script:Native::GetWindowThreadProcessId($fg, [ref]$dummyPid)
+    $me = $script:Native::GetCurrentThreadId()
+    if ($fgThread -ne 0 -and $fgThread -ne $me) {
+      $attached = $script:Native::AttachThreadInput($me, $fgThread, $true)
+      try {
+        $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
+      } finally {
+        if ($attached) { $script:Native::AttachThreadInput($me, $fgThread, $false) | Out-Null }
+      }
+    }
+  }
+  $retryDeadline = (Get-Date).AddSeconds(1)
+  while ((Get-Date) -lt $retryDeadline) {
+    if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
+    Start-Sleep -Milliseconds 100
+  }
+  return 'denied'
+}
+function Send-NativeClick($targetHwnd, $x, $y) {
+  # R7: exact foreground readback before every new input side effect. Once
+  # mouse-down is attempted, mouse-up is guaranteed in finally: a focus
+  # change/readback error may block a click, but must never leave the global
+  # left button logically pressed. The cleanup up is not a second click.
+  if ((Read-Foreground) -ne $targetHwnd) {
+    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  $cursorOk = $true
+  if ($selfTestGuard) {
+    $script:seamSetCursorPos += 1
+    $cursorOk = $script:seamSetCursorPosResult
+  } else {
+    $cursorOk = $script:Native::SetCursorPos($x, $y)
+  }
+  if (-not $cursorOk) {
+    return [pscustomobject]@{ sent = $false; reason = 'set_cursor_pos_failed'; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  if ((Read-Foreground) -ne $targetHwnd) {
+    return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+
+  $mouseDownAttempted = $false
+  $mouseDownSent = $false
+  $mouseUpCleanupSent = $false
+  $failureReason = $null
+  try {
+    $mouseDownAttempted = $true
+    if ($selfTestGuard) {
+      $script:seamMouseDown += 1
+      $script:seamMouseEvent += 1
+    } else {
+      $script:Native::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    }
+    $mouseDownSent = $true
+
+    try {
+      if ((Read-Foreground) -ne $targetHwnd) {
+        $failureReason = 'foreground_moved_after_mouse_down'
+      }
+    } catch {
+      $failureReason = 'foreground_readback_error_after_mouse_down'
+    }
+  } catch {
+    $failureReason = 'mouse_down_failed'
+  } finally {
+    # Always release after a down attempt, even when the post-down guard
+    # refuses or throws. This is a release cleanup only, never a new click.
+    if ($mouseDownAttempted) {
+      try {
+        if ($selfTestGuard) {
+          $script:seamMouseUp += 1
+          $script:seamMouseEvent += 1
+        } else {
+          $script:Native::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+        }
+        $mouseUpCleanupSent = $true
+      } catch {
+        $failureReason = 'mouse_up_cleanup_failed'
+      }
+    }
+  }
+
+  if ($failureReason -ne $null) {
+    return [pscustomobject]@{
+      sent = $false
+      reason = $failureReason
+      mouseDownSent = $mouseDownSent
+      mouseUpCleanupSent = $mouseUpCleanupSent
+    }
+  }
+  return [pscustomobject]@{
+    sent = $true
+    reason = 'clicked'
+    mouseDownSent = $mouseDownSent
+    mouseUpCleanupSent = $mouseUpCleanupSent
+  }
+}
+function Invoke-GuardedClick($targetHwnd, $x, $y) {
+  $verdict = Assert-Foreground $targetHwnd
+  if ($verdict -eq 'denied') {
+    return [pscustomobject]@{ verdict = $verdict; clicked = $false; reason = 'foreground_denied'; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  $send = Send-NativeClick $targetHwnd $x $y
+  if (-not $send.sent) {
+    return [pscustomobject]@{
+      verdict = $verdict
+      clicked = $false
+      reason = $send.reason
+      mouseDownSent = $send.mouseDownSent
+      mouseUpCleanupSent = $send.mouseUpCleanupSent
+    }
+  }
+  return [pscustomobject]@{
+    verdict = $verdict
+    clicked = $true
+    reason = 'clicked'
+    mouseDownSent = $send.mouseDownSent
+    mouseUpCleanupSent = $send.mouseUpCleanupSent
+  }
+}
+function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
+  $cases = @()
+  $target = [IntPtr]424242
+  $other = [IntPtr]1111
+  function New-Case($name, $readbacks, $cursorResult, $clickTarget) {
+    $script:seamSetCursorPos = 0
+    $script:seamMouseEvent = 0
+    $script:seamMouseDown = 0
+    $script:seamMouseUp = 0
+    $script:seamReadbackScript = @($readbacks)
+    $script:seamSetCursorPosResult = $cursorResult
+    $r = Invoke-GuardedClick $clickTarget 10 10
+    [pscustomobject]@{
+      name = $name
+      verdict = $r.verdict
+      reason = $r.reason
+      clicked = $r.clicked
+      setCursorPosCalls = $script:seamSetCursorPos
+      mouseEventCalls = $script:seamMouseEvent
+      mouseDownCalls = $script:seamMouseDown
+      mouseUpCalls = $script:seamMouseUp
+      mouseDownSent = $r.mouseDownSent
+      mouseUpCleanupSent = $r.mouseUpCleanupSent
+    }
+  }
+  # (a) denied/mismatched activation readback: zero cursor movement, zero input
+  $c = New-Case 'foreground_denied' @($other) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (b) matching HWND readback: full admission, counters advance only
+  $c = New-Case 'foreground_matching' @($target, $target, $target, $target) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $true -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
+  # (c) unreadable foreground ([IntPtr]::Zero): fail closed, zero input
+  $c = New-Case 'foreground_unreadable' @([IntPtr]::Zero) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (d) zero/unknown target HWND: fail closed before any readback
+  $c = New-Case 'target_unknown' @($target) $true ([IntPtr]::Zero)
+  $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (e) R6: activation granted but HWND mismatch immediately before cursor:
+  # zero cursor movement, zero mouse input
+  $c = New-Case 'post_activation_mismatch' @($target, $other) $true $target
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'foreground_moved' -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (f) R6: SetCursorPos failure: zero mouse events
+  $c = New-Case 'set_cursor_pos_failed' @($target, $target) $false $target
+  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'set_cursor_pos_failed' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0)
+  # (g) R6: foreground moves between mouse-down and mouse-up
+  $c = New-Case 'foreground_moved_after_mouse_down' @($target, $target, $target, $other) $true $target
+  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_moved_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
+  # (h) R7: a readback exception after down still runs the matching up cleanup.
+  $c = New-Case 'foreground_readback_error_after_mouse_down' @($target, $target, $target, '__THROW__') $true $target
+  $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_readback_error_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
+  $allPass = @($cases | Where-Object { -not $_.pass }).Count -eq 0
+  [pscustomobject]@{ ok = [bool]$allPass; cases = $cases } | ConvertTo-Json -Depth 4 | Set-Content -Path $SelfTestOutPath -Encoding UTF8
+  if (-not $allPass) { exit 1 }
+  exit 0
+}
+function Add-Note($caseObj, $pass) {
+  $caseObj | Add-Member -MemberType NoteProperty -Name pass -Value [bool]$pass -Force
+  return $caseObj
+}
+if ($SelfTest) {
+  if ([string]::IsNullOrWhiteSpace($OutPath)) {
+    Write-Output 'FOREGROUND_GUARD_SELFTEST_EXIT=1 REASON=missing_outpath'
+    exit 1
+  }
+  Invoke-GuardSelfTest $OutPath
+}
+`;
+
 const UIA_CLICK_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$Name,
-  [string]$ControlType = ''
+  [string]$ControlType = '',
+  [string]$OutPath = '',
+  [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -315,11 +616,17 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class U06Mouse {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 '@
+$script:Native = [U06Mouse]
+${PS_FOREGROUND_GUARD}
 $condition = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
   $ProcessId
@@ -351,15 +658,15 @@ $window = $matches[0].Window
 $rect = $target.Current.BoundingRectangle
 $x = [int]($rect.X + $rect.Width / 2)
 $y = [int]($rect.Y + $rect.Height / 2)
-[U06Mouse]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
-Start-Sleep -Milliseconds 250
-[U06Mouse]::SetCursorPos($x, $y) | Out-Null
-Start-Sleep -Milliseconds 100
-[U06Mouse]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-Start-Sleep -Milliseconds 80
-[U06Mouse]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+# R5 foreground admission guard: zero cursor movement and zero mouse input
+# unless GetForegroundWindow() readback equals the exact target Chrome HWND.
+$guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
+if (-not $guard.clicked) {
+  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
+  exit 6
+}
 [pscustomobject]@{
-  mechanism = 'Windows UI Automation bounding rectangle + user32 SetCursorPos/mouse_event'
+  mechanism = 'Windows UI Automation bounding rectangle + user32 SetCursorPos/mouse_event after GetForegroundWindow() readback equals target Chrome HWND'
   processId = $ProcessId
   name = $target.Current.Name
   controlType = $target.Current.ControlType.ProgrammaticName
@@ -374,7 +681,8 @@ exit 0
 
 const UIA_TOOLBAR_ACTION_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
-  [Parameter(Mandatory=$true)][string]$OutPath
+  [Parameter(Mandatory=$true)][string]$OutPath,
+  [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -386,8 +694,21 @@ public static class U06ActionMouse {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 '@
+$script:Native = [U06ActionMouse]
+${PS_FOREGROUND_GUARD}
+# R3 P2-01 focused regression seam: set ONLY by the Node driver's
+# --self-test=privacy-inspection-error run via the process environment. A
+# normal grant run never sees this. Under the seam the script performs NO
+# native clicks, forces the foreground-window precondition so the top-level
+# enumeration loop is reachable on any desktop, and injects a synthetic
+# top-level window whose UIA reads always throw — proving the privacy check
+# fails closed on inspection errors.
+$selfTestInspectionError = $env:U06_PRIVACY_SELFTEST_INSPECTION_ERROR -eq '1'
 $condition = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
   $ProcessId
@@ -402,13 +723,13 @@ function Click-Element($element, $window) {
   $rect = $element.Current.BoundingRectangle
   $x = [int]($rect.X + $rect.Width / 2)
   $y = [int]($rect.Y + $rect.Height / 2)
-  [U06ActionMouse]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
-  Start-Sleep -Milliseconds 150
-  [U06ActionMouse]::SetCursorPos($x, $y) | Out-Null
-  Start-Sleep -Milliseconds 100
-  [U06ActionMouse]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 80
-  [U06ActionMouse]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+  # R5 foreground admission guard: zero cursor movement and zero mouse input
+  # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
+  $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
+  if (-not $guard.clicked) {
+    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
+    exit 6
+  }
   return @($x, $y)
 }
 $windows = Get-ChromeWindows
@@ -429,9 +750,11 @@ if ($puzzle -eq $null) {
   Write-Output 'UIA_TOOLBAR_ACTION_EXIT=4 REASON=extensions_button_not_found'
   exit 4
 }
-$menuPoint = Click-Element $puzzle $mainWindow
-Start-Sleep -Milliseconds 700
-& (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
+if (-not $selfTestInspectionError) {
+  $menuPoint = Click-Element $puzzle $mainWindow
+  Start-Sleep -Milliseconds 700
+  & (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
+}
 # P2 repair, round 2 (web source-review): capture ONLY the Chrome window
 # bounds, never the full primary desktop — and only when the privacy
 # boundary is PROVABLE: the Chrome window must be the foreground window and
@@ -450,29 +773,68 @@ try {
   } else {
     $chromeHandle = [IntPtr]$mainWindow.Current.NativeWindowHandle
     $foreground = [U06ActionMouse]::GetForegroundWindow()
+    if ($selfTestInspectionError) { $foreground = $chromeHandle }
     if ($foreground -ne $chromeHandle) {
       $captureSkipReason = 'chrome_window_not_foreground'
     } else {
       $occluder = $null
+      # R3 P2-01: any UIA exception while reading a top-level window makes
+      # the privacy state UNKNOWN — an uninspected window must NEVER be
+      # treated as non-occluding. The first inspection error is recorded and
+      # the screenshot is skipped below.
+      $inspectionError = $null
       $topLevel = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
         [System.Windows.Automation.TreeScope]::Children,
         [System.Windows.Automation.Condition]::TrueCondition
       )
-      foreach ($top in $topLevel) {
+      $topWindows = @($topLevel | ForEach-Object { $_ })
+      if ($selfTestInspectionError) {
+        # Prepended (not appended) so the inspection-error path is exercised
+        # deterministically regardless of the real desktop's overlapping
+        # windows — a real occluder found earlier would skip the capture for
+        # the occluded_by reason without ever touching the mock. The mock
+        # models a window whose UIA read yields nothing: PowerShell's adapted
+        # member access surfaces a failing UIA property read as $null rather
+        # than throwing (verified against .NET getter exceptions), so a $null
+        # Current is exactly what an uninspected window looks like here.
+        $mock = [pscustomobject]@{ Current = $null }
+        $topWindows = @($mock) + $topWindows
+      }
+      foreach ($top in $topWindows) {
         try {
-          if ($top.Current.NativeWindowHandle -eq $chromeHandle) { continue }
-          if ($top.Current.IsOffscreen) { continue }
-          $other = $top.Current.BoundingRectangle
+          $current = $top.Current
+          if ($null -eq $current) {
+            # A readable AutomationElement never reports a $null Current; a
+            # $null here means the inspection failed (or terminally errored
+            # deeper below). UNKNOWN — never treat as non-occluding.
+            if ($null -eq $inspectionError) { $inspectionError = '<unreadable>' }
+            continue
+          }
+          if ($current.NativeWindowHandle -eq $chromeHandle) { continue }
+          if ($current.IsOffscreen) { continue }
+          $other = $current.BoundingRectangle
+          if ($null -eq $other) {
+            # Zero-size bounds are provably non-occluding (skipped below),
+            # but NO bounds at all means the read failed. UNKNOWN.
+            if ($null -eq $inspectionError) { $inspectionError = $current.Name }
+            continue
+          }
           if ($other.Width -le 0 -or $other.Height -le 0) { continue }
           $overlapX = [Math]::Min($winRect.X + $winRect.Width, $other.X + $other.Width) - [Math]::Max($winRect.X, $other.X)
           $overlapY = [Math]::Min($winRect.Y + $winRect.Height, $other.Y + $other.Height) - [Math]::Max($winRect.Y, $other.Y)
           if ($overlapX -gt 0 -and $overlapY -gt 0) {
-            $occluder = $top.Current.Name
+            $occluder = $current.Name
             break
           }
-        } catch { }
+        } catch {
+          if ($null -eq $inspectionError) {
+            try { $inspectionError = $top.Current.Name } catch { $inspectionError = '<unreadable>' }
+          }
+        }
       }
-      if ($null -ne $occluder) {
+      if ($null -ne $inspectionError) {
+        $captureSkipReason = 'window_inspection_error:' + $inspectionError
+      } elseif ($null -ne $occluder) {
         $captureSkipReason = 'occluded_by:' + $occluder
       } else {
         $captureAllowed = $true
@@ -497,6 +859,12 @@ if ($captureAllowed) {
 } else {
   Write-Output ('UIA_TOOLBAR_SCREENSHOT_SKIPPED=' + $captureSkipReason)
 }
+if ($selfTestInspectionError) {
+  Write-Output 'UIA_TOOLBAR_SELFTEST_FOREGROUND_PRECONDITION=forced_pass_under_seam'
+  Write-Output ('UIA_TOOLBAR_SELFTEST_PRIVACY=' + $(if ($captureAllowed) { 'CAPTURE_ALLOWED' } else { 'SKIPPED:' + $captureSkipReason }))
+  Write-Output 'UIA_TOOLBAR_SELFTEST_EXIT=0'
+  exit 0
+}
 $matches = @()
 foreach ($window in (Get-ChromeWindows)) {
   $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
@@ -514,8 +882,8 @@ if ($matches.Count -ne 1) {
 $target = $matches[0].Element
 $point = Click-Element $target $matches[0].Window
 [pscustomobject]@{
-  menuMechanism = 'user32 SetCursorPos/mouse_event on Extensions toolbar automationId view_1006'
-  actionMechanism = 'user32 SetCursorPos/mouse_event on xDownload extension action'
+  menuMechanism = 'user32 SetCursorPos/mouse_event on Extensions toolbar automationId view_1006 after GetForegroundWindow() readback admission'
+  actionMechanism = 'user32 SetCursorPos/mouse_event on xDownload extension action after GetForegroundWindow() readback admission'
   name = $target.Current.Name
   controlType = $target.Current.ControlType.ProgrammaticName
   automationId = $target.Current.AutomationId
@@ -537,7 +905,7 @@ for (const [name, body] of Object.entries(ps1Files)) {
   fs.writeFileSync(path.join(evidenceDir, name), body);
 }
 
-async function runPowerShell(script, args) {
+async function runPowerShell(script, args, options = {}) {
   try {
     const answer = await execFileAsync(
       'powershell.exe',
@@ -549,7 +917,7 @@ async function runPowerShell(script, args) {
         path.join(evidenceDir, script),
         ...args,
       ],
-      { timeout: 30_000, windowsHide: true },
+      { timeout: 30_000, windowsHide: true, ...options },
     );
     log(script, { exitCode: 0, stdout: answer.stdout.trim(), stderr: answer.stderr.trim() });
     return answer.stdout;
@@ -641,6 +1009,56 @@ const POPUP_INSTRUMENTATION = `(() => {
 })();`;
 
 async function main() {
+  if (SELF_TEST === 'desktop-precheck') {
+    const outPath = path.join(evidenceDir, 'desktop-precheck-self-test.json');
+    await runPowerShell('u06-desktop-precheck.ps1', ['-OutPath', outPath, '-SelfTest']);
+    const cases = readJsonWithBom(outPath);
+    fs.writeFileSync(
+      path.join(evidenceDir, 'result.json'),
+      `${JSON.stringify({ ok: true, cases }, null, 2)}\n`,
+    );
+    console.log(JSON.stringify({ ok: true, cases }));
+    return EXIT.PASS;
+  }
+  if (SELF_TEST === 'foreground-guard') {
+    // R5 deterministic guard self-test: BOTH click helpers run their shared
+    // guard logic under the -SelfTest seam (scripted foreground readback,
+    // seam input counters — zero native API touch). Cases: denied/mismatched
+    // readback, matching HWND admission, unreadable foreground, unknown
+    // target HWND. A pass requires zero SetCursorPos/mouse_event calls on
+    // every denial path in both scripts.
+    const toolbarOut = path.join(evidenceDir, 'foreground-guard-toolbar-action.json');
+    await runPowerShell('u06-uia-toolbar-action.ps1', [
+      '-ProcessId',
+      '0',
+      '-OutPath',
+      toolbarOut,
+      '-SelfTest',
+    ]);
+    const clickOut = path.join(evidenceDir, 'foreground-guard-click.json');
+    await runPowerShell('u06-uia-click.ps1', [
+      '-ProcessId',
+      '0',
+      '-Name',
+      'self-test',
+      '-OutPath',
+      clickOut,
+      '-SelfTest',
+    ]);
+    const toolbar = readJsonWithBom(toolbarOut);
+    const click = readJsonWithBom(clickOut);
+    result.selfTest = { name: SELF_TEST, toolbarAction: toolbar, click };
+    result.ok = toolbar.ok === true && click.ok === true;
+    result.status = result.ok ? 'PASS' : 'FAIL';
+    result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
+    result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;
+    fs.writeFileSync(path.join(evidenceDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
+    log('driver-result', { selfTest: result.selfTest.name, ok: result.ok });
+    console.log(
+      JSON.stringify({ ok: result.ok, status: result.status, selfTest: result.selfTest }),
+    );
+    return result.ok ? EXIT.PASS : EXIT.FAIL;
+  }
   const httpRequests = [];
   const server = http.createServer((req, res) => {
     httpRequests.push({ url: req.url, method: req.method });
@@ -670,7 +1088,12 @@ async function main() {
   let socket;
   let exitCode = EXIT.FAIL;
   try {
-    if (MODE === 'grant' && !(await precheckDesktop())) {
+    // The R3 privacy self-test verifies only the PowerShell privacy-check
+    // logic through the inspection-error seam; the generated script performs
+    // no native input under the seam, so the unlocked-desktop admission gate
+    // (a property of the genuine click, which the self-test never performs)
+    // does not apply to it.
+    if (MODE === 'grant' && SELF_TEST === null && !(await precheckDesktop())) {
       result.ok = false;
       result.status = 'NOT_RUN';
       result.notRunReason = `desktop locked or not input-capable: ${JSON.stringify(result.desktopPrecheck)}`;
@@ -837,6 +1260,58 @@ async function main() {
       flatten: true,
     });
 
+    if (SELF_TEST === 'privacy-inspection-error') {
+      // R3 P2-01 focused regression evidence: invoke the SAME generated
+      // toolbar-action script with the inspection-error seam — a synthetic
+      // top-level window whose UIA reads always throw. The privacy check
+      // must record UNKNOWN and skip the screenshot; capturing anyway (or
+      // widening bounds) is a FAIL. No popup/gesture assertions run here.
+      const stdout = await runPowerShell(
+        'u06-uia-toolbar-action.ps1',
+        [
+          '-ProcessId',
+          String(chrome.pid),
+          '-OutPath',
+          path.join(evidenceDir, 'uia-extensions-menu.json'),
+        ],
+        { env: { ...process.env, U06_PRIVACY_SELFTEST_INSPECTION_ERROR: '1' } },
+      );
+      const skipMatch = stdout.match(/UIA_TOOLBAR_SCREENSHOT_SKIPPED=([^\r\n]+)/u);
+      result.selfTest = {
+        name: SELF_TEST,
+        seamEnv: 'U06_PRIVACY_SELFTEST_INSPECTION_ERROR',
+        foregroundPrecondition: 'forced_pass_under_seam',
+        privacySkipReason: skipMatch ? skipMatch[1] : null,
+        screenshotCaptured: stdout.includes('UIA_TOOLBAR_SCREENSHOT_CHROME_WINDOW_ONLY=1'),
+        nativeClicksPerformed: false,
+      };
+      result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
+      result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;
+      result.ok =
+        skipMatch !== null &&
+        skipMatch[1].startsWith('window_inspection_error:') &&
+        result.selfTest.screenshotCaptured === false &&
+        result.manifestUnchanged === true;
+      result.status = result.ok ? 'PASS' : 'FAIL';
+      result.chromeStderrTail = chromeStderr.slice(-1000);
+      fs.writeFileSync(
+        path.join(evidenceDir, 'result.json'),
+        `${JSON.stringify(result, null, 2)}\n`,
+      );
+      log('driver-result', { selfTest: result.selfTest, ok: result.ok });
+      console.log(
+        JSON.stringify({
+          mode: MODE,
+          selfTest: result.selfTest,
+          ok: result.ok,
+          status: result.status,
+          manifestUnchanged: result.manifestUnchanged,
+        }),
+      );
+      exitCode = result.ok ? EXIT.PASS : EXIT.FAIL;
+      return exitCode;
+    }
+
     if (MODE === 'control') {
       // Denial-only control: the direct popup URL is permitted HERE and only
       // here, in a background tab, explicitly not a user gesture.
@@ -870,10 +1345,29 @@ async function main() {
       } catch (error) {
         // The extension action could not be clicked through the visible
         // toolbar UI. This is a NOT_RUN blocker, never a FAIL and never a
-        // fallback to direct popup navigation / CDP / openPopup.
+        // fallback to direct popup navigation / CDP / openPopup. The R5
+        // foreground guard denial is recorded distinctly: it guarantees zero
+        // cursor movement and zero native input were sent.
+        // The exit-6 guard marker reaches us on the failed process's captured
+        // stdout, not in the execFile error message. The reason distinguishes
+        // pre-input denial (zero cursor/mouse) from a mid-click foreground
+        // move (mouse-down may have been sent; the helper guarantees its matching mouse-up cleanup).
+        const stdoutText = String(error.stdout ?? '');
+        const guardBlocked = stdoutText.includes('FOREGROUND_GUARD=1');
+        const reasonMatch = stdoutText.match(/REASON=([^\s]+)/u);
+        const guardReason = reasonMatch ? reasonMatch[1] : 'unknown';
+        const downMatch = stdoutText.match(/MOUSE_DOWN_SENT=([01])/u);
+        const upMatch = stdoutText.match(/MOUSE_UP_CLEANUP_SENT=([01])/u);
+        result.nativeInputCleanup = {
+          mouseDownSent: downMatch ? downMatch[1] === '1' : null,
+          mouseUpCleanupSent: upMatch ? upMatch[1] === '1' : null,
+        };
         result.ok = false;
         result.status = 'NOT_RUN';
-        result.notRunReason = `genuine toolbar action not clickable: ${String(error)}`;
+        result.foregroundGuard = guardBlocked ? `blocked:${guardReason}` : 'not_applicable';
+        result.notRunReason = guardBlocked
+          ? `native click guard blocked (${guardReason}): ${String(error)}`
+          : `genuine toolbar action not clickable: ${String(error)}`;
         fs.writeFileSync(
           path.join(evidenceDir, 'result.json'),
           `${JSON.stringify(result, null, 2)}\n`,
