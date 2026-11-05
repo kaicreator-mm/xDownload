@@ -561,7 +561,7 @@ function actionButton(
     state.busy ||
     blockedByPending ||
     (!reconciling && (!enabled || snapshotUnavailable));
-  if (reconciling) {
+  if (reconciling && pending !== null) {
     button.title = `使用同一 requestId 核对 ${pending.requestId}；不会创建新的控制命令`;
   } else if (blockedByPending) {
     button.title = '另一个命令尚未获得 Core 确认；请先核对该命令';
