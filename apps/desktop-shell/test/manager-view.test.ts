@@ -529,6 +529,62 @@ describe('preview dialog state (keyboard flow model)', () => {
     expect(rejected.notice?.text).toContain('durably owned by the new v0.2 Domain App');
   });
 
+  it('an unknown contract submission keeps the preview and blocks accepted wording', () => {
+    const pending = {
+      status: 'UNKNOWN' as const,
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: preview.lineageId,
+      requestId: 'request-contract-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const unknown = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: pending,
+      previewConsumed: false,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: preview, pendingCommand: pending }),
+    });
+
+    expect(unknown.pendingPreview).toEqual(preview);
+    expect(unknown.pendingCommand).toEqual(pending);
+    expect(unknown.notice?.kind).toBe('error');
+    expect(unknown.notice?.text).toContain('request-contract-unknown');
+    expect(unknown.notice?.text).toContain('提交状态不确定');
+    expect(unknown.notice?.text).not.toContain('accepted');
+  });
+
+  it('an unknown S1 submission consumes the preview but retains its exact reconciliation identity', () => {
+    const pending = {
+      status: 'UNKNOWN' as const,
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId: preview.lineageId,
+      requestId: 'request-s1-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const unknown = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: pending,
+      previewConsumed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: null, pendingCommand: pending }),
+    });
+
+    expect(unknown.pendingPreview).toBeNull();
+    expect(unknown.pendingCommand).toEqual(pending);
+    expect(unknown.notice?.text).toContain('request-s1-unknown');
+    expect(unknown.notice?.text).not.toContain('accepted');
+  });
+
   it('a not-routed action surfaces the refusal detail', () => {
     const answered = applyAction(initialManagerState(), {
       ok: true,
@@ -625,7 +681,7 @@ describe('truthful display derivation (no fabricated total/ETA)', () => {
     });
 
     const terminalPresent = presentRow({
-      lineageStatus: 'ACTIVE',
+      lineageStatus: 'TERMINAL',
       retry: { available: true, reason: null },
       terminal: {
         requestFulfillment: 'COMPLETE',
