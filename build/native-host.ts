@@ -270,7 +270,7 @@ function rootRegistrySection(
  */
 export function parseWindowsRegistrationProbe(
   raw: string | null,
-  defaultValueRaw: string | null = raw,
+  defaultValueRaw: string | null,
 ): RegistrationProbe {
   if (raw === null) {
     return { registered: false, manifestPath: null, raw: null };
@@ -317,7 +317,7 @@ export async function probeWindowsRegistration(
   const key = windowsRegistryKey(hostName);
   const raw = await regQuery(key);
   if (raw === null) {
-    return parseWindowsRegistrationProbe(null);
+    return parseWindowsRegistrationProbe(null, null);
   }
   // Query the complete key first so a missing default value is never
   // confused with an absent key. /ve then returns only the unnamed default
