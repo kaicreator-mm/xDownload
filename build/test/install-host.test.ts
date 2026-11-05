@@ -25,6 +25,7 @@ import {
   cleanupSmokeManifest,
   isRegistryKeyNotFoundError,
   parentListingOmitsChild,
+  parentKeyProvesChildAbsent,
   parseWindowsRegistrationProbe,
   probeWindowsRegistration,
   registrationPointsToExpectedManifest,
@@ -267,6 +268,27 @@ describe('#316 registry query failure classification', () => {
     expect(parseWindowsRegistrationProbe(unsetDefault).manifestPath).toBeNull();
     expect(parseWindowsRegistrationProbe(englishUnsetDefault).manifestPath).toBeNull();
   });
+
+  it('does not treat a named parenthesized REG_SZ value as the default registration path', () => {
+    const key = 'HKEY_CURRENT_USER\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
+    const expected = 'C:\\Users\\Jane Doe\\.xdownload\\native-host\\com.xdownload.broker.json';
+    const misleading = 'C:\\Users\\Other User\\foreign-manifest.json';
+    const fullQuery = [
+      key,
+      `    (Backup)    REG_SZ    ${misleading}`,
+      `    (默认)    REG_SZ    ${expected}`,
+    ].join('\n');
+    const defaultValueQuery = [key, `    (默认)    REG_SZ    ${expected}`].join('\n');
+
+    expect(parseWindowsRegistrationProbe(fullQuery, defaultValueQuery).manifestPath).toBe(
+      expected,
+    );
+
+    const noDefault = [key, `    (Backup)    REG_SZ    ${expected}`].join('\n');
+    const unresolved = parseWindowsRegistrationProbe(noDefault, null);
+    expect(unresolved.registered).toBe(true);
+    expect(unresolved.manifestPath).toBeNull();
+  });
 });
 
 describe('#316 locale-independent registry absence proof', () => {
@@ -282,6 +304,37 @@ describe('#316 locale-independent registry absence proof', () => {
     // error in GBK, which arrives as mojibake), so classification must not
     // depend on the error text: enumerating the parent key is locale-free.
     expect(parentListingOmitsChild(PARENT_LISTING, 'com.xdownload.broker')).toBe(true);
+  });
+
+  it('proves absence when the NativeMessagingHosts parent key is itself missing', async () => {
+    const target =
+      'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
+    const localizedNotFound = Object.assign(new Error('localized key-not-found'), { code: 1 });
+    const queryRegistry = async (key: string): Promise<string> => {
+      if (key.endsWith('\\NativeMessagingHosts')) {
+        throw localizedNotFound;
+      }
+      if (key.endsWith('\\Chrome')) {
+        return [
+          'HKEY_CURRENT_USER\\Software\\Google\\Chrome',
+          '    (Default)    REG_SZ    (value not set)',
+        ].join('\n');
+      }
+      throw new Error(`unexpected registry query: ${key}`);
+    };
+
+    await expect(parentKeyProvesChildAbsent(target, queryRegistry)).resolves.toBe(true);
+  });
+
+  it('does not convert an access-denied parent query into proof of absence', async () => {
+    const target =
+      'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.xdownload.broker';
+    const accessDenied = Object.assign(new Error('Access is denied'), { code: 5 });
+    const queryRegistry = async (): Promise<string> => {
+      throw accessDenied;
+    };
+
+    await expect(parentKeyProvesChildAbsent(target, queryRegistry)).resolves.toBe(false);
   });
 
   it('refuses to call a listed child absent (unqueryable stays fail-closed)', () => {
