@@ -155,6 +155,18 @@ describe('manager renderer states', () => {
     expect(recovered.jobs).toEqual([]);
   });
 
+  it('a successful list envelope cannot claim freshness while Core is disconnected', () => {
+    const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
+    const contradictory = {
+      ...jobListDocument(),
+      connection: 'DISCONNECTED',
+    } as unknown as ManagerJobListDocument;
+    const next = applyList(seeded, contradictory);
+    expect(next.snapshotFreshness).toBe('stale');
+    expect(next.connection).toBeNull();
+    expect(next.jobs).toEqual([presentRow()]);
+  });
+
   it('an unexpected document makes a previously successful snapshot stale', () => {
     const seeded = applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()] }));
     const forged = {
@@ -296,6 +308,32 @@ describe('preview dialog state (keyboard flow model)', () => {
     expect(refused.pendingPreview).toBeNull();
     expect(refused.notice?.kind).toBe('error');
     expect(refused.notice?.text).toContain('only http(s) download URLs are admissible');
+  });
+
+  it('discard closes the local preview even when the follow-up index read is refused', () => {
+    const opened = previewOpened(
+      applyList(initialManagerState(), jobListDocument({ jobs: [presentRow()], totalCount: 1 })),
+      preview,
+    );
+    const discarded = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'discard-preview',
+      lineageId: preview.lineageId,
+      routed: false,
+      rejections: [],
+      refusalDetail: null,
+      list: {
+        ok: false,
+        code: 'SHELL_IPC_REFUSED',
+        detail: 'the Core is disconnected; the durable S1 job index could not be read',
+      },
+    });
+    expect(discarded.pendingPreview).toBeNull();
+    expect(discarded.snapshotFreshness).toBe('stale');
+    expect(discarded.connection).toBeNull();
+    expect(discarded.jobs).toEqual([presentRow()]);
+    expect(discarded.totalCount).toBe(1);
   });
 
   it('confirm routes the action and closes the dialog from the fresh list', () => {

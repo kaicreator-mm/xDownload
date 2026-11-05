@@ -135,16 +135,9 @@ function isManagerJobListDocument(value: unknown): value is ManagerJobListDocume
   return (
     value.ok === true &&
     value.document === 'xdownload.desktop.manager.jobs' &&
-    typeof value.connection === 'string' &&
-    [
-      'CONNECTED',
-      'DISCONNECTED',
-      'REJECTED_PROJECTION',
-      'STALE_PROJECTION',
-      'UNPARSEABLE_PROJECTION',
-      'UNCONFIGURED',
-      'REFUSED',
-    ].includes(value.connection) &&
+    // DesktopManager emits a successful list only after a fresh Core index read.
+    // Any non-CONNECTED word contradicts ok=true and must fail closed.
+    value.connection === 'CONNECTED' &&
     Array.isArray(value.jobs) &&
     value.jobs.every(isManagerJobRowDocument) &&
     Number.isSafeInteger(value.totalCount) &&
@@ -253,7 +246,11 @@ export function applyAction(
       pendingPreview: list.pendingPreview,
     };
   }
-  if (answer.action !== 'discard-preview') {
+  if (answer.action === 'discard-preview') {
+    // The main process clears its local draft before attempting the follow-up
+    // index read. A refused/malformed list must not leave a stale confirm dialog.
+    nextState = { ...nextState, pendingPreview: null };
+  } else {
     if (answer.rejections.length > 0) {
       const first = answer.rejections[0];
       nextState = {
