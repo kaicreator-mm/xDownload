@@ -216,6 +216,20 @@ describe('#316 registry query failure classification', () => {
       registrationPointsToExpectedManifest(probe, 'C:\\Users\\Expected\\manifest.json'),
     ).toBe(false);
   });
+  it('does not mistake a child-key default value for the host registration value', () => {
+    const raw = [
+      'HKEY_CURRENT_USER\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker',
+      '    OtherValue    REG_SZ    retained-value',
+      '',
+      'HKEY_CURRENT_USER\\\\Software\\\\Google\\\\Chrome\\\\NativeMessagingHosts\\\\com.xdownload.broker\\\\child',
+      '    (Default)    REG_SZ    C:\\\\Users\\\\Jane Doe\\\\child-manifest.json',
+    ].join('\\n');
+    const probe = parseWindowsRegistrationProbe(raw);
+
+    expect(probe.registered).toBe(true);
+    expect(probe.manifestPath).toBeNull();
+  });
+
 });
 
 describe('#316 Native Host smoke manifest ownership and cleanup', () => {
