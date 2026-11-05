@@ -1,8 +1,8 @@
 /**
  * #179 install binding entry tests. Pure binding logic runs on every
- * platform; the Windows registry round-trip is gated to win32 and uses a
- * throwaway host name so the machine is always left as found (the real
- * com.xdownload.broker key is never touched by these tests).
+ * platform; the Windows registry round-trip is explicit opt-in, win32-only,
+ * and uses a throwaway host name. The real com.xdownload.broker key is never
+ * touched by the registry integration test.
  */
 import fs from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -229,7 +229,6 @@ describe('#316 registry query failure classification', () => {
     expect(probe.registered).toBe(true);
     expect(probe.manifestPath).toBeNull();
   });
-
 });
 
 describe('#316 Native Host smoke manifest ownership and cleanup', () => {
