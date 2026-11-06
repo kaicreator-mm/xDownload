@@ -105,6 +105,20 @@ review_response:
         genuine grant proceeds through the Extensions-menu mechanism under the
         SAME predicate (single-match and delivered guarded clicks proven in
         r8-6/r8-7). No input mechanism outside genuine guarded UIA was added.
+      environment_fact_2: >-
+        Chrome 153 zh-CN ALSO appends a dynamic per-site access hint suffix to
+        the Extensions-menu action row's accessible Name ('xDownload Browser
+        Integration、每次访问时都询问。选择即可更改网站权限' — evidence
+        grant-r8-rr4/uia-extensions-menu.json; grant-r8-6/7 observed the bare
+        name earlier the same day), so exact-equality could never match. The
+        menu-row documented form is therefore the manifest action name as an
+        ORDINAL PREFIX (optionally followed by Chrome's hint suffix), mirrored
+        Node-side and PowerShell-side in the same shared predicate, verified
+        against the rr4 dump: the suffixed action row uniquely matches (Invoke,
+        no Toggle/ExpandCollapse) while the per-site toggle row ('允许在此网站上
+        使用"…"'), the quote-prefixed more-options row, and the pinned button
+        (different prefix, ExpandCollapse-only) all stay excluded. Exactly-one
+        cardinality unchanged; predicate self-test extended to 19 cases.
     - id: P2-01
       finding: >-
         Contradictory/stale handoff metadata in this manifest: pre_ci said
