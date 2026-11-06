@@ -3,11 +3,14 @@
  *
  * Stands up the REAL seam authority (the same `createCoreSeamServer` +
  * `createLoopbackServerTransport` wiring the packaged Core host uses) as the
- * "existing Core" for the shell to connect to. It carries NO lanes and NO
- * persistence: commands fail closed at the seam exactly as a bare Core
- * would; the READ_PROJECTION path answers peer-authorized rejections for
- * unknown aggregates — which is precisely the truthful "Core answered"
- * signal the shell's liveness probe observes.
+ * "existing Core" for the shell to connect to. It carries NO lanes. Its only
+ * durability is the accepted-command journal port (R8: in-memory, per
+ * process) so the durable S1 job index the desktop manager reads stays
+ * servable exactly as on a real Core; beyond that journal, commands fail
+ * closed at the seam exactly as a bare Core would; the READ_PROJECTION path
+ * answers peer-authorized rejections for unknown aggregates — which is
+ * precisely the truthful "Core answered" signal the shell's liveness probe
+ * observes.
  *
  * This harness runs in its OWN process, like the real Core: the shell never
  * composes a per-surface Core authority.
@@ -25,6 +28,7 @@
 import process from 'node:process';
 import {
   createCoreSeamServer,
+  createInMemorySeamJournal,
   createLoopbackServerTransport,
   currentSeamSchemaIdentity,
   makePeerInstallId,
@@ -117,7 +121,30 @@ const expectedPeer: ExpectedPeerScope = {
   allowedSurfaces: ['DESKTOP_UI'],
 };
 
-const seam = createCoreSeamServer({ expectedPeer });
+// R8: the fixture Core now installs the accepted-command journal port. The
+// post-integration WIP manager reads the durable S1 job index (T01
+// LIST_S1_JOB_PROJECTIONS); a bare journal-less Core truthfully rejects that
+// query (JOB_PROJECTION_UNAVAILABLE) and the renderer refuses to render any
+// row. The official in-memory journal implements the same port the packaged
+// Core host wires (FileBackedSeamJournal in production): fixture durability is
+// per-process, never across restarts — no persistence claim beyond that.
+// R8: the S1 direct-acquisition beginner port is the admission gate the
+// packaged Core wires to its transfer runtime; absent, EXECUTE_S1_DIRECT_
+// ACQUISITION fails closed and the durable S1 index never lists the
+// submitted lineage. The fixture registers the port with a deliberately
+// no-op begin(): the S1 command is admitted and journaled exactly as in
+// production, but no transfer ever starts — zero real downloads and zero
+// Native Host calls stay true, and the ACTIVE lineage stays honestly
+// in-progress. Terminal lineages still arrive only through the same-seam
+// PROJECT_TERMINAL_RESULT injection after real admission, or through the
+// real renderer Cancel control.
+const seam = createCoreSeamServer({
+  expectedPeer,
+  journal: createInMemorySeamJournal(),
+  s1DirectAcquisition: {
+    begin: () => undefined,
+  },
+});
 if (!seam.ok) {
   fail(`seam composition refused: ${seam.diagnostics.map((d) => d.code).join(', ')}`);
 }
@@ -173,6 +200,11 @@ function terminalFixtureCommand(submit: Record<string, unknown>, revision: numbe
 
 const transport = createLoopbackServerTransport({ host: argv.host, port: argv.port });
 
+// Accepted SUBMIT_CONTRACT envelopes per aggregate, retained so the
+// R8 S1-ordered terminal injection can rebuild the fixture terminal command
+// from the original contract payload (the S1 envelope carries no scope).
+const submitEnvelopes = new Map<string, Record<string, unknown>>();
+
 transport
   .start({
     onFrame: (connection, frame) => {
@@ -181,17 +213,44 @@ transport
         const envelope = JSON.parse(frame) as Record<string, unknown>;
         const isSubmit =
           envelope['kind'] === 'command' && envelope['commandType'] === 'SUBMIT_CONTRACT';
+        const isS1Execute =
+          envelope['kind'] === 'command' &&
+          envelope['commandType'] === 'EXECUTE_S1_DIRECT_ACQUISITION';
         if (isSubmit && response.outcome !== 'ACCEPTED') {
           fail(`fixture submit rejected: ${JSON.stringify(response)}`);
         }
+        if (isS1Execute && response.outcome !== 'ACCEPTED') {
+          fail(`fixture s1 execution rejected: ${JSON.stringify(response)}`);
+        }
+        if (isSubmit && response.outcome === 'ACCEPTED') {
+          submitEnvelopes.set(String(envelope['aggregateId']), envelope);
+          emitFixtureEvent({
+            event: 'FIXTURE_SUBMIT',
+            fixture: argv.fixture,
+            aggregateId: envelope['aggregateId'],
+            projection: seam.value.inspectProjection(String(envelope['aggregateId'])),
+          });
+        }
         if (
-          isSubmit &&
+          isS1Execute &&
           (argv.fixture === 'COMPLETE' || argv.fixture === 'FAILED') &&
           response.outcome === 'ACCEPTED'
         ) {
-          // Inject only AFTER real submit admission, through the same seam.
+          // R8: inject only AFTER the S1 execution admission, through the
+          // same seam. Production truth: a lineage terminal is recorded only
+          // after the accepted EXECUTE_S1 journal commit (the runtime's
+          // recordExecutedTerminal path), and the post-rebuild desktop
+          // manager lists rows from the durable S1 index — so injecting on
+          // the earlier contract acceptance would reject the S1 command
+          // (lineage no longer ACTIVE) and the row would never exist.
+          const submitEnvelope = submitEnvelopes.get(String(envelope['aggregateId']));
+          if (submitEnvelope === undefined) {
+            fail(
+              `fixture terminal requested for aggregate '${String(envelope['aggregateId'])}' without an accepted submit`,
+            );
+          }
           const terminalResponse = seam.value.handleFrame(
-            terminalFixtureCommand(envelope, Number(response.currentRevision ?? 1)),
+            terminalFixtureCommand(submitEnvelope, Number(response.currentRevision ?? 1)),
           );
           emitFixtureEvent({
             event: 'FIXTURE_TERMINAL',
@@ -201,14 +260,6 @@ transport
           if (terminalResponse.outcome !== 'ACCEPTED') {
             fail(`fixture terminal rejected: ${JSON.stringify(terminalResponse)}`);
           }
-        }
-        if (isSubmit && response.outcome === 'ACCEPTED') {
-          emitFixtureEvent({
-            event: 'FIXTURE_SUBMIT',
-            fixture: argv.fixture,
-            aggregateId: envelope['aggregateId'],
-            projection: seam.value.inspectProjection(String(envelope['aggregateId'])),
-          });
         }
       }
       connection.send(JSON.stringify(response));

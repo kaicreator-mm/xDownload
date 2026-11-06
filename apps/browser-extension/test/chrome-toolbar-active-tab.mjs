@@ -206,6 +206,16 @@ for (const required of ['manifest.json', 'popup.html', 'background.service-worke
     process.exit(EXIT.FAIL);
   }
 }
+// R8: the extension action's exact accessible Name (verbatim manifest name).
+// The toolbar/menu UIA selectors match this exactly instead of a wildcard so
+// the per-site toggle and more-options rows in Chrome's Extensions menu can
+// never dilute the uniqueness gate.
+const manifestJson = JSON.parse(fs.readFileSync(path.join(extensionDir, 'manifest.json'), 'utf8'));
+const actionName = typeof manifestJson.name === 'string' ? manifestJson.name : null;
+if (actionName === null || actionName === '') {
+  console.error(`FAIL: extension manifest has no usable name: ${extensionDir}`);
+  process.exit(EXIT.FAIL);
+}
 
 const result = {
   mode: MODE,
@@ -682,6 +692,7 @@ exit 0
 const UIA_TOOLBAR_ACTION_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$OutPath,
+  [string]$ActionName = 'xDownload Browser Integration',
   [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
@@ -865,13 +876,26 @@ if ($selfTestInspectionError) {
   Write-Output 'UIA_TOOLBAR_SELFTEST_EXIT=0'
   exit 0
 }
+# R8 selector: Chrome 153's visible Extensions menu exposes three UIA
+# elements matching the wildcard '*xDownload*' (the action row, the per-site
+# access toggle and the per-extension more-options button), so a wildcard
+# uniqueness gate can never pass. The action row is identified exactly: its
+# accessible Name equals the loaded manifest action name verbatim, it is
+# invokable, and it is neither a toggle nor an expand-collapse control.
+# Any other cardinality still exits 5 (NOT_RUN), never a guessed click.
+$invokePatternId = [System.Windows.Automation.InvokePatternIdentifiers].Pattern.Id
+$togglePatternId = [System.Windows.Automation.TogglePatternIdentifiers].Pattern.Id
+$expandCollapsePatternId = [System.Windows.Automation.ExpandCollapsePatternIdentifiers].Pattern.Id
 $matches = @()
 foreach ($window in (Get-ChromeWindows)) {
   $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
   foreach ($element in $elements) {
     $current = $element.Current
-    if ($current.Name -like '*xDownload*' -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
-      $matches += [pscustomobject]@{ Element = $element; Window = $window }
+    if ($current.Name -ceq $ActionName -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
+      $patternIds = @($current.GetSupportedPatterns() | ForEach-Object { $_.Id })
+      if ($patternIds -contains $invokePatternId -and -not ($patternIds -contains $togglePatternId) -and -not ($patternIds -contains $expandCollapsePatternId)) {
+        $matches += [pscustomobject]@{ Element = $element; Window = $window }
+      }
     }
   }
 }
@@ -1324,7 +1348,7 @@ async function main() {
       try {
         const rows = await dumpUia(chrome.pid, 'uia-before-toolbar');
         const candidates = rows.filter(
-          (row) => row.name?.includes('xDownload') && !row.isOffscreen && row.width > 0,
+          (row) => row.name === actionName && !row.isOffscreen && row.width > 0,
         );
         if (candidates.length === 1) {
           await clickUia(chrome.pid, candidates[0].name, candidates[0].controlType);
@@ -1334,6 +1358,8 @@ async function main() {
             String(chrome.pid),
             '-OutPath',
             path.join(evidenceDir, 'uia-extensions-menu.json'),
+            '-ActionName',
+            actionName,
           ]);
           result.toolbarClicks += 1;
           log('genuine-toolbar-click', {
