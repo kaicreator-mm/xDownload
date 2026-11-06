@@ -1,56 +1,76 @@
-pack_id: "V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS-R3@ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
+pack_id: "V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS-R8@3821ee8606963ec11cc20aad279c4bbc9d76a48d"
 task_id: "v022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS-01"
 repository: "kaicreator-mm/xDownload"
 version: "v0.2.2"
 parent_issue: "#305"
 task_issue: "#332"
-tracking_issue: "#337"
 repair_of:
-  integrated_candidate: "fe15ee72107d2c30d56a62d103a8a22c558ee26d"
-  integrated_wip_head: "ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
-  integrated_wip_tree: "870657c54eecae9721a6b06221828a6bdfdfbb0d"
-  review_comment: "#332 comment 6631426846"
-  finding: "P2-01: UIA top-level window inspection exceptions are swallowed; screenshot privacy check can incorrectly treat an uninspected window as non-occluding."
+  candidate_head: "3821ee8606963ec11cc20aad279c4bbc9d76a48d"
+  candidate_tree: "09736a726e822546e6be13f44d9ad9345df2885e"
+  independent_review_id: "local-windows-builder-first-genuine-runs"
+  review_verdict: "FINDING / P0=0 / P1=2 / P2=0"
+  finding: >-
+    Two harness defects surfaced by the first genuine post-integration runs on
+    current WIP 3821ee8: (1) Desktop terminal fixtures 4/4 FAIL
+    (admitted-row timeout) — the fixture seam Core installs no accepted-command
+    journal, so the T01 LIST_S1_JOB_PROJECTIONS query introduced by the WIP
+    manager rebuild is truthfully rejected (JOB_PROJECTION_UNAVAILABLE) and the
+    renderer refuses to render any row; (2) genuine toolbar-action
+    enumeration exits 5 with MATCH_COUNT=3 because Chrome 153's visible
+    Extensions menu exposes three UIA elements matching the wildcard
+    '*xDownload*' (the action row, the per-site access toggle, and the
+    per-extension more-options button), so the uniqueness gate can never pass
+    in this environment.
 base_branch: "wip/v0.2.2-ui-rebuild-r0"
-base_sha: "ea0eecd65a1c317fc43e9eb20356c5b5f9d6dbcd"
-base_tree: "870657c54eecae9721a6b06221828a6bdfdfbb0d"
+base_sha: "3821ee8606963ec11cc20aad279c4bbc9d76a48d"
+base_tree: "09736a726e822546e6be13f44d9ad9345df2885e"
 task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS.md@planning/v0.2.2-ui-r0@791fe62fa50393227ad10f252f6519458e9cbc0d#blob:8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d"
 task_pack_blob: "8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d"
-execution_branch: "execution/v0.2.2-u06-terminal-activetab-harness-r3"
-task_branch: "execution/v0.2.2-u06-terminal-activetab-harness-r3"
-execution_profile: "LOCAL_BUILDER"
-execution_environment: "LOCAL"
+r7_manifest_blob: "eef9be45d956d708e366f8a070e440bca2f9e727"
+r7_claim_comment: "xDownload#332 comment 6642988631 (generation 7)"
+execution_branch: "execution/v0.2.2-u06-terminal-activetab-harness-r8"
+execution_pack_path: ".agent/execution/V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS-01/MANIFEST.yaml"
+execution_profile: "LOCAL_BUILDER_BOUNDED_SOURCE_REPAIR"
+execution_environment: "LOCAL_WINDOWS_BUILDER_INTERACTIVE_DESKTOP_COORDINATED"
 agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
 pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
-owner_authorization_ref: "xDownload#305 comment 6586392596; current Owner Delivery-First continuation"
+owner_authorization_ref: "xDownload#305 comment 6586392596; Owner Delivery-First continuation #6676426596; Owner live instruction to complete local verification and repair"
 dispatch_admission: "OWNER_AUTHORIZED_IN_SCOPE_REPAIR_OF_INTEGRATED_U06_HARNESS"
 claim:
   protected_claim_key: "kaicreator-mm/xDownload#332:builder:__default__"
-  claim_generation: 3
-  supersedes_claim_generation: 2
+  claim_generation: 8
+  supersedes_claim_generation: 7
   required_event: "DISPATCH_CLAIMED"
+  claim_owner: "other:zcode-xdownload-u06-r8"
   source_mutation_before_accepted_claim: false
 allowed_write_set:
+  - "apps/desktop-shell/test/smoke/harness-core.ts"
   - "apps/browser-extension/test/chrome-toolbar-active-tab.mjs"
-goal: "Make the optional Chrome-window screenshot privacy check fail closed when any visible top-level window cannot be inspected, then perform the genuine activeTab toolbar grant run only on an unlocked interactive Windows desktop."
+repair_scope:
+  - "Install the official in-memory accepted-command journal (createInMemorySeamJournal from @xdownload/core-seam) into the fixture seam Core so the T01 durable S1 job index query is servable; document that the fixture Core keeps per-process in-memory durability (bare Core plus journal port) with no cross-restart persistence claim."
+  - "Keep fixture terminal-injection semantics unchanged: PROJECT_TERMINAL_RESULT is still injected through the SAME seam only after a real SUBMIT_CONTRACT acceptance, and CANCELLED still exercises the real renderer Cancel control."
+  - "Replace the toolbar-action UIA selector's wildcard name uniqueness gate ('*xDownload*', count==1) with an exact-match selector: visible elements whose Name equals the loaded manifest action name AND that expose an invoke pattern, excluding toggle and expand-collapse controls; still require exactly one match and still NOT_RUN (exit 5) on any other cardinality."
+  - "Preserve all R3-R7 fail-closed behavior: desktop precheck, privacy window inspection, foreground admission before any input, single down/up with finally cleanup, zero fallback (no CDP popup, no popup URL, no openPopup, no DOM events, no force focus)."
 acceptance:
-  - "Any UIA exception while reading a visible top-level window makes the screenshot privacy state UNKNOWN and skips screenshot capture; it must never be treated as a non-occluding window."
-  - "Preserve foreground-window and overlap checks; never widen screenshot bounds or fall back to full-screen capture."
-  - "Add focused regression evidence for the inspection-error path using a test seam or self-test contained in the same allowed file; do not add a fourth path."
-  - "Preserve genuine visible toolbar-action click as the only positive activeTab grant source; no direct popup URL, CDP popup API or chrome.action.openPopup fallback."
-  - "Preserve fresh temporary Chrome profile, exclusive fresh --out directory, worker-message and permissions.request instrumentation, manifest integrity predicate, and zero-side-effect tab-switch assertions."
-  - "Desktop fixtures and Browser denial control remain unchanged; no production code, permission, manifest, IPC, renderer or Native Host changes."
-  - "Only the one frozen path may change."
-  - "Record exact HEAD/tree, focused evidence, Node24 syntax, changed-file Prettier, typecheck, ci:verify and exact-SHA Woodpecker Build."
-  - "Run grant mode only if Windows is unlocked and input-capable; if not, record NOT_RUN with exit 3 and exact blocker. Never fabricate a positive grant."
+  - "Only apps/desktop-shell/test/smoke/harness-core.ts and apps/browser-extension/test/chrome-toolbar-active-tab.mjs change; apps/desktop-shell/test/smoke/electron-shell-smoke.mjs and every other path stay byte-identical."
+  - "Desktop fixtures ACTIVE/COMPLETE/FAILED/CANCELLED run 4/4 PASS against the real Core Seam and the current WIP renderer without any renderer/main change."
+  - "Fixture terminal injection still happens only after real submit admission through the same seam; zero real downloads and zero Native Host calls remain asserted."
+  - "Toolbar enumeration yields exactly one target under Chrome 153 zh-CN Extensions menu layout; non-unique or zero targets still return NOT_RUN with truthful counters."
+  - "Genuine grant attempt remains at most one per environment attempt and only with the target Chrome window proven foreground; a denied foreground returns NOT_RUN with zero input."
+  - "No CDP/DOM/openPopup/direct-popup fallback, no forced focus activation, no manifest/permission/worker/popup source change."
+  - "Node24 syntax, changed-file Prettier, both PowerShell foreground self-tests 8/8, desktop-precheck 6/6, privacy inspection-error regression, Desktop fixtures 4/4, Browser denial control, typecheck and pnpm run ci:verify pass."
 pre_ci:
-  - "Verify current WIP and execution branch both equal base HEAD/tree above before claim."
-  - "Re-read original frozen Task Pack blob 8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d."
-  - "Publish accepted generation-3 CAS DISPATCH_CLAIMED before source mutation."
-  - "Run Node24 syntax and changed-file Prettier before CI."
-  - "Builder owns repair, local validation and eligible grant attempt continuously; do not dispatch standalone LOCAL_VALIDATION."
+  - "Re-read current WIP HEAD/tree, Issue #332 Claim generations 1-7, R7 manifest and frozen Task Pack."
+  - "Verify exact repair base 3821ee8606963ec11cc20aad279c4bbc9d76a48d / tree 09736a726e822546e6be13f44d9ad9345df2885e."
+  - "Publish and read back the generation-8 CAS DISPATCH_CLAIM bound to this manifest blob before source mutation."
+  - "Apply only the two-path repair; run Node24 syntax and Prettier before tests."
+  - "Local Windows Builder validates PowerShell self-tests, Desktop fixtures and all existing gates in one continuous session."
 forbidden:
-  - "all paths except apps/browser-extension/test/chrome-toolbar-active-tab.mjs"
-  - "manifest.json, service worker, popup source, permissions, IPC, renderer, production Core/Host"
-  - "Native Host, registry, real downloads, external byte requests, persistent Chrome profile mutation"
-  - "main, version/v0.2.1, tag, release, deployment"
+  - "Any source path except the two allowed_write_set files."
+  - "Any production Browser/manifest/permission/worker/popup, Desktop renderer/main, Core/adapter/Host, package manifest/lockfile, CI or Native Host change."
+  - "Any native mouse-down without guaranteed mouse-up cleanup."
+  - "Any native mouse input when the target HWND is not proven foreground before the first side effect."
+  - "CDP popup API, direct popup URL, chrome.action.openPopup, DOM synthetic event or alternate input path."
+  - "Fabricated terminal fixtures, fabricated index rows, or any success claim not backed by the real Core Seam and real renderer DOM."
+  - "Real download, external network bytes, WIP merge, main/version mutation, tag, release or deployment."
+status: "READY_FOR_GENERATION_8_CAS_CLAIM"
