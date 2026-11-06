@@ -22,8 +22,8 @@ repair_of:
     per-extension more-options button), so the uniqueness gate can never pass
     in this environment.
 base_branch: "wip/v0.2.2-ui-rebuild-r0"
-base_sha: "3821ee8606963ec11cc20aad279c4bbc9d76a48d"
-base_tree: "09736a726e822546e6be13f44d9ad9345df2885e"
+base_sha: "02abaa76d62002693c88f52ce3ebf2cf610be139"
+base_tree: "bb5e926d9549547fe36c07cb89986388ff01ae3c"
 task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS.md@planning/v0.2.2-ui-r0@791fe62fa50393227ad10f252f6519458e9cbc0d#blob:8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d"
 task_pack_blob: "8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d"
 r7_manifest_blob: "eef9be45d956d708e366f8a070e440bca2f9e727"
@@ -38,8 +38,8 @@ owner_authorization_ref: "xDownload#305 comment 6586392596; Owner Delivery-First
 dispatch_admission: "OWNER_AUTHORIZED_IN_SCOPE_REPAIR_OF_INTEGRATED_U06_HARNESS"
 claim:
   protected_claim_key: "kaicreator-mm/xDownload#332:builder:__default__"
-  claim_generation: 8
-  supersedes_claim_generation: 7
+  claim_generation: 9
+  supersedes_claim_generation: 8
   required_event: "DISPATCH_CLAIMED"
   claim_owner: "other:zcode-xdownload-u06-r8"
   source_mutation_before_accepted_claim: false
@@ -267,4 +267,24 @@ review_response:
         nativeCompletenessAudit missingImports=[] for both helpers,
         desktop-precheck, privacy-inspection-error, Desktop fixtures 4/4,
         denial control, typecheck, pnpm run ci:verify.
-status: "GENERATION_8_R11_REPAIR_DELIVERED_AWAITING_EXACT_HEAD_WINDOWS_VALIDATION_GENUINE_GRANT_AND_FINAL_INDEPENDENT_REVIEW"
+rebase_record:
+  reason: >-
+    The WIP integration base advanced when PR #390 (U00 renderer quality
+    repairs) was merged into wip/v0.2.2-ui-rebuild-r0 (3821ee86 ->
+    02abaa76). Owner handoff xDownload#332 comment 6694980777 directs one
+    continuous LOCAL_BUILDER session: rebind this SAME Task Pack to the
+    current WIP under a NEW generation-9 Claim — a base rebind, not a new
+    product task and not a new Task Pack; the original three-path
+    allowed_write_set is unchanged.
+  previous_base: "3821ee8606963ec11cc20aad279c4bbc9d76a48d"
+  previous_base_tree: "09736a726e822546e6be13f44d9ad9345df2885e"
+  new_base: "02abaa76d62002693c88f52ce3ebf2cf610be139"
+  new_base_tree: "bb5e926d9549547fe36c07cb89986388ff01ae3c"
+  wip_pipeline_on_new_base: "Woodpecker repo 36 pipeline #74 SUCCESS @ 02abaa76"
+  merge_base_of_branch_and_new_base: "3821ee8606963ec11cc20aad279c4bbc9d76a48d"
+  branch_unique_commits_to_replay: 18
+  next_environment_attempt: "3 (attempt 1: locked desktop; attempt 2: r11-grant on fe0f5ef, cursor_position_unreadable zero-input failure)"
+  claim_event_ref: "xDownload#332 generation-9 DISPATCH_CLAIMED (posted after this amendment; binding blob is this file's content sha256 per git blob addressing, stable across the rebase replay)"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS.md@planning/v0.2.2-ui-r0@791fe62fa50393227ad10f252f6519458e9cbc0d#blob:8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d"
+
+status: "GENERATION_9_REBASE_DELIVERED_AWAITING_EXACT_HEAD_GATES_GENUINE_GRANT_ATTEMPT_3_AND_FRESH_INDEPENDENT_FINAL_REVIEW"
