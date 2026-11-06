@@ -271,7 +271,7 @@ function trapDialogTab(event: KeyboardEvent, root: HTMLElement): void {
   const last = controls[controls.length - 1];
   if (!first || !last) return;
   const active = document.activeElement;
-  if (event.shiftKey && (active === first || !root.contains(active))) {
+  if (event.shiftKey && (active === first || active === root || !root.contains(active))) {
     event.preventDefault();
     last.focus();
   } else if (!event.shiftKey && (active === last || !root.contains(active))) {
@@ -880,7 +880,16 @@ function wire(): void {
   // (overlay ⇄ non-overlapping side panel) while it is open.
   window.addEventListener('resize', () => {
     if (!detailsOpen) return;
-    applyDetailsModality(byId('job-details'), isOverlayViewport());
+    const panel = byId('job-details');
+    const wasModal = detailsModal;
+    const overlay = isOverlayViewport();
+    applyDetailsModality(panel, overlay);
+    // If a wide non-modal disclosure becomes an overlay, its previous
+    // workspace focus target has just become inert. Move focus into the
+    // dialog, but preserve an existing focus target already inside it.
+    if (overlay && !wasModal && !panel.contains(document.activeElement)) {
+      panel.focus();
+    }
   });
   refreshTimer = window.setInterval(() => {
     if (document.visibilityState === 'visible' && !state.busy) {
