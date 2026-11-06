@@ -479,7 +479,9 @@ exit 0
 // move and again before mouse-down, a read-only WindowFromPoint/GA_ROOT
 // hit-test must resolve the exact point to a window of the TARGET Chrome
 // process (Chrome's own popups stay admitted); any foreign or unreadable hit
-// denies with zero mouse input and a recorded POINT_PID.
+// denies with zero mouse input and a recorded POINT_PID. Immediately before
+// mouse-down, GetCursorPos must also still equal the intended UIA center; the
+// point hit-test alone is insufficient if the operator moves the pointer.
 // Under -SelfTest native APIs are never touched: readback is scripted and
 // input advances seam counters only.
 // --------------------------------------------------------------------------
@@ -492,6 +494,7 @@ $script:seamMouseDown = 0
 $script:seamMouseUp = 0
 $script:seamReadbackScript = @()
 $script:seamPointHitScript = @()
+$script:seamCursorReadScript = @()
 $script:seamSetCursorPosResult = $true
 function Read-Foreground {
   if ($selfTestGuard) {
@@ -553,6 +556,35 @@ function Assert-ClickPoint($targetHwnd, $x, $y) {
     return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_unreadable'; pointPid = 0 }
   }
 }
+function Assert-CursorPoint($x, $y) {
+  # mouse_event uses the CURRENT cursor position, not the requested SetCursorPos
+  # coordinates. Re-read it immediately before mouse-down so operator movement
+  # cannot redirect the genuine click to a different control or window.
+  try {
+    if ($selfTestGuard) {
+      $scripted = 'target'
+      if ($script:seamCursorReadScript.Count -gt 0) {
+        $scripted = $script:seamCursorReadScript[0]
+        $script:seamCursorReadScript = @($script:seamCursorReadScript | Select-Object -Skip 1)
+      }
+      if ($scripted -eq '__THROW__') { throw 'synthetic cursor readback failure' }
+      if ($scripted -eq 'target') {
+        return [pscustomobject]@{ verdict = 'granted' }
+      }
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_changed' }
+    }
+    $actual = New-Object U06NativePoint
+    if (-not $script:Native::GetCursorPos([ref]$actual)) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_unreadable' }
+    }
+    if ($actual.X -ne [int]$x -or $actual.Y -ne [int]$y) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_changed' }
+    }
+    return [pscustomobject]@{ verdict = 'granted' }
+  } catch {
+    return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_unreadable' }
+  }
+}
 function Assert-Foreground($targetHwnd) {
   if ($targetHwnd -eq [IntPtr]::Zero) { return 'denied' }
   # Readback-only admission: this helper NEVER requests activation or changes
@@ -595,6 +627,10 @@ function Send-NativeClick($targetHwnd, $x, $y) {
   $point2 = Assert-ClickPoint $targetHwnd $x $y
   if ($point2.verdict -ne 'granted') {
     return [pscustomobject]@{ sent = $false; reason = $point2.reason; pointPid = $point2.pointPid; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  $cursorPoint = Assert-CursorPoint $x $y
+  if ($cursorPoint.verdict -ne 'granted') {
+    return [pscustomobject]@{ sent = $false; reason = $cursorPoint.reason; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
 
   $mouseDownAttempted = $false
@@ -681,13 +717,14 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   $cases = @()
   $target = [IntPtr]424242
   $other = [IntPtr]1111
-  function New-Case($name, $readbacks, $cursorResult, $clickTarget, $pointHits = @()) {
+  function New-Case($name, $readbacks, $cursorResult, $clickTarget, $pointHits = @(), $cursorReads = @()) {
     $script:seamSetCursorPos = 0
     $script:seamMouseEvent = 0
     $script:seamMouseDown = 0
     $script:seamMouseUp = 0
     $script:seamReadbackScript = @($readbacks)
     $script:seamPointHitScript = @($pointHits)
+    $script:seamCursorReadScript = @($cursorReads)
     $script:seamSetCursorPosResult = $cursorResult
     $r = Invoke-GuardedClick $clickTarget 10 10
     [pscustomobject]@{
@@ -740,6 +777,13 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   # (k) R9: the hit-test itself is unreadable: fail closed with zero input
   $c = New-Case 'click_point_unreadable' @($target, $target) $true $target @('__THROW__')
   $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'click_point_unreadable' -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (l) R10: the operator moves the cursor after SetCursorPos; deny before
+  # mouse-down so mouse_event cannot click a different screen coordinate.
+  $c = New-Case 'cursor_position_changed_before_mouse_down' @($target, $target, $target) $true $target @('target', 'target') @('foreign')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'cursor_position_changed' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0 -and $c.mouseDownCalls -eq 0)
+  # (m) R10: unreadable cursor readback also denies before mouse-down.
+  $c = New-Case 'cursor_position_unreadable' @($target, $target, $target) $true $target @('target', 'target') @('__THROW__')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'cursor_position_unreadable' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0 -and $c.mouseDownCalls -eq 0)
   $allPass = @($cases | Where-Object { -not $_.pass }).Count -eq 0
   [pscustomobject]@{ ok = [bool]$allPass; cases = $cases } | ConvertTo-Json -Depth 4 | Set-Content -Path $SelfTestOutPath -Encoding UTF8
   if (-not $allPass) { exit 1 }
@@ -837,6 +881,7 @@ public struct U06NativePoint { public int X; public int Y; }
 public static class U06Mouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out U06NativePoint point);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(U06NativePoint point);
