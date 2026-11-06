@@ -889,6 +889,27 @@ function wire(): void {
     // dialog, but preserve an existing focus target already inside it.
     if (overlay && !wasModal && !panel.contains(document.activeElement)) {
       panel.focus();
+      // Chromium drops programmatic focus() calls while an OS window resize
+      // is still settling (verified with real window resizes: the
+      // synchronous call and a setTimeout(0) re-assert are both silently
+      // ignored, and the just-inerted workspace kicks the stale row-button
+      // focus to <body> a task after the event). Keep re-asserting on
+      // animation frames until the dialog actually owns focus or a short
+      // deadline passes. Only ever claim focus from the document body —
+      // never from a control that legitimately holds it — so a focus
+      // target already inside the panel (or anywhere else) is not stolen.
+      const reassertDeadline = performance.now() + 2000;
+      const reassertDialogFocus = (): void => {
+        if (!detailsOpen || !detailsModal) return;
+        const active = document.activeElement;
+        if (active !== null && panel.contains(active)) return;
+        if (performance.now() >= reassertDeadline) return;
+        if (active === document.body || active === document.documentElement || active === null) {
+          panel.focus();
+        }
+        window.requestAnimationFrame(reassertDialogFocus);
+      };
+      window.requestAnimationFrame(reassertDialogFocus);
     }
   });
   refreshTimer = window.setInterval(() => {
