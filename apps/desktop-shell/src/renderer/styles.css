@@ -164,7 +164,7 @@ body {
 .eyebrow {
   font-size: 11px;
   letter-spacing: 0.07em;
-  color: #7b8ba0;
+  color: #5d6b7f;
   text-transform: uppercase;
   font-weight: 700;
   margin: 0 0 7px;
@@ -274,7 +274,7 @@ p {
   font-variant-numeric: tabular-nums;
 }
 .overview-cell small {
-  color: #8999ac;
+  color: #5d6b7f;
   font-size: 11px;
 }
 .task-panel {
@@ -294,7 +294,7 @@ p {
   border-bottom: 1px solid #e9eef5;
 }
 .task-toolbar p {
-  color: #8693a5;
+  color: #5d6b7f;
   font-size: 12px;
   margin: 5px 0 0;
 }
@@ -321,6 +321,10 @@ p {
 }
 .search-control input:focus {
   outline: 0;
+}
+.search-control input::placeholder,
+.field-stack input::placeholder {
+  color: #5d6b7f;
 }
 .search-control:focus-within {
   outline: 2px solid #7ac6ee;
@@ -352,7 +356,7 @@ td:last-child {
 thead th {
   font-size: 11px;
   letter-spacing: 0.03em;
-  color: #788a9d;
+  color: #5d6b7f;
   font-weight: 750;
   background: #fbfcfe;
 }
@@ -402,7 +406,7 @@ tbody tr:hover {
 }
 .status-tag.complete {
   background: #e9f7ef;
-  color: #178255;
+  color: #136b47;
 }
 .status-tag.failed {
   background: #feeff0;
@@ -410,7 +414,7 @@ tbody tr:hover {
 }
 .status-tag.unknown {
   background: #f1f1f4;
-  color: #657286;
+  color: #5d6b7f;
 }
 .row-actions {
   display: flex;
@@ -432,7 +436,7 @@ tbody tr:hover {
 .empty-state {
   text-align: center;
   padding: 52px 15px 63px;
-  color: #76879c;
+  color: #5d6b7f;
 }
 .empty-state h3 {
   font-size: 17px;
@@ -457,7 +461,7 @@ tbody tr:hover {
 }
 .bottom-notice {
   font-size: 11px;
-  color: #92a0b1;
+  color: #5d6b7f;
   margin: 17px 2px;
 }
 .notice {
@@ -519,11 +523,11 @@ tbody tr:hover {
   border-radius: 8px;
   font-size: 23px;
   line-height: 1;
-  color: #667c90;
+  color: #5d6b7f;
 }
 .form-hint {
   font-size: 12px;
-  color: #8090a2;
+  color: #5d6b7f;
 }
 .field-stack {
   display: grid;
@@ -543,7 +547,7 @@ tbody tr:hover {
   padding: 0 12px;
 }
 .field-stack small {
-  color: #8c9aac;
+  color: #5d6b7f;
   line-height: 1.5;
 }
 .folder-picker {
@@ -602,7 +606,7 @@ tbody tr:hover {
 }
 .preview-card > p:not(.eyebrow) {
   font-size: 12px;
-  color: #75869a;
+  color: #5d6b7f;
   margin: 19px 0 5px;
 }
 .value-break {
@@ -639,7 +643,7 @@ tbody tr:hover {
 }
 .detail-block > span {
   font-size: 11px;
-  color: #8d9ba9;
+  color: #5d6b7f;
 }
 .detail-block strong,
 .detail-block p {
@@ -685,6 +689,7 @@ tbody tr:hover {
     bottom: 0;
     z-index: 5;
     box-shadow: -8px 0 28px #091d3026;
+    overflow-y: auto;
   }
   .workspace {
     padding: 22px;
@@ -705,13 +710,12 @@ tbody tr:hover {
   .sidebar-footer {
     display: none;
   }
+  /* F-1/#385: all four filter tabs stay visible without a horizontal
+     scrollbar — the strip wraps into a two-column grid instead. */
   .navigation {
-    display: flex;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 3px;
-  }
-  .nav-item {
-    flex: none;
   }
   .workspace {
     padding: 20px 14px;
@@ -752,10 +756,14 @@ tbody tr:hover {
     border-color: #35455c;
   }
   .overview-cell span,
+  .overview-cell small,
   .task-toolbar p,
   .bottom-notice,
   .field-stack small,
-  .form-hint {
+  .form-hint,
+  .empty-state,
+  .detail-block > span,
+  .connection-pill {
     color: #a2b1c6;
   }
   .overview-cell strong,
@@ -776,6 +784,25 @@ tbody tr:hover {
     background: #1b2738;
     color: #a0b1c6;
   }
+  td {
+    color: #b6c5d6;
+  }
+  .eyebrow {
+    color: #9fb0c4;
+  }
+  .link-button {
+    color: #7ac6ee;
+  }
+  .advanced-form,
+  .technical-info {
+    color: #a8b8ca;
+  }
+  .preview-card > p:not(.eyebrow) {
+    color: #a8b8ca;
+  }
+  .preview-card li {
+    color: #c3d3e3;
+  }
   tbody tr:hover {
     background: #25364d;
   }
@@ -790,6 +817,10 @@ tbody tr:hover {
   .field-stack input {
     color: #e7edf5;
     background: #24354b;
+  }
+  .search-control input::placeholder,
+  .field-stack input::placeholder {
+    color: #a2b1c6;
   }
   .button.outline,
   .row-actions button {

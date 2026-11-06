@@ -17,7 +17,7 @@
     </p>
     <p id="loading" class="initial-loading">正在读取下载任务…</p>
     <div id="app" class="app-shell" hidden>
-      <aside class="sidebar" aria-label="主导航">
+      <aside class="sidebar" id="nav-sidebar" aria-label="主导航">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">↓</span>
           <div><strong>xDownload</strong><small>下载管理器</small></div>
@@ -42,7 +42,7 @@
           <p>任务状态以 Core 返回为准</p>
         </div>
       </aside>
-      <main class="workspace">
+      <main class="workspace" id="workspace-main">
         <header class="topbar">
           <div>
             <p class="eyebrow">工作台 / 下载任务</p>
@@ -125,7 +125,13 @@
           验证；无权威字节数据时不估算速度、百分比或剩余时间。保存位置由 Core 配置管理。
         </p>
       </main>
-      <aside id="job-details" class="detail-panel" aria-labelledby="details-title" hidden>
+      <aside
+        id="job-details"
+        class="detail-panel"
+        aria-labelledby="details-title"
+        tabindex="-1"
+        hidden
+      >
         <div class="panel-heading">
           <div>
             <p class="eyebrow">下载详情</p>

@@ -47,6 +47,8 @@ type TaskFilter = 'all' | 'active' | 'complete' | 'failed';
 let taskFilter: TaskFilter = 'all';
 let searchTerm = '';
 let selectedLineage: string | null = null;
+/** F-4/#387: whether the details panel is currently shown. */
+let detailsOpen = false;
 let addOpen = false;
 const taskDisplayNames = new Map<string, string>();
 
@@ -97,8 +99,20 @@ function taskLabelFromUrl(raw: string): string {
   }
 }
 
+/**
+ * F-5/#388: the row display label carries a privacy-preserving sequence
+ * ordinal (the row's position in the Core's durable-index enumeration,
+ * replayed in submission order on every fresh read), so every row — including
+ * same-host tasks and historical rows after an app restart, for which no
+ * origin URL is held — is visibly and accessibly unique. The observed origin
+ * segment is appended only for tasks submitted through this renderer session;
+ * no URL path, query, credential or raw lineage id is ever shown.
+ */
 function taskLabel(row: ManagerJobRowDocument): string {
-  return taskDisplayNames.get(row.lineageId) ?? '下载任务';
+  const position = state.jobs.findIndex((item) => item.lineageId === row.lineageId) + 1;
+  const sequence = position > 0 ? `任务 ${String(position)}` : '下载任务';
+  const origin = taskDisplayNames.get(row.lineageId);
+  return origin === undefined ? sequence : `${sequence} · ${origin}`;
 }
 
 function progressSummary(row: ManagerJobRowDocument): string {
@@ -249,7 +263,7 @@ function trapDialogTab(event: KeyboardEvent, root: HTMLElement): void {
   if (event.key !== 'Tab') return;
   const controls = [
     ...root.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled])',
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), summary',
     ),
   ].filter((element) => !element.hasAttribute('hidden'));
   if (controls.length === 0) return;
@@ -266,16 +280,99 @@ function trapDialogTab(event: KeyboardEvent, root: HTMLElement): void {
   }
 }
 
+/** F-4/#387: whether the details panel is presented as a modal dialog right now. */
+let detailsModal = false;
+/** F-4/#387: the row control that invoked the details panel (focus restore target). */
+let detailsInvoker: HTMLElement | null = null;
+/**
+ * F-4/#387: the invoking row's lineage id. Refreshes re-create the row
+ * controls on every read, so restore resolves the CURRENT control for the
+ * same aggregate rather than trusting a possibly-detached element reference.
+ */
+let detailsInvokerLineage: string | null = null;
+/**
+ * F-4/#387: at viewport widths where the details panel overlays the
+ * workspace (the ≤1050px fixed-overlay rule) it is presented as a genuine
+ * modal dialog; where it is a non-overlapping side panel it keeps plain
+ * disclosure semantics. Feature-guarded so the Node fake-DOM unit tests
+ * (no matchMedia) deterministically take the non-modal path.
+ */
+const OVERLAY_QUERY = '(max-width: 1050px)';
+
+function isOverlayViewport(): boolean {
+  if (typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia(OVERLAY_QUERY).matches;
+}
+
+/**
+ * F-4/#387: apply or drop the modal dialog semantics of the details panel.
+ * In the modal presentation the panel exposes role=dialog + aria-modal=true
+ * (named by details-title) and every covered background area becomes inert —
+ * unfocusable and unavailable to assistive technology.
+ */
+function applyDetailsModality(panel: HTMLElement, overlay: boolean): void {
+  if (overlay === detailsModal) return;
+  detailsModal = overlay;
+  if (overlay) {
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+  } else {
+    panel.removeAttribute('role');
+    panel.removeAttribute('aria-modal');
+  }
+  for (const id of ['nav-sidebar', 'workspace-main']) {
+    const area = document.getElementById(id);
+    if (area === null) continue;
+    if (overlay) area.setAttribute('inert', '');
+    else area.removeAttribute('inert');
+  }
+}
+
+/** F-4/#387: on close, restore focus to the invoking row control, else to the task search. */
+function restoreDetailsInvokerFocus(): void {
+  const lineage = detailsInvokerLineage;
+  detailsInvokerLineage = null;
+  const invoker = detailsInvoker;
+  detailsInvoker = null;
+  if (lineage !== null && typeof document.querySelector === 'function') {
+    const current = document.querySelector(
+      `#jobs-body button.link-button[data-lineage="${CSS.escape(lineage)}"]`,
+    );
+    if (current !== null) {
+      (current as HTMLElement).focus();
+      return;
+    }
+  }
+  if (invoker !== null && typeof document.contains === 'function' && document.contains(invoker)) {
+    invoker.focus();
+    return;
+  }
+  byId('job-search').focus();
+}
+
+function closeDetails(): void {
+  selectedLineage = null;
+  renderDetails();
+}
+
 function renderDetails(): void {
   const panel = byId('job-details');
   const stale = state.snapshotFreshness === 'stale';
   const current = state.jobs.find((row) => row.lineageId === selectedLineage);
   if (current === undefined) {
+    const wasOpen = detailsOpen;
     selectedLineage = null;
+    detailsOpen = false;
     panel.hidden = true;
+    applyDetailsModality(panel, false);
+    if (wasOpen) restoreDetailsInvokerFocus();
     return;
   }
+  const wasOpen = detailsOpen;
+  const overlay = isOverlayViewport();
   panel.hidden = false;
+  detailsOpen = true;
+  applyDetailsModality(panel, overlay);
   byId('details-title').textContent = taskLabel(current);
   byId('details-status').textContent = stale
     ? `上次成功读取：${statusLabel(current)}`
@@ -290,6 +387,12 @@ function renderDetails(): void {
     : String(current.revision);
   const reason = current.terminal?.stopReason ?? '暂无';
   byId('details-reason').textContent = stale ? `上次成功读取：${reason}` : reason;
+  // F-4/#387: on open in the modal presentation, move focus into the dialog
+  // (the named dialog element itself). Re-renders of an already-open panel
+  // never steal focus.
+  if (!wasOpen && detailsModal) {
+    panel.focus();
+  }
 }
 
 function byId(id: string): HTMLElement {
@@ -408,6 +511,22 @@ function renderPreview(): void {
 }
 
 function renderJobs(): void {
+  // F-4/#387 keyboard stability: capture the focused row control BEFORE the
+  // rebuild below detaches it (capture must precede body.textContent = '').
+  // Structural checks only: the Node fake-DOM unit tests define neither
+  // HTMLElement nor a body/activeElement pair.
+  const activeBeforeRender: Element | null = document.activeElement;
+  const activeDataset =
+    activeBeforeRender !== null && 'dataset' in activeBeforeRender
+      ? (activeBeforeRender as HTMLElement).dataset
+      : undefined;
+  const activeLineage = activeDataset?.lineage ?? null;
+  const activeLabel =
+    activeLineage === null || activeBeforeRender === null
+      ? null
+      : typeof activeBeforeRender.textContent === 'string'
+        ? activeBeforeRender.textContent
+        : null;
   const rows = state.jobs;
   const allCount = rows.length;
   const activeCount = rows.filter(isActive).length;
@@ -461,7 +580,27 @@ function renderJobs(): void {
   );
   filterEmpty.hidden = allCount === 0 || matching.length !== 0;
   table.hidden = matching.length === 0;
+  // F-4/#387 keyboard stability: every read re-creates the row controls, and
+  // without this re-bind a refresh silently drops keyboard focus to <body>
+  // while the user is on a row. Re-focus the same aggregate's control (same
+  // label) in the fresh DOM; presentation elsewhere is unchanged. The fake
+  // DOM of the Node unit tests has no body/activeElement — guarded, no-op.
   for (const row of matching) body.appendChild(jobRowElement(row));
+  if (
+    activeLineage !== null &&
+    typeof document.querySelector === 'function' &&
+    document.activeElement === document.body
+  ) {
+    const candidates = document.querySelectorAll(
+      `#jobs-body button[data-lineage="${CSS.escape(activeLineage)}"]`,
+    );
+    const replacement =
+      Array.from(candidates).find((element) => element.textContent === activeLabel) ??
+      candidates[0];
+    if (replacement !== undefined && replacement !== null) {
+      (replacement as HTMLElement).focus();
+    }
+  }
   renderDetails();
 }
 
@@ -474,11 +613,14 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   title.className = 'link-button';
   title.textContent = taskLabel(row);
   title.setAttribute('aria-label', '查看' + taskLabel(row) + '详情');
+  title.dataset.lineage = row.lineageId;
   title.addEventListener('click', () => {
     // Reopen: the row's facts are re-read from the Core on the next
     // managerRefresh (the index replays the durable journal per query); the
     // detail panel renders the freshest listed projection of this aggregate.
     selectedLineage = row.lineageId;
+    detailsInvoker = title;
+    detailsInvokerLineage = row.lineageId;
     renderDetails();
     void refresh();
   });
@@ -649,7 +791,10 @@ async function confirmPreview(): Promise<void> {
     answer.previewConsumed &&
     answer.lineageId !== null
   ) {
-    taskDisplayNames.set(answer.lineageId, taskLabelFromUrl(pending.url));
+    // F-5/#388: store the observed origin only when it parses; rows without
+    // one stay uniquely labeled through their sequence ordinal alone.
+    const origin = taskLabelFromUrl(pending.url);
+    if (origin !== '下载任务') taskDisplayNames.set(answer.lineageId, origin);
   }
   state = applyAction(state, answer);
   if (state.pendingPreview === null) addOpen = false;
@@ -687,8 +832,19 @@ function wire(): void {
   byId('add-close').addEventListener('click', closeAdd);
   byId('add-cancel').addEventListener('click', closeAdd);
   byId('details-close').addEventListener('click', () => {
-    selectedLineage = null;
-    renderDetails();
+    closeDetails();
+  });
+  // F-4/#387: while the details panel is modal, keyboard focus stays inside
+  // it and Escape closes it. In the non-modal side-panel presentation the
+  // existing disclosure behavior is preserved.
+  byId('job-details').addEventListener('keydown', (event) => {
+    const keyboard = event as KeyboardEvent;
+    if (!detailsModal) return;
+    trapDialogTab(keyboard, byId('job-details'));
+    if (keyboard.key === 'Escape') {
+      event.preventDefault();
+      closeDetails();
+    }
   });
   byId('job-search').addEventListener('input', () => {
     searchTerm = (byId('job-search') as HTMLInputElement).value.trim();
@@ -719,6 +875,12 @@ function wire(): void {
       event.preventDefault();
       void discardPreview();
     }
+  });
+  // F-4/#387: keep the details-panel modality honest across window resizes
+  // (overlay ⇄ non-overlapping side panel) while it is open.
+  window.addEventListener('resize', () => {
+    if (!detailsOpen) return;
+    applyDetailsModality(byId('job-details'), isOverlayViewport());
   });
   refreshTimer = window.setInterval(() => {
     if (document.visibilityState === 'visible' && !state.busy) {
