@@ -163,6 +163,23 @@ function sha256(filePath) {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+// R8: unpacked extensions get a deterministic id derived from their absolute
+// load path (Chrome hashes the path bytes; verified against the live
+// extension id on this host). The driver seeds the fresh temporary profile's
+// Preferences with the action pinned to the toolbar so the genuine click
+// targets the stable main-toolbar action button instead of the transient
+// Extensions menu row. This is driver-owned test profile content — no
+// product source, manifest or permission is involved, and the click itself
+// remains a genuine visible toolbar-action click.
+function unpackedExtensionIdFromPath(extensionPath) {
+  const digest = createHash('sha256').update(Buffer.from(extensionPath, 'utf16le')).digest('hex');
+  return digest
+    .slice(0, 32)
+    .split('')
+    .map((character) => String.fromCharCode(parseInt(character, 16) + 97))
+    .join('');
+}
+
 function discoverChrome() {
   if (CHROME_ARG !== null) return CHROME_ARG;
   const cacheRoot = path.join(os.homedir(), '.cache', 'puppeteer', 'chrome');
@@ -216,6 +233,19 @@ if (actionName === null || actionName === '') {
   console.error(`FAIL: extension manifest has no usable name: ${extensionDir}`);
   process.exit(EXIT.FAIL);
 }
+// R8: pin the extension action to the toolbar of the fresh profile before
+// first launch (deterministic unpacked id from the load path — verified
+// against the live extension id). With the action visible on the main
+// toolbar the exact-name enumeration finds it directly and the genuine
+// click targets the stable toolbar button instead of the transient
+// Extensions menu row.
+const seededExtensionId = unpackedExtensionIdFromPath(extensionDir);
+const seededPreferencesPath = path.join(profileDir, 'Default', 'Preferences');
+fs.mkdirSync(path.dirname(seededPreferencesPath), { recursive: true });
+fs.writeFileSync(
+  seededPreferencesPath,
+  `${JSON.stringify({ extensions: { pinned_extensions: [seededExtensionId] } })}\n`,
+);
 
 const result = {
   mode: MODE,
@@ -409,7 +439,19 @@ function Read-Foreground {
 }
 function Assert-Foreground($targetHwnd) {
   if ($targetHwnd -eq [IntPtr]::Zero) { return 'denied' }
-  if (-not $selfTestGuard) { $script:Native::SetForegroundWindow($targetHwnd) | Out-Null }
+  # R8: probe the readback FIRST and request activation only on mismatch. The
+  # original entry fired an unconditional SetForegroundWindow before the first
+  # readback; when the target is Chrome's already-active Extensions menu
+  # popup, that activation churn can dismiss the menu before the guarded
+  # click, so activation calls are now minimized. The admission invariant is
+  # unchanged: the readback must equal the exact target HWND before any
+  # cursor movement or mouse input, and the self-test seam keeps its exact
+  # scripted readback sequence (the probe is skipped under the seam).
+  if (-not $selfTestGuard) {
+    if ((Read-Foreground) -ne $targetHwnd) {
+      $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
+    }
+  }
   $deadline = (Get-Date).AddSeconds(2)
   while ((Get-Date) -lt $deadline) {
     if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
@@ -734,6 +776,21 @@ function Click-Element($element, $window) {
   $rect = $element.Current.BoundingRectangle
   $x = [int]($rect.X + $rect.Width / 2)
   $y = [int]($rect.Y + $rect.Height / 2)
+  # R8 input-liveness gate: re-read the element identity immediately before
+  # the guarded input. A dead or emptied element (the Extensions menu closed
+  # between enumeration and click) means the recorded rectangle no longer
+  # maps to the action — abort with zero input instead of clicking dead
+  # coordinates and labeling it a genuine click.
+  try {
+    $liveCheck = $element.Current
+    if ([string]::IsNullOrEmpty($liveCheck.Name) -or $liveCheck.BoundingRectangle.Width -le 0) {
+      Write-Output ('UIA_CLICK_TARGET_STALE=1 name=' + $liveCheck.Name)
+      return $null
+    }
+  } catch {
+    Write-Output 'UIA_CLICK_TARGET_STALE=1 read_error'
+    return $null
+  }
   # R5 foreground admission guard: zero cursor movement and zero mouse input
   # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
   $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
@@ -763,6 +820,10 @@ if ($puzzle -eq $null) {
 }
 if (-not $selfTestInspectionError) {
   $menuPoint = Click-Element $puzzle $mainWindow
+  if ($menuPoint -eq $null) {
+    Write-Output 'UIA_TOOLBAR_ACTION_EXIT=7 REASON=extensions_button_stale_before_input'
+    exit 7
+  }
   Start-Sleep -Milliseconds 700
   & (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
 }
@@ -883,28 +944,74 @@ if ($selfTestInspectionError) {
 # accessible Name equals the loaded manifest action name verbatim, it is
 # invokable, and it is neither a toggle nor an expand-collapse control.
 # Any other cardinality still exits 5 (NOT_RUN), never a guessed click.
-$invokePatternId = [System.Windows.Automation.InvokePatternIdentifiers].Pattern.Id
-$togglePatternId = [System.Windows.Automation.TogglePatternIdentifiers].Pattern.Id
-$expandCollapsePatternId = [System.Windows.Automation.ExpandCollapsePatternIdentifiers].Pattern.Id
+$invokePatternId = [System.Windows.Automation.InvokePatternIdentifiers]::Pattern.Id
+$togglePatternId = [System.Windows.Automation.TogglePatternIdentifiers]::Pattern.Id
+$expandCollapsePatternId = [System.Windows.Automation.ExpandCollapsePatternIdentifiers]::Pattern.Id
+# R8: Chrome's Extensions menu popup animates for ~1s after opening and
+# individual UIA reads on its elements fail transiently during that window
+# (observed: the row read cleanly on an immediate retry milliseconds later).
+# A transient read failure must never silently drop the action row, so the
+# whole read-only enumeration is retried up to three times. This is read
+# retry only — no input is ever sent, and the gate stays exactly-one-or-NOT_RUN.
 $matches = @()
-foreach ($window in (Get-ChromeWindows)) {
-  $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
-  foreach ($element in $elements) {
-    $current = $element.Current
-    if ($current.Name -ceq $ActionName -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
-      $patternIds = @($current.GetSupportedPatterns() | ForEach-Object { $_.Id })
-      if ($patternIds -contains $invokePatternId -and -not ($patternIds -contains $togglePatternId) -and -not ($patternIds -contains $expandCollapsePatternId)) {
-        $matches += [pscustomobject]@{ Element = $element; Window = $window }
+$enumAttempt = 0
+while ($matches.Count -ne 1 -and $enumAttempt -lt 3) {
+  if ($enumAttempt -gt 0) { Start-Sleep -Milliseconds 300 }
+  $enumAttempt += 1
+  $matches = @()
+  foreach ($window in (Get-ChromeWindows)) {
+    $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($element in $elements) {
+      try {
+        $current = $element.Current
+        if ($current.Name -ceq $ActionName -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
+          $patternIds = @($element.GetSupportedPatterns() | ForEach-Object { $_.Id })
+          if ($patternIds -contains $invokePatternId -and -not ($patternIds -contains $togglePatternId) -and -not ($patternIds -contains $expandCollapsePatternId)) {
+            $matches += [pscustomobject]@{ Element = $element; Window = $window }
+          }
+        }
+      } catch {
+        # Transient UIA read failure (e.g. menu animation): skip this element
+        # in the current pass; a later pass re-enumerates from scratch.
+        continue
       }
     }
   }
 }
 if ($matches.Count -ne 1) {
+  Write-Output ('UIA_TOOLBAR_ENUM_ATTEMPTS=' + $enumAttempt)
+  foreach ($window in (Get-ChromeWindows)) {
+    $winName = $window.Current.Name
+    $winElements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
+    $windowCandidates = @()
+    foreach ($element in $winElements) {
+      try {
+        $current = $element.Current
+        if ($current.Name -ceq $ActionName -and -not $current.IsOffscreen) {
+          $windowCandidates += [pscustomobject]@{ name = $current.Name; patterns = (@($element.GetSupportedPatterns() | ForEach-Object { $_.Id }) -join ','); width = [int]$current.BoundingRectangle.Width }
+        }
+      } catch { continue }
+    }
+    Write-Output ('DIAG_WINDOW elements=' + @($winElements).Count + ' exactNameMatches=' + @($windowCandidates).Count + ' title=' + $winName)
+    foreach ($candidate in $windowCandidates) {
+      Write-Output ('DIAG_CANDIDATE ' + ($candidate | ConvertTo-Json -Compress))
+    }
+  }
+  $foregroundPidNow = [uint32]0
+  $foregroundNow = [U06ActionMouse]::GetForegroundWindow()
+  if ($foregroundNow -ne [IntPtr]::Zero) {
+    [U06ActionMouse]::GetWindowThreadProcessId($foregroundNow, [ref]$foregroundPidNow) | Out-Null
+  }
+  Write-Output ('DIAG_FOREGROUND_PID=' + $foregroundPidNow)
   Write-Output ('UIA_TOOLBAR_ACTION_EXIT=5 MATCH_COUNT=' + $matches.Count)
   exit 5
 }
 $target = $matches[0].Element
 $point = Click-Element $target $matches[0].Window
+if ($point -eq $null) {
+  Write-Output 'UIA_TOOLBAR_ACTION_EXIT=7 REASON=action_row_stale_before_input'
+  exit 7
+}
 [pscustomobject]@{
   menuMechanism = 'user32 SetCursorPos/mouse_event on Extensions toolbar automationId view_1006 after GetForegroundWindow() readback admission'
   actionMechanism = 'user32 SetCursorPos/mouse_event on xDownload extension action after GetForegroundWindow() readback admission'
@@ -1412,9 +1519,21 @@ async function main() {
     } catch (error) {
       // A genuine click that opened no popup proves no user gesture reached
       // the action (e.g. input landed on the lock screen). NOT_RUN, no
-      // fallback.
+      // fallback. R8: record the full target list at timeout so the evidence
+      // distinguishes "popup never opened" from "opened but not attached".
+      let popupTargetsAtTimeout = null;
+      try {
+        const targetsResponse = await send('Target.getTargets', {});
+        popupTargetsAtTimeout = (targetsResponse.targetInfos ?? []).map((target) => ({
+          type: target.type,
+          url: String(target.url).slice(0, 120),
+        }));
+      } catch {
+        popupTargetsAtTimeout = null;
+      }
       result.ok = false;
       result.status = 'NOT_RUN';
+      result.popupTargetsAtTimeout = popupTargetsAtTimeout;
       result.notRunReason = `genuine toolbar click opened no popup: ${String(error)}`;
       fs.writeFileSync(
         path.join(evidenceDir, 'result.json'),
