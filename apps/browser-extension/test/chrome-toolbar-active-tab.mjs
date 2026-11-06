@@ -223,9 +223,10 @@ for (const required of ['manifest.json', 'popup.html', 'background.service-worke
     process.exit(EXIT.FAIL);
   }
 }
-// R8: the extension action's exact accessible Name (verbatim manifest name).
-// The toolbar/menu UIA selectors match this exactly instead of a wildcard so
-// the per-site toggle and more-options rows in Chrome's Extensions menu can
+// R8: the extension action's accessible Name anchors to the manifest name
+// (ordinal prefix — see the menu-row form below). The toolbar/menu UIA
+// selectors match these manifest-derived forms instead of a wildcard so the
+// per-site toggle and more-options rows in Chrome's Extensions menu can
 // never dilute the uniqueness gate.
 const manifestJson = JSON.parse(fs.readFileSync(path.join(extensionDir, 'manifest.json'), 'utf8'));
 const actionName = typeof manifestJson.name === 'string' ? manifestJson.name : null;
@@ -233,12 +234,15 @@ if (actionName === null || actionName === '') {
   console.error(`FAIL: extension manifest has no usable name: ${extensionDir}`);
   process.exit(EXIT.FAIL);
 }
-// R8: the PINNED toolbar button's accessible name is the action's
-// default_title plus a newline and Chrome's per-site access hint
-// ('<default_title>\n想要访问此网站'), not the manifest name. The direct
-// (toolbar) path anchors on that exact title prefix; the menu path keeps the
-// verbatim manifest-name equality. Both forms are clauses of ONE shared
-// exact action predicate (review repair P1-01) applied by both grant
+// R8 (+ review-response environment fact): the MENU action row's accessible
+// name is the manifest action name, optionally followed by Chrome's dynamic
+// per-site access hint suffix ('xDownload Browser Integration、每次访问时都
+// 询问。选择即可更改网站权限' — Chrome 153 zh-CN, evidence grant-r8-rr4/
+// uia-extensions-menu.json; grant-r8-6/7 saw the bare name the same day).
+// The PINNED toolbar button's name is the action's default_title plus a
+// newline and Chrome's per-site hint ('<default_title>\n想要访问此网站').
+// Both are ordinal-prefix clauses of ONE shared exact action predicate
+// (review repair P1-01) applied by both grant
 // mechanisms on the Node side (rowIsExtensionAction) and in PowerShell
 // (Test-U06ExtensionActionElement) — anchored to the loaded manifest, no
 // wildcard. Environment fact (grant-r8-9-diag, Chrome 153 zh-CN): the
@@ -267,7 +271,11 @@ const ACTION_FORBIDDEN_PATTERNS = [
 function rowIsExtensionAction(row) {
   return (
     typeof row.name === 'string' &&
-    (row.name === actionName ||
+    // Menu-row form: manifest action name, optionally followed by Chrome's
+    // dynamic per-site access hint suffix (Chrome 153 zh-CN, evidence
+    // grant-r8-rr4); toolbar form: '<default_title>\n' prefix. Ordinal
+    // anchors to the loaded manifest, no wildcard — mirrored in PowerShell.
+    ((actionName !== '' && row.name.startsWith(actionName)) ||
       (actionToolbarTitlePrefix !== null && row.name.startsWith(actionToolbarTitlePrefix))) &&
     row.isOffscreen === false &&
     row.width > 0 &&
@@ -704,9 +712,10 @@ if ($SelfTest) {
 // (u06-uia-click.ps1 for the pinned-direct toolbar path and
 // u06-uia-toolbar-action.ps1 for the Extensions-menu path). Both grant
 // mechanisms now accept an element under identical clauses:
-//   1. exact manifest-derived name form — the menu action row's Name equals
-//      the loaded manifest action name verbatim, OR the pinned toolbar
-//      button's Name has the documented toolbar-title form
+//   1. manifest-derived name form — the menu action row's Name starts with
+//      the loaded manifest action name (Chrome 153 appends a dynamic
+//      per-site access hint suffix to it; evidence grant-r8-rr4), OR the
+//      pinned toolbar button's Name has the documented toolbar-title form
 //      ('<action.default_title>\n<Chrome per-site hint>'). No wildcard.
 //   2. visible with non-zero bounds (not offscreen, Width>0, Height>0).
 //   3. invoke semantics: GetSupportedPatterns() contains InvokePattern and
@@ -738,7 +747,13 @@ function Test-U06ExtensionActionElement {
     $current = $Element.Current
     if ($null -eq $current) { return $false }
     $name = $current.Name
-    $nameIsMenuForm = ($ActionName -ne '' -and $name -ceq $ActionName)
+    # Menu-row documented form: the manifest action name, optionally followed
+    # by Chrome's dynamic per-site access hint suffix (Chrome 153 zh-CN appends
+    # e.g. '、每次访问时都询问。选择即可更改网站权限' to the Extensions-menu
+    # action row — evidence grant-r8-rr4/uia-extensions-menu.json; grant-r8-6/7
+    # saw the bare name earlier the same day). Ordinal prefix anchor, anchored
+    # to the loaded manifest — no wildcard.
+    $nameIsMenuForm = ($ActionName -ne '' -and -not [string]::IsNullOrEmpty($name) -and $name.StartsWith($ActionName, [System.StringComparison]::Ordinal))
     $nameIsToolbarForm = ($ToolbarTitlePrefix -ne '' -and -not [string]::IsNullOrEmpty($name) -and $name.StartsWith($ToolbarTitlePrefix, [System.StringComparison]::Ordinal))
     if (-not ($nameIsMenuForm -or $nameIsToolbarForm)) { return $false }
     if ($current.IsOffscreen) { return $false }
@@ -1096,12 +1111,15 @@ if ($matches.Count -ne 1) {
     foreach ($element in $winElements) {
       try {
         $current = $element.Current
-        if ($current.Name -ceq $ActionName -and -not $current.IsOffscreen) {
+        # Mirror the menu-row documented form (manifest name, optional
+        # Chrome per-site hint suffix) so exit-5 diagnostics count what the
+        # selector counts — read-only, input never follows a DIAG pass.
+        if (-not [string]::IsNullOrEmpty($current.Name) -and ($ActionName -eq '' -or $current.Name.StartsWith($ActionName, [System.StringComparison]::Ordinal)) -and -not $current.IsOffscreen) {
           $windowCandidates += [pscustomobject]@{ name = $current.Name; patterns = (@($element.GetSupportedPatterns() | ForEach-Object { $_.Id }) -join ','); width = [int]$current.BoundingRectangle.Width }
         }
       } catch { continue }
     }
-    Write-Output ('DIAG_WINDOW elements=' + @($winElements).Count + ' exactNameMatches=' + @($windowCandidates).Count + ' title=' + $winName)
+    Write-Output ('DIAG_WINDOW elements=' + @($winElements).Count + ' actionNameFormMatches=' + @($windowCandidates).Count + ' title=' + $winName)
     foreach ($candidate in $windowCandidates) {
       Write-Output ('DIAG_CANDIDATE ' + ($candidate | ConvertTo-Json -Compress))
     }
@@ -1582,10 +1600,10 @@ async function main() {
         const candidates = rows.filter((row) => rowIsExtensionAction(row));
         result.directPathEnumeration = {
           dumpRows: rows.length,
-          exactNameRows: rows.filter(
+          actionNameFormRows: rows.filter(
             (row) =>
               typeof row.name === 'string' &&
-              (row.name === actionName ||
+              ((actionName !== '' && row.name.startsWith(actionName)) ||
                 (actionToolbarTitlePrefix !== null &&
                   row.name.startsWith(actionToolbarTitlePrefix))),
           ).length,
@@ -1593,7 +1611,7 @@ async function main() {
           actionName,
           toolbarTitlePrefix: actionToolbarTitlePrefix,
           predicate:
-            'exact-name-form+visible-nonzero-bounds+Invoke-required+Toggle/ExpandCollapse-rejected',
+            'manifest-name-prefix-form+visible-nonzero-bounds+Invoke-required+Toggle/ExpandCollapse-rejected',
         };
         log('direct-path-enumeration', result.directPathEnumeration);
         if (candidates.length === 1) {
