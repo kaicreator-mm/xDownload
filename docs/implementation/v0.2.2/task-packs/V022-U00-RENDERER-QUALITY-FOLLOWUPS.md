@@ -78,7 +78,7 @@ No fourth path. If implementation discovers a genuine need for another repositor
 6. `pnpm run typecheck`.
 7. `pnpm run ci:verify`.
 8. Local Docker Woodpecker on the final exact HEAD; record actual Pipeline/Build ID, clone SHA, result and step logs. Do not reuse a prior SHA's CI result.
-9. Record final HEAD/TREE/BASE, source blobs, evidence hashes, commands, exit codes, test counts, screenshots/AX artifacts, contrast table and each child issue's acceptance disposition in #389.
+9. Upload a durable evidence bundle to #389 (native issue attachments or a GitHub release asset): screenshots, DOM/AX snapshots, contrast report, command logs, test summaries and evidence manifest. Re-download the uploaded bytes and verify SHA-256; local filesystem paths alone are not durable evidence. Record final HEAD/TREE/BASE, source blobs, evidence hashes, commands, exit codes, test counts, contrast table and each child issue's acceptance disposition in #389.
 10. Fresh independent Exact-SHA review of the final candidate. Any findings must be consolidated; if repair is needed, repair within the original write set and revalidate the new SHA.
 
 ## Execution and handoff policy
@@ -137,3 +137,10 @@ status: READY_FOR_GENERATION_1_LOCAL_BUILDER_CLAIM
 - Supersedes R1 metadata snapshot `6eb0925b738c52e4420bc3879457eb1dea6aa3eb`.
 - Delivery-First reviewer-repair policy clarified: consolidate findings, repair within the original write set under valid Claim/CAS, and require a different final Verifier after repair.
 - No change to source write set, exact WIP baseline, child acceptance criteria or forbidden scope.
+
+
+## Task Pack review amendment R3
+
+- Supersedes R2 metadata/validation snapshot `9ceafcae202486e2e8d3204e437ca818634e37af`.
+- Durable evidence delivery is explicit: upload screenshots, DOM/AX snapshots, contrast report, logs and manifest to GitHub; re-download and verify SHA-256. Local paths alone are insufficient for independent review.
+- Source write set, WIP baseline, acceptance criteria, repair policy and forbidden scope are unchanged.
