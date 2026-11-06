@@ -66,6 +66,14 @@ repair_scope:
     readback-only foreground admission, guaranteed mouse-up cleanup, and
     zero fallback.
 
+  - >-
+    R10 cursor-position admission (PR #384 commit 51a2f2723cbdf81c5b82fea20c6f47c0c2f8e4bb):
+    because mouse_event uses the live system cursor position rather than the
+    intended UIA coordinates, both generated helpers must call GetCursorPos
+    immediately before mouse-down and require the actual cursor coordinates
+    to equal the intended target center. A changed or unreadable cursor
+    position denies with zero mouse-down/up events.
+
 acceptance:
   - "Only the three allowed_write_set files change; every other path stays byte-identical."
   - "Desktop fixtures ACTIVE/COMPLETE/FAILED/CANCELLED run 4/4 PASS against the real Core Seam and the current WIP renderer without any renderer/main change."
@@ -84,6 +92,12 @@ acceptance:
     click point both before cursor movement and immediately before mouse-down;
     a foreign or unreadable hit returns NOT_RUN/denied without mouse input.
 
+  - >-
+    Both generated UIA helpers pass the R10 foreground/click-point/cursor
+    self-test with 13/13 cases each; cursor-position-changed and
+    cursor-position-unreadable cases deny before mouse-down with zero mouse
+    events, and the admitted path retains exactly one down/up pair.
+
 pre_ci:
   - "Re-read current WIP HEAD/tree, Issue #332 Claim generations 1-8, the latest generation-8 delivery/review-repair chain, current R8 manifest and frozen Task Pack."
   - "Verify exact repair base 3821ee8606963ec11cc20aad279c4bbc9d76a48d / tree 09736a726e822546e6be13f44d9ad9345df2885e."
@@ -100,6 +114,14 @@ pre_ci:
     Run exact-SHA Woodpecker after the final manifest/source amendment and
     record its Pipeline ID; a prior candidate's Pipeline #69 does not validate
     a later manifest-amended HEAD.
+
+  - >-
+    For the R10 candidate, rerun Node24 syntax, changed-file Prettier, both
+    generated PowerShell helper parses, foreground/click-point/cursor
+    self-tests 13/13 per helper, desktop-precheck 6/6,
+    privacy-inspection-error, Browser denial control, Desktop fixtures 4/4,
+    typecheck and pnpm run ci:verify on the exact current HEAD. Do not reuse
+    R8/R9 receipts or Pipeline #69 for this later candidate.
 
 forbidden:
   - "Any source path except the three allowed_write_set files."
@@ -131,6 +153,18 @@ review_response:
     new self-test cases cover foreign-before-cursor, foreign-before-down,
     and unreadable hit-test. Static source review is favorable; exact-head
     Windows validation and final independent review remain pending.
+
+  r10_delivery_ref: "xDownload#384 commit 51a2f2723cbdf81c5b82fea20c6f47c0c2f8e4bb — verify live cursor coordinate before mouse-down"
+  r10_repair: >-
+    Static review of R9 found that WindowFromPoint checked the intended UIA
+    coordinate, but mouse_event consumes the live system cursor position. An
+    operator pointer move between SetCursorPos and mouse_event could therefore
+    redirect the click despite a passing hit-test. The shared guard now
+    P/Invokes GetCursorPos and requires the live cursor to remain exactly at
+    the intended center immediately before mouse-down; changed or unreadable
+    readback fails closed. Two new self-test cases cover both conditions.
+    The source change stays in the original browser harness path; no product
+    runtime, permission or input fallback is introduced.
 
   findings:
     - id: P1-01
@@ -205,4 +239,4 @@ review_response:
       response: >-
         File-level description aligned with the actual S1-admission ordering;
         comment-only change, implementation semantics unchanged.
-status: "GENERATION_8_R9_REPAIR_DELIVERED_AWAITING_EXACT_HEAD_WINDOWS_VALIDATION_AND_FINAL_INDEPENDENT_REVIEW"
+status: "GENERATION_8_R10_REPAIR_DELIVERED_AWAITING_EXACT_HEAD_WINDOWS_VALIDATION_AND_FINAL_INDEPENDENT_REVIEW"
