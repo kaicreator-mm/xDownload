@@ -973,6 +973,7 @@ public static class U06ActionMouse {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(U06NativePoint point);
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out U06NativePoint point);
 }
 '@
 $script:Native = [U06ActionMouse]
@@ -1383,12 +1384,15 @@ async function main() {
   if (SELF_TEST === 'foreground-guard') {
     // R5 deterministic guard self-test: BOTH click helpers run their shared
     // guard logic under the -SelfTest seam (scripted foreground readback,
-    // scripted point hit-test, seam input counters — zero native API touch).
-    // Cases: denied/mismatched readback, matching HWND admission, unreadable
-    // foreground, unknown target HWND, plus the R9 click-point admissions
-    // (foreign window before cursor / before mouse-down, unreadable
-    // hit-test). A pass requires zero SetCursorPos/mouse_event calls on
-    // every denial path in both scripts.
+    // scripted point hit-test, scripted cursor readback, seam input counters
+    // — zero native API touch). Cases: denied/mismatched readback, matching
+    // HWND admission, unreadable foreground, unknown target HWND, plus the
+    // R9 click-point admissions (foreign window before cursor / before
+    // mouse-down, unreadable hit-test) and the R10 cursor-position
+    // admissions. A pass additionally requires the R11 native-class
+    // completeness audit: every $script:Native:: call in each generated
+    // helper must have a matching extern declaration (seam tests never touch
+    // native, so a missing DllImport is only visible to this static audit).
     const toolbarOut = path.join(evidenceDir, 'foreground-guard-toolbar-action.json');
     await runPowerShell('u06-uia-toolbar-action.ps1', [
       '-ProcessId',
@@ -1425,8 +1429,33 @@ async function main() {
       forbiddenApis: forbiddenActivationApis,
       leaks: activationApiLeaks,
     };
+    // R11 native-class completeness audit: every $script:Native::<api>( call
+    // in a generated click helper must have a matching public static extern
+    // declaration in that helper's Add-Type class. R10 shipped
+    // GetCursorPos usage with the import added only to U06Mouse and missed
+    // U06ActionMouse — invisible to the seam-based self-test (which never
+    // touches native) and first hit as cursor_position_unreadable on the
+    // real menu-path click (r11-grant evidence, exit 6, zero input).
+    const nativeCompletenessAudit = [UIA_CLICK_PS1, UIA_TOOLBAR_ACTION_PS1].map((script, index) => {
+      const declared = new Set(
+        Array.from(script.matchAll(/public static extern [\w.]+ (\w+)\(/gu), (m) => m[1]),
+      );
+      const called = [
+        ...new Set(Array.from(script.matchAll(/\$script:Native::(\w+)\(/gu), (m) => m[1])),
+      ];
+      return {
+        helper: index === 0 ? 'uia-click' : 'uia-toolbar-action',
+        calledApis: called.sort(),
+        missingImports: called.filter((api) => !declared.has(api)).sort(),
+      };
+    });
+    result.nativeCompletenessAudit = nativeCompletenessAudit;
     result.selfTest = { name: SELF_TEST, toolbarAction: toolbar, click };
-    result.ok = toolbar.ok === true && click.ok === true && activationApiLeaks.length === 0;
+    result.ok =
+      toolbar.ok === true &&
+      click.ok === true &&
+      activationApiLeaks.length === 0 &&
+      nativeCompletenessAudit.every((helper) => helper.missingImports.length === 0);
     result.status = result.ok ? 'PASS' : 'FAIL';
     result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
     result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;

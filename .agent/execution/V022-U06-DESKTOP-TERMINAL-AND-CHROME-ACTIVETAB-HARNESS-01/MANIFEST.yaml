@@ -239,4 +239,32 @@ review_response:
       response: >-
         File-level description aligned with the actual S1-admission ordering;
         comment-only change, implementation semantics unchanged.
-status: "GENERATION_8_R10_REPAIR_DELIVERED_AWAITING_EXACT_HEAD_WINDOWS_VALIDATION_AND_FINAL_INDEPENDENT_REVIEW"
+    - id: R11-DEFECT-01
+      finding: >-
+        The R10 cursor-position admission (Assert-CursorPoint) calls
+        $script:Native::GetCursorPos, but the GetCursorPos DllImport was added
+        only to the U06Mouse class of u06-uia-click.ps1 and missed in the
+        U06ActionMouse class of u06-uia-toolbar-action.ps1 — the helper that
+        actually performs clicks on this host. The seam-based self-test never
+        touches native, so 13+13 green cases did not cover it; the first real
+        operator-present grant attempt (r11-grant, after fe0f5ef) failed
+        fail-closed at exit 6 with cursor_position_unreadable, zero mouse
+        input, before any click. Evidence: r11-grant/u06-uia-toolbar-action.ps1
+        class declaration vs the call at its Assert-CursorPoint.
+      response: >-
+        R11 repair inside the same single-file write set: the missing
+        [DllImport] GetCursorPos(out U06NativePoint) is added to U06ActionMouse,
+        and the foreground-guard self-test now runs a native-class completeness
+        audit that statically requires every $script:Native::<api>( call in
+        BOTH generated helpers to have a matching extern declaration
+        (missingImports must be empty) — preventing any recurrence of a
+        seam-invisible missing import. Environment facts from the r11-grant
+        attempt: the freshly launched CfT window acquires foreground by itself
+        (guard granted in ~0.5s, before any operator action) and the R9
+        click-point hit-test PASSED (no occlusion), so the only failing step
+        was the R10 cursor readback. Local gates rerun green on the repaired
+        tree: syntax+Prettier, foreground-guard 13+13 with
+        nativeCompletenessAudit missingImports=[] for both helpers,
+        desktop-precheck, privacy-inspection-error, Desktop fixtures 4/4,
+        denial control, typecheck, pnpm run ci:verify.
+status: "GENERATION_8_R11_REPAIR_DELIVERED_AWAITING_EXACT_HEAD_WINDOWS_VALIDATION_GENUINE_GRANT_AND_FINAL_INDEPENDENT_REVIEW"
