@@ -218,6 +218,20 @@ function renderFormFields(): void {
 }
 
 function openAdd(): void {
+  const pending = state.pendingCommand;
+  if (pending !== null) {
+    if (pending.status !== 'UNKNOWN' || pending.aggregateId === null) return;
+    if (pending.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION') {
+      // The contract was already accepted; this existing Add entry point
+      // explicitly reconciles the exact retained S1 envelope.
+      void confirmPreview();
+    } else if (pending.commandType === 'CANCEL_LINEAGE') {
+      void runControl('cancel', pending.aggregateId);
+    } else if (pending.commandType === 'RETRY_FAILED_MEMBERS') {
+      void runControl('retry', pending.aggregateId);
+    }
+    return;
+  }
   addOpen = true;
   render();
   (byId('url') as HTMLInputElement).focus();
@@ -329,13 +343,27 @@ function render(): void {
           : '正在连接 Core…'
         : 'Core 状态：' + state.connection;
   connectionLine.dataset.status = connected ? 'connected' : stale ? 'stale' : 'disconnected';
+
+  const pendingCommand = state.pendingCommand;
+  const newDownload = byId('new-download') as HTMLButtonElement;
+  const emptyAdd = byId('empty-add') as HTMLButtonElement;
+  const canReconcileFromToolbar =
+    pendingCommand?.status === 'UNKNOWN' &&
+    pendingCommand.aggregateId !== null &&
+    (pendingCommand.commandType === 'EXECUTE_S1_DIRECT_ACQUISITION' ||
+      pendingCommand.commandType === 'CANCEL_LINEAGE' ||
+      pendingCommand.commandType === 'RETRY_FAILED_MEMBERS');
+  newDownload.textContent = canReconcileFromToolbar ? '核对待处理命令' : '新建下载';
+  newDownload.disabled = state.busy || (pendingCommand !== null && !canReconcileFromToolbar);
+  emptyAdd.disabled = state.busy || pendingCommand !== null;
+
   byId('add-dialog').hidden = !addOpen || state.pendingPreview !== null;
 
   const addSubmit = byId('add-submit') as HTMLButtonElement;
-  addSubmit.disabled = state.busy || state.pendingPreview !== null;
+  addSubmit.disabled = state.busy || state.pendingPreview !== null || pendingCommand !== null;
 
   const urlInput = byId('url') as HTMLInputElement;
-  urlInput.disabled = state.busy || state.pendingPreview !== null;
+  urlInput.disabled = state.busy || state.pendingPreview !== null || pendingCommand !== null;
 
   renderPreview();
   renderJobs();
@@ -368,8 +396,12 @@ function renderPreview(): void {
   }
   const confirm = byId('preview-confirm') as HTMLButtonElement;
   const discard = byId('preview-discard') as HTMLButtonElement;
-  confirm.disabled = state.busy;
-  discard.disabled = state.busy;
+  const reconcilingContract =
+    state.pendingCommand?.status === 'UNKNOWN' &&
+    state.pendingCommand.commandType === 'SUBMIT_CONTRACT';
+  confirm.textContent = reconcilingContract ? '核对提交' : '确认并开始';
+  confirm.disabled = state.busy || (state.pendingCommand !== null && !reconcilingContract);
+  discard.disabled = state.busy || state.pendingCommand !== null;
   if (wasClosed) {
     confirm.focus();
   }
@@ -487,12 +519,14 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
   group.append(
     actionButton(
       '取消',
+      'CANCEL_LINEAGE',
       row.lineageId,
       availability.cancelEnabled,
       () => void runControl('cancel', row.lineageId),
     ),
     actionButton(
       '重试',
+      'RETRY_FAILED_MEMBERS',
       row.lineageId,
       availability.retryEnabled,
       () => void runControl('retry', row.lineageId),
@@ -505,17 +539,29 @@ function jobRowElement(row: ManagerJobRowDocument): HTMLTableRowElement {
 
 function actionButton(
   label: string,
+  commandType: 'CANCEL_LINEAGE' | 'RETRY_FAILED_MEMBERS',
   lineageId: string,
   enabled: boolean,
   onClick: () => void,
 ): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = label;
   button.dataset.lineage = lineageId;
+  const pending = state.pendingCommand;
+  const reconciling =
+    pending?.status === 'UNKNOWN' &&
+    pending.commandType === commandType &&
+    pending.aggregateId === lineageId;
+  const blockedByPending = pending !== null && !reconciling;
   const snapshotUnavailable = state.snapshotFreshness !== 'fresh';
-  button.disabled = !enabled || state.busy || snapshotUnavailable;
-  if (snapshotUnavailable) {
+  button.textContent = reconciling ? `核对${label}` : label;
+  button.disabled =
+    state.busy || blockedByPending || (!reconciling && (!enabled || snapshotUnavailable));
+  if (reconciling && pending !== null) {
+    button.title = `使用同一 requestId 核对 ${pending.requestId}；不会创建新的控制命令`;
+  } else if (blockedByPending) {
+    button.title = '另一个命令尚未获得 Core 确认；请先核对该命令';
+  } else if (snapshotUnavailable) {
     button.title = 'Core 当前状态未确认；刷新成功后才能操作';
   } else if (!enabled) {
     button.title = 'Core 当前未证明此操作可用';
@@ -541,6 +587,18 @@ async function runControl(action: 'cancel' | 'retry', lineageId: string): Promis
   if (BRIDGE === undefined || BRIDGE === null) {
     return;
   }
+  const pending = state.pendingCommand;
+  const expected = action === 'cancel' ? 'CANCEL_LINEAGE' : 'RETRY_FAILED_MEMBERS';
+  if (
+    pending !== null &&
+    !(
+      pending.status === 'UNKNOWN' &&
+      pending.commandType === expected &&
+      pending.aggregateId === lineageId
+    )
+  ) {
+    return;
+  }
   state = setBusy(state, true);
   render();
   const answer =
@@ -553,6 +611,7 @@ async function runControl(action: 'cancel' | 'retry', lineageId: string): Promis
 
 async function submitPreview(event: Event): Promise<void> {
   event.preventDefault();
+  if (state.pendingCommand !== null) return;
   if (BRIDGE === undefined || BRIDGE === null) {
     state = bridgeMissing(state);
     render();
@@ -587,7 +646,7 @@ async function confirmPreview(): Promise<void> {
     answer.ok === true &&
     answer.document === 'xdownload.desktop.manager.action' &&
     answer.action === 'add' &&
-    answer.routed &&
+    answer.previewConsumed &&
     answer.lineageId !== null
   ) {
     taskDisplayNames.set(answer.lineageId, taskLabelFromUrl(pending.url));

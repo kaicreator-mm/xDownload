@@ -39,6 +39,7 @@ function jobListDocument(overrides: Partial<ManagerJobListDocument> = {}): Manag
     totalCount: 0,
     truncated: false,
     pendingPreview: null,
+    pendingCommand: null,
     ...overrides,
   };
 }
@@ -213,12 +214,84 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'cancel',
       lineageId: 'contract-desktop-ab12cd34-000001',
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: 'contract-desktop-ab12cd34-000001',
+        requestId: 'request-cancel-accepted',
+      },
+      previewConsumed: false,
       rejections: [],
       refusalDetail: null,
       list: jobListDocument({ totalCount: 300, truncated: true }),
     });
     expect(next.totalCount).toBe(300);
     expect(next.truncated).toBe(true);
+  });
+
+  it('an unknown Add contract keeps the preview and binds reconciliation to the same requestId', () => {
+    const preview = {
+      document: 'xdownload.desktop.manager.preview' as const,
+      lineageId: 'contract-desktop-ab12cd34-000009',
+      url: 'https://example.com/unknown-submit.mp4',
+      automationMode: 'ASSISTED',
+      confirmationRequests: [],
+    };
+    const unknown = {
+      status: 'UNKNOWN' as const,
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: preview.lineageId,
+      requestId: 'request-submit-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const next = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: unknown,
+      previewConsumed: false,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: preview, pendingCommand: unknown }),
+    });
+    expect(next.pendingPreview).toEqual(preview);
+    expect(next.pendingCommand).toEqual(unknown);
+    expect(next.notice?.text).toContain('request-submit-unknown');
+    expect(next.notice?.text).toContain('提交状态不确定');
+  });
+
+  it('an unknown S1 command consumes the accepted preview and keeps only its exact reconciliation identity', () => {
+    const preview = {
+      document: 'xdownload.desktop.manager.preview' as const,
+      lineageId: 'contract-desktop-ab12cd34-000010',
+      url: 'https://example.com/unknown-s1.mp4',
+      automationMode: 'ASSISTED',
+      confirmationRequests: [],
+    };
+    const unknown = {
+      status: 'UNKNOWN' as const,
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId: preview.lineageId,
+      requestId: 'request-s1-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const next = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: unknown,
+      previewConsumed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: null, pendingCommand: unknown }),
+    });
+    expect(next.pendingPreview).toBeNull();
+    expect(next.pendingCommand).toEqual(unknown);
+    expect(next.notice?.text).toContain('request-s1-unknown');
   });
 
   it('a refused Core action also invalidates the last-known connection snapshot', () => {
@@ -242,6 +315,13 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'cancel',
       lineageId: presentRow().lineageId,
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: presentRow().lineageId,
+        requestId: 'request-cancel-accepted',
+      },
+      previewConsumed: false,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -278,6 +358,13 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'add',
       lineageId: preview.lineageId,
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId: preview.lineageId,
+        requestId: 'request-add-accepted',
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -302,6 +389,13 @@ describe('visible truncation state (Core index counters only)', () => {
       action: 'add',
       lineageId: 'contract-desktop-ab12cd34-000002',
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId: 'contract-desktop-ab12cd34-000002',
+        requestId: 'request-add-accepted',
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -359,6 +453,13 @@ describe('preview dialog state (keyboard flow model)', () => {
       action: 'discard-preview',
       lineageId: preview.lineageId,
       routed: false,
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: {
@@ -382,6 +483,13 @@ describe('preview dialog state (keyboard flow model)', () => {
       action: 'add',
       lineageId: preview.lineageId,
       routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+        aggregateId: preview.lineageId,
+        requestId: 'request-add-accepted',
+      },
+      previewConsumed: true,
       rejections: [],
       refusalDetail: null,
       list: jobListDocument({ pendingPreview: null, jobs: [presentRow()] }),
@@ -392,6 +500,35 @@ describe('preview dialog state (keyboard flow model)', () => {
     expect(confirmed.notice?.text).toContain('admission');
   });
 
+  it('does not mislabel an accepted command when a later projection read has diagnostics', () => {
+    const accepted = applyAction(initialManagerState(), {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'cancel',
+      lineageId: preview.lineageId,
+      routed: true,
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: preview.lineageId,
+        requestId: 'request-cancel-accepted',
+      },
+      previewConsumed: false,
+      rejections: [
+        {
+          code: 'PROJECTION_READ_REJECTED',
+          message: 'the command was accepted but the follow-up projection read was refused',
+        },
+      ],
+      refusalDetail: null,
+      list: jobListDocument(),
+    });
+
+    expect(accepted.notice?.kind).toBe('info');
+    expect(accepted.notice?.text).toContain('accepted by the Core');
+    expect(accepted.notice?.text).not.toContain('rejected');
+  });
+
   it('a Core-typed rejection surfaces VERBATIM (code and message)', () => {
     const opened = previewOpened(initialManagerState(), preview);
     const rejected = applyAction(opened, {
@@ -399,7 +536,14 @@ describe('preview dialog state (keyboard flow model)', () => {
       document: 'xdownload.desktop.manager.action',
       action: 'cancel',
       lineageId: preview.lineageId,
-      routed: true,
+      routed: false,
+      delivery: {
+        status: 'REJECTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: preview.lineageId,
+        requestId: 'request-cancel-rejected',
+      },
+      previewConsumed: false,
       rejections: [
         {
           code: 'LINEAGE_OWNER_CONFLICT',
@@ -414,6 +558,62 @@ describe('preview dialog state (keyboard flow model)', () => {
     expect(rejected.notice?.text).toContain('durably owned by the new v0.2 Domain App');
   });
 
+  it('an unknown contract submission keeps the preview and blocks accepted wording', () => {
+    const pending = {
+      status: 'UNKNOWN' as const,
+      commandType: 'SUBMIT_CONTRACT',
+      aggregateId: preview.lineageId,
+      requestId: 'request-contract-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const unknown = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: pending,
+      previewConsumed: false,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: preview, pendingCommand: pending }),
+    });
+
+    expect(unknown.pendingPreview).toEqual(preview);
+    expect(unknown.pendingCommand).toEqual(pending);
+    expect(unknown.notice?.kind).toBe('error');
+    expect(unknown.notice?.text).toContain('request-contract-unknown');
+    expect(unknown.notice?.text).toContain('提交状态不确定');
+    expect(unknown.notice?.text).not.toContain('accepted');
+  });
+
+  it('an unknown S1 submission consumes the preview but retains its exact reconciliation identity', () => {
+    const pending = {
+      status: 'UNKNOWN' as const,
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      aggregateId: preview.lineageId,
+      requestId: 'request-s1-unknown',
+    };
+    const opened = previewOpened(initialManagerState(), preview);
+    const unknown = applyAction(opened, {
+      ok: true,
+      document: 'xdownload.desktop.manager.action',
+      action: 'add',
+      lineageId: preview.lineageId,
+      routed: false,
+      delivery: pending,
+      previewConsumed: true,
+      rejections: [],
+      refusalDetail: null,
+      list: jobListDocument({ pendingPreview: null, pendingCommand: pending }),
+    });
+
+    expect(unknown.pendingPreview).toBeNull();
+    expect(unknown.pendingCommand).toEqual(pending);
+    expect(unknown.notice?.text).toContain('request-s1-unknown');
+    expect(unknown.notice?.text).not.toContain('accepted');
+  });
+
   it('a not-routed action surfaces the refusal detail', () => {
     const answered = applyAction(initialManagerState(), {
       ok: true,
@@ -421,6 +621,13 @@ describe('preview dialog state (keyboard flow model)', () => {
       action: 'retry',
       lineageId: 'contract-desktop-ab12cd34-000001',
       routed: false,
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
+      previewConsumed: false,
       rejections: [],
       refusalDetail: 'retry unavailable: NO_FAILED_MEMBERS',
       list: jobListDocument(),
@@ -446,7 +653,7 @@ describe('truthful display derivation (no fabricated total/ETA)', () => {
 
   it('a terminal row renders the dimensions verbatim — no success boolean', () => {
     const done = presentRow({
-      lineageStatus: 'CLOSED',
+      lineageStatus: 'TERMINAL',
       terminal: {
         requestFulfillment: 'COMPLETE',
         targetResolution: 'RESOLVED',
@@ -475,8 +682,53 @@ describe('truthful display derivation (no fabricated total/ETA)', () => {
     });
     expect(jobActions(failed).retryEnabled).toBe(true);
 
+    const cancelled = presentRow({
+      lineageStatus: 'CANCELLED',
+      retry: { available: true, reason: null },
+    });
+    expect(jobActions(cancelled)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: true,
+    });
+
+    const terminalWithoutDetail = presentRow({
+      lineageStatus: 'TERMINAL',
+      retry: { available: true, reason: null },
+    });
+    expect(jobActions(terminalWithoutDetail)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: false,
+    });
+
+    const unknownStatus = presentRow({
+      lineageStatus: 'UNKNOWN_CORE_STATUS',
+      retry: { available: true, reason: null },
+    });
+    expect(jobActions(unknownStatus)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: false,
+    });
+
+    const terminalPresent = presentRow({
+      lineageStatus: 'TERMINAL',
+      retry: { available: true, reason: null },
+      terminal: {
+        requestFulfillment: 'COMPLETE',
+        targetResolution: 'RESOLVED',
+        selectionAcquisition: 'ACQUIRED',
+        coverage: 'VERIFIED_COMPLETE',
+        stopReason: 'NATURAL_END',
+        validationSummary: { status: 'ALL_PASSED', passedCount: 1, failedCount: 0 },
+        recordedAt: '2026-10-31T09:00:00Z',
+      },
+    });
+    expect(jobActions(terminalPresent)).toStrictEqual({
+      cancelEnabled: false,
+      retryEnabled: false,
+    });
+
     const complete = presentRow({
-      lineageStatus: 'CLOSED',
+      lineageStatus: 'TERMINAL',
       terminal: {
         requestFulfillment: 'COMPLETE',
         targetResolution: 'RESOLVED',

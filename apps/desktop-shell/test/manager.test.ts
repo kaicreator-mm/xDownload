@@ -37,7 +37,11 @@ import {
   type S1JobIndexResult,
 } from '@xdownload/desktop-ui';
 import { DesktopManager } from '../src/main/manager.ts';
-import type { ManagerJobListDocument, ShellRefusal } from '../src/main/shell-contract.ts';
+import type {
+  ManagerCommandDelivery,
+  ManagerJobListDocument,
+  ShellRefusal,
+} from '../src/main/shell-contract.ts';
 
 const INSTALL_ID = 'install-001';
 const USER_ID = 'user-001';
@@ -448,6 +452,37 @@ describe('DesktopManager control transitions remain Core commands (real Core)', 
     await harness.stop();
   });
 
+  it('does not route cancel or retry when the fresh Core projection read fails', async () => {
+    const commandsBefore = harness.adapter
+      .sentCommandEnvelopes()
+      .map((envelope) => ({ commandType: envelope.commandType, requestId: envelope.requestId }));
+    expect(commandsBefore.map((item) => item.commandType)).toEqual([
+      'SUBMIT_CONTRACT',
+      'EXECUTE_S1_DIRECT_ACQUISITION',
+    ]);
+
+    // The adapter still holds the last successful projection. A failed
+    // re-attach must not let a control command use that stale cached revision.
+    await harness.stopCore();
+
+    const cancel = await harness.manager.cancelJob({ lineageId });
+    expect(isRefusal(cancel)).toBe(true);
+    if (isRefusal(cancel)) {
+      expect(cancel.detail).toContain('fresh Core projection was not confirmed');
+    }
+
+    const retry = await harness.manager.retryJob({ lineageId });
+    expect(isRefusal(retry)).toBe(true);
+    if (isRefusal(retry)) {
+      expect(retry.detail).toContain('fresh Core projection was not confirmed');
+    }
+
+    const commandsAfter = harness.adapter
+      .sentCommandEnvelopes()
+      .map((envelope) => ({ commandType: envelope.commandType, requestId: envelope.requestId }));
+    expect(commandsAfter).toEqual(commandsBefore);
+  });
+
   it('cancel routes a Core control transition; the refreshed row follows the projection', async () => {
     const action = await harness.manager.cancelJob({ lineageId });
     expect(isRefusal(action)).toBe(false);
@@ -499,7 +534,19 @@ describe('DesktopManager R3 repairs (review PR #365 BLOCK P1-01/P1-02)', () => {
     const secondLineageId = 'contract-second-000002';
     const adapter = {
       sentCommandEnvelopes: () => [...sent],
-      enterIntent: () => ({ display: {}, routed: [], rejections: [], refusals: [] }),
+      pendingCommandInfo: () => null,
+      enterIntent: () => ({
+        display: {},
+        routed: [],
+        delivery: {
+          status: 'NOT_ATTEMPTED',
+          commandType: null,
+          aggregateId: null,
+          requestId: null,
+        },
+        rejections: [],
+        refusals: [],
+      }),
       currentDraftView: () => ({
         contractId: secondLineageId,
         automationMode: 'ASSISTED',
@@ -513,6 +560,12 @@ describe('DesktopManager R3 repairs (review PR #365 BLOCK P1-01/P1-02)', () => {
         // The defective discriminant the review flagged: the FIRST add's
         // commands resurface even though the second submit never routed.
         routed: [...sent],
+        delivery: {
+          status: 'REJECTED',
+          commandType: 'SUBMIT_CONTRACT',
+          aggregateId: secondLineageId,
+          requestId: 'request-second-rejected',
+        },
         rejections: [
           {
             code: 'REQUEST_IDENTITY_CONFLICT',
@@ -528,7 +581,18 @@ describe('DesktopManager R3 repairs (review PR #365 BLOCK P1-01/P1-02)', () => {
           aggregateId: 'contract-first-000001',
           requestId: 'r3',
         });
-        return { display: {}, routed: [...sent], rejections: [], refusals: [] };
+        return {
+          display: {},
+          routed: [...sent],
+          delivery: {
+            status: 'ACCEPTED',
+            commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+            aggregateId: 'contract-first-000001',
+            requestId: 'r3',
+          },
+          rejections: [],
+          refusals: [],
+        };
       },
       listS1JobProjections: async () => ({
         ok: true as const,
@@ -631,15 +695,31 @@ class DeferredIndexAdapter {
     });
   }
 
+  pendingCommandInfo(): null {
+    return null;
+  }
+
   async attachAggregate(): Promise<{
     readonly display: { readonly connection: 'CONNECTED' };
     readonly routed: readonly [];
+    readonly delivery: {
+      readonly status: 'NOT_ATTEMPTED';
+      readonly commandType: null;
+      readonly aggregateId: null;
+      readonly requestId: null;
+    };
     readonly rejections: readonly [];
     readonly refusals: readonly [];
   }> {
     return {
       display: { connection: 'CONNECTED' },
       routed: [],
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
       rejections: [],
       refusals: [],
     };
@@ -647,11 +727,23 @@ class DeferredIndexAdapter {
 
   async cancel(): Promise<{
     readonly routed: readonly { commandType: string; aggregateId: string; requestId: string }[];
+    readonly delivery: {
+      readonly status: 'ACCEPTED';
+      readonly commandType: 'CANCEL_LINEAGE';
+      readonly aggregateId: 'x';
+      readonly requestId: 'r';
+    };
     readonly rejections: readonly [];
     readonly refusals: readonly [];
   }> {
     return {
       routed: [{ commandType: 'CANCEL_LINEAGE', aggregateId: 'x', requestId: 'r' }],
+      delivery: {
+        status: 'ACCEPTED',
+        commandType: 'CANCEL_LINEAGE',
+        aggregateId: 'x',
+        requestId: 'r',
+      },
       rejections: [],
       refusals: [],
     };
@@ -659,10 +751,26 @@ class DeferredIndexAdapter {
 
   async retryFailed(): Promise<{
     readonly routed: readonly [];
+    readonly delivery: {
+      readonly status: 'NOT_ATTEMPTED';
+      readonly commandType: null;
+      readonly aggregateId: null;
+      readonly requestId: null;
+    };
     readonly rejections: readonly [];
     readonly refusals: readonly [];
   }> {
-    return { routed: [], rejections: [], refusals: [] };
+    return {
+      routed: [],
+      delivery: {
+        status: 'NOT_ATTEMPTED',
+        commandType: null,
+        aggregateId: null,
+        requestId: null,
+      },
+      rejections: [],
+      refusals: [],
+    };
   }
 
   currentDraftView(): null {
@@ -743,5 +851,178 @@ describe('DesktopManager shared-adapter serialization over the index read', () =
     });
     adapter.indexReads[1]?.resolve(EMPTY_INDEX);
     expectList(await recovered);
+  });
+});
+
+describe('DesktopManager ambiguous Add delivery', () => {
+  const lineageId = 'contract-desktop-ack-000001';
+  const contractRequestId = 'request-contract-stable-001';
+  const s1RequestId = 'request-s1-stable-001';
+
+  function createAdapter(unknownAt: 'contract' | 's1'): {
+    readonly adapter: DesktopUiAdapter;
+    readonly contractRequestIds: string[];
+    readonly s1RequestIds: string[];
+  } {
+    let pending: ManagerCommandDelivery | null = null;
+    let draft: {
+      readonly contractId: string;
+      readonly automationMode: string;
+      readonly targetRef: string;
+      readonly requests: readonly {
+        readonly level: string;
+        readonly description: string;
+        readonly proves: string;
+      }[];
+    } | null = null;
+    let contractCalls = 0;
+    let s1Calls = 0;
+    const contractRequestIds: string[] = [];
+    const s1RequestIds: string[] = [];
+
+    const commandDelivery = (
+      status: 'UNKNOWN' | 'ACCEPTED',
+      commandType: string,
+      requestId: string,
+    ): ManagerCommandDelivery => ({
+      status,
+      commandType,
+      aggregateId: lineageId,
+      requestId,
+    });
+    const outcome = (delivery: ManagerCommandDelivery) => ({
+      display: {},
+      routed: [],
+      delivery,
+      rejections: [],
+      refusals: [],
+    });
+
+    const adapter = {
+      pendingCommandInfo: () => pending,
+      enterIntent: () => {
+        draft = {
+          contractId: lineageId,
+          automationMode: 'ASSISTED',
+          targetRef: 'https://example.com/a.mp4',
+          requests: [{ level: 'SCOPE_LEVEL', description: 'scope', proves: 'target' }],
+        };
+        return outcome({
+          status: 'NOT_ATTEMPTED',
+          commandType: null,
+          aggregateId: null,
+          requestId: null,
+        });
+      },
+      currentDraftView: () => draft,
+      confirmScope: async () => {
+        contractCalls += 1;
+        contractRequestIds.push(contractRequestId);
+        if (unknownAt === 'contract' && contractCalls === 1) {
+          const unknown = commandDelivery('UNKNOWN', 'SUBMIT_CONTRACT', contractRequestId);
+          pending = unknown;
+          return outcome(unknown);
+        }
+        pending = null;
+        draft = null;
+        return outcome(commandDelivery('ACCEPTED', 'SUBMIT_CONTRACT', contractRequestId));
+      },
+      executeS1Direct: async () => {
+        s1Calls += 1;
+        s1RequestIds.push(s1RequestId);
+        if (unknownAt === 's1' && s1Calls === 1) {
+          const unknown = commandDelivery('UNKNOWN', 'EXECUTE_S1_DIRECT_ACQUISITION', s1RequestId);
+          pending = unknown;
+          return outcome(unknown);
+        }
+        pending = null;
+        return outcome(commandDelivery('ACCEPTED', 'EXECUTE_S1_DIRECT_ACQUISITION', s1RequestId));
+      },
+      listS1JobProjections: async () => EMPTY_INDEX,
+    } as unknown as DesktopUiAdapter;
+
+    return { adapter, contractRequestIds, s1RequestIds };
+  }
+
+  function createManager(adapter: DesktopUiAdapter): DesktopManager {
+    return new DesktopManager({
+      getAdapter: () => adapter,
+      getConnectionWhenUnconfigured: () => 'CONNECTED',
+    });
+  }
+
+  it('keeps an unknown SUBMIT_CONTRACT preview and does not execute S1 until exact replay is acknowledged', async () => {
+    const fixture = createAdapter('contract');
+    const manager = createManager(fixture.adapter);
+    const preview = await manager.previewAdd({ url: 'https://example.com/a.mp4' });
+    expect(isRefusal(preview)).toBe(false);
+
+    const first = await manager.confirmAdd();
+    expect(isRefusal(first)).toBe(false);
+    if (isRefusal(first)) return;
+    expect(first.delivery).toMatchObject({
+      status: 'UNKNOWN',
+      commandType: 'SUBMIT_CONTRACT',
+      requestId: contractRequestId,
+    });
+    expect(first.previewConsumed).toBe(false);
+    expect(expectActionList(first).pendingPreview?.lineageId).toBe(lineageId);
+    expect(expectActionList(first).pendingCommand?.status).toBe('UNKNOWN');
+    expect(fixture.s1RequestIds).toStrictEqual([]);
+    expect(manager.hasPendingPreview()).toBe(true);
+
+    const reconciled = await manager.confirmAdd();
+    expect(isRefusal(reconciled)).toBe(false);
+    if (isRefusal(reconciled)) return;
+    expect(reconciled.delivery).toMatchObject({
+      status: 'ACCEPTED',
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      requestId: s1RequestId,
+    });
+    expect(reconciled.previewConsumed).toBe(true);
+    expect(expectActionList(reconciled).pendingPreview).toBeNull();
+    expect(expectActionList(reconciled).pendingCommand).toBeNull();
+    expect(fixture.contractRequestIds).toStrictEqual([contractRequestId, contractRequestId]);
+    expect(fixture.s1RequestIds).toStrictEqual([s1RequestId]);
+    expect(manager.hasPendingPreview()).toBe(false);
+  });
+
+  it('consumes the preview after accepted contract + unknown S1 and reconciles the exact S1 request', async () => {
+    const fixture = createAdapter('s1');
+    const manager = createManager(fixture.adapter);
+    const preview = await manager.previewAdd({ url: 'https://example.com/a.mp4' });
+    expect(isRefusal(preview)).toBe(false);
+
+    const first = await manager.confirmAdd();
+    expect(isRefusal(first)).toBe(false);
+    if (isRefusal(first)) return;
+    expect(first.delivery).toMatchObject({
+      status: 'UNKNOWN',
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      requestId: s1RequestId,
+    });
+    expect(first.previewConsumed).toBe(true);
+    expect(expectActionList(first).pendingPreview).toBeNull();
+    expect(expectActionList(first).pendingCommand).toMatchObject({
+      status: 'UNKNOWN',
+      requestId: s1RequestId,
+    });
+    expect(manager.hasPendingPreview()).toBe(false);
+
+    const blockedPreview = await manager.previewAdd({ url: 'https://example.com/another.mp4' });
+    expect(isRefusal(blockedPreview)).toBe(true);
+
+    const reconciled = await manager.confirmAdd();
+    expect(isRefusal(reconciled)).toBe(false);
+    if (isRefusal(reconciled)) return;
+    expect(reconciled.delivery).toMatchObject({
+      status: 'ACCEPTED',
+      commandType: 'EXECUTE_S1_DIRECT_ACQUISITION',
+      requestId: s1RequestId,
+    });
+    expect(reconciled.previewConsumed).toBe(true);
+    expect(expectActionList(reconciled).pendingCommand).toBeNull();
+    expect(fixture.contractRequestIds).toStrictEqual([contractRequestId]);
+    expect(fixture.s1RequestIds).toStrictEqual([s1RequestId, s1RequestId]);
   });
 });
