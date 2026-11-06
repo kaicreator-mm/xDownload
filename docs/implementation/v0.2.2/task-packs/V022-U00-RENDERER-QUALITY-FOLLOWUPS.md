@@ -117,5 +117,15 @@ allowed_write_set:
   - apps/desktop-shell/src/renderer/index.html
   - apps/desktop-shell/src/renderer/renderer-main.ts
   - apps/desktop-shell/src/renderer/styles.css
-status: READY_FOR_INDEPENDENT_TASK_PACK_REVIEW
+status: READY_FOR_GENERATION_1_LOCAL_BUILDER_CLAIM
 ```
+
+
+## Task Pack review amendment R1
+
+- Reviewed Task Pack blob: `73ca3349398981619cc82d358619e22eaa6b900b`
+- Independent Task Pack review: #389 comment #6688039448
+- Verdict: `TASK_PACK_REVIEW=PASS; P0=0; P1=0; P2=0`
+- Review date: 2026-11-06
+- Status projection advanced to `READY_FOR_GENERATION_1_LOCAL_BUILDER_CLAIM`.
+- This is a metadata-only planning amendment. The exact WIP baseline, three-path source write set, acceptance criteria and forbidden scope are unchanged. No Claim was created and no source mutation is authorized by this amendment.
