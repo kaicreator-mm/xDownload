@@ -54,7 +54,18 @@ repair_scope:
   - "Adapt the smoke's row-presence assertion to the post-rebuild ManagerJobRowDocument (the 'present' field no longer exists; presence is jobs[0] existence). No semantic loosening: lineage, terminal-null (ACTIVE/CANCELLED) and terminalMatches (COMPLETE/FAILED) checks are unchanged."
   - "Replace the toolbar-action UIA selector's wildcard name uniqueness gate ('*xDownload*', count==1) with an exact-match selector: visible elements whose Name equals the loaded manifest action name AND that expose an invoke pattern, excluding toggle and expand-collapse controls; still require exactly one match and still NOT_RUN (exit 5) on any other cardinality."
   - "Preserve all R3-R7 fail-closed behavior: desktop precheck, privacy window inspection, foreground admission before any input, single down/up with finally cleanup, zero fallback (no CDP popup, no popup URL, no openPopup, no DOM events, no force focus)."
-  - "R8 review response (PR #384 comment 6679145575): unify the pinned-direct and Extensions-menu grant mechanisms under ONE shared exact action predicate — exact manifest-derived name form (manifest action name verbatim, or the documented '<action.default_title>\\n<per-site hint>' toolbar-title form), visible non-zero bounds, InvokePattern required, TogglePattern and ExpandCollapsePattern rejected — applied in both u06-uia-click.ps1 and u06-uia-toolbar-action.ps1 and mirrored Node-side on the dump rows; exactly-one-or-NOT_RUN with zero input stays, the foreground guard remains readback-only (no activation request) and the no-fallback set stays unchanged. Environment fact recorded: Chrome 153 zh-CN pins the action as a Button exposing ExpandCollapsePattern and no InvokePattern (grant-r8-9-diag/uia-before-toolbar.json), so the strict shared predicate truthfully yields zero direct-path candidates on this host and the genuine grant proceeds through the Extensions-menu mechanism under the SAME predicate (single-match plus delivered guarded clicks proven in r8-6/r8-7)."
+  - "R8 review response (PR #384 comment 6679145575): unify the pinned-direct and Extensions-menu grant mechanisms under ONE shared exact action predicate — exact manifest-derived name form (manifest action name verbatim, or the documented '<action.default_title>\\n<per-site hint>' toolbar-title form), visible non-zero bounds, InvokePattern required, TogglePattern and ExpandCollapsePattern rejected — applied in both u06-uia-click.ps1 and u06-uia-toolbar-action.ps1 and mirrored Node-side on the dump rows; exactly-one-or-NOT_RUN with zero input stays, the foreground guard remains readback-only (no activation request) and the no-fallback set stays unchanged. Environment fact recorded: Chrome 153 zh-CN pins the action as a Button exposing ExpandCollapsePattern and no InvokePattern (grant-r8-9-diag/uia-before-toolbar.json), so the strict shared predicate truthfully yields zero direct-path candidates on this host and the genuine grant proceeds through the Extensions-menu mechanism under the SAME predicate (single-match plus delivered guarded clicks proven in r8-6/r8-7)." 
+  - >-
+    R9 click-point admission (PR #384 commit 27c5208fe1e8a0415735f7bcf28c63a9b9908685):
+    in the shared PS_FOREGROUND_GUARD used by both generated UIA click helpers,
+    perform read-only WindowFromPoint + GA_ROOT + GetWindowThreadProcessId
+    admission at the exact target coordinate before SetCursorPos and again
+    after cursor movement immediately before mouse-down. Only a hit resolving
+    to the target Chrome process is admitted; foreign or unreadable hits deny
+    with zero mouse events and record POINT_PID where available. Preserve
+    readback-only foreground admission, guaranteed mouse-up cleanup, and
+    zero fallback.
+
 acceptance:
   - "Only the three allowed_write_set files change; every other path stays byte-identical."
   - "Desktop fixtures ACTIVE/COMPLETE/FAILED/CANCELLED run 4/4 PASS against the real Core Seam and the current WIP renderer without any renderer/main change."
@@ -62,13 +73,34 @@ acceptance:
   - "Toolbar enumeration yields exactly one target under Chrome 153 zh-CN Extensions menu layout; non-unique or zero targets still return NOT_RUN with truthful counters."
   - "Genuine grant attempt remains at most one per environment attempt and only with the target Chrome window proven foreground; a denied foreground returns NOT_RUN with zero input."
   - "No CDP/DOM/openPopup/direct-popup fallback, no forced focus activation, no manifest/permission/worker/popup source change."
-  - "Node24 syntax, changed-file Prettier, both PowerShell foreground self-tests 8/8, desktop-precheck 6/6, privacy inspection-error regression, Desktop fixtures 4/4, Browser denial control, typecheck and pnpm run ci:verify pass."
+  - "Node24 syntax, changed-file Prettier, both PowerShell foreground self-tests 8/8, desktop-precheck 6/6, privacy inspection-error regression, Desktop fixtures 4/4, Browser denial control, typecheck and pnpm run ci:verify pass." 
+  - >-
+    Both generated UIA helpers pass the R9 foreground/click-point self-test
+    with 11/11 cases each; foreign-before-cursor, foreign-before-mouse-down
+    and unreadable hit-test deny with zero mouse events, while the admitted
+    path preserves exactly one mouse-down and one mouse-up.
+  - >-
+    On every genuine grant click, the target Chrome process owns the hit-tested
+    click point both before cursor movement and immediately before mouse-down;
+    a foreign or unreadable hit returns NOT_RUN/denied without mouse input.
+
 pre_ci:
   - "Re-read current WIP HEAD/tree, Issue #332 Claim generations 1-8, the latest generation-8 delivery/review-repair chain, current R8 manifest and frozen Task Pack."
   - "Verify exact repair base 3821ee8606963ec11cc20aad279c4bbc9d76a48d / tree 09736a726e822546e6be13f44d9ad9345df2885e."
   - "Publish and read back the generation-8 CAS DISPATCH_CLAIM bound to this manifest blob before source mutation."
   - "Apply only the three-path repair (allowed_write_set below); run Node24 syntax and Prettier before tests."
-  - "Local Windows Builder validates PowerShell self-tests, Desktop fixtures and all existing gates in one continuous session."
+  - "Local Windows Builder validates PowerShell self-tests, Desktop fixtures and all existing gates in one continuous session." 
+  - >-
+    For the R9 candidate, rerun Node24 syntax, changed-file Prettier, both
+    generated PowerShell helper parses, foreground/click-point self-tests
+    11/11 per helper, desktop-precheck 6/6, privacy-inspection-error, Browser
+    denial control, Desktop fixtures 4/4, typecheck and pnpm run ci:verify on
+    the exact current HEAD; do not reuse local receipts from earlier R8/R9 SHAs.
+  - >-
+    Run exact-SHA Woodpecker after the final manifest/source amendment and
+    record its Pipeline ID; a prior candidate's Pipeline #69 does not validate
+    a later manifest-amended HEAD.
+
 forbidden:
   - "Any source path except the three allowed_write_set files."
   - "Any production Browser/manifest/permission/worker/popup, Desktop renderer/main, Core/adapter/Host, package manifest/lockfile, CI or Native Host change."
@@ -81,6 +113,25 @@ review_response:
   claim_ref: "xDownload#332 comment 6677653484 (generation-8 CAS DISPATCH_CLAIMED, supersedes generation 7)"
   r8_delivery_ref: "xDownload#332 comment 6678805512 (R8 bounded repair delivered at 5f649697dc873ec34de4478b025164fb316eb3e8)"
   review_ref: "PR #384 comments 6679145575 and 6682202605 — fresh exact-HEAD audits of 5f649697dc873ec34de4478b025164fb316eb3e8 and 27c601a6ae27fa4f12bdb84046faf93914ffbb88; P1-01 repaired, P1-02 foreground-activation violation identified and repaired below"
+  r9_delivery_ref: "xDownload#384 commit 27c5208fe1e8a0415735f7bcf28c63a9b9908685 — click-point hit-test admission"
+  r9_candidate:
+    head: "27c5208fe1e8a0415735f7bcf28c63a9b9908685"
+    tree: "f6bb4d1bd43a3aea0cbd1a55170c3f61e61091f9"
+    source_blob: "a9d2c994de4ccec44970cfc87371b1056a770deb"
+    woodpecker: "Pipeline #69 SUCCESS on this source candidate; a new exact-SHA run is required after this manifest amendment."
+    windows_local_validation: "PENDING"
+    genuine_toolbar_grant: "PENDING_OPERATOR_COORDINATED_ATTEMPT"
+  r9_repair: >-
+    A real operator-present attempt showed that Chrome could be foreground
+    while a foreign top-level window (ZCode) still covered the toolbar click
+    point. The shared guard now performs read-only WindowFromPoint/GA_ROOT
+    process ownership checks before cursor movement and again before
+    mouse-down; both generated click helpers share the same guard, record
+    POINT_PID, and deny foreign/unreadable hits with zero mouse input. Three
+    new self-test cases cover foreign-before-cursor, foreign-before-down,
+    and unreadable hit-test. Static source review is favorable; exact-head
+    Windows validation and final independent review remain pending.
+
   findings:
     - id: P1-01
       finding: >-
@@ -154,4 +205,4 @@ review_response:
       response: >-
         File-level description aligned with the actual S1-admission ordering;
         comment-only change, implementation semantics unchanged.
-status: "GENERATION_8_REVIEWER_REPAIR_DELIVERED_AWAITING_LOCAL_VALIDATION_AND_FINAL_EXACT_HEAD_REVIEW"
+status: "GENERATION_8_R9_REPAIR_DELIVERED_AWAITING_EXACT_HEAD_WINDOWS_VALIDATION_AND_FINAL_INDEPENDENT_REVIEW"
