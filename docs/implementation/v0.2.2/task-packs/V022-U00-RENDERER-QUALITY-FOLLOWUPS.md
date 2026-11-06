@@ -88,7 +88,8 @@ No fourth path. If implementation discovers a genuine need for another repositor
 - Web/source review, local execution and metadata updates must be batched before a single final handoff. After handoff, do not invalidate the snapshot with nonessential writes.
 - Reuse PASS evidence only for the exact same SHA and unchanged environment/input. If SHA changes, rerun affected gates and every final-SHA-bound gate.
 - Environment NOT_RUN is not a source failure and does not authorize a new source repair batch. Record exact blocker and zero-side-effect evidence; do not fabricate screenshots or AX PASS.
-- Independent Verifier is distinct from Builder and binds the final exact HEAD/TREE/BASE.
+- Fresh Exact-SHA Reviewer binds the candidate and reports all findings in one pass. If a source repair is needed, the Reviewer may directly act as Repairer within the original three-path write set under a valid accepted Claim/CAS; do not serialize a Web → Local → Web repair bounce. If a separate repair Claim is required, accept it before mutation.
+- After any repair, a different final Verifier must review the latest HEAD/TREE/BASE; the Repairer cannot self-issue final PASS.
 - No second task/Claim for individual findings #385–#388; this Task Pack owns the combined repair. Child issues close only after their own acceptance is evidenced.
 
 ## Forbidden scope
@@ -129,3 +130,10 @@ status: READY_FOR_GENERATION_1_LOCAL_BUILDER_CLAIM
 - Review date: 2026-11-06
 - Status projection advanced to `READY_FOR_GENERATION_1_LOCAL_BUILDER_CLAIM`.
 - This is a metadata-only planning amendment. The exact WIP baseline, three-path source write set, acceptance criteria and forbidden scope are unchanged. No Claim was created and no source mutation is authorized by this amendment.
+
+
+## Task Pack review amendment R2
+
+- Supersedes R1 metadata snapshot `6eb0925b738c52e4420bc3879457eb1dea6aa3eb`.
+- Delivery-First reviewer-repair policy clarified: consolidate findings, repair within the original write set under valid Claim/CAS, and require a different final Verifier after repair.
+- No change to source write set, exact WIP baseline, child acceptance criteria or forbidden scope.
