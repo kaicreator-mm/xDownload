@@ -721,7 +721,15 @@ if ($SelfTest) {
 // Both are genuine guarded UIA input; the no-fallback set (CDP popup,
 // openPopup, DOM events, popup URL) is untouched, and any non-single
 // cardinality still exits NOT_RUN with zero input.
-const U06_ACTION_PREDICATE_PS1 = `$script:U06InvokePatternId = [System.Windows.Automation.InvokePatternIdentifiers]::Pattern.Id
+const U06_ACTION_PREDICATE_PS1 = `# The toolbar-title form is '<base title>[char]10<Chrome per-site hint>'. The
+# base title crosses the Node→PowerShell process boundary as its own
+# argument, so it must never carry the newline itself: a raw LF inside a
+# Windows command line corrupts PowerShell argument binding (grant-r8-rr1:
+# the helper died at binding with zero output and zero input). The prefix is
+# assembled HERE, after binding.
+$script:U06ToolbarTitlePrefix = ''
+if ($ToolbarBaseTitle -ne '') { $script:U06ToolbarTitlePrefix = $ToolbarBaseTitle + [char]10 }
+$script:U06InvokePatternId = [System.Windows.Automation.InvokePatternIdentifiers]::Pattern.Id
 $script:U06TogglePatternId = [System.Windows.Automation.TogglePatternIdentifiers]::Pattern.Id
 $script:U06ExpandCollapsePatternId = [System.Windows.Automation.ExpandCollapsePatternIdentifiers]::Pattern.Id
 function Test-U06ExtensionActionElement {
@@ -749,7 +757,7 @@ const UIA_CLICK_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$Name,
   [string]$ActionName = '',
-  [string]$ToolbarTitlePrefix = '',
+  [string]$ToolbarBaseTitle = '',
   [string]$ControlType = '',
   [string]$OutPath = '',
   [switch]$SelfTest
@@ -796,7 +804,7 @@ foreach ($window in $windows) {
     [System.Windows.Automation.Condition]::TrueCondition
   )
   foreach ($element in $elements) {
-    if (-not (Test-U06ExtensionActionElement $element $ActionName $ToolbarTitlePrefix)) { continue }
+    if (-not (Test-U06ExtensionActionElement $element $ActionName $script:U06ToolbarTitlePrefix)) { continue }
     $current = $element.Current
     $typeMatches = $ControlType -eq '' -or $current.ControlType.ProgrammaticName -eq ('ControlType.' + $ControlType)
     if (($Name -eq '' -or $current.Name -ceq $Name) -and $typeMatches) {
@@ -838,7 +846,7 @@ const UIA_TOOLBAR_ACTION_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$OutPath,
   [string]$ActionName = 'xDownload Browser Integration',
-  [string]$ToolbarTitlePrefix = '',
+  [string]$ToolbarBaseTitle = '',
   [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
@@ -1068,7 +1076,7 @@ while ($matches.Count -ne 1 -and $enumAttempt -lt 3) {
     $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
     foreach ($element in $elements) {
       try {
-        if (Test-U06ExtensionActionElement $element $ActionName $ToolbarTitlePrefix) {
+        if (Test-U06ExtensionActionElement $element $ActionName $script:U06ToolbarTitlePrefix) {
           $matches += [pscustomobject]@{ Element = $element; Window = $window }
         }
       } catch {
@@ -1205,11 +1213,15 @@ async function dumpUia(pid, name) {
   return Array.isArray(rows) ? rows : [rows];
 }
 
-async function clickUia(pid, name, controlType, manifestActionName, toolbarTitlePrefix) {
+// toolbarBaseTitle is the manifest action's default_title WITHOUT the
+// newline: a raw LF cannot cross the Windows command line safely (grant
+// r8-rr1 binding corruption) — PowerShell assembles the '<title>[char]10'
+// prefix itself after binding.
+async function clickUia(pid, name, controlType, manifestActionName, toolbarBaseTitle) {
   const args = ['-ProcessId', String(pid), '-Name', name];
   if (controlType) args.push('-ControlType', controlType.replace('ControlType.', ''));
   if (manifestActionName) args.push('-ActionName', manifestActionName);
-  if (toolbarTitlePrefix) args.push('-ToolbarTitlePrefix', toolbarTitlePrefix);
+  if (toolbarBaseTitle) args.push('-ToolbarBaseTitle', toolbarBaseTitle);
   await runPowerShell('u06-uia-click.ps1', args);
   result.toolbarClicks += 1;
   log('genuine-toolbar-click', {
@@ -1590,7 +1602,7 @@ async function main() {
             candidates[0].name,
             candidates[0].controlType,
             actionName,
-            actionToolbarTitlePrefix,
+            actionDefaultTitle,
           );
         } else {
           await runPowerShell('u06-uia-toolbar-action.ps1', [
@@ -1600,9 +1612,7 @@ async function main() {
             path.join(evidenceDir, 'uia-extensions-menu.json'),
             '-ActionName',
             actionName,
-            ...(actionToolbarTitlePrefix !== null
-              ? ['-ToolbarTitlePrefix', actionToolbarTitlePrefix]
-              : []),
+            ...(actionDefaultTitle !== null ? ['-ToolbarBaseTitle', actionDefaultTitle] : []),
           ]);
           result.toolbarClicks += 1;
           log('genuine-toolbar-click', {
