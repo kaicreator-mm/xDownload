@@ -287,4 +287,10 @@ rebase_record:
   claim_event_ref: "xDownload#332 generation-9 DISPATCH_CLAIMED (posted after this amendment; binding blob is this file's content sha256 per git blob addressing, stable across the rebase replay)"
 task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-U06-DESKTOP-TERMINAL-AND-CHROME-ACTIVETAB-HARNESS.md@planning/v0.2.2-ui-r0@791fe62fa50393227ad10f252f6519458e9cbc0d#blob:8c6ece8e0cf8f6389a97dc47bda5c5811a9bce9d"
 
-status: "GENERATION_9_REBASE_DELIVERED_AWAITING_EXACT_HEAD_GATES_GENUINE_GRANT_ATTEMPT_3_AND_FRESH_INDEPENDENT_FINAL_REVIEW"
+grant_gate_terminal_state:
+  decision: "Owner live instruction (2026-11-07): close the genuine-grant gate as an honest NOT_RUN terminal state; no further automated attempts — the residual risk is low (popup-open-on-action-click is Chrome-guaranteed mechanics; popup behavior is covered by the 2503-test suite and the denial-control run) and the automated verification cost had become disproportionate (9 attempts consumed by environmental cursor/focus competitors and foreground timing)."
+  attempts_consumed: "9 (all zero-input, all honestly recorded on #332; deepest chain: attempt 8 toolbarClicks=1 — full guarded toolbar click chain delivered, popup auto-attach timed out)"
+  failure_modes_characterized: "A: slow operator foregrounding lets the menu dismiss before the action-row click; B: intermittent parallel agent sessions steal focus/move the cursor mid-attempt (read-only probe evidence on #332)"
+  proven_without_pass: "extension loads; popup renders and scans fail-closed (denial control); guarded click chain reaches the action row; all R9/R10/R11 guards verified; desktop fixtures 4/4; ci:verify 221/2503; Woodpecker #75 SUCCESS; independent final review PASS"
+  residual_uncertainty: "the continuous user-gesture -> popup -> activeTab -> page-scan PASS was not recorded on this environment; recommended real-world confirmation is a plain manual check (load extension, click the toolbar button) — authoritative and immediate"
+status: "GRANT_GATE_CLOSED_AS_HONEST_NOT_RUN_PER_OWNER_DECISION_ALL_OTHER_GATES_PASS_REVIEWED"
