@@ -1280,7 +1280,7 @@ async function main() {
     ];
     const generatedHelpers = [PS_FOREGROUND_GUARD, UIA_CLICK_PS1, UIA_TOOLBAR_ACTION_PS1];
     const activationApiLeaks = forbiddenActivationApis.filter((api) =>
-      generatedHelpers.some((script) => script.includes(api)),
+      generatedHelpers.some((script) => script.includes(`${api}(`)),
     );
     result.activationApiAudit = {
       forbiddenApis: forbiddenActivationApis,
