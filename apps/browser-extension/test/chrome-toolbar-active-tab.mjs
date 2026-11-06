@@ -233,6 +233,17 @@ if (actionName === null || actionName === '') {
   console.error(`FAIL: extension manifest has no usable name: ${extensionDir}`);
   process.exit(EXIT.FAIL);
 }
+// R8: the PINNED toolbar button's accessible name is the action's
+// default_title plus a newline and Chrome's per-site access hint
+// ('<default_title>\n想要访问此网站'), not the manifest name. The direct
+// (toolbar) path anchors on that exact title prefix; the menu path keeps the
+// verbatim manifest-name equality. Both stay anchored to the loaded
+// manifest — no wildcard.
+const actionDefaultTitle =
+  typeof manifestJson.action?.default_title === 'string' && manifestJson.action.default_title !== ''
+    ? manifestJson.action.default_title
+    : null;
+const actionToolbarTitlePrefix = actionDefaultTitle === null ? null : `${actionDefaultTitle}\n`;
 // R8: pin the extension action to the toolbar of the fresh profile before
 // first launch (deterministic unpacked id from the load path — verified
 // against the live extension id). With the action visible on the main
@@ -1455,7 +1466,13 @@ async function main() {
       try {
         const rows = await dumpUia(chrome.pid, 'uia-before-toolbar');
         const candidates = rows.filter(
-          (row) => row.name === actionName && !row.isOffscreen && row.width > 0,
+          (row) =>
+            typeof row.name === 'string' &&
+            (row.name === actionName ||
+              (actionToolbarTitlePrefix !== null &&
+                row.name.startsWith(actionToolbarTitlePrefix))) &&
+            !row.isOffscreen &&
+            row.width > 0,
         );
         if (candidates.length === 1) {
           await clickUia(chrome.pid, candidates[0].name, candidates[0].controlType);
