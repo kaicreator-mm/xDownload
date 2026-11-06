@@ -494,8 +494,11 @@ async function runFixtureScenario(fixture, evidenceDir, electronVersion) {
       },
     }))()`);
 
+    // R8: the post-rebuild ManagerJobRowDocument no longer carries a
+    // `present` flag — presence in the durable S1 index page IS a defined
+    // jobs[0]. Same semantics, new document shape; no loosened assertion.
     const projectionPass =
-      row.present === true &&
+      row !== undefined &&
       row.lineageStatus === expectedLineage &&
       (fixture === 'ACTIVE' || fixture === 'CANCELLED'
         ? row.terminal === null

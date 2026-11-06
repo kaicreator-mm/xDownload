@@ -25,10 +25,15 @@
  *   Automation enumeration + native user32 mouse input (pinning through the
  *   visible Extensions menu when the action is not directly reachable).
  *   Before any click the interactive desktop is proven unlocked and
- *   input-capable; a locked/inaccessible desktop or an unreachable toolbar
- *   action returns the dedicated NOT_RUN exit status (3) with exact
- *   evidence. There is NO fallback to direct popup navigation, CDP popup
- *   APIs or chrome.action.openPopup — those can never count as positive.
+ *   input-capable, the target Chrome window must already be the exact
+ *   foreground window, and a read-only hit-test must prove the exact click
+ *   point resolves to the target Chrome process (a foreign window covering
+ *   the toolbar would swallow the click); a locked/inaccessible desktop, an
+ *   operator that never foregrounds Chrome, a covered click point or an
+ *   unreachable toolbar action returns the dedicated NOT_RUN exit status (3)
+ *   with exact evidence. There is NO fallback to direct popup navigation,
+ *   CDP popup APIs or chrome.action.openPopup — those can never count as
+ *   positive.
  *
  * --mode=grant --self-test=privacy-inspection-error — focused R3 P2-01
  *   regression for the optional Chrome-window screenshot privacy check. It
@@ -163,6 +168,23 @@ function sha256(filePath) {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+// R8: unpacked extensions get a deterministic id derived from their absolute
+// load path (Chrome hashes the path bytes; verified against the live
+// extension id on this host). The driver seeds the fresh temporary profile's
+// Preferences with the action pinned to the toolbar so the genuine click
+// targets the stable main-toolbar action button instead of the transient
+// Extensions menu row. This is driver-owned test profile content — no
+// product source, manifest or permission is involved, and the click itself
+// remains a genuine visible toolbar-action click.
+function unpackedExtensionIdFromPath(extensionPath) {
+  const digest = createHash('sha256').update(Buffer.from(extensionPath, 'utf16le')).digest('hex');
+  return digest
+    .slice(0, 32)
+    .split('')
+    .map((character) => String.fromCharCode(parseInt(character, 16) + 97))
+    .join('');
+}
+
 function discoverChrome() {
   if (CHROME_ARG !== null) return CHROME_ARG;
   const cacheRoot = path.join(os.homedir(), '.cache', 'puppeteer', 'chrome');
@@ -206,6 +228,81 @@ for (const required of ['manifest.json', 'popup.html', 'background.service-worke
     process.exit(EXIT.FAIL);
   }
 }
+// R8: the extension action's accessible Name anchors to the manifest name
+// (ordinal prefix — see the menu-row form below). The toolbar/menu UIA
+// selectors match these manifest-derived forms instead of a wildcard so the
+// per-site toggle and more-options rows in Chrome's Extensions menu can
+// never dilute the uniqueness gate.
+const manifestJson = JSON.parse(fs.readFileSync(path.join(extensionDir, 'manifest.json'), 'utf8'));
+const actionName = typeof manifestJson.name === 'string' ? manifestJson.name : null;
+if (actionName === null || actionName === '') {
+  console.error(`FAIL: extension manifest has no usable name: ${extensionDir}`);
+  process.exit(EXIT.FAIL);
+}
+// R8 (+ review-response environment fact): the MENU action row's accessible
+// name is the manifest action name, optionally followed by Chrome's dynamic
+// per-site access hint suffix ('xDownload Browser Integration、每次访问时都
+// 询问。选择即可更改网站权限' — Chrome 153 zh-CN, evidence grant-r8-rr4/
+// uia-extensions-menu.json; grant-r8-6/7 saw the bare name the same day).
+// The PINNED toolbar button's name is the action's default_title plus a
+// newline and Chrome's per-site hint ('<default_title>\n想要访问此网站').
+// Both are ordinal-prefix clauses of ONE shared exact action predicate
+// (review repair P1-01) applied by both grant
+// mechanisms on the Node side (rowIsExtensionAction) and in PowerShell
+// (Test-U06ExtensionActionElement) — anchored to the loaded manifest, no
+// wildcard. Environment fact (grant-r8-9-diag, Chrome 153 zh-CN): the
+// pinned button exposes ExpandCollapsePattern and no InvokePattern, so the
+// shared predicate truthfully yields zero direct-path candidates on this
+// host and the genuine grant flows through the Extensions-menu mechanism
+// under the same predicate; both are genuine guarded UIA input.
+const actionDefaultTitle =
+  typeof manifestJson.action?.default_title === 'string' && manifestJson.action.default_title !== ''
+    ? manifestJson.action.default_title
+    : null;
+const actionToolbarTitlePrefix = actionDefaultTitle === null ? null : `${actionDefaultTitle}\n`;
+// R8 review repair (P1-01): the driver's dump-row pre-selection mirrors the
+// shared PowerShell action predicate clause-for-clause so a candidate is
+// never handed to the click helper unless it already satisfies the unified
+// exact action semantics: exact manifest-derived name form, visible with
+// non-zero bounds, InvokePattern required, TogglePattern and
+// ExpandCollapsePattern rejected (dump rows carry each element's supported
+// pattern ProgrammaticNames). The PowerShell helper re-derives the same
+// predicate live before any input; both sides must agree.
+const ACTION_REQUIRED_PATTERN = 'InvokePatternIdentifiers.Pattern';
+const ACTION_FORBIDDEN_PATTERNS = [
+  'TogglePatternIdentifiers.Pattern',
+  'ExpandCollapsePatternIdentifiers.Pattern',
+];
+function rowIsExtensionAction(row) {
+  return (
+    typeof row.name === 'string' &&
+    // Menu-row form: manifest action name, optionally followed by Chrome's
+    // dynamic per-site access hint suffix (Chrome 153 zh-CN, evidence
+    // grant-r8-rr4); toolbar form: '<default_title>\n' prefix. Ordinal
+    // anchors to the loaded manifest, no wildcard — mirrored in PowerShell.
+    ((actionName !== '' && row.name.startsWith(actionName)) ||
+      (actionToolbarTitlePrefix !== null && row.name.startsWith(actionToolbarTitlePrefix))) &&
+    row.isOffscreen === false &&
+    row.width > 0 &&
+    row.height > 0 &&
+    Array.isArray(row.patterns) &&
+    row.patterns.includes(ACTION_REQUIRED_PATTERN) &&
+    !ACTION_FORBIDDEN_PATTERNS.some((pattern) => row.patterns.includes(pattern))
+  );
+}
+// R8: pin the extension action to the toolbar of the fresh profile before
+// first launch (deterministic unpacked id from the load path — verified
+// against the live extension id). With the action visible on the main
+// toolbar the exact-name enumeration finds it directly and the genuine
+// click targets the stable toolbar button instead of the transient
+// Extensions menu row.
+const seededExtensionId = unpackedExtensionIdFromPath(extensionDir);
+const seededPreferencesPath = path.join(profileDir, 'Default', 'Preferences');
+fs.mkdirSync(path.dirname(seededPreferencesPath), { recursive: true });
+fs.writeFileSync(
+  seededPreferencesPath,
+  `${JSON.stringify({ extensions: { pinned_extensions: [seededExtensionId] } })}\n`,
+);
 
 const result = {
   mode: MODE,
@@ -369,12 +466,24 @@ exit 0
 // --------------------------------------------------------------------------
 // R5/R6 foreground admission guard — shared verbatim by UIA_CLICK_PS1 and
 // UIA_TOOLBAR_ACTION_PS1 (each sets $script:Native to its own P/Invoke class).
-// No SetCursorPos/mouse_event unless GetForegroundWindow() readback equals the
-// exact target Chrome HWND, and SetCursorPos failure never falls through to
-// mouse input. Activation denial, readback timeout, HWND change or unreadable
-// HWND returns 'denied' with zero cursor movement and zero mouse input.
-// Under -SelfTest the native APIs are never touched: readback is scripted
-// from a queue and input advances seam counters only.
+// Readback-only: it never activates or focuses Chrome. No SetCursorPos or
+// mouse_event occurs unless GetForegroundWindow() already equals the exact
+// target Chrome HWND; SetCursorPos failure never falls through to mouse input.
+// If the operator does not foreground the target within 15 seconds, the guard
+// returns denied with zero cursor movement and zero mouse input.
+// R9 click-point admission: mouse_event at screen coordinates is delivered to
+// whatever top-level window is topmost at the point, so a foreign window
+// covering the toolbar would swallow the genuine click even while Chrome is
+// foreground (evidence f2-grant: guarded click delivered, Extensions menu
+// never opened, privacy gate reported occluded_by:ZCode). Before the cursor
+// move and again before mouse-down, a read-only WindowFromPoint/GA_ROOT
+// hit-test must resolve the exact point to a window of the TARGET Chrome
+// process (Chrome's own popups stay admitted); any foreign or unreadable hit
+// denies with zero mouse input and a recorded POINT_PID. Immediately before
+// mouse-down, GetCursorPos must also still equal the intended UIA center; the
+// point hit-test alone is insufficient if the operator moves the pointer.
+// Under -SelfTest native APIs are never touched: readback is scripted and
+// input advances seam counters only.
 // --------------------------------------------------------------------------
 const PS_FOREGROUND_GUARD = String.raw`
 $selfTestGuard = $false
@@ -384,6 +493,8 @@ $script:seamMouseEvent = 0
 $script:seamMouseDown = 0
 $script:seamMouseUp = 0
 $script:seamReadbackScript = @()
+$script:seamPointHitScript = @()
+$script:seamCursorReadScript = @()
 $script:seamSetCursorPosResult = $true
 function Read-Foreground {
   if ($selfTestGuard) {
@@ -397,39 +508,93 @@ function Read-Foreground {
   }
   return $script:Native::GetForegroundWindow()
 }
+function Assert-ClickPoint($targetHwnd, $x, $y) {
+  # Hit-test admission (evidence f2-grant): a foreign top-level window can
+  # cover the exact screen point while the target Chrome window is genuinely
+  # foreground — mouse_event at screen coordinates is delivered to whatever
+  # window is topmost at that point, so the guarded click would land in the
+  # covering window (activation then races the post-down readback). This
+  # admission is read-only hit-testing: the window that would RECEIVE a click
+  # at the point (WindowFromPoint, GA_ROOT) must belong to the SAME process
+  # as the target Chrome HWND. Same-process popups of Chrome itself (the
+  # open Extensions menu) stay admitted; any foreign or unreadable hit
+  # denies with zero mouse input.
+  try {
+    if ($selfTestGuard) {
+      $scripted = 'target'
+      if ($script:seamPointHitScript.Count -gt 0) {
+        $scripted = $script:seamPointHitScript[0]
+        $script:seamPointHitScript = @($script:seamPointHitScript | Select-Object -Skip 1)
+      }
+      if ($scripted -eq '__THROW__') { throw 'synthetic point hit-test failure' }
+      if ($scripted -eq 'target') {
+        return [pscustomobject]@{ verdict = 'granted'; pointPid = 0 }
+      }
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_foreign_window'; pointPid = 5555 }
+    }
+    $point = New-Object U06NativePoint
+    $point.X = [int]$x
+    $point.Y = [int]$y
+    $hit = $script:Native::WindowFromPoint($point)
+    if ($hit -eq [IntPtr]::Zero) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_unreadable'; pointPid = 0 }
+    }
+    $root = $script:Native::GetAncestor($hit, 2)
+    if ($root -eq [IntPtr]::Zero) { $root = $hit }
+    $hitPid = [uint32]0
+    [void]$script:Native::GetWindowThreadProcessId($root, [ref]$hitPid)
+    if ($hitPid -eq [uint32]0) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_unreadable'; pointPid = 0 }
+    }
+    $targetPid = [uint32]0
+    [void]$script:Native::GetWindowThreadProcessId($targetHwnd, [ref]$targetPid)
+    if ($targetPid -ne [uint32]0 -and $hitPid -eq $targetPid) {
+      return [pscustomobject]@{ verdict = 'granted'; pointPid = [int]$hitPid }
+    }
+    return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_foreign_window'; pointPid = [int]$hitPid }
+  } catch {
+    return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_unreadable'; pointPid = 0 }
+  }
+}
+function Assert-CursorPoint($x, $y) {
+  # mouse_event uses the CURRENT cursor position, not the requested SetCursorPos
+  # coordinates. Re-read it immediately before mouse-down so operator movement
+  # cannot redirect the genuine click to a different control or window.
+  try {
+    if ($selfTestGuard) {
+      $scripted = 'target'
+      if ($script:seamCursorReadScript.Count -gt 0) {
+        $scripted = $script:seamCursorReadScript[0]
+        $script:seamCursorReadScript = @($script:seamCursorReadScript | Select-Object -Skip 1)
+      }
+      if ($scripted -eq '__THROW__') { throw 'synthetic cursor readback failure' }
+      if ($scripted -eq 'target') {
+        return [pscustomobject]@{ verdict = 'granted' }
+      }
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_changed' }
+    }
+    $actual = New-Object U06NativePoint
+    if (-not $script:Native::GetCursorPos([ref]$actual)) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_unreadable' }
+    }
+    if ($actual.X -ne [int]$x -or $actual.Y -ne [int]$y) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_changed' }
+    }
+    return [pscustomobject]@{ verdict = 'granted' }
+  } catch {
+    return [pscustomobject]@{ verdict = 'denied'; reason = 'cursor_position_unreadable' }
+  }
+}
 function Assert-Foreground($targetHwnd) {
   if ($targetHwnd -eq [IntPtr]::Zero) { return 'denied' }
-  if (-not $selfTestGuard) { $script:Native::SetForegroundWindow($targetHwnd) | Out-Null }
-  $deadline = (Get-Date).AddSeconds(2)
+  # Readback-only admission: this helper NEVER requests activation or changes
+  # foreground ownership. The operator must make Chrome foreground. If the
+  # exact target HWND is not foreground within the bounded wait, deny before
+  # cursor movement or mouse input; no force-focus/AttachThreadInput fallback.
+  $deadline = (Get-Date).AddSeconds(15)
   while ((Get-Date) -lt $deadline) {
     if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
     if ($selfTestGuard) { break }
-    Start-Sleep -Milliseconds 100
-    $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
-  }
-  if ($selfTestGuard) { return 'denied' }
-  # Activation retry via AttachThreadInput: attaching to the current
-  # foreground thread lets this background thread legitimately request
-  # activation. No input is synthesized; the readback below still decides,
-  # and any denial keeps cursor movement and mouse input at zero. The attach
-  # is paired only on success and guaranteed detached in finally.
-  $fg = $script:Native::GetForegroundWindow()
-  if ($fg -ne [IntPtr]::Zero -and $fg -ne $targetHwnd) {
-    $dummyPid = [uint32]0
-    $fgThread = $script:Native::GetWindowThreadProcessId($fg, [ref]$dummyPid)
-    $me = $script:Native::GetCurrentThreadId()
-    if ($fgThread -ne 0 -and $fgThread -ne $me) {
-      $attached = $script:Native::AttachThreadInput($me, $fgThread, $true)
-      try {
-        $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
-      } finally {
-        if ($attached) { $script:Native::AttachThreadInput($me, $fgThread, $false) | Out-Null }
-      }
-    }
-  }
-  $retryDeadline = (Get-Date).AddSeconds(1)
-  while ((Get-Date) -lt $retryDeadline) {
-    if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
     Start-Sleep -Milliseconds 100
   }
   return 'denied'
@@ -441,6 +606,10 @@ function Send-NativeClick($targetHwnd, $x, $y) {
   # left button logically pressed. The cleanup up is not a second click.
   if ((Read-Foreground) -ne $targetHwnd) {
     return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  $point1 = Assert-ClickPoint $targetHwnd $x $y
+  if ($point1.verdict -ne 'granted') {
+    return [pscustomobject]@{ sent = $false; reason = $point1.reason; pointPid = $point1.pointPid; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
   $cursorOk = $true
   if ($selfTestGuard) {
@@ -454,6 +623,14 @@ function Send-NativeClick($targetHwnd, $x, $y) {
   }
   if ((Read-Foreground) -ne $targetHwnd) {
     return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  $point2 = Assert-ClickPoint $targetHwnd $x $y
+  if ($point2.verdict -ne 'granted') {
+    return [pscustomobject]@{ sent = $false; reason = $point2.reason; pointPid = $point2.pointPid; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  $cursorPoint = Assert-CursorPoint $x $y
+  if ($cursorPoint.verdict -ne 'granted') {
+    return [pscustomobject]@{ sent = $false; reason = $cursorPoint.reason; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
 
   $mouseDownAttempted = $false
@@ -523,6 +700,7 @@ function Invoke-GuardedClick($targetHwnd, $x, $y) {
       verdict = $verdict
       clicked = $false
       reason = $send.reason
+      pointPid = $send.pointPid
       mouseDownSent = $send.mouseDownSent
       mouseUpCleanupSent = $send.mouseUpCleanupSent
     }
@@ -539,12 +717,14 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   $cases = @()
   $target = [IntPtr]424242
   $other = [IntPtr]1111
-  function New-Case($name, $readbacks, $cursorResult, $clickTarget) {
+  function New-Case($name, $readbacks, $cursorResult, $clickTarget, $pointHits = @(), $cursorReads = @()) {
     $script:seamSetCursorPos = 0
     $script:seamMouseEvent = 0
     $script:seamMouseDown = 0
     $script:seamMouseUp = 0
     $script:seamReadbackScript = @($readbacks)
+    $script:seamPointHitScript = @($pointHits)
+    $script:seamCursorReadScript = @($cursorReads)
     $script:seamSetCursorPosResult = $cursorResult
     $r = Invoke-GuardedClick $clickTarget 10 10
     [pscustomobject]@{
@@ -552,6 +732,7 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
       verdict = $r.verdict
       reason = $r.reason
       clicked = $r.clicked
+      pointPid = $r.pointPid
       setCursorPosCalls = $script:seamSetCursorPos
       mouseEventCalls = $script:seamMouseEvent
       mouseDownCalls = $script:seamMouseDown
@@ -572,9 +753,9 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   # (d) zero/unknown target HWND: fail closed before any readback
   $c = New-Case 'target_unknown' @($target) $true ([IntPtr]::Zero)
   $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
-  # (e) R6: activation granted but HWND mismatch immediately before cursor:
+  # (e) R6: foreground changes after readback admission, before cursor:
   # zero cursor movement, zero mouse input
-  $c = New-Case 'post_activation_mismatch' @($target, $other) $true $target
+  $c = New-Case 'foreground_changed_before_cursor' @($target, $other) $true $target
   $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'foreground_moved' -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
   # (f) R6: SetCursorPos failure: zero mouse events
   $c = New-Case 'set_cursor_pos_failed' @($target, $target) $false $target
@@ -585,6 +766,24 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   # (h) R7: a readback exception after down still runs the matching up cleanup.
   $c = New-Case 'foreground_readback_error_after_mouse_down' @($target, $target, $target, '__THROW__') $true $target
   $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_readback_error_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
+  # (i) R9: a foreign window covers the exact click point before the cursor
+  # moves: zero cursor movement, zero mouse input
+  $c = New-Case 'click_point_foreign_before_cursor' @($target, $target) $true $target @('foreign')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'click_point_foreign_window' -and $c.pointPid -eq 5555 -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (j) R9: a foreign window covers the point after the cursor move but
+  # before mouse-down: cursor advanced, zero mouse input
+  $c = New-Case 'click_point_foreign_before_down' @($target, $target, $target) $true $target @('target', 'foreign')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'click_point_foreign_window' -and $c.pointPid -eq 5555 -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0)
+  # (k) R9: the hit-test itself is unreadable: fail closed with zero input
+  $c = New-Case 'click_point_unreadable' @($target, $target) $true $target @('__THROW__')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'click_point_unreadable' -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (l) R10: the operator moves the cursor after SetCursorPos; deny before
+  # mouse-down so mouse_event cannot click a different screen coordinate.
+  $c = New-Case 'cursor_position_changed_before_mouse_down' @($target, $target, $target) $true $target @('target', 'target') @('foreign')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'cursor_position_changed' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0 -and $c.mouseDownCalls -eq 0)
+  # (m) R10: unreadable cursor readback also denies before mouse-down.
+  $c = New-Case 'cursor_position_unreadable' @($target, $target, $target) $true $target @('target', 'target') @('__THROW__')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'cursor_position_unreadable' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0 -and $c.mouseDownCalls -eq 0)
   $allPass = @($cases | Where-Object { -not $_.pass }).Count -eq 0
   [pscustomobject]@{ ok = [bool]$allPass; cases = $cases } | ConvertTo-Json -Depth 4 | Set-Content -Path $SelfTestOutPath -Encoding UTF8
   if (-not $allPass) { exit 1 }
@@ -603,9 +802,72 @@ if ($SelfTest) {
 }
 `;
 
+// R8 review repair (P1-01, PR #384 comment 6679145575): ONE shared exact
+// extension-action predicate, interpolated verbatim into BOTH click helpers
+// (u06-uia-click.ps1 for the pinned-direct toolbar path and
+// u06-uia-toolbar-action.ps1 for the Extensions-menu path). Both grant
+// mechanisms now accept an element under identical clauses:
+//   1. manifest-derived name form — the menu action row's Name starts with
+//      the loaded manifest action name (Chrome 153 appends a dynamic
+//      per-site access hint suffix to it; evidence grant-r8-rr4), OR the
+//      pinned toolbar button's Name has the documented toolbar-title form
+//      ('<action.default_title>\n<Chrome per-site hint>'). No wildcard.
+//   2. visible with non-zero bounds (not offscreen, Width>0, Height>0).
+//   3. invoke semantics: GetSupportedPatterns() contains InvokePattern and
+//      contains neither TogglePattern nor ExpandCollapsePattern, so a
+//      same-name visible toggle (per-site access) or expander (more-options
+//      button) can never be clicked and recorded as the action.
+// Environment fact (evidence grant-r8-9-diag/uia-before-toolbar.json, Chrome
+// 153 zh-CN): the pinned toolbar button exposes ExpandCollapsePattern and no
+// InvokePattern, so under the shared predicate the pinned-direct path
+// truthfully yields zero candidates on this host and the genuine grant
+// proceeds through the Extensions-menu mechanism under the SAME predicate.
+// Both are genuine guarded UIA input; the no-fallback set (CDP popup,
+// openPopup, DOM events, popup URL) is untouched, and any non-single
+// cardinality still exits NOT_RUN with zero input.
+const U06_ACTION_PREDICATE_PS1 = `# The toolbar-title form is '<base title>[char]10<Chrome per-site hint>'. The
+# base title crosses the Node→PowerShell process boundary as its own
+# argument, so it must never carry the newline itself: a raw LF inside a
+# Windows command line corrupts PowerShell argument binding (grant-r8-rr1:
+# the helper died at binding with zero output and zero input). The prefix is
+# assembled HERE, after binding.
+$script:U06ToolbarTitlePrefix = ''
+if ($ToolbarBaseTitle -ne '') { $script:U06ToolbarTitlePrefix = $ToolbarBaseTitle + [char]10 }
+$script:U06InvokePatternId = [System.Windows.Automation.InvokePatternIdentifiers]::Pattern.Id
+$script:U06TogglePatternId = [System.Windows.Automation.TogglePatternIdentifiers]::Pattern.Id
+$script:U06ExpandCollapsePatternId = [System.Windows.Automation.ExpandCollapsePatternIdentifiers]::Pattern.Id
+function Test-U06ExtensionActionElement {
+  param($Element, [string]$ActionName, [string]$ToolbarTitlePrefix)
+  try {
+    $current = $Element.Current
+    if ($null -eq $current) { return $false }
+    $name = $current.Name
+    # Menu-row documented form: the manifest action name, optionally followed
+    # by Chrome's dynamic per-site access hint suffix (Chrome 153 zh-CN appends
+    # e.g. '、每次访问时都询问。选择即可更改网站权限' to the Extensions-menu
+    # action row — evidence grant-r8-rr4/uia-extensions-menu.json; grant-r8-6/7
+    # saw the bare name earlier the same day). Ordinal prefix anchor, anchored
+    # to the loaded manifest — no wildcard.
+    $nameIsMenuForm = ($ActionName -ne '' -and -not [string]::IsNullOrEmpty($name) -and $name.StartsWith($ActionName, [System.StringComparison]::Ordinal))
+    $nameIsToolbarForm = ($ToolbarTitlePrefix -ne '' -and -not [string]::IsNullOrEmpty($name) -and $name.StartsWith($ToolbarTitlePrefix, [System.StringComparison]::Ordinal))
+    if (-not ($nameIsMenuForm -or $nameIsToolbarForm)) { return $false }
+    if ($current.IsOffscreen) { return $false }
+    $bounds = $current.BoundingRectangle
+    if ($null -eq $bounds -or $bounds.Width -le 0 -or $bounds.Height -le 0) { return $false }
+    $patternIds = @($Element.GetSupportedPatterns() | ForEach-Object { $_.Id })
+    return ($patternIds -contains $script:U06InvokePatternId -and -not ($patternIds -contains $script:U06TogglePatternId) -and -not ($patternIds -contains $script:U06ExpandCollapsePatternId))
+  } catch {
+    # Fail closed: an element that cannot be fully read is never the action.
+    return $false
+  }
+}
+`;
+
 const UIA_CLICK_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$Name,
+  [string]$ActionName = '',
+  [string]$ToolbarBaseTitle = '',
   [string]$ControlType = '',
   [string]$OutPath = '',
   [switch]$SelfTest
@@ -615,18 +877,20 @@ Add-Type -AssemblyName UIAutomationTypes
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+public struct U06NativePoint { public int X; public int Y; }
 public static class U06Mouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out U06NativePoint point);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(U06NativePoint point);
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 }
 '@
 $script:Native = [U06Mouse]
 ${PS_FOREGROUND_GUARD}
+${U06_ACTION_PREDICATE_PS1}
 $condition = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
   $ProcessId
@@ -635,6 +899,15 @@ $windows = @([System.Windows.Automation.AutomationElement]::RootElement.FindAll(
   [System.Windows.Automation.TreeScope]::Children,
   $condition
 ) | ForEach-Object { $_ })
+# R8 review repair (P1-01): the pinned-direct path applies the SAME shared
+# exact action predicate as the Extensions-menu path (exact manifest-derived
+# name form, visible non-zero bounds, InvokePattern required, Toggle and
+# ExpandCollapse rejected) plus the concrete -Name anchor the driver passes
+# from its dump-row selection. The predicate re-derives every clause live on
+# the element that will actually receive input, so a same-name visible
+# element without the action's invoke semantics can never be clicked here.
+# Cardinality stays exactly-one-or-fail; any other count exits 3 and the
+# driver records NOT_RUN with zero input.
 $matches = @()
 foreach ($window in $windows) {
   $elements = $window.FindAll(
@@ -642,9 +915,10 @@ foreach ($window in $windows) {
     [System.Windows.Automation.Condition]::TrueCondition
   )
   foreach ($element in $elements) {
+    if (-not (Test-U06ExtensionActionElement $element $ActionName $script:U06ToolbarTitlePrefix)) { continue }
     $current = $element.Current
     $typeMatches = $ControlType -eq '' -or $current.ControlType.ProgrammaticName -eq ('ControlType.' + $ControlType)
-    if ($current.Name -ceq $Name -and $typeMatches -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
+    if (($Name -eq '' -or $current.Name -ceq $Name) -and $typeMatches) {
       $matches += [pscustomobject]@{ Element = $element; Window = $window }
     }
   }
@@ -662,7 +936,7 @@ $y = [int]($rect.Y + $rect.Height / 2)
 # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
 $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
 if (-not $guard.clicked) {
-  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
+  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent + ' POINT_PID=' + $guard.pointPid)
   exit 6
 }
 [pscustomobject]@{
@@ -682,6 +956,8 @@ exit 0
 const UIA_TOOLBAR_ACTION_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$OutPath,
+  [string]$ActionName = 'xDownload Browser Integration',
+  [string]$ToolbarBaseTitle = '',
   [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
@@ -689,18 +965,20 @@ Add-Type -AssemblyName UIAutomationTypes
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+public struct U06NativePoint { public int X; public int Y; }
 public static class U06ActionMouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(U06NativePoint point);
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out U06NativePoint point);
 }
 '@
 $script:Native = [U06ActionMouse]
 ${PS_FOREGROUND_GUARD}
+${U06_ACTION_PREDICATE_PS1}
 # R3 P2-01 focused regression seam: set ONLY by the Node driver's
 # --self-test=privacy-inspection-error run via the process environment. A
 # normal grant run never sees this. Under the seam the script performs NO
@@ -723,11 +1001,26 @@ function Click-Element($element, $window) {
   $rect = $element.Current.BoundingRectangle
   $x = [int]($rect.X + $rect.Width / 2)
   $y = [int]($rect.Y + $rect.Height / 2)
+  # R8 input-liveness gate: re-read the element identity immediately before
+  # the guarded input. A dead or emptied element (the Extensions menu closed
+  # between enumeration and click) means the recorded rectangle no longer
+  # maps to the action — abort with zero input instead of clicking dead
+  # coordinates and labeling it a genuine click.
+  try {
+    $liveCheck = $element.Current
+    if ([string]::IsNullOrEmpty($liveCheck.Name) -or $liveCheck.BoundingRectangle.Width -le 0) {
+      Write-Output ('UIA_CLICK_TARGET_STALE=1 name=' + $liveCheck.Name)
+      return $null
+    }
+  } catch {
+    Write-Output 'UIA_CLICK_TARGET_STALE=1 read_error'
+    return $null
+  }
   # R5 foreground admission guard: zero cursor movement and zero mouse input
   # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
   $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
   if (-not $guard.clicked) {
-    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
+    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent + ' POINT_PID=' + $guard.pointPid)
     exit 6
   }
   return @($x, $y)
@@ -752,6 +1045,10 @@ if ($puzzle -eq $null) {
 }
 if (-not $selfTestInspectionError) {
   $menuPoint = Click-Element $puzzle $mainWindow
+  if ($menuPoint -eq $null) {
+    Write-Output 'UIA_TOOLBAR_ACTION_EXIT=7 REASON=extensions_button_stale_before_input'
+    exit 7
+  }
   Start-Sleep -Milliseconds 700
   & (Join-Path $PSScriptRoot 'u06-uia-dump.ps1') -ProcessId $ProcessId -OutPath $OutPath
 }
@@ -865,22 +1162,80 @@ if ($selfTestInspectionError) {
   Write-Output 'UIA_TOOLBAR_SELFTEST_EXIT=0'
   exit 0
 }
+# R8 selector: Chrome 153's visible Extensions menu exposes three UIA
+# elements matching the wildcard '*xDownload*' (the action row, the per-site
+# access toggle and the per-extension more-options button), so a wildcard
+# uniqueness gate can never pass. The action row is identified exactly by the
+# SHARED exact action predicate (defined above the foreground guard, shared
+# verbatim with u06-uia-click.ps1): exact manifest-derived name form, visible
+# non-zero bounds, InvokePattern required, Toggle/ExpandCollapse rejected.
+# Any other cardinality still exits 5 (NOT_RUN), never a guessed click.
+# (R8 review repair P1-01: the per-path pattern constants were folded into
+# the shared predicate so the two grant mechanisms cannot drift apart.)
+# R8: Chrome's Extensions menu popup animates for ~1s after opening and
+# individual UIA reads on its elements fail transiently during that window
+# (observed: the row read cleanly on an immediate retry milliseconds later).
+# A transient read failure must never silently drop the action row, so the
+# whole read-only enumeration is retried up to three times. This is read
+# retry only — no input is ever sent, and the gate stays exactly-one-or-NOT_RUN.
 $matches = @()
-foreach ($window in (Get-ChromeWindows)) {
-  $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
-  foreach ($element in $elements) {
-    $current = $element.Current
-    if ($current.Name -like '*xDownload*' -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
-      $matches += [pscustomobject]@{ Element = $element; Window = $window }
+$enumAttempt = 0
+while ($matches.Count -ne 1 -and $enumAttempt -lt 3) {
+  if ($enumAttempt -gt 0) { Start-Sleep -Milliseconds 300 }
+  $enumAttempt += 1
+  $matches = @()
+  foreach ($window in (Get-ChromeWindows)) {
+    $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($element in $elements) {
+      try {
+        if (Test-U06ExtensionActionElement $element $ActionName $script:U06ToolbarTitlePrefix) {
+          $matches += [pscustomobject]@{ Element = $element; Window = $window }
+        }
+      } catch {
+        # Transient UIA read failure (e.g. menu animation): skip this element
+        # in the current pass; a later pass re-enumerates from scratch.
+        continue
+      }
     }
   }
 }
 if ($matches.Count -ne 1) {
+  Write-Output ('UIA_TOOLBAR_ENUM_ATTEMPTS=' + $enumAttempt)
+  foreach ($window in (Get-ChromeWindows)) {
+    $winName = $window.Current.Name
+    $winElements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
+    $windowCandidates = @()
+    foreach ($element in $winElements) {
+      try {
+        $current = $element.Current
+        # Mirror the menu-row documented form (manifest name, optional
+        # Chrome per-site hint suffix) so exit-5 diagnostics count what the
+        # selector counts — read-only, input never follows a DIAG pass.
+        if (-not [string]::IsNullOrEmpty($current.Name) -and ($ActionName -eq '' -or $current.Name.StartsWith($ActionName, [System.StringComparison]::Ordinal)) -and -not $current.IsOffscreen) {
+          $windowCandidates += [pscustomobject]@{ name = $current.Name; patterns = (@($element.GetSupportedPatterns() | ForEach-Object { $_.Id }) -join ','); width = [int]$current.BoundingRectangle.Width }
+        }
+      } catch { continue }
+    }
+    Write-Output ('DIAG_WINDOW elements=' + @($winElements).Count + ' actionNameFormMatches=' + @($windowCandidates).Count + ' title=' + $winName)
+    foreach ($candidate in $windowCandidates) {
+      Write-Output ('DIAG_CANDIDATE ' + ($candidate | ConvertTo-Json -Compress))
+    }
+  }
+  $foregroundPidNow = [uint32]0
+  $foregroundNow = [U06ActionMouse]::GetForegroundWindow()
+  if ($foregroundNow -ne [IntPtr]::Zero) {
+    [U06ActionMouse]::GetWindowThreadProcessId($foregroundNow, [ref]$foregroundPidNow) | Out-Null
+  }
+  Write-Output ('DIAG_FOREGROUND_PID=' + $foregroundPidNow)
   Write-Output ('UIA_TOOLBAR_ACTION_EXIT=5 MATCH_COUNT=' + $matches.Count)
   exit 5
 }
 $target = $matches[0].Element
 $point = Click-Element $target $matches[0].Window
+if ($point -eq $null) {
+  Write-Output 'UIA_TOOLBAR_ACTION_EXIT=7 REASON=action_row_stale_before_input'
+  exit 7
+}
 [pscustomobject]@{
   menuMechanism = 'user32 SetCursorPos/mouse_event on Extensions toolbar automationId view_1006 after GetForegroundWindow() readback admission'
   actionMechanism = 'user32 SetCursorPos/mouse_event on xDownload extension action after GetForegroundWindow() readback admission'
@@ -973,9 +1328,15 @@ async function dumpUia(pid, name) {
   return Array.isArray(rows) ? rows : [rows];
 }
 
-async function clickUia(pid, name, controlType) {
+// toolbarBaseTitle is the manifest action's default_title WITHOUT the
+// newline: a raw LF cannot cross the Windows command line safely (grant
+// r8-rr1 binding corruption) — PowerShell assembles the '<title>[char]10'
+// prefix itself after binding.
+async function clickUia(pid, name, controlType, manifestActionName, toolbarBaseTitle) {
   const args = ['-ProcessId', String(pid), '-Name', name];
   if (controlType) args.push('-ControlType', controlType.replace('ControlType.', ''));
+  if (manifestActionName) args.push('-ActionName', manifestActionName);
+  if (toolbarBaseTitle) args.push('-ToolbarBaseTitle', toolbarBaseTitle);
   await runPowerShell('u06-uia-click.ps1', args);
   result.toolbarClicks += 1;
   log('genuine-toolbar-click', {
@@ -1023,10 +1384,15 @@ async function main() {
   if (SELF_TEST === 'foreground-guard') {
     // R5 deterministic guard self-test: BOTH click helpers run their shared
     // guard logic under the -SelfTest seam (scripted foreground readback,
-    // seam input counters — zero native API touch). Cases: denied/mismatched
-    // readback, matching HWND admission, unreadable foreground, unknown
-    // target HWND. A pass requires zero SetCursorPos/mouse_event calls on
-    // every denial path in both scripts.
+    // scripted point hit-test, scripted cursor readback, seam input counters
+    // — zero native API touch). Cases: denied/mismatched readback, matching
+    // HWND admission, unreadable foreground, unknown target HWND, plus the
+    // R9 click-point admissions (foreign window before cursor / before
+    // mouse-down, unreadable hit-test) and the R10 cursor-position
+    // admissions. A pass additionally requires the R11 native-class
+    // completeness audit: every $script:Native:: call in each generated
+    // helper must have a matching extern declaration (seam tests never touch
+    // native, so a missing DllImport is only visible to this static audit).
     const toolbarOut = path.join(evidenceDir, 'foreground-guard-toolbar-action.json');
     await runPowerShell('u06-uia-toolbar-action.ps1', [
       '-ProcessId',
@@ -1047,8 +1413,49 @@ async function main() {
     ]);
     const toolbar = readJsonWithBom(toolbarOut);
     const click = readJsonWithBom(clickOut);
+    // Durable regression guard for the manifest's no-force-focus boundary:
+    // generated helpers must remain readback-only and never import or call
+    // APIs that programmatically activate/focus another window.
+    const forbiddenActivationApis = [
+      'SetForegroundWindow',
+      'AttachThreadInput',
+      'GetCurrentThreadId',
+    ];
+    const generatedHelpers = [PS_FOREGROUND_GUARD, UIA_CLICK_PS1, UIA_TOOLBAR_ACTION_PS1];
+    const activationApiLeaks = forbiddenActivationApis.filter((api) =>
+      generatedHelpers.some((script) => script.includes(`${api}(`)),
+    );
+    result.activationApiAudit = {
+      forbiddenApis: forbiddenActivationApis,
+      leaks: activationApiLeaks,
+    };
+    // R11 native-class completeness audit: every $script:Native::<api>( call
+    // in a generated click helper must have a matching public static extern
+    // declaration in that helper's Add-Type class. R10 shipped
+    // GetCursorPos usage with the import added only to U06Mouse and missed
+    // U06ActionMouse — invisible to the seam-based self-test (which never
+    // touches native) and first hit as cursor_position_unreadable on the
+    // real menu-path click (r11-grant evidence, exit 6, zero input).
+    const nativeCompletenessAudit = [UIA_CLICK_PS1, UIA_TOOLBAR_ACTION_PS1].map((script, index) => {
+      const declared = new Set(
+        Array.from(script.matchAll(/public static extern [\w.]+ (\w+)\(/gu), (m) => m[1]),
+      );
+      const called = [
+        ...new Set(Array.from(script.matchAll(/\$script:Native::(\w+)\(/gu), (m) => m[1])),
+      ];
+      return {
+        helper: index === 0 ? 'uia-click' : 'uia-toolbar-action',
+        calledApis: called.sort(),
+        missingImports: called.filter((api) => !declared.has(api)).sort(),
+      };
+    });
+    result.nativeCompletenessAudit = nativeCompletenessAudit;
     result.selfTest = { name: SELF_TEST, toolbarAction: toolbar, click };
-    result.ok = toolbar.ok === true && click.ok === true;
+    result.ok =
+      toolbar.ok === true &&
+      click.ok === true &&
+      activationApiLeaks.length === 0 &&
+      nativeCompletenessAudit.every((helper) => helper.missingImports.length === 0);
     result.status = result.ok ? 'PASS' : 'FAIL';
     result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
     result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;
@@ -1323,17 +1730,50 @@ async function main() {
     } else {
       try {
         const rows = await dumpUia(chrome.pid, 'uia-before-toolbar');
-        const candidates = rows.filter(
-          (row) => row.name?.includes('xDownload') && !row.isOffscreen && row.width > 0,
-        );
+        // R8 review repair (P1-01): the direct path now applies the SAME
+        // unified exact action predicate as the menu path, both Node-side
+        // (this filter over the dump rows) and PowerShell-side (the click
+        // helper re-derives it live before any input). The enumeration is
+        // recorded truthfully: on Chrome 153 the pinned toolbar button
+        // exposes ExpandCollapsePattern and no InvokePattern (evidence
+        // grant-r8-9-diag), so the strict predicate yields zero candidates
+        // there and the genuine grant proceeds through the Extensions-menu
+        // mechanism under the same predicate — a genuine guarded UIA input,
+        // never the forbidden fallback set (CDP/openPopup/DOM/popup URL).
+        const candidates = rows.filter((row) => rowIsExtensionAction(row));
+        result.directPathEnumeration = {
+          dumpRows: rows.length,
+          actionNameFormRows: rows.filter(
+            (row) =>
+              typeof row.name === 'string' &&
+              ((actionName !== '' && row.name.startsWith(actionName)) ||
+                (actionToolbarTitlePrefix !== null &&
+                  row.name.startsWith(actionToolbarTitlePrefix))),
+          ).length,
+          predicateCandidates: candidates.length,
+          actionName,
+          toolbarTitlePrefix: actionToolbarTitlePrefix,
+          predicate:
+            'manifest-name-prefix-form+visible-nonzero-bounds+Invoke-required+Toggle/ExpandCollapse-rejected',
+        };
+        log('direct-path-enumeration', result.directPathEnumeration);
         if (candidates.length === 1) {
-          await clickUia(chrome.pid, candidates[0].name, candidates[0].controlType);
+          await clickUia(
+            chrome.pid,
+            candidates[0].name,
+            candidates[0].controlType,
+            actionName,
+            actionDefaultTitle,
+          );
         } else {
           await runPowerShell('u06-uia-toolbar-action.ps1', [
             '-ProcessId',
             String(chrome.pid),
             '-OutPath',
             path.join(evidenceDir, 'uia-extensions-menu.json'),
+            '-ActionName',
+            actionName,
+            ...(actionDefaultTitle !== null ? ['-ToolbarBaseTitle', actionDefaultTitle] : []),
           ]);
           result.toolbarClicks += 1;
           log('genuine-toolbar-click', {
@@ -1386,9 +1826,21 @@ async function main() {
     } catch (error) {
       // A genuine click that opened no popup proves no user gesture reached
       // the action (e.g. input landed on the lock screen). NOT_RUN, no
-      // fallback.
+      // fallback. R8: record the full target list at timeout so the evidence
+      // distinguishes "popup never opened" from "opened but not attached".
+      let popupTargetsAtTimeout = null;
+      try {
+        const targetsResponse = await send('Target.getTargets', {});
+        popupTargetsAtTimeout = (targetsResponse.targetInfos ?? []).map((target) => ({
+          type: target.type,
+          url: String(target.url).slice(0, 120),
+        }));
+      } catch {
+        popupTargetsAtTimeout = null;
+      }
       result.ok = false;
       result.status = 'NOT_RUN';
+      result.popupTargetsAtTimeout = popupTargetsAtTimeout;
       result.notRunReason = `genuine toolbar click opened no popup: ${String(error)}`;
       fs.writeFileSync(
         path.join(evidenceDir, 'result.json'),
