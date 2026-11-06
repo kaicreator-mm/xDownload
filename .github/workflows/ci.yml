@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - version/v0.1.0
   pull_request:
     branches:
       - version/v0.1.0
