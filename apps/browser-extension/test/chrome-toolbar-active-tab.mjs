@@ -461,12 +461,13 @@ exit 0
 // --------------------------------------------------------------------------
 // R5/R6 foreground admission guard — shared verbatim by UIA_CLICK_PS1 and
 // UIA_TOOLBAR_ACTION_PS1 (each sets $script:Native to its own P/Invoke class).
-// No SetCursorPos/mouse_event unless GetForegroundWindow() readback equals the
-// exact target Chrome HWND, and SetCursorPos failure never falls through to
-// mouse input. Activation denial, readback timeout, HWND change or unreadable
-// HWND returns 'denied' with zero cursor movement and zero mouse input.
-// Under -SelfTest the native APIs are never touched: readback is scripted
-// from a queue and input advances seam counters only.
+// Readback-only: it never activates or focuses Chrome. No SetCursorPos or
+// mouse_event occurs unless GetForegroundWindow() already equals the exact
+// target Chrome HWND; SetCursorPos failure never falls through to mouse input.
+// If the operator does not foreground the target within 15 seconds, the guard
+// returns denied with zero cursor movement and zero mouse input.
+// Under -SelfTest native APIs are never touched: readback is scripted and
+// input advances seam counters only.
 // --------------------------------------------------------------------------
 const PS_FOREGROUND_GUARD = String.raw`
 $selfTestGuard = $false
@@ -491,49 +492,14 @@ function Read-Foreground {
 }
 function Assert-Foreground($targetHwnd) {
   if ($targetHwnd -eq [IntPtr]::Zero) { return 'denied' }
-  # R8: probe the readback FIRST and request activation only on mismatch. The
-  # original entry fired an unconditional SetForegroundWindow before the first
-  # readback; when the target is Chrome's already-active Extensions menu
-  # popup, that activation churn can dismiss the menu before the guarded
-  # click, so activation calls are now minimized. The admission invariant is
-  # unchanged: the readback must equal the exact target HWND before any
-  # cursor movement or mouse input, and the self-test seam keeps its exact
-  # scripted readback sequence (the probe is skipped under the seam).
-  if (-not $selfTestGuard) {
-    if ((Read-Foreground) -ne $targetHwnd) {
-      $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
-    }
-  }
-  $deadline = (Get-Date).AddSeconds(2)
+  # Readback-only admission: this helper NEVER requests activation or changes
+  # foreground ownership. The operator must make Chrome foreground. If the
+  # exact target HWND is not foreground within the bounded wait, deny before
+  # cursor movement or mouse input; no force-focus/AttachThreadInput fallback.
+  $deadline = (Get-Date).AddSeconds(15)
   while ((Get-Date) -lt $deadline) {
     if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
     if ($selfTestGuard) { break }
-    Start-Sleep -Milliseconds 100
-    $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
-  }
-  if ($selfTestGuard) { return 'denied' }
-  # Activation retry via AttachThreadInput: attaching to the current
-  # foreground thread lets this background thread legitimately request
-  # activation. No input is synthesized; the readback below still decides,
-  # and any denial keeps cursor movement and mouse input at zero. The attach
-  # is paired only on success and guaranteed detached in finally.
-  $fg = $script:Native::GetForegroundWindow()
-  if ($fg -ne [IntPtr]::Zero -and $fg -ne $targetHwnd) {
-    $dummyPid = [uint32]0
-    $fgThread = $script:Native::GetWindowThreadProcessId($fg, [ref]$dummyPid)
-    $me = $script:Native::GetCurrentThreadId()
-    if ($fgThread -ne 0 -and $fgThread -ne $me) {
-      $attached = $script:Native::AttachThreadInput($me, $fgThread, $true)
-      try {
-        $script:Native::SetForegroundWindow($targetHwnd) | Out-Null
-      } finally {
-        if ($attached) { $script:Native::AttachThreadInput($me, $fgThread, $false) | Out-Null }
-      }
-    }
-  }
-  $retryDeadline = (Get-Date).AddSeconds(1)
-  while ((Get-Date) -lt $retryDeadline) {
-    if ((Read-Foreground) -eq $targetHwnd) { return 'granted' }
     Start-Sleep -Milliseconds 100
   }
   return 'denied'
@@ -676,9 +642,9 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   # (d) zero/unknown target HWND: fail closed before any readback
   $c = New-Case 'target_unknown' @($target) $true ([IntPtr]::Zero)
   $cases += Add-Note $c ($c.verdict -eq 'denied' -and $c.clicked -eq $false -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
-  # (e) R6: activation granted but HWND mismatch immediately before cursor:
+  # (e) R6: foreground changes after readback admission, before cursor:
   # zero cursor movement, zero mouse input
-  $c = New-Case 'post_activation_mismatch' @($target, $other) $true $target
+  $c = New-Case 'foreground_changed_before_cursor' @($target, $other) $true $target
   $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'foreground_moved' -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
   # (f) R6: SetCursorPos failure: zero mouse events
   $c = New-Case 'set_cursor_pos_failed' @($target, $target) $false $target
@@ -784,12 +750,8 @@ using System;
 using System.Runtime.InteropServices;
 public static class U06Mouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 '@
 $script:Native = [U06Mouse]
@@ -871,12 +833,9 @@ using System;
 using System.Runtime.InteropServices;
 public static class U06ActionMouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 '@
 $script:Native = [U06ActionMouse]
@@ -1311,8 +1270,24 @@ async function main() {
     ]);
     const toolbar = readJsonWithBom(toolbarOut);
     const click = readJsonWithBom(clickOut);
+    // Durable regression guard for the manifest's no-force-focus boundary:
+    // generated helpers must remain readback-only and never import or call
+    // APIs that programmatically activate/focus another window.
+    const forbiddenActivationApis = [
+      'SetForegroundWindow',
+      'AttachThreadInput',
+      'GetCurrentThreadId',
+    ];
+    const generatedHelpers = [PS_FOREGROUND_GUARD, UIA_CLICK_PS1, UIA_TOOLBAR_ACTION_PS1];
+    const activationApiLeaks = forbiddenActivationApis.filter((api) =>
+      generatedHelpers.some((script) => script.includes(api)),
+    );
+    result.activationApiAudit = {
+      forbiddenApis: forbiddenActivationApis,
+      leaks: activationApiLeaks,
+    };
     result.selfTest = { name: SELF_TEST, toolbarAction: toolbar, click };
-    result.ok = toolbar.ok === true && click.ok === true;
+    result.ok = toolbar.ok === true && click.ok === true && activationApiLeaks.length === 0;
     result.status = result.ok ? 'PASS' : 'FAIL';
     result.manifestSha256After = sha256(path.join(extensionDir, 'manifest.json'));
     result.manifestUnchanged = result.manifestSha256After === result.manifestSha256Before;
