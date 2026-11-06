@@ -237,13 +237,46 @@ if (actionName === null || actionName === '') {
 // default_title plus a newline and Chrome's per-site access hint
 // ('<default_title>\n想要访问此网站'), not the manifest name. The direct
 // (toolbar) path anchors on that exact title prefix; the menu path keeps the
-// verbatim manifest-name equality. Both stay anchored to the loaded
-// manifest — no wildcard.
+// verbatim manifest-name equality. Both forms are clauses of ONE shared
+// exact action predicate (review repair P1-01) applied by both grant
+// mechanisms on the Node side (rowIsExtensionAction) and in PowerShell
+// (Test-U06ExtensionActionElement) — anchored to the loaded manifest, no
+// wildcard. Environment fact (grant-r8-9-diag, Chrome 153 zh-CN): the
+// pinned button exposes ExpandCollapsePattern and no InvokePattern, so the
+// shared predicate truthfully yields zero direct-path candidates on this
+// host and the genuine grant flows through the Extensions-menu mechanism
+// under the same predicate; both are genuine guarded UIA input.
 const actionDefaultTitle =
   typeof manifestJson.action?.default_title === 'string' && manifestJson.action.default_title !== ''
     ? manifestJson.action.default_title
     : null;
 const actionToolbarTitlePrefix = actionDefaultTitle === null ? null : `${actionDefaultTitle}\n`;
+// R8 review repair (P1-01): the driver's dump-row pre-selection mirrors the
+// shared PowerShell action predicate clause-for-clause so a candidate is
+// never handed to the click helper unless it already satisfies the unified
+// exact action semantics: exact manifest-derived name form, visible with
+// non-zero bounds, InvokePattern required, TogglePattern and
+// ExpandCollapsePattern rejected (dump rows carry each element's supported
+// pattern ProgrammaticNames). The PowerShell helper re-derives the same
+// predicate live before any input; both sides must agree.
+const ACTION_REQUIRED_PATTERN = 'InvokePatternIdentifiers.Pattern';
+const ACTION_FORBIDDEN_PATTERNS = [
+  'TogglePatternIdentifiers.Pattern',
+  'ExpandCollapsePatternIdentifiers.Pattern',
+];
+function rowIsExtensionAction(row) {
+  return (
+    typeof row.name === 'string' &&
+    (row.name === actionName ||
+      (actionToolbarTitlePrefix !== null && row.name.startsWith(actionToolbarTitlePrefix))) &&
+    row.isOffscreen === false &&
+    row.width > 0 &&
+    row.height > 0 &&
+    Array.isArray(row.patterns) &&
+    row.patterns.includes(ACTION_REQUIRED_PATTERN) &&
+    !ACTION_FORBIDDEN_PATTERNS.some((pattern) => row.patterns.includes(pattern))
+  );
+}
 // R8: pin the extension action to the toolbar of the fresh profile before
 // first launch (deterministic unpacked id from the load path — verified
 // against the live extension id). With the action visible on the main
@@ -666,9 +699,57 @@ if ($SelfTest) {
 }
 `;
 
+// R8 review repair (P1-01, PR #384 comment 6679145575): ONE shared exact
+// extension-action predicate, interpolated verbatim into BOTH click helpers
+// (u06-uia-click.ps1 for the pinned-direct toolbar path and
+// u06-uia-toolbar-action.ps1 for the Extensions-menu path). Both grant
+// mechanisms now accept an element under identical clauses:
+//   1. exact manifest-derived name form — the menu action row's Name equals
+//      the loaded manifest action name verbatim, OR the pinned toolbar
+//      button's Name has the documented toolbar-title form
+//      ('<action.default_title>\n<Chrome per-site hint>'). No wildcard.
+//   2. visible with non-zero bounds (not offscreen, Width>0, Height>0).
+//   3. invoke semantics: GetSupportedPatterns() contains InvokePattern and
+//      contains neither TogglePattern nor ExpandCollapsePattern, so a
+//      same-name visible toggle (per-site access) or expander (more-options
+//      button) can never be clicked and recorded as the action.
+// Environment fact (evidence grant-r8-9-diag/uia-before-toolbar.json, Chrome
+// 153 zh-CN): the pinned toolbar button exposes ExpandCollapsePattern and no
+// InvokePattern, so under the shared predicate the pinned-direct path
+// truthfully yields zero candidates on this host and the genuine grant
+// proceeds through the Extensions-menu mechanism under the SAME predicate.
+// Both are genuine guarded UIA input; the no-fallback set (CDP popup,
+// openPopup, DOM events, popup URL) is untouched, and any non-single
+// cardinality still exits NOT_RUN with zero input.
+const U06_ACTION_PREDICATE_PS1 = `$script:U06InvokePatternId = [System.Windows.Automation.InvokePatternIdentifiers]::Pattern.Id
+$script:U06TogglePatternId = [System.Windows.Automation.TogglePatternIdentifiers]::Pattern.Id
+$script:U06ExpandCollapsePatternId = [System.Windows.Automation.ExpandCollapsePatternIdentifiers]::Pattern.Id
+function Test-U06ExtensionActionElement {
+  param($Element, [string]$ActionName, [string]$ToolbarTitlePrefix)
+  try {
+    $current = $Element.Current
+    if ($null -eq $current) { return $false }
+    $name = $current.Name
+    $nameIsMenuForm = ($ActionName -ne '' -and $name -ceq $ActionName)
+    $nameIsToolbarForm = ($ToolbarTitlePrefix -ne '' -and -not [string]::IsNullOrEmpty($name) -and $name.StartsWith($ToolbarTitlePrefix, [System.StringComparison]::Ordinal))
+    if (-not ($nameIsMenuForm -or $nameIsToolbarForm)) { return $false }
+    if ($current.IsOffscreen) { return $false }
+    $bounds = $current.BoundingRectangle
+    if ($null -eq $bounds -or $bounds.Width -le 0 -or $bounds.Height -le 0) { return $false }
+    $patternIds = @($Element.GetSupportedPatterns() | ForEach-Object { $_.Id })
+    return ($patternIds -contains $script:U06InvokePatternId -and -not ($patternIds -contains $script:U06TogglePatternId) -and -not ($patternIds -contains $script:U06ExpandCollapsePatternId))
+  } catch {
+    # Fail closed: an element that cannot be fully read is never the action.
+    return $false
+  }
+}
+`;
+
 const UIA_CLICK_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$Name,
+  [string]$ActionName = '',
+  [string]$ToolbarTitlePrefix = '',
   [string]$ControlType = '',
   [string]$OutPath = '',
   [switch]$SelfTest
@@ -690,6 +771,7 @@ public static class U06Mouse {
 '@
 $script:Native = [U06Mouse]
 ${PS_FOREGROUND_GUARD}
+${U06_ACTION_PREDICATE_PS1}
 $condition = New-Object System.Windows.Automation.PropertyCondition(
   [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
   $ProcessId
@@ -698,6 +780,15 @@ $windows = @([System.Windows.Automation.AutomationElement]::RootElement.FindAll(
   [System.Windows.Automation.TreeScope]::Children,
   $condition
 ) | ForEach-Object { $_ })
+# R8 review repair (P1-01): the pinned-direct path applies the SAME shared
+# exact action predicate as the Extensions-menu path (exact manifest-derived
+# name form, visible non-zero bounds, InvokePattern required, Toggle and
+# ExpandCollapse rejected) plus the concrete -Name anchor the driver passes
+# from its dump-row selection. The predicate re-derives every clause live on
+# the element that will actually receive input, so a same-name visible
+# element without the action's invoke semantics can never be clicked here.
+# Cardinality stays exactly-one-or-fail; any other count exits 3 and the
+# driver records NOT_RUN with zero input.
 $matches = @()
 foreach ($window in $windows) {
   $elements = $window.FindAll(
@@ -705,9 +796,10 @@ foreach ($window in $windows) {
     [System.Windows.Automation.Condition]::TrueCondition
   )
   foreach ($element in $elements) {
+    if (-not (Test-U06ExtensionActionElement $element $ActionName $ToolbarTitlePrefix)) { continue }
     $current = $element.Current
     $typeMatches = $ControlType -eq '' -or $current.ControlType.ProgrammaticName -eq ('ControlType.' + $ControlType)
-    if ($current.Name -ceq $Name -and $typeMatches -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
+    if (($Name -eq '' -or $current.Name -ceq $Name) -and $typeMatches) {
       $matches += [pscustomobject]@{ Element = $element; Window = $window }
     }
   }
@@ -746,6 +838,7 @@ const UIA_TOOLBAR_ACTION_PS1 = `param(
   [Parameter(Mandatory=$true)][int]$ProcessId,
   [Parameter(Mandatory=$true)][string]$OutPath,
   [string]$ActionName = 'xDownload Browser Integration',
+  [string]$ToolbarTitlePrefix = '',
   [switch]$SelfTest
 )
 Add-Type -AssemblyName UIAutomationClient
@@ -765,6 +858,7 @@ public static class U06ActionMouse {
 '@
 $script:Native = [U06ActionMouse]
 ${PS_FOREGROUND_GUARD}
+${U06_ACTION_PREDICATE_PS1}
 # R3 P2-01 focused regression seam: set ONLY by the Node driver's
 # --self-test=privacy-inspection-error run via the process environment. A
 # normal grant run never sees this. Under the seam the script performs NO
@@ -951,13 +1045,13 @@ if ($selfTestInspectionError) {
 # R8 selector: Chrome 153's visible Extensions menu exposes three UIA
 # elements matching the wildcard '*xDownload*' (the action row, the per-site
 # access toggle and the per-extension more-options button), so a wildcard
-# uniqueness gate can never pass. The action row is identified exactly: its
-# accessible Name equals the loaded manifest action name verbatim, it is
-# invokable, and it is neither a toggle nor an expand-collapse control.
+# uniqueness gate can never pass. The action row is identified exactly by the
+# SHARED exact action predicate (defined above the foreground guard, shared
+# verbatim with u06-uia-click.ps1): exact manifest-derived name form, visible
+# non-zero bounds, InvokePattern required, Toggle/ExpandCollapse rejected.
 # Any other cardinality still exits 5 (NOT_RUN), never a guessed click.
-$invokePatternId = [System.Windows.Automation.InvokePatternIdentifiers]::Pattern.Id
-$togglePatternId = [System.Windows.Automation.TogglePatternIdentifiers]::Pattern.Id
-$expandCollapsePatternId = [System.Windows.Automation.ExpandCollapsePatternIdentifiers]::Pattern.Id
+# (R8 review repair P1-01: the per-path pattern constants were folded into
+# the shared predicate so the two grant mechanisms cannot drift apart.)
 # R8: Chrome's Extensions menu popup animates for ~1s after opening and
 # individual UIA reads on its elements fail transiently during that window
 # (observed: the row read cleanly on an immediate retry milliseconds later).
@@ -974,12 +1068,8 @@ while ($matches.Count -ne 1 -and $enumAttempt -lt 3) {
     $elements = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)
     foreach ($element in $elements) {
       try {
-        $current = $element.Current
-        if ($current.Name -ceq $ActionName -and -not $current.IsOffscreen -and $current.BoundingRectangle.Width -gt 0) {
-          $patternIds = @($element.GetSupportedPatterns() | ForEach-Object { $_.Id })
-          if ($patternIds -contains $invokePatternId -and -not ($patternIds -contains $togglePatternId) -and -not ($patternIds -contains $expandCollapsePatternId)) {
-            $matches += [pscustomobject]@{ Element = $element; Window = $window }
-          }
+        if (Test-U06ExtensionActionElement $element $ActionName $ToolbarTitlePrefix) {
+          $matches += [pscustomobject]@{ Element = $element; Window = $window }
         }
       } catch {
         # Transient UIA read failure (e.g. menu animation): skip this element
@@ -1115,9 +1205,11 @@ async function dumpUia(pid, name) {
   return Array.isArray(rows) ? rows : [rows];
 }
 
-async function clickUia(pid, name, controlType) {
+async function clickUia(pid, name, controlType, manifestActionName, toolbarTitlePrefix) {
   const args = ['-ProcessId', String(pid), '-Name', name];
   if (controlType) args.push('-ControlType', controlType.replace('ControlType.', ''));
+  if (manifestActionName) args.push('-ActionName', manifestActionName);
+  if (toolbarTitlePrefix) args.push('-ToolbarTitlePrefix', toolbarTitlePrefix);
   await runPowerShell('u06-uia-click.ps1', args);
   result.toolbarClicks += 1;
   log('genuine-toolbar-click', {
@@ -1465,17 +1557,41 @@ async function main() {
     } else {
       try {
         const rows = await dumpUia(chrome.pid, 'uia-before-toolbar');
-        const candidates = rows.filter(
-          (row) =>
-            typeof row.name === 'string' &&
-            (row.name === actionName ||
-              (actionToolbarTitlePrefix !== null &&
-                row.name.startsWith(actionToolbarTitlePrefix))) &&
-            !row.isOffscreen &&
-            row.width > 0,
-        );
+        // R8 review repair (P1-01): the direct path now applies the SAME
+        // unified exact action predicate as the menu path, both Node-side
+        // (this filter over the dump rows) and PowerShell-side (the click
+        // helper re-derives it live before any input). The enumeration is
+        // recorded truthfully: on Chrome 153 the pinned toolbar button
+        // exposes ExpandCollapsePattern and no InvokePattern (evidence
+        // grant-r8-9-diag), so the strict predicate yields zero candidates
+        // there and the genuine grant proceeds through the Extensions-menu
+        // mechanism under the same predicate — a genuine guarded UIA input,
+        // never the forbidden fallback set (CDP/openPopup/DOM/popup URL).
+        const candidates = rows.filter((row) => rowIsExtensionAction(row));
+        result.directPathEnumeration = {
+          dumpRows: rows.length,
+          exactNameRows: rows.filter(
+            (row) =>
+              typeof row.name === 'string' &&
+              (row.name === actionName ||
+                (actionToolbarTitlePrefix !== null &&
+                  row.name.startsWith(actionToolbarTitlePrefix))),
+          ).length,
+          predicateCandidates: candidates.length,
+          actionName,
+          toolbarTitlePrefix: actionToolbarTitlePrefix,
+          predicate:
+            'exact-name-form+visible-nonzero-bounds+Invoke-required+Toggle/ExpandCollapse-rejected',
+        };
+        log('direct-path-enumeration', result.directPathEnumeration);
         if (candidates.length === 1) {
-          await clickUia(chrome.pid, candidates[0].name, candidates[0].controlType);
+          await clickUia(
+            chrome.pid,
+            candidates[0].name,
+            candidates[0].controlType,
+            actionName,
+            actionToolbarTitlePrefix,
+          );
         } else {
           await runPowerShell('u06-uia-toolbar-action.ps1', [
             '-ProcessId',
@@ -1484,6 +1600,9 @@ async function main() {
             path.join(evidenceDir, 'uia-extensions-menu.json'),
             '-ActionName',
             actionName,
+            ...(actionToolbarTitlePrefix !== null
+              ? ['-ToolbarTitlePrefix', actionToolbarTitlePrefix]
+              : []),
           ]);
           result.toolbarClicks += 1;
           log('genuine-toolbar-click', {

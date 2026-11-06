@@ -16,9 +16,12 @@
  * composes a per-surface Core authority.
  *
  * Test-only terminal fixtures (v0.2.2 U06): `--fixture COMPLETE|FAILED`
- * injects a schema-valid `PROJECT_TERMINAL_RESULT` for the exact submitted
- * lineage through the SAME seam only after the real submit was ACCEPTED,
- * and requires the Core response to be ACCEPTED. `--fixture CANCELLED`
+ * inject a schema-valid `PROJECT_TERMINAL_RESULT` for the exact submitted
+ * lineage through the SAME seam only after the accepted
+ * EXECUTE_S1_DIRECT_ACQUISITION — the S1 execution admission, mirroring
+ * production where a lineage terminal is recorded only after the accepted
+ * S1 journal commit; injection never fires on the earlier SUBMIT_CONTRACT
+ * acceptance. The Core response must be ACCEPTED. `--fixture CANCELLED`
  * performs no injection (the driver exercises the real renderer Cancel
  * control). Omitting `--fixture` (or `ACTIVE`) preserves the original
  * bare ACTIVE behavior byte-for-byte, including stdout.
