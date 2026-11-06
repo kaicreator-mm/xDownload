@@ -54,7 +54,7 @@ repair_scope:
   - "Adapt the smoke's row-presence assertion to the post-rebuild ManagerJobRowDocument (the 'present' field no longer exists; presence is jobs[0] existence). No semantic loosening: lineage, terminal-null (ACTIVE/CANCELLED) and terminalMatches (COMPLETE/FAILED) checks are unchanged."
   - "Replace the toolbar-action UIA selector's wildcard name uniqueness gate ('*xDownload*', count==1) with an exact-match selector: visible elements whose Name equals the loaded manifest action name AND that expose an invoke pattern, excluding toggle and expand-collapse controls; still require exactly one match and still NOT_RUN (exit 5) on any other cardinality."
   - "Preserve all R3-R7 fail-closed behavior: desktop precheck, privacy window inspection, foreground admission before any input, single down/up with finally cleanup, zero fallback (no CDP popup, no popup URL, no openPopup, no DOM events, no force focus)."
-  - "R8 review response (PR #384 comment 6679145575): unify the pinned-direct and Extensions-menu grant mechanisms under ONE shared exact action predicate — exact manifest-derived name form (manifest action name verbatim, or the documented '<action.default_title>\\n<per-site hint>' toolbar-title form), visible non-zero bounds, InvokePattern required, TogglePattern and ExpandCollapsePattern rejected — applied in both u06-uia-click.ps1 and u06-uia-toolbar-action.ps1 and mirrored Node-side on the dump rows; exactly-one-or-NOT_RUN with zero input stays, the foreground guard remains readback-only (no activation request) and the no-fallback set stays unchanged. Environment fact recorded: Chrome 153 zh-CN pins the action as a Button exposing ExpandCollapsePattern and no InvokePattern (grant-r8-9-diag/uia-before-toolbar.json), so the strict shared predicate truthfully yields zero direct-path candidates on this host and the genuine grant proceeds through the Extensions-menu mechanism under the SAME predicate (single-match plus delivered guarded clicks proven in r8-6/r8-7)." 
+  - "R8 review response (PR #384 comment 6679145575): unify the pinned-direct and Extensions-menu grant mechanisms under ONE shared exact action predicate — exact manifest-derived name form (manifest action name verbatim, or the documented '<action.default_title>\\n<per-site hint>' toolbar-title form), visible non-zero bounds, InvokePattern required, TogglePattern and ExpandCollapsePattern rejected — applied in both u06-uia-click.ps1 and u06-uia-toolbar-action.ps1 and mirrored Node-side on the dump rows; exactly-one-or-NOT_RUN with zero input stays, the foreground guard remains readback-only (no activation request) and the no-fallback set stays unchanged. Environment fact recorded: Chrome 153 zh-CN pins the action as a Button exposing ExpandCollapsePattern and no InvokePattern (grant-r8-9-diag/uia-before-toolbar.json), so the strict shared predicate truthfully yields zero direct-path candidates on this host and the genuine grant proceeds through the Extensions-menu mechanism under the SAME predicate (single-match plus delivered guarded clicks proven in r8-6/r8-7)."
   - >-
     R9 click-point admission (PR #384 commit 27c5208fe1e8a0415735f7bcf28c63a9b9908685):
     in the shared PS_FOREGROUND_GUARD used by both generated UIA click helpers,
@@ -73,7 +73,7 @@ acceptance:
   - "Toolbar enumeration yields exactly one target under Chrome 153 zh-CN Extensions menu layout; non-unique or zero targets still return NOT_RUN with truthful counters."
   - "Genuine grant attempt remains at most one per environment attempt and only with the target Chrome window proven foreground; a denied foreground returns NOT_RUN with zero input."
   - "No CDP/DOM/openPopup/direct-popup fallback, no forced focus activation, no manifest/permission/worker/popup source change."
-  - "Node24 syntax, changed-file Prettier, both PowerShell foreground self-tests 8/8, desktop-precheck 6/6, privacy inspection-error regression, Desktop fixtures 4/4, Browser denial control, typecheck and pnpm run ci:verify pass." 
+  - "Node24 syntax, changed-file Prettier, both PowerShell foreground self-tests 8/8, desktop-precheck 6/6, privacy inspection-error regression, Desktop fixtures 4/4, Browser denial control, typecheck and pnpm run ci:verify pass."
   - >-
     Both generated UIA helpers pass the R9 foreground/click-point self-test
     with 11/11 cases each; foreign-before-cursor, foreign-before-mouse-down
@@ -89,7 +89,7 @@ pre_ci:
   - "Verify exact repair base 3821ee8606963ec11cc20aad279c4bbc9d76a48d / tree 09736a726e822546e6be13f44d9ad9345df2885e."
   - "Publish and read back the generation-8 CAS DISPATCH_CLAIM bound to this manifest blob before source mutation."
   - "Apply only the three-path repair (allowed_write_set below); run Node24 syntax and Prettier before tests."
-  - "Local Windows Builder validates PowerShell self-tests, Desktop fixtures and all existing gates in one continuous session." 
+  - "Local Windows Builder validates PowerShell self-tests, Desktop fixtures and all existing gates in one continuous session."
   - >-
     For the R9 candidate, rerun Node24 syntax, changed-file Prettier, both
     generated PowerShell helper parses, foreground/click-point self-tests
