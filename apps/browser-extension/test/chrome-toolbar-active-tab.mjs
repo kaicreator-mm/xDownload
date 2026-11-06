@@ -25,10 +25,15 @@
  *   Automation enumeration + native user32 mouse input (pinning through the
  *   visible Extensions menu when the action is not directly reachable).
  *   Before any click the interactive desktop is proven unlocked and
- *   input-capable; a locked/inaccessible desktop or an unreachable toolbar
- *   action returns the dedicated NOT_RUN exit status (3) with exact
- *   evidence. There is NO fallback to direct popup navigation, CDP popup
- *   APIs or chrome.action.openPopup — those can never count as positive.
+ *   input-capable, the target Chrome window must already be the exact
+ *   foreground window, and a read-only hit-test must prove the exact click
+ *   point resolves to the target Chrome process (a foreign window covering
+ *   the toolbar would swallow the click); a locked/inaccessible desktop, an
+ *   operator that never foregrounds Chrome, a covered click point or an
+ *   unreachable toolbar action returns the dedicated NOT_RUN exit status (3)
+ *   with exact evidence. There is NO fallback to direct popup navigation,
+ *   CDP popup APIs or chrome.action.openPopup — those can never count as
+ *   positive.
  *
  * --mode=grant --self-test=privacy-inspection-error — focused R3 P2-01
  *   regression for the optional Chrome-window screenshot privacy check. It
@@ -466,6 +471,15 @@ exit 0
 // target Chrome HWND; SetCursorPos failure never falls through to mouse input.
 // If the operator does not foreground the target within 15 seconds, the guard
 // returns denied with zero cursor movement and zero mouse input.
+// R9 click-point admission: mouse_event at screen coordinates is delivered to
+// whatever top-level window is topmost at the point, so a foreign window
+// covering the toolbar would swallow the genuine click even while Chrome is
+// foreground (evidence f2-grant: guarded click delivered, Extensions menu
+// never opened, privacy gate reported occluded_by:ZCode). Before the cursor
+// move and again before mouse-down, a read-only WindowFromPoint/GA_ROOT
+// hit-test must resolve the exact point to a window of the TARGET Chrome
+// process (Chrome's own popups stay admitted); any foreign or unreadable hit
+// denies with zero mouse input and a recorded POINT_PID.
 // Under -SelfTest native APIs are never touched: readback is scripted and
 // input advances seam counters only.
 // --------------------------------------------------------------------------
@@ -477,6 +491,7 @@ $script:seamMouseEvent = 0
 $script:seamMouseDown = 0
 $script:seamMouseUp = 0
 $script:seamReadbackScript = @()
+$script:seamPointHitScript = @()
 $script:seamSetCursorPosResult = $true
 function Read-Foreground {
   if ($selfTestGuard) {
@@ -489,6 +504,54 @@ function Read-Foreground {
     return [IntPtr]::Zero
   }
   return $script:Native::GetForegroundWindow()
+}
+function Assert-ClickPoint($targetHwnd, $x, $y) {
+  # Hit-test admission (evidence f2-grant): a foreign top-level window can
+  # cover the exact screen point while the target Chrome window is genuinely
+  # foreground — mouse_event at screen coordinates is delivered to whatever
+  # window is topmost at that point, so the guarded click would land in the
+  # covering window (activation then races the post-down readback). This
+  # admission is read-only hit-testing: the window that would RECEIVE a click
+  # at the point (WindowFromPoint, GA_ROOT) must belong to the SAME process
+  # as the target Chrome HWND. Same-process popups of Chrome itself (the
+  # open Extensions menu) stay admitted; any foreign or unreadable hit
+  # denies with zero mouse input.
+  try {
+    if ($selfTestGuard) {
+      $scripted = 'target'
+      if ($script:seamPointHitScript.Count -gt 0) {
+        $scripted = $script:seamPointHitScript[0]
+        $script:seamPointHitScript = @($script:seamPointHitScript | Select-Object -Skip 1)
+      }
+      if ($scripted -eq '__THROW__') { throw 'synthetic point hit-test failure' }
+      if ($scripted -eq 'target') {
+        return [pscustomobject]@{ verdict = 'granted'; pointPid = 0 }
+      }
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_foreign_window'; pointPid = 5555 }
+    }
+    $point = New-Object U06NativePoint
+    $point.X = [int]$x
+    $point.Y = [int]$y
+    $hit = $script:Native::WindowFromPoint($point)
+    if ($hit -eq [IntPtr]::Zero) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_unreadable'; pointPid = 0 }
+    }
+    $root = $script:Native::GetAncestor($hit, 2)
+    if ($root -eq [IntPtr]::Zero) { $root = $hit }
+    $hitPid = [uint32]0
+    [void]$script:Native::GetWindowThreadProcessId($root, [ref]$hitPid)
+    if ($hitPid -eq [uint32]0) {
+      return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_unreadable'; pointPid = 0 }
+    }
+    $targetPid = [uint32]0
+    [void]$script:Native::GetWindowThreadProcessId($targetHwnd, [ref]$targetPid)
+    if ($targetPid -ne [uint32]0 -and $hitPid -eq $targetPid) {
+      return [pscustomobject]@{ verdict = 'granted'; pointPid = [int]$hitPid }
+    }
+    return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_foreign_window'; pointPid = [int]$hitPid }
+  } catch {
+    return [pscustomobject]@{ verdict = 'denied'; reason = 'click_point_unreadable'; pointPid = 0 }
+  }
 }
 function Assert-Foreground($targetHwnd) {
   if ($targetHwnd -eq [IntPtr]::Zero) { return 'denied' }
@@ -512,6 +575,10 @@ function Send-NativeClick($targetHwnd, $x, $y) {
   if ((Read-Foreground) -ne $targetHwnd) {
     return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
+  $point1 = Assert-ClickPoint $targetHwnd $x $y
+  if ($point1.verdict -ne 'granted') {
+    return [pscustomobject]@{ sent = $false; reason = $point1.reason; pointPid = $point1.pointPid; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
   $cursorOk = $true
   if ($selfTestGuard) {
     $script:seamSetCursorPos += 1
@@ -524,6 +591,10 @@ function Send-NativeClick($targetHwnd, $x, $y) {
   }
   if ((Read-Foreground) -ne $targetHwnd) {
     return [pscustomobject]@{ sent = $false; reason = 'foreground_moved'; mouseDownSent = $false; mouseUpCleanupSent = $false }
+  }
+  $point2 = Assert-ClickPoint $targetHwnd $x $y
+  if ($point2.verdict -ne 'granted') {
+    return [pscustomobject]@{ sent = $false; reason = $point2.reason; pointPid = $point2.pointPid; mouseDownSent = $false; mouseUpCleanupSent = $false }
   }
 
   $mouseDownAttempted = $false
@@ -593,6 +664,7 @@ function Invoke-GuardedClick($targetHwnd, $x, $y) {
       verdict = $verdict
       clicked = $false
       reason = $send.reason
+      pointPid = $send.pointPid
       mouseDownSent = $send.mouseDownSent
       mouseUpCleanupSent = $send.mouseUpCleanupSent
     }
@@ -609,12 +681,13 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   $cases = @()
   $target = [IntPtr]424242
   $other = [IntPtr]1111
-  function New-Case($name, $readbacks, $cursorResult, $clickTarget) {
+  function New-Case($name, $readbacks, $cursorResult, $clickTarget, $pointHits = @()) {
     $script:seamSetCursorPos = 0
     $script:seamMouseEvent = 0
     $script:seamMouseDown = 0
     $script:seamMouseUp = 0
     $script:seamReadbackScript = @($readbacks)
+    $script:seamPointHitScript = @($pointHits)
     $script:seamSetCursorPosResult = $cursorResult
     $r = Invoke-GuardedClick $clickTarget 10 10
     [pscustomobject]@{
@@ -622,6 +695,7 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
       verdict = $r.verdict
       reason = $r.reason
       clicked = $r.clicked
+      pointPid = $r.pointPid
       setCursorPosCalls = $script:seamSetCursorPos
       mouseEventCalls = $script:seamMouseEvent
       mouseDownCalls = $script:seamMouseDown
@@ -655,6 +729,17 @@ function Invoke-GuardSelfTest([string]$SelfTestOutPath) {
   # (h) R7: a readback exception after down still runs the matching up cleanup.
   $c = New-Case 'foreground_readback_error_after_mouse_down' @($target, $target, $target, '__THROW__') $true $target
   $cases += Add-Note $c ($c.clicked -eq $false -and $c.reason -eq 'foreground_readback_error_after_mouse_down' -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 2 -and $c.mouseDownCalls -eq 1 -and $c.mouseUpCalls -eq 1 -and $c.mouseDownSent -and $c.mouseUpCleanupSent)
+  # (i) R9: a foreign window covers the exact click point before the cursor
+  # moves: zero cursor movement, zero mouse input
+  $c = New-Case 'click_point_foreign_before_cursor' @($target, $target) $true $target @('foreign')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'click_point_foreign_window' -and $c.pointPid -eq 5555 -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
+  # (j) R9: a foreign window covers the point after the cursor move but
+  # before mouse-down: cursor advanced, zero mouse input
+  $c = New-Case 'click_point_foreign_before_down' @($target, $target, $target) $true $target @('target', 'foreign')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'click_point_foreign_window' -and $c.pointPid -eq 5555 -and $c.setCursorPosCalls -eq 1 -and $c.mouseEventCalls -eq 0)
+  # (k) R9: the hit-test itself is unreadable: fail closed with zero input
+  $c = New-Case 'click_point_unreadable' @($target, $target) $true $target @('__THROW__')
+  $cases += Add-Note $c ($c.verdict -eq 'granted' -and $c.clicked -eq $false -and $c.reason -eq 'click_point_unreadable' -and $c.setCursorPosCalls -eq 0 -and $c.mouseEventCalls -eq 0)
   $allPass = @($cases | Where-Object { -not $_.pass }).Count -eq 0
   [pscustomobject]@{ ok = [bool]$allPass; cases = $cases } | ConvertTo-Json -Depth 4 | Set-Content -Path $SelfTestOutPath -Encoding UTF8
   if (-not $allPass) { exit 1 }
@@ -748,10 +833,14 @@ Add-Type -AssemblyName UIAutomationTypes
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+public struct U06NativePoint { public int X; public int Y; }
 public static class U06Mouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(U06NativePoint point);
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 }
 '@
 $script:Native = [U06Mouse]
@@ -802,7 +891,7 @@ $y = [int]($rect.Y + $rect.Height / 2)
 # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
 $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
 if (-not $guard.clicked) {
-  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
+  Write-Output ('UIA_CLICK_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent + ' POINT_PID=' + $guard.pointPid)
   exit 6
 }
 [pscustomobject]@{
@@ -831,11 +920,14 @@ Add-Type -AssemblyName UIAutomationTypes
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+public struct U06NativePoint { public int X; public int Y; }
 public static class U06ActionMouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(U06NativePoint point);
+  [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 }
 '@
 $script:Native = [U06ActionMouse]
@@ -882,7 +974,7 @@ function Click-Element($element, $window) {
   # unless GetForegroundWindow() readback equals the exact target Chrome HWND.
   $guard = Invoke-GuardedClick ([IntPtr]$window.Current.NativeWindowHandle) $x $y
   if (-not $guard.clicked) {
-    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent)
+    Write-Output ('UIA_TOOLBAR_ACTION_EXIT=6 REASON=' + $guard.reason + ' FOREGROUND_GUARD=1 MOUSE_DOWN_SENT=' + [int]$guard.mouseDownSent + ' MOUSE_UP_CLEANUP_SENT=' + [int]$guard.mouseUpCleanupSent + ' POINT_PID=' + $guard.pointPid)
     exit 6
   }
   return @($x, $y)
@@ -1246,9 +1338,11 @@ async function main() {
   if (SELF_TEST === 'foreground-guard') {
     // R5 deterministic guard self-test: BOTH click helpers run their shared
     // guard logic under the -SelfTest seam (scripted foreground readback,
-    // seam input counters — zero native API touch). Cases: denied/mismatched
-    // readback, matching HWND admission, unreadable foreground, unknown
-    // target HWND. A pass requires zero SetCursorPos/mouse_event calls on
+    // scripted point hit-test, seam input counters — zero native API touch).
+    // Cases: denied/mismatched readback, matching HWND admission, unreadable
+    // foreground, unknown target HWND, plus the R9 click-point admissions
+    // (foreign window before cursor / before mouse-down, unreadable
+    // hit-test). A pass requires zero SetCursorPos/mouse_event calls on
     // every denial path in both scripts.
     const toolbarOut = path.join(evidenceDir, 'foreground-guard-toolbar-action.json');
     await runPowerShell('u06-uia-toolbar-action.ps1', [
