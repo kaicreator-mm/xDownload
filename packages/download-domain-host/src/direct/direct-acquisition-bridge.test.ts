@@ -16,7 +16,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { describe, it, type TestContext } from 'node:test';
-import { validateMaterializedEvidence } from '@xdownload/download-domain-app/src/contracts/index.ts';
+import { validateMaterializedEvidence } from '@xdownload/domain-contracts';
 import { CanonicalBudgetLedger } from './budget-ledger.ts';
 import { DirectAcquisitionBridge, type KernelPermitContext } from './direct-acquisition-bridge.ts';
 import { InMemoryTargetRefRegistry, type TargetRefRecord } from './target-ref-registry.ts';
@@ -457,6 +457,44 @@ describe('T04 DirectAcquisitionBridge', () => {
       }
       assert.equal(existsSync(join(lane.root, 'req-001.bin')), false);
       assert.equal(lane.bridge.counters.filesWritten, 0);
+    } finally {
+      await lane.fixture.stop();
+      rmSync(lane.root, { recursive: true, force: true });
+    }
+  });
+
+  it('negative: a widened/malformed request refuses through the neutral A01 DTO before permit and effects', async (test) => {
+    const body = payload(1024);
+    const lane = await makeLane(test);
+    try {
+      lane.fixture.serveBytes('/file.bin', body);
+      const widened = [
+        // wrong operation: the DTO pins acquisition.acquire
+        intentFor(lane, body, { allowedOperation: 'media.acquire' }),
+        // wrong slice vocabulary
+        intentFor(lane, body, { slice: 'S9' }),
+        // unknown field: the no-widening contract refuses, never drops
+        { ...intentFor(lane, body), extraField: 'widened' },
+      ];
+      for (const candidate of widened) {
+        const envelope = await lane.bridge.acquire(candidate, PERMIT);
+        assert.ok(envelope.phase === 'terminal' && !envelope.outcome.ok);
+        if (envelope.phase === 'terminal' && !envelope.outcome.ok) {
+          assert.ok(
+            envelope.outcome.error.code === 'CONTRACT_BINDING_MISMATCH' ||
+              envelope.outcome.error.code === 'MALFORMED_REQUIRED_FIELD' ||
+              envelope.outcome.error.code === 'SCOPE_WIDENING_REFUSED',
+            `unexpected refusal code: ${envelope.outcome.error.code}`,
+          );
+        }
+      }
+      // Every refusal landed before the permit gate and before any effect.
+      assert.equal(lane.fixture.requests.length, 0);
+      assert.equal(lane.bridge.counters.permitRefusals, 0);
+      assert.equal(lane.bridge.counters.scopeRefusals, widened.length);
+      assert.equal(lane.bridge.counters.filesWritten, 0);
+      assert.equal(lane.bridge.transferStarts.length, 0);
+      assert.equal(existsSync(join(lane.root, 'req-001.bin')), false);
     } finally {
       await lane.fixture.stop();
       rmSync(lane.root, { recursive: true, force: true });

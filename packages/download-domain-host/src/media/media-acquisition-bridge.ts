@@ -26,22 +26,19 @@
  * (PRD §15.2/§15.4, C28). Budget/member exhaustion terminates honestly — a
  * failed terminal envelope, never a partial success.
  */
-import { createHash, randomUUID } from 'node:crypto';
-import { link, mkdir, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import {
   bindLocator,
   deepFreeze,
   makeContractId,
   makeLogicalTargetId,
-} from '@xdownload/domain-contracts';
-import {
   normalizeEffectEnvelope,
-  validateConfirmedIntent,
   validateMaterializedEvidence,
+  validateS3MediaHostAcquisitionRequest,
+  validateS4HostAcquisitionRequest,
   type EffectEnvelope,
   type MaterializedEvidence,
-} from '../../../download-domain-app/src/contracts/index.ts';
+  type S4HostConfirmedSelection,
+} from '@xdownload/domain-contracts';
 import { bindRenditionToTarget } from '../../../hls-vod-adapter/src/bind.ts';
 import { createTransferLedger } from '../../../hls-vod-adapter/src/budget.ts';
 import {
@@ -49,11 +46,9 @@ import {
   type MediaAssemblyPort,
 } from '../../../hls-vod-adapter/src/assemble.ts';
 import { createFfmpegTsMediaAssemblyPort } from '../../../hls-vod-adapter/src/ffmpeg-ts.ts';
-import {
-  s4HlsSelectionTupleDigest,
-  validateConfirmedS4HlsIntent,
-  type S4ConfirmedSelection,
-} from '../../../download-domain-app/src/integrations/s4-hls-vod-contract.ts';
+import { createHash, randomUUID } from 'node:crypto';
+import { link, mkdir, unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   createAuthorizedHttpSegmentFetcher,
   type AsyncSegmentFetcherPort,
@@ -122,9 +117,45 @@ interface MediaIntentContext {
 
 interface HlsExecutionOptions {
   readonly selectedRenditionUri?: string;
-  readonly selection?: S4ConfirmedSelection;
+  readonly selection?: S4HostConfirmedSelection;
   readonly assemblyPort: MediaAssemblyPort;
   readonly artifactExtension: 'bin' | 'ts';
+}
+
+/**
+ * The frozen S4 selection-tuple digest, recomputed Host-side from the freshly
+ * fetched master facts. The canonical fixed-order JSON string and the SHA-256
+ * over it are byte-identical to the Domain App/Core `s4HlsSelectionTupleDigest`
+ * (V022-A03 cross-check regression test pins a known-answer vector); the
+ * algorithm lives here because the re-computation needs fresh master facts
+ * and a hash implementation, neither of which belongs in the pure neutral
+ * contract package.
+ */
+export function s4HlsSelectionTupleDigest(input: {
+  readonly contractId: string;
+  readonly snapshotId: string;
+  readonly memberId: string;
+  readonly previewId: string;
+  readonly renditionKey: string;
+  readonly renditionUri: string;
+  readonly manifestUri: string;
+  readonly mediaProfileId: string;
+  readonly bandwidth: number;
+  readonly width?: number;
+  readonly height?: number;
+}): string {
+  const canonical = `{"contractId":${JSON.stringify(input.contractId)},"snapshotId":${JSON.stringify(
+    input.snapshotId,
+  )},"memberId":${JSON.stringify(input.memberId)},"previewId":${JSON.stringify(
+    input.previewId,
+  )},"renditionKey":${JSON.stringify(input.renditionKey)},"renditionUri":${JSON.stringify(
+    input.renditionUri,
+  )},"manifestUri":${JSON.stringify(input.manifestUri)},"mediaProfileId":${JSON.stringify(
+    input.mediaProfileId,
+  )},"bandwidth":${String(input.bandwidth)},"width":${
+    input.width === undefined ? 'null' : String(input.width)
+  },"height":${input.height === undefined ? 'null' : String(input.height)}}`;
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
 /** Observable effect counters returned with every bridge result. */
@@ -285,13 +316,16 @@ function boundedCount(
 export async function acquireMediaViaHls(
   request: MediaAcquisitionBridgeRequest,
 ): Promise<MediaAcquisitionBridgeResult> {
-  const intentCheck = validateConfirmedIntent(request.intent);
+  // V022-A03: the S3 media lane validates the A01B neutral S3 media Host DTO
+  // (pinned to media.acquire + slice S3) from unknown BEFORE any permit,
+  // engine, network or materialization effect.
+  const intentCheck = validateS3MediaHostAcquisitionRequest(request.intent);
   if (!intentCheck.ok) {
     const counters = emptyCounters();
     return refuseResult(
       counters,
       'MEDIA_INTENT_MALFORMED',
-      `confirmed intent rejected by the no-widening contract: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`,
+      `S3 media Host request refused by the neutral contract: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`,
     );
   }
   return executeMediaHls(request, intentCheck.value, {
@@ -309,13 +343,17 @@ export async function acquireMediaViaHls(
 export async function acquireSelectedHlsVod(
   request: S4HlsVodBridgeRequest,
 ): Promise<MediaAcquisitionBridgeResult> {
-  const intentCheck = validateConfirmedS4HlsIntent(request.intent);
+  // V022-A03: the S4 lane validates the A01 neutral S4/media Host DTO (the
+  // closed selection rides inside the request; freshness at `now` is part of
+  // the DTO grammar) from unknown BEFORE any permit, engine, network or
+  // materialization effect.
+  const intentCheck = validateS4HostAcquisitionRequest(request.intent);
   if (!intentCheck.ok) {
     const counters = emptyCounters();
     return refuseResult(
       counters,
       'S4_INTENT_INVALID',
-      `S4 confirmed selection refused: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`,
+      `S4 media Host request refused: ${intentCheck.diagnostics.map((entry) => entry.code).join(',')}`,
     );
   }
   const intent = intentCheck.value;

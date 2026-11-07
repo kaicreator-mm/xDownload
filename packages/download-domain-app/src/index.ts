@@ -1,25 +1,31 @@
 /**
  * v0.2 T13 — @xdownload/download-domain-app public export facade.
  *
- * Pure aggregation of the merged lane public surfaces; nothing here
- * re-designs or re-exports anything the lane indexes do not already
- * publish. Each lane's own index stays the authority for its surface:
+ * V022-A02 curated domain-owned public API. The root exports ONLY:
  *
  *   - T01 contracts    → ./contracts/index.ts   (frozen K/B/C intent +
  *     operation vocabulary, no-widening validation)
  *   - T03 business     → ./business/composition.ts (sealed BUILD producer
  *     over the #183 payload bytes; confirmDownloadRequest admission)
- *   - T11 composition  → ./composition/{runtime,journey}.ts (one
- *     authoritative direct K→C runtime: sealed composition, FileCas
- *     single-process doc store, submitConfirmedDownload journey)
+ *   - T11 composition  → ./composition/{runtime,journey}.ts (the sealed
+ *     direct BUILD producer `sealDirectComposition` + the
+ *     `submitConfirmedDownload` domain journey)
  *   - T05 semantic     → ./semantic/index.ts (deterministic no-LLM
  *     recipe/selection, bounded advisory)
- *   - T09 migration    → ./migration/index.ts (single-authority lineage
- *     ledger + plain-file store)
- *   - T12 integrations → ./integrations/index.ts (S2–S6 + media
- *     convergence under K; the media C/Host bridge itself is pinned
- *     through the `MEDIA_BRIDGE_PIN` globalThis seam and ships from
- *     @xdownload/download-domain-host)
+ *   - T09 migration    → ./migration/index.ts (dormant single-authority
+ *     lineage policy + storage port types; the physical store is curated
+ *     OUT of the root)
+ *   - T12 integrations → ./integrations/index.ts (S2–S6 + media convergence
+ *     journeys, sealed media/S4 BUILD producers, frozen routes, the media
+ *     targetRef registry grammar, the S4 composition contribution)
+ *
+ * Deliberately NOT exported here (V022-A02; transitional Core compatibility
+ * stays reachable at deep module paths only, marked RELOCATE-TO-CORE-A04):
+ * runtime assemblers, Host bridge pins/implementations, Host pin registries,
+ * physical adapter classes (`FileCasDocStore`, `PlainFileLineageStore`,
+ * `InMemoryMediaTargetRegistry`), runtime option/counter types. No App
+ * source imports @xdownload/download-domain-host anymore; the physical
+ * Host assembly belongs to the Core composition root (A04).
  *
  * Consumption is `import { ... } from '@xdownload/download-domain-app'`.
  * The legacy deep specifier `@xdownload/download-domain-app/src/contracts/index.ts`
@@ -29,7 +35,26 @@
  */
 export * from './contracts/index.ts';
 export * from './semantic/index.ts';
-export * from './migration/index.ts';
+export {
+  DEFAULT_LINEAGE_OWNER,
+  LineageLedger,
+  LineageLedgerError,
+  LineageStoreError,
+  type ClaimLineageInput,
+  type LineageClaimRecord,
+  type LineageHistoryEvent,
+  type LineageLedgerDoc,
+  type LineageLedgerErrorCode,
+  type LineageOwnerKind,
+  type LineageStore,
+  type LineageStoreErrorCode,
+  type LineageWriterIdentity,
+  type OpenLineageLedgerOptions,
+  type RecordUnknownEffectInput,
+  type ReleaseLineageInput,
+  type ResolveUnknownEffectInput,
+  type UnknownEffectRecord,
+} from './migration/index.ts';
 export * from './integrations/index.ts';
 export {
   ACQUISITION_ROUTE,
@@ -50,18 +75,9 @@ export type {
 export {
   APP_ID_DIRECT,
   BUILD_ID_DIRECT,
-  DIRECT_BRIDGE_PIN,
   DIRECT_CAPABILITY_MODULE_ID,
-  FileCasDocStore,
-  assembleDownloadRuntime,
   sealDirectComposition,
 } from './composition/runtime.ts';
-export type {
-  AssembleDownloadRuntimeOptions,
-  DownloadRuntime,
-  FileCasDocStoreCounts,
-  SealedDirectComposition,
-  TargetRefSeed,
-} from './composition/runtime.ts';
+export type { SealedDirectComposition } from './composition/runtime.ts';
 export { submitConfirmedDownload } from './composition/journey.ts';
 export type { SubmissionOutcome, SubmitConfirmedDownloadOptions } from './composition/journey.ts';

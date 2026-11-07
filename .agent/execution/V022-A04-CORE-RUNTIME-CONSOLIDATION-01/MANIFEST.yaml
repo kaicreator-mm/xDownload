@@ -1,0 +1,109 @@
+pack_id: "V022-A04-CORE-RUNTIME-CONSOLIDATION-R1-REPAIR-R2@82be50e204b34f05548fcede7ace37042ce51edb"
+task_id: "V022-A04-CORE-RUNTIME-CONSOLIDATION-01"
+repository: "kaicreator-mm/xDownload"
+version: "v0.2.2"
+parent_issue: "#337"
+tracking_issue: "#346"
+task_issue: "#357"
+owner_authorization_ref: "xDownload#346 comment 6616591377; continued in-scope execution under ADS #1359 Delivery-First direction"
+base_branch: "execution/v0.2.2-a04-core-runtime-consolidation-r1"
+base_sha: "82be50e204b34f05548fcede7ace37042ce51edb"
+base_tree: "83b65306d30a64116910f7122954d5cb106dd20c"
+task_pack_ref: "docs/implementation/v0.2.2/task-packs/V022-A04-CORE-RUNTIME-CONSOLIDATION-R1.md@planning/v0.2.2-domain-package-architecture-r0@c62d7d9788d7ac79327370fa38da927f6072492e#blob:b128dc3412f7fe64df9c17b955f6b704d63013f1"
+task_pack_blob: "b128dc3412f7fe64df9c17b955f6b704d63013f1"
+preparation_ref: "docs/architecture/v0.2.2/A04_CORE_RUNTIME_CONSOLIDATION_PREPARATION_R1.md@planning/v0.2.2-domain-package-architecture-r0@c62d7d9788d7ac79327370fa38da927f6072492e#blob:4965430d301eb624631d670ecd4ec07ae1c429e7"
+dag_ref: "docs/architecture/v0.2.2/DOMAIN_PACKAGE_REFINEMENT_DAG_R1.md@planning/v0.2.2-domain-package-architecture-r0@c62d7d9788d7ac79327370fa38da927f6072492e#blob:3c433c7aadfd7649eee7c7d7ea5e5fe550477ef5"
+task_branch: "task/v0.2.2-a04-core-runtime-consolidation"
+source_branch: "execution/v0.2.2-a04-core-runtime-consolidation-r2"
+execution_branch: "execution/v0.2.2-a04-core-runtime-consolidation-r2"
+execution_pack_path: ".agent/execution/V022-A04-CORE-RUNTIME-CONSOLIDATION-01/MANIFEST.yaml"
+execution_profile: "LOCAL_BUILDER"
+execution_environment: "LOCAL"
+agent_freedom: "F1_BOUNDED_IMPLEMENTATION"
+pinned_standard_revision: "2c395c55569fe2edf3f4135f12d3d069e526d0b7"
+product_l2_freeze_ref: "planning/v0.2.2-ui-r0@09eb54396bf431758de74ad5c227543382f71b6d"
+dispatch_admission: "OWNER_APPROVED_A04_NON_WIP_STAGING_SEQUENCE_AND_CURRENT_DELIVERY_FIRST_CONTINUATION"
+claim:
+  protected_claim_key: "kaicreator-mm/xDownload#357:builder:__default__"
+  claim_generation: 2
+  required_event: "DISPATCH_CLAIMED"
+  claim_owner: "actual Local Builder identity"
+  source_mutation_before_accepted_claim: false
+allowed_write_set:
+  - packages/core-runtime/src/domain-app-route.ts
+  - packages/core-runtime/src/runtime.ts
+  - packages/core-runtime/test/domain-app-route.test.ts
+  - packages/core-runtime/test/slice-journey-testkit.ts
+  - packages/core-runtime/test/s2-discovery-journey.test.ts
+  - packages/core-runtime/test/s5-collection-journey.test.ts
+  - packages/core-runtime/test/s6-navigation-journey.test.ts
+  - packages/core-runtime/test/domain-app-media-flow.test.ts
+  - packages/core-runtime/test/domain-app-direct-flow.test.ts
+  - packages/download-domain-app/src/composition/runtime.ts
+  - packages/download-domain-app/src/composition/composition-runtime.test.ts
+  - packages/download-domain-app/src/integrations/index.ts
+  - packages/download-domain-app/src/integrations/media-registry.ts
+  - packages/download-domain-app/src/integrations/s3-media.ts
+  - packages/download-domain-app/src/integrations/s3-media.test.ts
+  - packages/download-domain-app/src/integrations/s4-hls-vod.ts
+  - packages/download-domain-app/src/integrations/s4-hls-vod.test.ts
+  - packages/download-domain-app/src/integrations/slice-journey-testkit.ts
+  - packages/download-domain-app/src/integrations/s2-discovery.test.ts
+  - packages/download-domain-app/src/integrations/s5-collection.test.ts
+  - packages/download-domain-app/src/integrations/s6-navigation.test.ts
+  - packages/download-domain-app/src/migration/index.ts
+  - packages/download-domain-app/src/migration/lineage-store.ts
+  - packages/download-domain-app/src/migration/lineage-ledger.test.ts
+  - packages/download-domain-app/src/package-boundary.test.ts
+  - packages/download-domain-host/src/index.ts
+  - packages/download-domain-host/src/media/index.ts
+  - packages/download-domain-host/src/media/media-target-registry.ts
+  - packages/download-domain-host/src/media/media-target-registry.test.ts
+  - packages/download-domain-host/src/migration/index.ts
+  - packages/download-domain-host/src/package-boundary.test.ts
+  - packages/download-domain-app/package.json
+  - packages/download-domain-host/package.json
+  - pnpm-lock.yaml
+goal: "Repair A04 R1 P1/P2 findings without widening the frozen 34-path set: exercise the production Core Runtime in the migrated/integration suites and complete App-to-Host lineage physical-store ownership."
+acceptance:
+  - "Core calls the pinned public DomainHarness SDK load exactly once per Core process for the selected Domain App; preserve frozen K/S payload bytes and identity."
+  - "Actual Core load callsite proves Host FileCasDocStore is structurally assignable to public SDK V10DocStore without unsafe casts."
+  - "If required routes cannot be composed into one K through the public SDK without changing frozen K/S identity, stop and report; do not create a second K."
+  - "Domain App contains only domain contracts, sealed declarations, route/intent grammar and journeys; no physical Host stores, registries, bridge pins or runtime assembly."
+  - "Domain Host owns physical direct/media bridges, opaque targetRef registry, FileCasDocStore and dormant PlainFileLineageStore."
+  - "Core imports App and Host only through stable package root exports; remove App-to-Host and Host-to-App workspace dependencies."
+  - "Move S3/S4 targetRef resolution and trusted manifest/rendition/origin/budget permit derivation behind Core/Host; unknown or widened inputs fail before network/file effects."
+  - "Migrate all 25 S2/S5/S6 tests and their testkit to Core test paths included in pnpm run ci:verify; delete App copies without reducing coverage."
+  - "Preserve Direct seven-scenario, S3/S4 scenario coverage and the S4 second-standalone-assembly conflict case."
+  - "Boundary tests cover static, export-from, side-effect, dynamic import and CommonJS require."
+  - "Keep T09 dormant; no new authority, SQLite, multi-process CAS or physical external side effects."
+  - "All transfer integration tests use bounded localhost fixtures; no real external download."
+  - "Only exact paths in allowed_write_set may change."
+  - "Record Exact HEAD/tree, commands, exit codes, focused counts, aggregate CI and Woodpecker Build ID to #357."
+repair_of:
+  candidate_head: "82be50e204b34f05548fcede7ace37042ce51edb"
+  candidate_tree: "83b65306d30a64116910f7122954d5cb106dd20c"
+  review_pr: "#359"
+  review_result: "BLOCK P0=0 P1=1 P2=1"
+  required_repairs:
+    - "S2/S5/S6 and Direct/S3/S4 integration tests must exercise the production createCoreRuntime/composeDomainAppRoute and actual Core Host bridge; no test-only direct SDK load() substitute."
+    - "Remove PlainFileLineageStore physical implementation/default from Domain App; inject Host-owned store through a domain-facing port and preserve typed error mapping."
+  no_scope_expansion: true
+pre_ci:
+  - "Verify repair source base HEAD/tree equal 82be50e204b34f05548fcede7ace37042ce51edb / 83b65306d30a64116910f7122954d5cb106dd20c; original Task Pack staging base remains 8620090b41f4745394b8371b00307b441baecad7 / f50e1115f14c220d4ca4d9b9c16ae09e09e2989e."
+  - "Publish accepted generation-2 CAS DISPATCH_CLAIMED bound to this exact Task Pack/base/tree/write set before source mutation."
+  - "Run Node24 syntax preflight on all changed JS/TS files."
+  - "Run changed-file Prettier before CI."
+  - "Run focused Core/App/Host tests including all 25 migrated S2/S5/S6 cases and Direct/S3/S4 integration cases."
+  - "Run pnpm run typecheck."
+  - "Run aggregate pnpm run ci:verify."
+  - "Run local Docker Woodpecker at the exact candidate SHA."
+  - "Builder owns implementation, repair and local validation; no standalone LOCAL_VALIDATION."
+forbidden:
+  - "Any source or manifest change outside allowed_write_set."
+  - "Any second K, scheduler, journal, ledger, transfer engine, artifact store or persistence authority."
+  - "Any App->Host or Host->App source/package dependency."
+  - "Activating T09, SQLite or multi-process CAS semantics."
+  - "WIP merge, main, version/v0.2.1, tag, release, deployment."
+  - "Native Host, registry, physical external side effect or real external download."
+status: "READY_FOR_GENERATION_2_LOCAL_BUILDER_REPAIR_CLAIM"

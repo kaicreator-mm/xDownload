@@ -1,210 +1,66 @@
 /**
- * v0.2 T12 — S3 media acquisition journey tests (node:test, colocated).
+ * v0.2 T12 — S3 media acquisition domain-level tests, V022-A04 edition
+ * (node:test, colocated).
  *
- * Real end-to-end: the sealed MEDIA composition (T03 K/S bytes at their #183
- * PoC hashes + this lane's media B/C modules) loaded through the SDK public
- * `load`, the pinned T06 media bridge seam, the EXISTING
- * @xdownload/hls-vod-adapter engine, and a REAL bounded HLS fixture served by
- * node:http on an ephemeral 127.0.0.1 port (T06/T11 precedent, zero mocks).
- * The fixture counts every socket request, so every zero-effect negative is
- * proven against the physical server, the pin counters and the durable K
- * store — never against one component's own bookkeeping.
+ * The App is domain-only after A04: this file proves the sealed media BUILD
+ * identity/determinism, the frozen route/operation vocabulary and the
+ * sealed media capability ABI seam. The real end-to-end scenarios (SDK K
+ * `load` with the pinned T06 media bridge seam, the EXISTING
+ * @xdownload/hls-vod-adapter engine and a REAL bounded HLS fixture served
+ * by node:http on an ephemeral 127.0.0.1 port) relocated to the Core
+ * composition root and are re-established under
+ * packages/core-runtime/test/domain-app-media-flow.test.ts (A04; R2-scoped
+ * as component-level evidence — the generic media route cannot compose into
+ * the production S4 one-K; exact SDK limitation with probe transcripts on
+ * kaicreator-mm/xDownload#357). The media
+ * targetRef registry grammar moved to the trusted Host
+ * (packages/download-domain-host/src/media/media-target-registry.test.ts);
+ * its Host-owned grammar tests live there. No coverage is silently dropped.
+ *
+ * RELOCATED-TO-CORE-A04 — integration scenario map (re-established under
+ * the Core composition root as COMPONENT-LEVEL evidence, not the one-K
+ * integration proof; physical pieces: real Host bridge, K load,
+ * permit minting, loopback HTTP fixture, materialization, pin counters):
+ *   1. S3 positive journey: master→playlist→segments through the real HLS
+ *      engine under one K permit, digest-backed materialization evidence,
+ *      exactly one durable permit, fixture hit accounting.
+ *   2. Pre-send refusal with zero effects: foreign allowedOperation
+ *      (MEDIA_OPERATION_MISMATCH), foreign slice (MEDIA_SLICE_MISMATCH),
+ *      widened intent (MEDIA_INTENT_INVALID + SCOPE_WIDENING_REFUSED),
+ *      missing sealed profile fields (MEDIA_PROFILE_BINDING_INCOMPLETE).
+ *   3. Admitted-dispatch truthful failures with zero network: unknown
+ *      targetRef (CONTRACT_BINDING_MISMATCH), sealed B profile bound
+ *      refusal (declaredBytes over the 1 MiB application guard).
+ *   4. Digest-anchor enforcement behind engine acceptance
+ *      (MEDIA_DIGEST_MISMATCH; the tampered run must not overwrite the
+ *      earlier completed artifact).
  */
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 
-import { createSyntheticSegmentBytes } from '../../../hls-vod-adapter/src/assemble.ts';
 import {
   POC183_KERNEL_MODULE_SHA256,
   POC183_STANDARD_MODULE_SHA256,
 } from '../business/composition.ts';
+import { validateRouteTable } from '../contracts/index.ts';
 import {
+  MEDIA_ACQUIRE_OPERATION,
   MEDIA_BUSINESS_MODULE_ID,
   MEDIA_CAPABILITY_MODULE_ID,
+  MEDIA_BRIDGE_PIN,
   MEDIA_ROUTE,
-  assembleMediaRuntime,
+  MEDIA_SLICE,
   sealMediaComposition,
-  submitConfirmedMediaDownload,
-  type MediaDownloadRuntime,
-  type MediaSubmissionOutcome,
 } from './s3-media.ts';
 
-const SEGMENT_DURATIONS = [4, 4, 3.5] as const;
-const ROOT = join(tmpdir(), `xd-v02-t12-media-${String(process.pid)}-${String(Date.now())}`);
+const HERE = fileURLToPath(new URL('.', import.meta.url));
 
-function segmentBytes(durationSeconds: number): Uint8Array {
-  return createSyntheticSegmentBytes({ durationSeconds, codecClass: 'xdv1-video' });
-}
-
-function assembledBytes(): Uint8Array {
-  const parts = SEGMENT_DURATIONS.map((duration) => segmentBytes(duration));
-  const expected = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
-  let offset = 0;
-  for (const part of parts) {
-    expected.set(part, offset);
-    offset += part.length;
-  }
-  return expected;
-}
-
-function sha256(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-let server: Server | undefined;
-let origin = '';
-const hits = new Map<string, number>();
-let runtime: MediaDownloadRuntime;
-
-function totalHits(): number {
-  let total = 0;
-  for (const value of hits.values()) total += value;
-  return total;
-}
-
-function masterText(): string {
-  return [
-    '#EXTM3U',
-    '#EXT-X-VERSION:4',
-    '#EXT-X-STREAM-INF:BANDWIDTH=1500000,CODECS="xdv1-video",RESOLUTION=1280x720',
-    'media-720p.m3u8',
-    '#EXT-X-STREAM-INF:BANDWIDTH=800000,CODECS="xdv1-video",RESOLUTION=640x360',
-    'media-360p.m3u8',
-    '',
-  ].join('\n');
-}
-
-function mediaPlaylistText(): string {
-  const lines: string[] = [
-    '#EXTM3U',
-    '#EXT-X-VERSION:4',
-    '#EXT-X-TARGETDURATION:4',
-    '#EXT-X-PLAYLIST-TYPE:VOD',
-  ];
-  SEGMENT_DURATIONS.forEach((duration, index) => {
-    lines.push(`#EXTINF:${String(duration)},seg-${String(index)}`);
-    lines.push(`seg-${String(index)}.ts`);
-  });
-  lines.push('#EXT-X-ENDLIST');
-  lines.push('');
-  return lines.join('\n');
-}
-
-function budgetFixture(): Record<string, unknown> {
-  return {
-    discovery: { domain: 'discovery', maxGeneratedRequests: 100 },
-    transfer: {
-      domain: 'transfer',
-      maxBytes: 16_000_000,
-      maxSegments: 16,
-      maxRetryTransferRequests: 8,
-    },
-    globalSafety: { domain: 'global_safety', maxTotalGeneratedRequests: 1000 },
-  };
-}
-
-function mediaIntent(
-  requestId: string,
-  overrides?: Record<string, unknown>,
-): Record<string, unknown> {
-  return {
-    requestId,
-    lineageId: 'lineage-s3-media',
-    targetRef: 'ref:media/master',
-    outputRootScope: ROOT,
-    allowedOperation: 'media.acquire',
-    slice: 'S3',
-    // The sealed download policy projects the full T01 field set: this
-    // composition's intents carry the digest anchor and a declared size
-    // (bounded by the sealed 1 MiB application-profile guard).
-    digestAnchor: sha256(assembledBytes()),
-    declaredBytes: 16_384,
-    caller: { actor: 'zcode:xd-v02-t12-builder-agent', sessionRef: 'session:t12-media-test' },
-    ...overrides,
-  };
-}
-
-function assertZeroEffectsSince(
-  beforeHits: number,
-  beforeAcquires: number,
-  beforePermits: number,
-): void {
-  assert.equal(totalHits() - beforeHits, 0, 'the physical fixture must see zero requests');
-  assert.equal(
-    runtime.pin.acquireMediaCalls - beforeAcquires,
-    0,
-    'the pin must see zero dispatches',
-  );
-  assert.equal(runtime.store.permitDocs().length - beforePermits, 0, 'no K permit may exist');
-}
-
-before(async () => {
-  hits.clear();
-  server = createServer((request, response) => {
-    const url = request.url ?? '';
-    hits.set(url, (hits.get(url) ?? 0) + 1);
-    if (url === '/master.m3u8') {
-      response.writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl' });
-      response.end(masterText());
-      return;
-    }
-    if (url === '/media-720p.m3u8') {
-      response.writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl' });
-      response.end(mediaPlaylistText());
-      return;
-    }
-    const segmentMatch = /^\/seg-(\d+)\.ts$/.exec(url);
-    if (segmentMatch !== null) {
-      const bytes = segmentBytes(SEGMENT_DURATIONS[Number(segmentMatch[1])] ?? 0);
-      response.writeHead(200, { 'content-length': String(bytes.length) });
-      response.end(Buffer.from(bytes));
-      return;
-    }
-    response.writeHead(404);
-    response.end();
-  });
-  await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
-  const address = server!.address();
-  if (address === null || typeof address === 'string')
-    throw new Error('fixture server missing port');
-  origin = `http://127.0.0.1:${String(address.port)}`;
-
-  runtime = await assembleMediaRuntime({
-    storePath: join(ROOT, 'k-docs.json'),
-    mediaTargetRefs: [
-      {
-        handle: 'ref:media/master',
-        record: {
-          protocol: 'HLS',
-          manifestUri: `${origin}/master.m3u8`,
-          selectedRenditionUri: `${origin}/media-720p.m3u8`,
-          artifactFileName: 'media-001.bin',
-          allowedManifestOrigins: [origin],
-          allowedSegmentOrigins: [origin],
-          budget: budgetFixture(),
-          fixtureLoopbackHttp: true,
-        },
-      },
-    ],
-  });
-});
-
-after(async () => {
-  runtime.stop();
-  rmSync(ROOT, { recursive: true, force: true });
-  await new Promise<void>((resolve, reject) => {
-    if (server === undefined) {
-      resolve();
-      return;
-    }
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
-});
+// ---------------------------------------------------------------------------
+// S3 — sealed media composition identity (cheap, no runtime)
+// ---------------------------------------------------------------------------
 
 describe('S3 — sealed media composition identity', () => {
   it('seals the T03 K/S bytes at their #183 PoC hashes with THIS lane as the media B/C', () => {
@@ -225,176 +81,46 @@ describe('S3 — sealed media composition identity', () => {
     assert.deepEqual(routes, [MEDIA_ROUTE]);
     assert.deepEqual(built.routes, [MEDIA_ROUTE]);
   });
-});
 
-describe('S3 — real bounded HLS journey end-to-end under one K permit', () => {
-  it('pulls manifest→playlist→segments through the engine and materializes digest-backed evidence', async () => {
-    const beforeHits = totalHits();
-    const expected = assembledBytes();
-
-    const outcome: MediaSubmissionOutcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-001', { digestAnchor: sha256(expected) }),
+  it('seals deterministically: repeated seals reproduce the identical module hash set', () => {
+    const first = sealMediaComposition().built;
+    const second = sealMediaComposition().built;
+    assert.deepEqual(
+      first.modules.map((module) => `${module.role}:${module.packageId}:${module.moduleSha256}`),
+      second.modules.map((module) => `${module.role}:${module.packageId}:${module.moduleSha256}`),
     );
-    assert.equal(outcome.status, 'completed');
-    if (outcome.status !== 'completed') return;
+  });
 
-    // Evidence reproduces the assembled plan-order bytes and the REAL file.
-    assert.equal(outcome.evidence.fileSha256, sha256(expected));
-    assert.equal(outcome.evidence.bytesWritten, expected.byteLength);
-    assert.equal(outcome.evidence.stopReason, 'COMPLETED');
-    const onDisk = readFileSync(outcome.evidence.artifactPath);
-    assert.equal(sha256(onDisk), sha256(expected));
-    assert.equal(outcome.summary.outcomeKind, 'COMPLETED');
-    assert.equal(outcome.summary.segmentsTransferred, 3);
-    assert.equal(outcome.summary.transferredByteCount, expected.byteLength);
-    assert.equal(outcome.confirmed.slice, 'S3');
-    assert.equal(outcome.confirmed.allowedOperation, 'media.acquire');
-
-    // Exactly one K-issued permit identity rode the dispatch.
-    assert.ok(outcome.permitEffectId.length > 0);
-    const permitCount = runtime.store.permitDocs().length;
-    assert.equal(permitCount, 1, 'exactly one durable K permit must exist');
-    const receipt = outcome.receipt as {
-      status?: string;
-      admitted?: { effects?: { disposition?: string }[] };
-    };
-    assert.equal(receipt.status, 'admitted');
-    assert.equal(receipt.admitted?.effects?.[0]?.disposition, 'executed');
-
-    // Physical evidence: 1 manifest + 1 media playlist + 3 segments, no more.
-    assert.equal(hits.get('/master.m3u8'), 1);
-    assert.equal(hits.get('/media-720p.m3u8'), 1);
-    assert.equal(totalHits() - beforeHits, 5);
-    assert.equal(runtime.pin.acquireMediaCalls, 1);
-    assert.equal(runtime.pin.completedExecutions, 1);
-    assert.equal(runtime.pin.permitRefusals, 0);
+  it('keeps the route inside the frozen T01 media vocabulary (no widening)', () => {
+    assert.equal(MEDIA_ACQUIRE_OPERATION, 'media.acquire');
+    assert.equal(MEDIA_SLICE, 'S3');
+    const routeCheck = validateRouteTable(
+      [MEDIA_ROUTE],
+      [
+        {
+          operationId: MEDIA_ACQUIRE_OPERATION,
+          capabilityId: 'media',
+          handlerId: 'acquireMedia',
+          effectClass: 'non-idempotent',
+          externalEffect: true,
+        },
+      ],
+    );
+    assert.equal(routeCheck.ok, true, 'the media route must stay on the frozen vocabulary');
   });
 });
 
-describe('S3 — no-widening and profile refusals before any effect', () => {
-  it('refuses a foreign allowedOperation pre-send with zero effects', async () => {
-    const beforeHits = totalHits();
-    const beforeAcquires = runtime.pin.acquireMediaCalls;
-    const beforePermits = runtime.store.permitDocs().length;
-    const outcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-op', { allowedOperation: 'acquisition.acquire' }),
-    );
-    assert.equal(outcome.status, 'refused');
-    if (outcome.status !== 'refused') return;
-    assert.equal(outcome.code, 'MEDIA_OPERATION_MISMATCH');
-    assertZeroEffectsSince(beforeHits, beforeAcquires, beforePermits);
-  });
+// ---------------------------------------------------------------------------
+// ABI — the sealed media capability module keeps its Host bridge pin seam
+// ---------------------------------------------------------------------------
 
-  it('refuses a foreign slice pre-send (the media journey admits S3 only)', async () => {
-    const beforeHits = totalHits();
-    const beforeAcquires = runtime.pin.acquireMediaCalls;
-    const beforePermits = runtime.store.permitDocs().length;
-    const outcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-slice', { slice: 'S1' }),
+describe('ABI — sealed media capability bridge pin seam', () => {
+  it('the sealed capability module reaches the MEDIA_BRIDGE_PIN globalThis seam', () => {
+    assert.equal(MEDIA_BRIDGE_PIN, '__xdownloadMediaAcquisitionBridge');
+    const sealedSource = readFileSync(join(HERE, 'capability-media-acquire.mjs'), 'utf8');
+    assert.ok(
+      sealedSource.includes(`globalThis.${MEDIA_BRIDGE_PIN}`),
+      'the sealed media capability module must reach the same pin the Core-side installer names',
     );
-    assert.equal(outcome.status, 'refused');
-    if (outcome.status !== 'refused') return;
-    assert.equal(outcome.code, 'MEDIA_SLICE_MISMATCH');
-    assertZeroEffectsSince(beforeHits, beforeAcquires, beforePermits);
-  });
-
-  it('refuses a widened intent through the T01 gate with zero effects', async () => {
-    const beforeHits = totalHits();
-    const beforeAcquires = runtime.pin.acquireMediaCalls;
-    const beforePermits = runtime.store.permitDocs().length;
-    const outcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-wide', { manifestUrl: 'https://evil.example/master.m3u8' }),
-    );
-    assert.equal(outcome.status, 'refused');
-    if (outcome.status !== 'refused') return;
-    assert.equal(outcome.code, 'MEDIA_INTENT_INVALID');
-    assert.ok(outcome.message.includes('SCOPE_WIDENING_REFUSED'));
-    assertZeroEffectsSince(beforeHits, beforeAcquires, beforePermits);
-  });
-
-  it('refuses an intent missing the sealed profile fields with zero effects', async () => {
-    const beforeHits = totalHits();
-    const beforeAcquires = runtime.pin.acquireMediaCalls;
-    const beforePermits = runtime.store.permitDocs().length;
-    const outcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-profile', { digestAnchor: undefined }),
-    );
-    assert.equal(outcome.status, 'refused');
-    if (outcome.status !== 'refused') return;
-    assert.equal(outcome.code, 'MEDIA_PROFILE_BINDING_INCOMPLETE');
-    assertZeroEffectsSince(beforeHits, beforeAcquires, beforePermits);
-  });
-});
-
-describe('S3 — admitted dispatches fail truthfully with zero network when unresolvable', () => {
-  it('fails at the trusted registry for an unknown targetRef before any request', async () => {
-    const beforeHits = totalHits();
-    const outcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-ghost', { targetRef: 'ref:media/ghost' }),
-    );
-    assert.equal(outcome.status, 'failed');
-    if (outcome.status !== 'failed') return;
-    assert.equal(outcome.error.code, 'CONTRACT_BINDING_MISMATCH');
-    assert.equal(outcome.confirmed.targetRef, 'ref:media/ghost');
-    assert.equal(
-      totalHits() - beforeHits,
-      0,
-      'an unresolvable target must never touch the network',
-    );
-    assert.equal(existsSync(join(ROOT, 's3-media-ghost.bin')), false);
-  });
-
-  it('fails at the sealed B profile bound when declaredBytes exceeds it (zero effects run)', async () => {
-    const beforeHits = totalHits();
-    const beforeAcquires = runtime.pin.acquireMediaCalls;
-    const beforePermits = runtime.store.permitDocs().length;
-    const outcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-oversize', { declaredBytes: 2_097_152 }),
-    );
-    assert.equal(outcome.status, 'failed');
-    if (outcome.status !== 'failed') return;
-    assert.equal(outcome.error.code, 'EFFECT_ENVELOPE_MISSING');
-    assert.equal(
-      totalHits() - beforeHits,
-      0,
-      'a profile-refused intent must never reach the engine',
-    );
-    assert.equal(
-      runtime.pin.acquireMediaCalls - beforeAcquires,
-      0,
-      'no dispatch for a refused intent',
-    );
-    assert.equal(
-      runtime.store.permitDocs().length - beforePermits,
-      0,
-      'no permit for a refused intent',
-    );
-  });
-});
-
-describe('S3 — the digest anchor holds behind the engine acceptance', () => {
-  it('refuses to materialize when assembled bytes miss the confirmed anchor', async () => {
-    const beforeHits = totalHits();
-    const outcome = await submitConfirmedMediaDownload(
-      runtime,
-      mediaIntent('s3-media-tamper', { digestAnchor: 'a'.repeat(64) }),
-    );
-    assert.equal(outcome.status, 'failed');
-    if (outcome.status !== 'failed') return;
-    assert.equal(outcome.error.code, 'MEDIA_DIGEST_MISMATCH');
-    assert.equal(outcome.terminal?.phase, 'terminal');
-    assert.equal(totalHits() - beforeHits, 5, 'the engine ran; the anchor refused materialization');
-    // The tampered run must not have written: the artifact is still exactly
-    // the earlier completed run's bytes (same sealed artifact file name).
-    const untouched = readFileSync(join(ROOT, 'media-001.bin'));
-    assert.equal(sha256(untouched), sha256(assembledBytes()));
-    assert.equal(runtime.pin.completedExecutions, 1, 'no second completed execution');
   });
 });

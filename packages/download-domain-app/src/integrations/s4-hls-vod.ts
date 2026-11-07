@@ -5,6 +5,22 @@
  * it does not pass an S4 request through the generic ConfirmedDownloadIntent
  * S1/S3 slice field. The Host re-observes the manifest and verifies the
  * confirmed selection tuple before it executes the existing HLS/FFmpeg path.
+ *
+ * V022-A02/A04 boundary note: this module no longer imports
+ * @xdownload/download-domain-host. REMOVED in A02, RELOCATED-TO-CORE-A04:
+ * the S4 scenario map recorded in s4-hls-vod.test.ts is re-established at
+ * the Core composition root — V022-A04 R2 routes every runtime-driving S4
+ * scenario through the PRODUCTION composition (`createCoreRuntime` /
+ * `composeDomainAppRoute`) and the actual Core Host bridge
+ * (`createS4HlsHostBridge` in packages/core-runtime/src/domain-app-route.ts);
+ * the test-side `executeS4Hls` duplicate was deleted in R2 (review P1). Only
+ * the App-owned single-K contribution splice keeps a direct SDK `load` with
+ * an intentional stub pin, as BUILD-shape evidence.
+ * KEPT here and exported through the public App root (A04):
+ * `sealS4HlsComposition`, `s4HlsCompositionContribution`, `s4HlsSealedPassthrough`,
+ * `acquireS4HlsBridgePin` and the S4 pin contract types — the domain-side
+ * registration seam the sealed S4 capability module and the Core route
+ * both reach (the physical bridge implementation is Host-owned).
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -17,7 +33,7 @@ import {
   type V10RouteRowInput,
 } from '@kaicreator/domain-harness-build';
 import type { V10PublicIntent } from '@kaicreator/domain-harness-contracts';
-import { load, type DomainApp } from '@kaicreator/domain-harness-microkernel';
+import type { DomainApp } from '@kaicreator/domain-harness-microkernel';
 import {
   AUDIENCE,
   POC183_KERNEL_MODULE_SHA256,
@@ -29,19 +45,12 @@ import {
   normalizeEffectEnvelope,
   validateMaterializedEvidence,
   validateRouteTable,
-  REFERENCE_TOKEN_PATTERN,
   type EffectEnvelope,
   type MaterializedEvidence,
   type OperationDeclaration,
 } from '../contracts/index.ts';
-import { FileCasDocStore } from '../composition/runtime.ts';
-import { InMemoryMediaTargetRegistry, type MediaTargetRefSeed } from './media-registry.ts';
-import { acquireSelectedHlsVod } from '../../../download-domain-host/src/media/media-acquisition-bridge.ts';
-import {
-  S4_HLS_MEDIA_OPERATION,
-  validateConfirmedS4HlsIntent,
-  type ConfirmedS4HlsIntent,
-} from './s4-hls-vod-contract.ts';
+import type { KDocStoreEvidencePort } from '../composition/runtime.ts';
+import { S4_HLS_MEDIA_OPERATION, validateConfirmedS4HlsIntent } from './s4-hls-vod-contract.ts';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 function sha256Hex(value: string): string {
@@ -188,6 +197,42 @@ export function sealS4HlsComposition(): V10BuiltApp {
   return built;
 }
 
+/**
+ * V022-A04 — build ONE externally-named single-K composition from the T03
+ * base spliced with the S4 contribution: the exact splice shape the
+ * production Core route uses (`s4HlsCompositionContribution()` into one
+ * existing build), with a caller-chosen app/build identity so externally
+ * composed one-K runtimes (e.g. the Core composition-root test splice)
+ * never re-declare modules or routes. K/S bytes, the frozen route and the
+ * operation declarations stay byte-identical to `sealS4HlsComposition`.
+ */
+export function buildS4HlsSingleKComposition(appId: string, buildId: string): V10BuiltApp {
+  const t03 = buildDownloadDomainApp();
+  const contribution = s4HlsCompositionContribution();
+  const modules: readonly V10ModuleInput[] = t03.built.modules.map((module) => {
+    if (module.role === 'business') return contribution.business;
+    if (module.role === 'capability') return contribution.capability;
+    return s4HlsSealedPassthrough(module);
+  });
+  const routeCheck = validateRouteTable([contribution.route], contribution.declarations);
+  if (!routeCheck.ok || t03.routes.length !== 1) {
+    throw new Error(
+      'S4_HLS_COMPOSITION_BINDING_MISMATCH: route is outside frozen media.acquire vocabulary',
+    );
+  }
+  const built = buildV10App({
+    appId,
+    audience: AUDIENCE,
+    targetProfile: t03.built.targetProfile,
+    modules,
+    routes: [contribution.route],
+    hardBudget: t03.built.hardBudget,
+    buildId,
+  });
+  verifySealedModules(built);
+  return built;
+}
+
 export const S4_HLS_BRIDGE_PIN = '__xdownloadS4HlsVodBridge';
 export interface S4HlsBridgePin {
   acquireS4HlsVod(payload: Record<string, unknown>, permit: unknown): Promise<unknown>;
@@ -200,6 +245,14 @@ function hostGlobals(): { [S4_HLS_BRIDGE_PIN]?: S4HlsBridgePin } {
  * process-global routing authority for S4 media effects, so a second live
  * registration is refused atomically instead of silently displacing the first
  * holder (a displaced bridge could route effects to the wrong target registry).
+ *
+ * V022-A04: exported through the public App root — the Core composition
+ * root installs its S4 Host bridge via this registrar and consumes it
+ * exclusively through the stable package-root surface (no deep imports).
+ * The pin remains the process-global routing authority for S4 media
+ * effects, so a second live registration is refused atomically instead of
+ * silently displacing the first holder (a displaced bridge could route
+ * effects to the wrong target registry).
  */
 export interface S4HlsBridgeLease {
   readonly bridge: S4HlsBridgePin;
@@ -240,235 +293,23 @@ export interface S4HlsPinCounters {
   completedExecutions: number;
   failedExecutions: number;
 }
-export interface S4HlsRuntimeOptions {
-  readonly storePath: string;
-  readonly mediaTargetRefs?: readonly MediaTargetRefSeed[];
-  readonly tenantId?: string;
-  readonly deployedAppId?: string;
-  readonly queryPrincipal?: string;
-  readonly now?: () => number;
-}
+/**
+ * The assembled S4 runtime contract consumed by `submitConfirmedS4HlsVod`.
+ * Domain-facing by construction (V022-A04, closing A02 P2-1): the store is
+ * the narrow structural evidence port and the registry is opaque — no
+ * `FileCasDocStore`, no media registry and no physical Runtime type is
+ * exposed. The Core composition root assembles the physical instances (Host
+ * store + Host registry + the pinned Host bridge) and passes them
+ * structurally.
+ */
 export interface S4HlsRuntime {
   readonly built: V10BuiltApp;
   readonly app: DomainApp;
-  readonly store: FileCasDocStore;
-  readonly registry: InMemoryMediaTargetRegistry;
+  readonly store: KDocStoreEvidencePort;
+  /** Host-owned media targetRef registry (opaque at the App boundary). */
+  readonly registry: unknown;
   readonly pin: S4HlsPinCounters;
   stop(): void;
-}
-
-interface KernelPermitClaim {
-  readonly effectId: string;
-  readonly durableControlTurnId: string;
-  readonly attempt?: number;
-}
-function parseKernelPermit(value: unknown): KernelPermitClaim | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  const record = value as Record<string, unknown>;
-  const attemptOk =
-    record.attempt === undefined ||
-    (typeof record.attempt === 'number' &&
-      Number.isSafeInteger(record.attempt) &&
-      record.attempt >= 0);
-  if (
-    Object.keys(record).some(
-      (key) => key !== 'effectId' && key !== 'durableControlTurnId' && key !== 'attempt',
-    ) ||
-    typeof record.effectId !== 'string' ||
-    record.effectId.length < 1 ||
-    record.effectId.length > 256 ||
-    typeof record.durableControlTurnId !== 'string' ||
-    record.durableControlTurnId.length < 1 ||
-    record.durableControlTurnId.length > 256 ||
-    !attemptOk
-  )
-    return undefined;
-  return {
-    effectId: record.effectId,
-    durableControlTurnId: record.durableControlTurnId,
-    ...(typeof record.attempt === 'number' ? { attempt: record.attempt } : {}),
-  };
-}
-function boundedPermitIdOf(effectId: string): string {
-  if (REFERENCE_TOKEN_PATTERN.test(effectId)) return effectId;
-  return 'xd-s4-' + createHash('sha256').update(effectId).digest('hex').slice(0, 32);
-}
-function refusalEnvelope(externalRef: string, code: string, message: string): EffectEnvelope {
-  return { phase: 'terminal', externalRef, outcome: { ok: false, error: { code, message } } };
-}
-
-async function executeS4Hls(
-  payload: Record<string, unknown>,
-  permit: unknown,
-  registry: InMemoryMediaTargetRegistry,
-  counters: S4HlsPinCounters,
-): Promise<EffectEnvelope> {
-  counters.acquireCalls += 1;
-  const kernelPermit = parseKernelPermit(permit);
-  if (kernelPermit === undefined) {
-    counters.permitRefusals += 1;
-    return refusalEnvelope(
-      'media.acquire:unpermitted',
-      'MEDIA_PERMIT_REQUIRED',
-      'Kernel effect permit is required',
-    );
-  }
-  const externalRef = kernelPermit.effectId;
-  const candidate: Record<string, unknown> = { ...payload };
-  delete candidate.effectId;
-  // The K's standard rule projection requires every mapped input field to be
-  // present, so submitConfirmedS4HlsVod rides an absent optional digestAnchor
-  // as null on the internal path; drop it here before contract validation.
-  if (candidate.digestAnchor === null) delete candidate.digestAnchor;
-  const checked = validateConfirmedS4HlsIntent(candidate);
-  if (!checked.ok) {
-    counters.intentRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      'S4_INTENT_INVALID',
-      checked.diagnostics[0]?.message ?? 'S4 intent refused',
-    );
-  }
-  const intent: ConfirmedS4HlsIntent = checked.value;
-  const recordCheck = registry.resolve(intent.targetRef);
-  if (!recordCheck.ok) {
-    counters.registryRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      recordCheck.diagnostics[0]?.code ?? 'MEDIA_TARGET_UNKNOWN',
-      'opaque targetRef did not resolve',
-    );
-  }
-  const record = recordCheck.value;
-  if (
-    record.protocol !== 'HLS' ||
-    record.manifestUri !== intent.selection.manifestUri ||
-    (record.selectedRenditionUri !== undefined &&
-      record.selectedRenditionUri !== intent.selection.renditionUri)
-  ) {
-    counters.registryRefusals += 1;
-    return refusalEnvelope(
-      externalRef,
-      'S4_SELECTION_TARGET_MISMATCH',
-      'confirmed selection does not match trusted target registry facts',
-    );
-  }
-  const mediaPermit = {
-    kind: 'media-acquisition-permit',
-    permitId: boundedPermitIdOf(kernelPermit.effectId),
-    operationId: S4_HLS_MEDIA_OPERATION,
-    requestId: intent.requestId,
-    lineageId: intent.lineageId,
-    allowedManifestOrigins: record.allowedManifestOrigins,
-    allowedSegmentOrigins: record.allowedSegmentOrigins,
-    budget: record.budget,
-  };
-  const result = await acquireSelectedHlsVod({
-    intent,
-    protocol: record.protocol,
-    manifestUri: record.manifestUri,
-    permit: mediaPermit,
-    ...(record.artifactFileName === undefined ? {} : { artifactFileName: record.artifactFileName }),
-    ...(record.fixtureLoopbackHttp === true ? { fixtureLoopbackHttp: true } : {}),
-    ...(record.manifestMaxBytes === undefined ? {} : { manifestMaxBytes: record.manifestMaxBytes }),
-    ...(record.segmentMaxBytes === undefined ? {} : { segmentMaxBytes: record.segmentMaxBytes }),
-    ...(record.timeoutMs === undefined ? {} : { timeoutMs: record.timeoutMs }),
-  });
-  if (!result.admitted) {
-    counters.failedExecutions += 1;
-    return refusalEnvelope(externalRef, result.code, result.message);
-  }
-  if (result.envelope.phase === 'terminal' && result.envelope.outcome.ok) {
-    const normalized = normalizeEffectEnvelope({
-      phase: 'terminal',
-      externalRef,
-      outcome: {
-        ok: true,
-        output: {
-          ...result.envelope.outcome.output,
-          permitEffectId: kernelPermit.effectId,
-          durableControlTurnId: kernelPermit.durableControlTurnId,
-        },
-      },
-    });
-    if (!normalized.ok) {
-      throw new Error('S4 Host permit enrichment rejected by T01 envelope grammar');
-    }
-    counters.completedExecutions += 1;
-    return normalized.value;
-  }
-  counters.failedExecutions += 1;
-  return result.envelope;
-}
-
-/**
- * Test/fixture-only standalone assembly: builds and loads its OWN S4 K with a
- * private doc store and registers the Host bridge pin for its lifetime. For a
- * production single-K composition (one existing Core-owned K, e.g. the T02
- * integration), splice `s4HlsCompositionContribution()` into that one build
- * and register the Host bridge with `acquireS4HlsBridgePin()` instead — a
- * second live pin (including this fixture's) is refused, never displacing.
- */
-export async function assembleS4HlsRuntime(options: S4HlsRuntimeOptions): Promise<S4HlsRuntime> {
-  const built = sealS4HlsComposition();
-  const store = new FileCasDocStore(options.storePath);
-  const registry = new InMemoryMediaTargetRegistry(options.mediaTargetRefs ?? []);
-  const pin: S4HlsPinCounters = {
-    acquireCalls: 0,
-    permitRefusals: 0,
-    intentRefusals: 0,
-    registryRefusals: 0,
-    completedExecutions: 0,
-    failedExecutions: 0,
-  };
-  const bridgePin: S4HlsBridgePin = {
-    acquireS4HlsVod: (payload, permit) => executeS4Hls(payload, permit, registry, pin),
-  };
-  const registration = acquireS4HlsBridgePin(bridgePin);
-  if (!registration.ok) {
-    store.close();
-    throw new Error(`S4_BRIDGE_PIN_CONFLICT: ${registration.message}`);
-  }
-  const tenantId = options.tenantId ?? 'tenant:xdownload-v021-s4';
-  const deployedAppId = options.deployedAppId ?? 'deploy:xdownload-v021-s4';
-  const principal = options.queryPrincipal ?? 'xdownload-v021-s4-host';
-  let app: DomainApp;
-  try {
-    app = await load(built, {
-      store,
-      tenantId,
-      deploymentIdentity: { deployedAppId, tenantId, appId: built.appId },
-      queryAuthority: {
-        principal: { actor: principal },
-        authorize: (candidate, target) =>
-          Boolean(
-            candidate !== null &&
-            typeof candidate === 'object' &&
-            (candidate as { actor?: string }).actor === principal &&
-            target.tenantId === tenantId,
-          ),
-      },
-      ...(options.now === undefined ? {} : { now: options.now }),
-    });
-  } catch (error) {
-    // Failed K activation must not leave an orphaned process-global pin or an
-    // open doc store behind: the conflict-rejecting registration stays honest.
-    registration.lease.release();
-    store.close();
-    throw error;
-  }
-  return {
-    built,
-    app,
-    store,
-    registry,
-    pin,
-    stop(): void {
-      app.stop();
-      registration.lease.release();
-      store.close();
-    },
-  };
 }
 
 export interface S4HlsJourneyResult {
