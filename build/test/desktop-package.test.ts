@@ -172,6 +172,15 @@ describe('#284/#285 desktop artifact (real package build)', () => {
     expect(sidecar['main']).toBe('main/main.cjs');
   });
 
+  it('binds every emitted artifact identity to the shared content version', () => {
+    for (const artifact of ['cli', 'core', 'desktop', 'extension', 'native-host']) {
+      const identity = JSON.parse(
+        fs.readFileSync(path.join(distRoot, 'identity', `${artifact}.json`), 'utf8'),
+      ) as { contentVersion?: unknown };
+      expect(identity.contentVersion, artifact).toBe(CONTENT_VERSION);
+    }
+  });
+
   it.skipIf(!SELECTED_TUPLE)(
     'vendors the locked Electron runtime verbatim (renamed exe, no default app asar)',
     () => {

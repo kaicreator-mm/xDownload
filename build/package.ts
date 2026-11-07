@@ -602,6 +602,7 @@ export async function runPackageBuild(distDir: string): Promise<{
     const identity = buildIdentity({
       artifact: artifact.id,
       artifactDir: path.join(distDir, artifact.outDir),
+      contentVersion: CONTENT_VERSION,
       sourceRevision,
       toolchain,
       generatedAt,
