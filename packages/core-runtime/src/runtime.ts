@@ -87,7 +87,7 @@ import {
   type CoreDomainAppOptions,
   type CoreDomainAppRoute,
 } from './domain-app-route.ts';
-import { validateConfirmedS4HlsIntent } from '../../download-domain-app/src/integrations/s4-hls-vod-contract.ts';
+import { validateConfirmedS4HlsIntent } from '@xdownload/download-domain-app';
 
 export { durableLayout, DurableStoreCorruptError, FileBackedControlFactLog, FileBackedSeamJournal };
 export type { DurableLayout };

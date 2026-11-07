@@ -1,17 +1,31 @@
 /**
- * v0.2 T12 — S5 current-page collection journey tests (node:test, colocated).
+ * V022-A04 — S5 current-page collection journey tests, migrated from the
+ * Domain App integrations lane into Core (packages/core-runtime/test/,
+ * discovered by `pnpm run ci:verify` — the A02 P1 closure).
  *
- * Real per-member K submissions over the T11 direct runtime and a real
- * 127.0.0.1 fixture (zero mocks). Zero-effect negatives are proven as deltas
- * across fixture socket requests, bridge counters and the durable K store.
+ * Real per-member K submissions over the Core-assembled direct runtime and
+ * a real 127.0.0.1 fixture (zero mocks). Zero-effect negatives are proven
+ * as deltas across fixture socket requests, bridge counters and the
+ * durable K store.
+ *
+ * A04 R2 EVIDENCE SCOPE (review P1 disposition): component-level integration
+ * evidence over a Core-test-assembled direct runtime — the pinned SDK cannot
+ * compose the direct route into the production S4 one-K (route selection by
+ * intentType only; the sealed #183 Standard Router returns 'ambiguous' for
+ * the shared `confirmDownload` intent; exact limitation + probe transcripts
+ * on kaicreator-mm/xDownload#357). Per Task Pack §3.1.4 the Builder stopped
+ * rather than substituting a parallel production claim; the production one-K
+ * integration proof of the selected Domain App lives in
+ * domain-app-route.test.ts / domain-app-media-flow.test.ts. A02 P1 closure
+ * (these cases under Core `ci:verify`) is unaffected.
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 
-import { runS5CollectionJourney } from './s5-collection.ts';
+import { runS5CollectionJourney } from '@xdownload/download-domain-app';
 import {
   LocalHttpFixture,
   makeSliceWorkspace,
@@ -62,7 +76,7 @@ function assertZeroEffectsSince(before0: EffectBaseline): void {
   assert.equal(workspace.runtime.store.permitDocs().length - before0.permitDocs, 0);
 }
 
-before(async () => {
+beforeAll(async () => {
   await fixture.start();
   workspace = await makeSliceWorkspace('s5', fixture, [
     { handle: 'ref:s5/one', path: '/one.bin' },
@@ -71,7 +85,7 @@ before(async () => {
   ]);
 });
 
-after(async () => {
+afterAll(async () => {
   await workspace.dispose();
   await fixture.stop();
 });

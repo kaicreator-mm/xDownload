@@ -3,13 +3,14 @@
   "version": "0.2.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "xDownload v0.2 trusted Domain App Host (C/Host integration: direct/media adapters behind the selected Kernel permit gate). Runtime wiring lands in T04/T06/T13.",
+  "description": "xDownload v0.2 trusted Domain App Host (C/Host integration: direct/media adapters, opaque targetRef registries, durable K document CAS and dormant lineage storage behind the selected Kernel permit gate). V022-A04: owns every physical adapter; the Domain App never imports Host and Host never imports the Domain App.",
   "engines": {
     "node": ">=24"
   },
   "exports": {
+    ".": "./src/index.ts",
     "./direct": "./src/direct/index.ts",
-    "./media": "./src/media/media-acquisition-bridge.ts",
+    "./media": "./src/media/index.ts",
     "./media/permit": "./src/media/media-permit.ts"
   },
   "files": [
@@ -19,7 +20,6 @@
     "@kaicreator/domain-harness-host-node": "0.10.2-rc.0",
     "@xdownload/direct-acquisition": "workspace:*",
     "@xdownload/domain-contracts": "workspace:*",
-    "@xdownload/download-domain-app": "workspace:*",
     "@xdownload/hls-vod-adapter": "workspace:*"
   }
 }
