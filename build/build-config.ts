@@ -34,11 +34,11 @@ export const REPO_ROOT: string = path.resolve(import.meta.dirname, '..');
 export const DEFAULT_DIST_DIR = 'dist';
 
 /**
- * The v0.2.1 content version shared by the installer and the packaged
+ * The v0.2.2 content version shared by the installer and the packaged
  * desktop app sidecar (`resources/app/package.json`). One declaration so the
  * two shipped version bytes can never drift apart.
  */
-export const CONTENT_VERSION = '0.2.1';
+export const CONTENT_VERSION = '0.2.2';
 
 /** Exact extension-origin pattern the broker itself enforces (T010). */
 export const EXTENSION_ORIGIN_PATTERN = /^chrome-extension:\/\/[a-p]{32}\/$/;
