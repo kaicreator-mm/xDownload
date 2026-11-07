@@ -1,46 +1,44 @@
 /**
- * v0.2 T11 — download Domain App RUNTIME assembly (integration-direct lane;
- * write set packages/download-domain-app/src/composition/** only).
+ * v0.2 T11 — download Domain App direct-lane sealed composition,
+ * V022-A04 consolidated.
  *
- * `assembleDownloadRuntime` end-to-end composes the sealed K/S/B/C BUILD of
- * the T03 composition with the REAL C/Host acquisition implementation:
+ * The Domain App is domain-only (A04): this module owns the sealed BUILD
+ * producer `sealDirectComposition` (T03 K/S/B bytes verbatim + this lane's
+ * capability-acquisition-direct.mjs re-sealed by the public
+ * @kaicreator/domain-harness-build producer), the domain-facing runtime
+ * contract the journeys consume (`DownloadRuntime` over structural ports —
+ * the physical Host store/bridge/registry/ledger instances are structurally
+ * assignable to these ports at the Core composition root), and the
+ * `DIRECT_BRIDGE_PIN` ABI name the sealed direct C module reaches (the
+ * sealed module carries the literal; the constant is the typed reference
+ * for the Core-side pin installer).
  *
- *   - K/S/B bytes come from the T03 sealed producer verbatim (kernel-primary
- *     and standard-primary must still reproduce the #183 PoC manifest module
- *     hashes; the B policy module is the sealed business-download.mjs);
- *   - the C capability module is THIS lane's capability-acquisition-direct.mjs
- *     (same route binding as T03: ACQUISITION_ROUTE, capabilityId
- *     'acquisition', handler 'acquire', externalEffect: true) re-sealed into
- *     one BUILD by the public @kaicreator/domain-harness-build producer;
- *   - the physical C implementation is the T04 `DirectAcquisitionBridge`
- *     (permit gate, registry-resolved targetRef, CanonicalBudgetLedger single
- *     budget truth, digest-backed atomic materialization), pinned on
- *     `globalThis.__xdownloadDirectAcquisitionBridge` BEFORE the SDK public
- *     `load` runs (the #183 PoC host-dependency pattern; a missing pin fails
- *     closed inside the sealed C module);
- *   - the K documents live in a caller-owned DURABLE store: this lane ships
- *     the plain-file CAS `FileCasDocStore` (store choice is written up on the
- *     class: the T09 LineageStore seam is a single-document lineage-authority
- *     shape, not a keyed V10DocStore, and the real SQLite leg stays with the
- *     T13 packaging writer per the T09 evidence).
+ * V022-A04 relocations now landed:
+ *   - `FileCasDocStore` moved to the Host (`download-domain-host` storage
+ *     lane, A03) and is deleted here; the App-side `DownloadRuntime.store`
+ *     port is the narrow structural evidence surface (`KDocStoreEvidencePort`)
+ *     the Host store satisfies.
+ *   - `assembleDownloadRuntime` (and its A02 relocation sentinel) deleted:
+ *     the real assembly (sealed BUILD + T04 Host bridge pin + durable store
+ *     + SDK public `load`) lives at the Core composition root, which owns
+ *     the Host adapters; the migrated S2/S5/S6 slice tests and the
+ *     Direct seven-scenario integration matrix re-established under
+ *     packages/core-runtime/test (A04) assemble there.
  *
- * Everything below the facade is trusted Host application code over the SDK
- * public surface (`buildV10App`, `load`, `DomainApp`); there is no SDK
- * internal import anywhere.
+ * See composition-runtime.test.ts for the domain-level scenario map (sealed
+ * identity, T01 no-widening gate, sealed capability ABI seam).
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { buildV10App, type V10BuiltApp, type V10ModuleInput } from '@kaicreator/domain-harness-build';
-import type { V10DocStore, V10DocWriteCondition, V10RouteRowInput } from '@kaicreator/domain-harness-contracts';
-import { load, type DomainApp } from '@kaicreator/domain-harness-microkernel';
+import { join } from 'node:path';
 import {
-  CanonicalBudgetLedger,
-  DirectAcquisitionBridge,
-  InMemoryTargetRefRegistry,
-  type TargetRefRecord,
-} from '../../../download-domain-host/src/direct/index.ts';
+  buildV10App,
+  type V10BuiltApp,
+  type V10ModuleInput,
+  type V10RouteRowInput,
+} from '@kaicreator/domain-harness-build';
+import type { DomainApp } from '@kaicreator/domain-harness-microkernel';
 import {
   ACQUISITION_ROUTE,
   AUDIENCE,
@@ -58,147 +56,88 @@ function sha256Hex(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Caller-owned durable K document store (plain-file CAS).
+// Domain-facing runtime contract (structural ports; the physical instances
+// are Host-owned and assembled by the Core composition root).
 // ---------------------------------------------------------------------------
 
-export interface FileCasDocStoreCounts {
-  reads: number;
-  writes: number;
-  removes: number;
-  persists: number;
+/**
+ * Narrow structural evidence port of the durable K document store. The
+ * Host-owned `FileCasDocStore` is structurally assignable to this port
+ * (same member names and arities); the App never names the physical class.
+ * Journeys and tests read durable permit/journal evidence through this
+ * surface only.
+ */
+export interface KDocStoreEvidencePort {
+  /** Durable K effect-journal rows currently persisted (restart evidence). */
+  journalRows(): readonly { key: string; record: unknown }[];
+  /** Durable K effect-permit documents currently persisted (permit evidence). */
+  permitDocs(): readonly { key: string; value: unknown }[];
 }
 
 /**
- * The composition's durable store choice, written up per the T11 contract:
- *
- *   - The K `load` needs a keyed multi-document CAS (`V10DocStore`:
- *     get/put/remove/keys). The T09 `LineageStore` seam is deliberately a
- *     SINGLE-document lineage-authority shape (one `LineageLedgerDoc` with
- *     its own schema and revision), so it cannot back the K docs port
- *     without re-implementing the keyed layer anyway; it is consumed
- *     read-only here (design reuse), not wrapped.
- *   - The real SQLite/Host CAS leg stays NOT_PROVEN exactly as the T09
- *     lane recorded it (`better-sqlite3` is unresolvable in this workspace;
- *     adding the driver is a lockfile change reserved to the T13 final
- *     packaging writer). No mock admission is passed off as SQLite.
- *   - What ships is the proven #183 PoC durable pattern: ONE JSON file,
- *     whole-document temp+rename persistence on every conditional write,
- *     revision-checked CAS. Readers never observe a torn document and a
- *     real process boundary (stop + reopen of the same file) observes
- *     exactly the durable bytes — the property the restart test proves.
- *     Single-process-safe by construction; cross-process writers are not
- *     its claim (one-writer-per-runtime is the composition's guarantee).
+ * The trusted Host bridge pin name the sealed direct C module reaches. The
+ * sealed capability module carries the literal
+ * `globalThis.__xdownloadDirectAcquisitionBridge`; this constant is the
+ * typed reference for the Core-side pin installer.
  */
-export class FileCasDocStore implements V10DocStore {
-  readonly path: string;
-  readonly counts: FileCasDocStoreCounts = { reads: 0, writes: 0, removes: 0, persists: 0 };
-  private readonly docs: Map<string, { value: unknown; revision: number }>;
-  /** True when the in-memory map holds writes not yet on disk. */
-  private dirty = false;
+export const DIRECT_BRIDGE_PIN = '__xdownloadDirectAcquisitionBridge';
 
-  constructor(path: string) {
-    this.path = path;
-    mkdirSync(dirname(path), { recursive: true });
-    this.docs = existsSync(path)
-      ? new Map(Object.entries(JSON.parse(readFileSync(this.path, 'utf8')) as Record<string, { value: unknown; revision: number }>))
-      : new Map();
-  }
+/**
+ * Transitional bridge-side counter view (the T04 DirectAcquisitionBridge
+ * counter shape, structurally re-declared so this module needs no Host
+ * import). The physical bridge lives in download-domain-host; Core
+ * assembles it next to the Host adapters.
+ */
+export interface DirectBridgeCountersView {
+  readonly acquireCalls: number;
+  readonly permitRefusals: number;
+  readonly scopeRefusals: number;
+  readonly targetRefRefusals: number;
+  readonly pathRefusals: number;
+  readonly filesWritten: number;
+  readonly bytesDownloaded: number;
+}
 
-  async get(key: string): Promise<{ value: unknown; revision: number } | null> {
-    this.counts.reads += 1;
-    const row = this.docs.get(key);
-    return row === undefined ? null : { value: row.value, revision: row.revision };
-  }
+/** Transitional view of the pinned T04 direct bridge (Host-owned physical
+ * implementation; Core installs the real instance). */
+export interface TransitionalDirectBridgeView {
+  readonly counters: DirectBridgeCountersView;
+}
 
-  async put(key: string, value: unknown, condition: V10DocWriteCondition): Promise<{ revision: number }> {
-    this.counts.writes += 1;
-    const existing = this.docs.get(key);
-    if (condition.kind === 'create') {
-      if (existing !== undefined) {
-        throw Object.assign(new Error(`CAS conflict on ${key}: document already exists`), {
-          code: 'HOST_CAS_CONFLICT',
-        });
-      }
-      this.docs.set(key, { value, revision: 0 });
-      this.persist();
-      return { revision: 0 };
-    }
-    if (existing === undefined || existing.revision !== condition.revision) {
-      throw Object.assign(
-        new Error(
-          `CAS conflict on ${key}: revision moved (expected ${condition.revision}, held ${existing === undefined ? 'absent' : existing.revision})`,
-        ),
-        { code: 'HOST_CAS_CONFLICT' },
-      );
-    }
-    this.docs.set(key, { value, revision: condition.revision + 1 });
-    this.persist();
-    return { revision: condition.revision + 1 };
-  }
+/** Trusted registry seed: opaque handles → delivery facts (resolved by the
+ * trusted Host registry at assembly time; the record shape is Host-owned). */
+export interface TargetRefSeed {
+  readonly handle: string;
+  readonly record: unknown;
+}
 
-  async remove(key: string, condition: V10DocWriteCondition): Promise<void> {
-    this.counts.removes += 1;
-    const existing = this.docs.get(key);
-    if (condition.kind === 'create') {
-      if (existing !== undefined) {
-        throw Object.assign(
-          new Error(`CAS conflict on ${key}: create-conditioned remove refuses a present document`),
-          { code: 'HOST_CAS_CONFLICT' },
-        );
-      }
-      return;
-    }
-    if (existing === undefined || existing.revision !== condition.revision) {
-      throw Object.assign(new Error(`CAS conflict on ${key}: revision moved (expected ${condition.revision})`), {
-        code: 'HOST_CAS_CONFLICT',
-      });
-    }
-    this.docs.delete(key);
-    this.persist();
-  }
-
-  keys(): readonly string[] {
-    return [...this.docs.keys()].sort();
-  }
-
-  /** Durable K effect-journal rows currently persisted (restart evidence). */
-  journalRows(): readonly { key: string; record: unknown }[] {
-    return this.keys()
-      .filter((key) => key.includes('effect-journal:'))
-      .map((key) => {
-        const value = this.docs.get(key)?.value as { record?: unknown } | undefined;
-        return { key, record: value?.record ?? value };
-      });
-  }
-
-  /** Durable K effect-permit documents currently persisted (permit evidence). */
-  permitDocs(): readonly { key: string; value: unknown }[] {
-    return this.keys()
-      .filter((key) => key.includes('effect-permit:'))
-      .map((key) => ({ key, value: this.docs.get(key)?.value }));
-  }
-
-  private persist(): void {
-    this.counts.persists += 1;
-    this.dirty = false;
-    const snapshot = JSON.stringify(
-      Object.fromEntries([...this.docs.entries()].sort(([a], [b]) => (a < b ? -1 : 1))),
-    );
-    const temporary = `${this.path}.tmp`;
-    writeFileSync(temporary, snapshot);
-    renameSync(temporary, this.path);
-  }
-
-  /**
-   * Flush and seal the durable file (idempotent). Every mutation already
-   * persisted itself synchronously, so this only writes when the map holds
-   * unpersisted state — a second `close` on an already-clean store (double
-   * stop, teardown after the workspace vanished) is an honest no-op, never
-   * a spurious write to a vanished directory.
-   */
-  close(): void {
-    if (this.dirty) this.persist();
-  }
+/**
+ * The direct runtime contract consumed by the domain journey
+ * (`submitConfirmedDownload`) and the S2/S5/S6 slice journeys. Domain-facing
+ * by construction (V022-A04): every member is a domain port or an opaque
+ * handle — the physical Host store/bridge/registry/ledger instances Core
+ * assembles are structurally assignable to these views, and no App source
+ * imports the Host package.
+ */
+export interface DownloadRuntime {
+  readonly built: V10BuiltApp;
+  readonly app: DomainApp;
+  /** Durable K document store evidence port (Host store is assignable). */
+  readonly store: KDocStoreEvidencePort;
+  readonly bridge: TransitionalDirectBridgeView;
+  /** Host-owned targetRef registry (opaque at the App boundary). */
+  readonly registry: unknown;
+  /** Host-owned canonical budget ledger (opaque at the App boundary). */
+  readonly ledger: unknown;
+  /** Register the cancellation controller for one in-flight submission. */
+  beginSubmission(requestId: string): AbortController;
+  /** Drop the cancellation controller once the submission settled. */
+  settleSubmission(requestId: string): void;
+  /** Truthful cancellation: abort the in-flight transfer for one request. */
+  cancel(requestId: string, reason?: string): void;
+  /** The live abort signal of one in-flight submission, if any. */
+  signalFor(requestId: string): AbortSignal | undefined;
+  stop(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,7 +205,9 @@ export function sealDirectComposition(): SealedDirectComposition {
   // The route is the T03 declaration reused VERBATIM (frozen T01 vocabulary):
   // same object, same capability/handler binding — never re-declared here.
   if (t03.routes.length !== 1 || t03.routes[0] !== ACQUISITION_ROUTE) {
-    throw new Error('CONTRACT_BINDING_MISMATCH: the direct seal must reuse the T03 route declaration verbatim');
+    throw new Error(
+      'CONTRACT_BINDING_MISMATCH: the direct seal must reuse the T03 route declaration verbatim',
+    );
   }
   const capabilitySource = readFileSync(join(HERE, 'capability-acquisition-direct.mjs'), 'utf8');
   const capabilitySha256 = sha256Hex(capabilitySource);
@@ -286,10 +227,14 @@ export function sealDirectComposition(): SealedDirectComposition {
 
   const replaced = modules.find((module) => module.role === 'capability');
   if (replaced?.packageId !== DIRECT_CAPABILITY_MODULE_ID) {
-    throw new Error('DIRECT_COMPOSITION_SEAL_FAILED: the real direct capability module did not replace the T03 stub');
+    throw new Error(
+      'DIRECT_COMPOSITION_SEAL_FAILED: the real direct capability module did not replace the T03 stub',
+    );
   }
   if (t03.built.modules.some((module) => module.packageId === DIRECT_CAPABILITY_MODULE_ID)) {
-    throw new Error('DIRECT_COMPOSITION_SEAL_FAILED: the T03 stub capability must not coexist with the direct module');
+    throw new Error(
+      'DIRECT_COMPOSITION_SEAL_FAILED: the T03 stub capability must not coexist with the direct module',
+    );
   }
 
   // T01 authority cross-check on THIS seal's route before anything is sealed.
@@ -318,10 +263,14 @@ export function sealDirectComposition(): SealedDirectComposition {
   const sealedStandard = built.modules.find((module) => module.role === 'standard-primary');
   const sealedCapability = built.modules.find((module) => module.role === 'capability');
   if (sealedKernel?.moduleSha256 !== POC183_KERNEL_MODULE_SHA256) {
-    throw new Error('DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed kernel-primary lost the #183 PoC manifest hash');
+    throw new Error(
+      'DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed kernel-primary lost the #183 PoC manifest hash',
+    );
   }
   if (sealedStandard?.moduleSha256 !== POC183_STANDARD_MODULE_SHA256) {
-    throw new Error('DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed standard-primary lost the #183 PoC manifest hash');
+    throw new Error(
+      'DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed standard-primary lost the #183 PoC manifest hash',
+    );
   }
   if (
     sealedCapability?.packageId !== DIRECT_CAPABILITY_MODULE_ID ||
@@ -329,171 +278,10 @@ export function sealDirectComposition(): SealedDirectComposition {
     sealedCapability.externalEffect !== true ||
     sealedCapability.capabilityId !== 'acquisition'
   ) {
-    throw new Error('DIRECT_COMPOSITION_SEAL_FAILED: sealed capability is not the real direct module');
+    throw new Error(
+      'DIRECT_COMPOSITION_SEAL_FAILED: sealed capability is not the real direct module',
+    );
   }
 
   return { built, routes: t03.routes };
-}
-
-// ---------------------------------------------------------------------------
-// Runtime assembly.
-// ---------------------------------------------------------------------------
-
-/** The trusted Host bridge pin name the sealed direct C module reaches. */
-export const DIRECT_BRIDGE_PIN = '__xdownloadDirectAcquisitionBridge';
-
-interface DirectBridgePin {
-  acquire: (payload: Record<string, unknown>, permit: unknown) => Promise<unknown>;
-}
-
-function hostGlobals(): { [DIRECT_BRIDGE_PIN]?: DirectBridgePin } {
-  return globalThis as unknown as { [DIRECT_BRIDGE_PIN]?: DirectBridgePin };
-}
-
-export interface TargetRefSeed {
-  readonly handle: string;
-  readonly record: TargetRefRecord;
-}
-
-export interface AssembleDownloadRuntimeOptions {
-  /** Durable store file path (plain-file CAS; reopened across restarts). */
-  readonly storePath: string;
-  /** Trusted registry seed: opaque handles → delivery facts. */
-  readonly targetRefs?: readonly TargetRefSeed[];
-  /** Canonical budget profile (decodes through the T04 ledger). */
-  readonly budgetProfile?: unknown;
-  readonly tenantId?: string;
-  readonly deployedAppId?: string;
-  readonly queryPrincipal?: string;
-  readonly now?: () => number;
-}
-
-export interface DownloadRuntime {
-  readonly built: V10BuiltApp;
-  readonly app: DomainApp;
-  readonly store: FileCasDocStore;
-  readonly bridge: DirectAcquisitionBridge;
-  readonly registry: InMemoryTargetRefRegistry;
-  readonly ledger: CanonicalBudgetLedger;
-  /** Register the cancellation controller for one in-flight submission. */
-  beginSubmission(requestId: string): AbortController;
-  /** Drop the cancellation controller once the submission settled. */
-  settleSubmission(requestId: string): void;
-  /** Truthful cancellation: abort the in-flight transfer for one request. */
-  cancel(requestId: string, reason?: string): void;
-  /** The live abort signal of one in-flight submission, if any. */
-  signalFor(requestId: string): AbortSignal | undefined;
-  stop(): void;
-}
-
-const DEFAULT_BUDGET_PROFILE = {
-  discovery: { domain: 'discovery' },
-  transfer: { domain: 'transfer', maxBytes: 1_048_576 },
-  globalSafety: { domain: 'global_safety' },
-} as const;
-
-/**
- * Assemble the one authoritative direct download runtime: seal the BUILD,
- * install the trusted T04 bridge pin, open the durable store and call the
- * SDK public `load`. `stop()` releases the pin (only if still ours), stops
- * the app, aborts every in-flight submission and closes the store.
- */
-export async function assembleDownloadRuntime(
-  options: AssembleDownloadRuntimeOptions,
-): Promise<DownloadRuntime> {
-  const { built } = sealDirectComposition();
-
-  const store = new FileCasDocStore(options.storePath);
-  const registry = new InMemoryTargetRefRegistry();
-  for (const seed of options.targetRefs ?? []) {
-    const registered = registry.register(seed.handle, seed.record);
-    if (!registered.ok) {
-      throw new Error(
-        `DIRECT_REGISTRY_SEED_REFUSED: ${registered.diagnostics.map((entry) => entry.code).join(', ')}`,
-      );
-    }
-  }
-  const ledger = new CanonicalBudgetLedger(options.budgetProfile ?? DEFAULT_BUDGET_PROFILE);
-  const bridge = new DirectAcquisitionBridge(registry, ledger);
-
-  const submissions = new Map<string, AbortController>();
-
-  /**
-   * The trusted dispatch seam: the K→C external Effect gate invokes the
-   * sealed direct C module with (payload, dispatchContext) where payload =
-   * the B projection of the T01 intent PLUS the kernel-minted `effectId`.
-   * The T04 bridge takes the effect identity through the PERMIT channel
-   * (`KernelPermitContext.effectId`, verified by its permit gate) and
-   * validates the intent payload against the T01 exact-field grammar — so
-   * the pin re-channels that one kernel-added field through the permit it
-   * already rides and forwards the pure T01 intent verbatim: no field is
-   * invented, none is dropped (the same effectId crosses in the permit),
-   * and the caller's cancellation signal rides along per request.
-   */
-  const pin: DirectBridgePin = {
-    acquire: (payload, permit) => {
-      const intent: Record<string, unknown> = { ...payload };
-      delete intent['effectId'];
-      const requestId = intent['requestId'];
-      const signal = typeof requestId === 'string' ? submissions.get(requestId)?.signal : undefined;
-      return bridge.acquire(intent, permit, signal === undefined ? {} : { signal });
-    },
-  };
-  hostGlobals()[DIRECT_BRIDGE_PIN] = pin;
-
-  const tenantId = options.tenantId ?? 'tenant:xdownload-v02-t11';
-  const deployedAppId = options.deployedAppId ?? 'deploy:xdownload-v02-t11';
-  const principal = options.queryPrincipal ?? 'xdownload-v02-t11-host';
-  const app = await load(built, {
-    store,
-    tenantId,
-    deploymentIdentity: { deployedAppId, tenantId, appId: built.appId },
-    queryAuthority: {
-      principal: { actor: principal },
-      authorize: (candidate, target) =>
-        Boolean(
-          candidate !== null &&
-            typeof candidate === 'object' &&
-            (candidate as { actor?: string }).actor === principal &&
-            target.tenantId === tenantId,
-        ),
-    },
-    ...(options.now === undefined ? {} : { now: options.now }),
-  });
-
-  return {
-    built,
-    app,
-    store,
-    bridge,
-    registry,
-    ledger,
-    beginSubmission(requestId: string): AbortController {
-      const existing = submissions.get(requestId);
-      if (existing !== undefined) return existing;
-      const controller = new AbortController();
-      submissions.set(requestId, controller);
-      return controller;
-    },
-    settleSubmission(requestId: string): void {
-      submissions.delete(requestId);
-    },
-    cancel(requestId: string, reason?: string): void {
-      submissions.get(requestId)?.abort(reason);
-    },
-    signalFor(requestId: string): AbortSignal | undefined {
-      return submissions.get(requestId)?.signal;
-    },
-    stop(): void {
-      for (const controller of submissions.values()) {
-        controller.abort('runtime stopped');
-      }
-      submissions.clear();
-      app.stop();
-      if (hostGlobals()[DIRECT_BRIDGE_PIN] === pin) {
-        delete hostGlobals()[DIRECT_BRIDGE_PIN];
-      }
-      store.close();
-    },
-  };
 }

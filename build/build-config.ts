@@ -24,6 +24,7 @@
  *   re-baselined green after the add).
  */
 
+import fs from 'node:fs';
 import path from 'node:path';
 
 /** Repo root (this file lives in <root>/build/). */
@@ -31,6 +32,13 @@ export const REPO_ROOT: string = path.resolve(import.meta.dirname, '..');
 
 /** Default build output directory (git-ignored). */
 export const DEFAULT_DIST_DIR = 'dist';
+
+/**
+ * The v0.2.2 content version shared by the installer and the packaged
+ * desktop app sidecar (`resources/app/package.json`). One declaration so the
+ * two shipped version bytes can never drift apart.
+ */
+export const CONTENT_VERSION = '0.2.2';
 
 /** Exact extension-origin pattern the broker itself enforces (T010). */
 export const EXTENSION_ORIGIN_PATTERN = /^chrome-extension:\/\/[a-p]{32}\/$/;
@@ -80,7 +88,7 @@ export const NATIVE_HOST_NAME = 'com.xdownload.broker';
 
 /** A shippable artifact: entry, output and the content rules it must obey. */
 export interface ArtifactSpec {
-  readonly id: 'cli' | 'core' | 'extension' | 'native-host';
+  readonly id: 'cli' | 'core' | 'desktop' | 'extension' | 'native-host';
   readonly entryPoint: string;
   readonly outDir: string;
   readonly outFile: string;
@@ -113,7 +121,51 @@ export const ARTIFACTS: readonly ArtifactSpec[] = [
     outDir: 'core',
     outFile: 'xdownload-core-host.js',
     platform: 'node',
-    allowlist: ['xdownload-core-host.js'],
+    // #287 T02-R1 (DAG_AMENDMENT_R2A): the packaged Core composes the one K
+    // Domain App at runtime and the frozen sealed K bytes are read from
+    // paths relative to the bundle file. The nine files are admitted by
+    // EXACT literal pattern only (no globs) — the same discipline as the
+    // vendored runtime declarations.
+    allowlist: [
+      'xdownload-core-host.js',
+      'payloads/dist/kernel-mechanism-v1.mjs',
+      'payloads/dist/standard-sdk-v1.mjs',
+      'payloads/dist/workflow-router.mjs',
+      'payloads/SHA256SUMS',
+      'business-download.mjs',
+      'capability-acquisition-stub.mjs',
+      's4-hls-vod-business.mjs',
+      's4-hls-vod-capability.mjs',
+      'generated/acorn.js',
+    ],
+    withShebang: false,
+  },
+  {
+    id: 'desktop',
+    // The desktop artifact is NOT a single-bundle artifact: package.ts owns a
+    // dedicated build path mirroring apps/desktop-shell/test/smoke/
+    // build-shell.mjs (CJS main/preload + IIFE renderer under
+    // resources/app/). The spec entry documents the main entry for identity
+    // provenance; allowlist patterns describe the composed Electron app
+    // layout relative to dist/desktop/.
+    entryPoint: 'apps/desktop-shell/src/main/main.ts',
+    outDir: 'desktop',
+    outFile: 'resources/app/main/main.cjs',
+    platform: 'node',
+    allowlist: [
+      'xdownload.exe',
+      '*.dll',
+      '*.pak',
+      'icudtl.dat',
+      'snapshot_blob.bin',
+      'v8_context_snapshot.bin',
+      'vk_swiftshader_icd.json',
+      'version',
+      'LICENSE',
+      'LICENSES.chromium.html',
+      'locales/*',
+      'resources/app/**',
+    ],
     withShebang: false,
   },
   {
@@ -177,7 +229,12 @@ export const DIST_TOP_LEVEL_ALLOWLIST: readonly string[] = [
  * node_modules sibling `@koromix/koffi-win32-x64`.
  */
 /** Node artifacts whose surface can exercise the Windows pipe transport. */
-const VENDORED_RUNTIME_ARTIFACTS: readonly ArtifactSpec['id'][] = ['cli', 'core', 'native-host'];
+const VENDORED_RUNTIME_ARTIFACTS: readonly ArtifactSpec['id'][] = [
+  'cli',
+  'core',
+  'desktop',
+  'native-host',
+];
 
 export const VENDORED_NATIVE_RUNTIME = {
   /** The only platform tuple whose native runtime is packaged (selected platform). */
@@ -205,6 +262,17 @@ export const VENDORED_NATIVE_RUNTIME = {
 } as const;
 
 /**
+ * Per-artifact anchor of the vendored node_modules tree, relative to the
+ * artifact outDir. The desktop artifact's runtime resolves `require('koffi')`
+ * from its bundled app dir (Electron's resources/app), so its vendored
+ * runtime anchors at resources/app/node_modules instead of <outDir>/
+ * node_modules.
+ */
+const VENDORED_RUNTIME_ROOTS: Readonly<Partial<Record<ArtifactSpec['id'], string>>> = {
+  desktop: 'resources/app',
+};
+
+/**
  * The exact dist-relative paths the vendored runtime occupies inside one
  * artifact. The audit admits exactly these — and nothing else under
  * node_modules — so emitted reality and declared content rules cannot drift.
@@ -213,10 +281,51 @@ export function vendoredRuntimeDistPaths(artifactId: ArtifactSpec['id']): readon
   if (!VENDORED_NATIVE_RUNTIME.artifacts.includes(artifactId)) {
     return [];
   }
+  const root = VENDORED_RUNTIME_ROOTS[artifactId];
+  const prefix = root === undefined ? '' : `${root}/`;
   return VENDORED_NATIVE_RUNTIME.packages.flatMap((pkg) =>
-    pkg.files.map((file) => `node_modules/${pkg.name}/${file}`),
+    pkg.files.map((file) => `${prefix}node_modules/${pkg.name}/${file}`),
   );
 }
+
+/**
+ * #284/#285 T09-R1 desktop artifact: the locked Electron runtime the packaged
+ * desktop shell executes on. The bytes are vendored VERBATIM from the
+ * installed `apps/desktop-shell` devDependency (`node_modules/electron/dist`)
+ * on the selected tuple only — never a second platform, never a guessed
+ * version. `version` must stay exactly equal to
+ * apps/desktop-shell/package.json devDependencies.electron; package.ts
+ * enforces that equality fail-closed before any byte is copied (a declared/
+ * installed drift refuses the build, same discipline as koffi above).
+ */
+export const VENDORED_ELECTRON_RUNTIME = {
+  /** The only platform tuple whose Electron runtime is packaged. */
+  platform: 'win32',
+  arch: 'x64',
+  /** Pinned to apps/desktop-shell devDependencies.electron; drift fails. */
+  version: '45.1.0',
+  /** The electron/dist entry is renamed to the product launcher at vendoring. */
+  executable: 'xdownload.exe',
+  /**
+   * Never shipped: electron/dist carries Chromium-wide license texts only as
+   * LICENSE / LICENSES.chromium.html (both admitted by the allowlist); the
+   * default app asar must not ship because it would shadow resources/app.
+   */
+  excludedDistPaths: ['resources/default_app.asar'],
+  /**
+   * Fail-closed presence check: a partial electron dist would boot-fail at
+   * runtime, so the vendoring refuses to emit anything when these are absent
+   * from the installed electron dist tree.
+   */
+  requiredDistPaths: [
+    'electron.exe',
+    'icudtl.dat',
+    'resources.pak',
+    'snapshot_blob.bin',
+    'v8_context_snapshot.bin',
+    'locales',
+  ],
+} as const;
 
 /** Global exclusion rules — development material that must never ship. */
 export const GLOBAL_DENYLIST: readonly string[] = [
@@ -238,30 +347,129 @@ export const GLOBAL_DENYLIST: readonly string[] = [
 export interface ToolchainEntry {
   readonly name: string;
   readonly version: string;
+  /**
+   * T09 determinism repair: the version fact's provenance. The identity
+   * carries ONLY repo declarations — never environment probing — so the same
+   * source revision composes to byte-identical identities on every host
+   * (whatever pnpm/node happen to sit on the composing shell's PATH).
+   */
+  readonly source: 'declared';
+}
+
+/** Read the root package.json of a repo tree (typed, fail-closed). */
+function readRootPackageJson(root: string): Record<string, unknown> {
+  const file = path.join(root, 'package.json');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `cannot record toolchain identity: root package.json unreadable at ${file}: ${error instanceof Error ? error.message : 'error'}`,
+    );
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`cannot record toolchain identity: ${file} is not a JSON object`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * The declared node runtime: `.node-version`, then `.nvmrc`, then the
+ * `engines.node` declaration. A declaration file wins because it pins the
+ * EXACT version the repo builds and tests under; all three are repo
+ * declarations, never a probe of the running runtime.
+ */
+export function declaredNodeVersion(root: string = REPO_ROOT): string {
+  for (const file of ['.node-version', '.nvmrc']) {
+    const filePath = path.join(root, file);
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+    const value = fs.readFileSync(filePath, 'utf8').trim();
+    if (!/^v?\d+\.\d+\.\d+$/u.test(value)) {
+      throw new Error(
+        `cannot record toolchain identity: ${file} must pin an exact node version, got '${value}'`,
+      );
+    }
+    return value.replace(/^v/u, '');
+  }
+  const engines = readRootPackageJson(root)['engines'];
+  const nodeRange =
+    typeof engines === 'object' && engines !== null
+      ? (engines as Record<string, unknown>)['node']
+      : undefined;
+  if (typeof nodeRange === 'string' && nodeRange.trim() !== '') {
+    // No exact-pin declaration file: record the declared compat range
+    // verbatim (still a declaration, honestly labeled `source: 'declared'`).
+    return nodeRange.trim();
+  }
+  throw new Error(
+    'cannot record toolchain identity: no node version declaration (.node-version, .nvmrc or engines.node)',
+  );
+}
+
+/**
+ * The declared pnpm version: the root `packageManager` field's `pnpm@<semver>`
+ * (an integrity suffix, when present, is stripped). Corepack enforces this
+ * exact version, so the declaration IS the build's package-manager identity.
+ */
+export function declaredPnpmVersion(root: string = REPO_ROOT): string {
+  const packageManager = readRootPackageJson(root)['packageManager'];
+  if (typeof packageManager !== 'string' || !packageManager.startsWith('pnpm@')) {
+    throw new Error(
+      `cannot record toolchain identity: packageManager must declare 'pnpm@<version>', got '${String(packageManager)}'`,
+    );
+  }
+  const version = packageManager.slice('pnpm@'.length).split('+')[0]?.trim() ?? '';
+  if (!/^\d+\.\d+\.\d+$/u.test(version)) {
+    throw new Error(
+      `cannot record toolchain identity: packageManager pnpm version must be exact semver, got '${version}'`,
+    );
+  }
+  return version;
+}
+
+/**
+ * The declared esbuild version: the root devDependencies pin, cross-checked
+ * against the actually-loaded module (the same fail-closed drift discipline
+ * as the vendored koffi runtime — a non-frozen install cannot silently claim
+ * the declared identity).
+ */
+export function declaredEsbuildVersion(loadedVersion: string, root: string = REPO_ROOT): string {
+  if (loadedVersion.trim() === '') {
+    throw new Error('cannot record toolchain identity: esbuild version unreadable');
+  }
+  const devDependencies = readRootPackageJson(root)['devDependencies'];
+  const declared =
+    typeof devDependencies === 'object' && devDependencies !== null
+      ? (devDependencies as Record<string, unknown>)['esbuild']
+      : undefined;
+  if (typeof declared !== 'string' || !/^\d+\.\d+\.\d+$/u.test(declared.trim())) {
+    throw new Error(
+      `cannot record toolchain identity: devDependencies.esbuild must pin an exact version, got '${String(declared)}'`,
+    );
+  }
+  if (declared.trim() !== loadedVersion) {
+    throw new Error(
+      `toolchain identity drift: declared esbuild ${declared.trim()} != installed ${loadedVersion}; install from the frozen lockfile or re-derive the declaration before packaging`,
+    );
+  }
+  return declared.trim();
 }
 
 /**
  * Capture the exact toolchain identity bound into every package identity
- * (C33: a changed baseline/toolchain cannot silently claim the same
- * package identity). The esbuild version comes from the loaded module
- * itself so the identity never depends on a human hand-typing it.
+ * (C33: a changed baseline/toolchain cannot silently claim the same package
+ * identity). T09 determinism repair: every entry is read from a REPO
+ * DECLARATION (`.nvmrc`, `packageManager`, `devDependencies.esbuild`) and
+ * labeled `source: 'declared'` — no `npm_config_user_agent` probing, no
+ * runtime sampling, no 'unavailable' fallback. A missing declaration is a
+ * typed build failure, never a silently degraded identity.
  */
 export function captureToolchain(esbuildVersion: string): readonly ToolchainEntry[] {
-  if (esbuildVersion.trim() === '') {
-    throw new Error('cannot record toolchain identity: esbuild version unreadable');
-  }
   return [
-    { name: 'node', version: process.versions.node },
-    { name: 'pnpm', version: pnpmVersion() ?? 'unavailable' },
-    { name: 'esbuild', version: esbuildVersion },
+    { name: 'node', version: declaredNodeVersion(), source: 'declared' },
+    { name: 'pnpm', version: declaredPnpmVersion(), source: 'declared' },
+    { name: 'esbuild', version: declaredEsbuildVersion(esbuildVersion), source: 'declared' },
   ];
-}
-
-function pnpmVersion(): string | null {
-  const userAgent = process.env['npm_config_user_agent'];
-  if (userAgent === undefined) {
-    return null;
-  }
-  const match = /^pnpm\/(\d+\.\d+\.\d+)/.exec(userAgent);
-  return match === null ? null : (match[1] ?? null);
 }

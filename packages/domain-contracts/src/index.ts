@@ -26,3 +26,8 @@ export * from './coverage-accounting.ts';
 export * from './result-projector.ts';
 export * from './slices.ts';
 export * from './ports.ts';
+export * from './job-projection.ts';
+// V022 A01 (additive only): narrow neutral Host-operation contracts shared by
+// Domain App and trusted Host. Pure contract surface — no widening of any
+// existing export above.
+export * from './download-host/index.ts';

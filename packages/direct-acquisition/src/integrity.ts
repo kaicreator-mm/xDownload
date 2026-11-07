@@ -28,6 +28,13 @@ export interface TransferValidationInput {
  */
 export function validateTransfer(input: TransferValidationInput): ValidationLayerOutcome {
   const declared = input.responseIdentity.contentLength;
+  if (input.responseIdentity.invalidContentLength === true) {
+    return failed(
+      'transfer',
+      'INVALID_CONTENT_LENGTH',
+      'response Content-Length is not a non-negative safe integer',
+    );
+  }
 
   if (input.status === 206 && input.sentRange) {
     const range = parseContentRangeHeader(input.contentRange);
@@ -52,7 +59,37 @@ export function validateTransfer(input: TransferValidationInput): ValidationLaye
         `206 declares total ${String(range.total)} but the frozen target declares ${String(input.expectedTotalBytes)}`,
       );
     }
-    const expectedTotal = range.total ?? input.resumeOffsetBytes + (declared ?? 0);
+    const declaredSliceBytes = range.end - range.start + 1;
+    const receivedSliceBytes = input.receivedBytes - input.resumeOffsetBytes;
+    if (receivedSliceBytes !== declaredSliceBytes) {
+      return failed(
+        'transfer',
+        'RANGE_LENGTH_MISMATCH',
+        `received slice length ${String(receivedSliceBytes)} does not match Content-Range span ${String(declaredSliceBytes)}`,
+      );
+    }
+    if (declared !== undefined && declared !== declaredSliceBytes) {
+      return failed(
+        'transfer',
+        'RANGE_LENGTH_MISMATCH',
+        `Content-Length ${String(declared)} does not match Content-Range span ${String(declaredSliceBytes)}`,
+      );
+    }
+    const expectedTotal = range.total ?? input.expectedTotalBytes;
+    if (expectedTotal === undefined) {
+      return failed(
+        'transfer',
+        'RANGE_TOTAL_UNKNOWN',
+        'a resumed 206 response without an authoritative total cannot prove completion',
+      );
+    }
+    if (range.end + 1 !== expectedTotal) {
+      return failed(
+        'transfer',
+        'RANGE_MISMATCH',
+        `206 range ends at ${String(range.end)} but the authoritative total is ${String(expectedTotal)}`,
+      );
+    }
     if (input.receivedBytes !== expectedTotal) {
       return failed(
         'transfer',
@@ -95,12 +132,20 @@ function parseContentRangeHeader(
   if (match === null) {
     return undefined;
   }
+  const start = Number(match[1]);
+  const end = Number(match[2]);
   const totalRaw = match[3];
-  return {
-    start: Number(match[1]),
-    end: Number(match[2]),
-    total: totalRaw === '*' || totalRaw === undefined ? undefined : Number(totalRaw),
-  };
+  const total = totalRaw === '*' || totalRaw === undefined ? undefined : Number(totalRaw);
+  if (
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    start < 0 ||
+    end < start ||
+    (total !== undefined && (!Number.isSafeInteger(total) || total <= end))
+  ) {
+    return undefined;
+  }
+  return { start, end, ...(total === undefined ? {} : { total }) };
 }
 
 const HTML_SNIFF_PATTERN = /^\s*(?:<!doctype html|<html[\s>])/i;

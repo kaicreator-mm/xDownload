@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      T07 shell status page — a packaged LOCAL asset only (frozen L2 §4).
+      The CSP is restrictive by construction: nothing may load, fetch, embed
+      or submit. Renderer->main communication happens exclusively through the
+      typed contextBridge preload API, which no CSP directive governs.
+      The real download manager UI is T08's renderer work.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    />
+    <title>xDownload shell</title>
+  </head>
+  <body>
+    <h1>xDownload shell</h1>
+    <p id="bridge-missing" hidden>
+      shell bridge unavailable (fail closed: no renderer authority exists)
+    </p>
+    <pre id="status">loading…</pre>
+    <script src="shell.js"></script>
+  </body>
+</html>

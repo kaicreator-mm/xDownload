@@ -25,6 +25,23 @@ const SRC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../s
 
 const ALLOWED_IMPORT_PREFIXES = ['node:', '@xdownload/core-seam', '@xdownload/domain-contracts'];
 
+/**
+ * CF-1 (v0.2.1 T04): the Domain App command adapter imports the PUBLIC
+ * package root `@xdownload/download-domain-app` and nothing else from it.
+ * This one dependency is admitted by EXACT EQUALITY only — deliberately NOT
+ * by a `startsWith` prefix — so the deep specifier
+ * `@xdownload/download-domain-app/src/contracts/index.ts` stays rejected.
+ */
+const EXACT_ALLOWED_SPECIFIERS: readonly string[] = ['@xdownload/download-domain-app'];
+
+export function isAllowedCliImport(specifier: string): boolean {
+  return (
+    specifier.startsWith('.') ||
+    ALLOWED_IMPORT_PREFIXES.some((prefix) => specifier.startsWith(prefix)) ||
+    EXACT_ALLOWED_SPECIFIERS.includes(specifier)
+  );
+}
+
 async function srcFiles(): Promise<string[]> {
   const names = await readdir(SRC_DIR);
   return names.filter((name) => name.endsWith('.ts')).map((name) => path.join(SRC_DIR, name));
@@ -49,18 +66,33 @@ describe('headless operation', () => {
     expect((final.json as Record<string, unknown>)['lineage_status']).toBe('CANCELLED');
   });
 
-  it('CLI source imports only Node built-ins and the seam/contract packages', async () => {
+  it('CLI source imports only Node built-ins, the seam/contract packages and the exact public Domain App root', async () => {
     const files = await srcFiles();
     expect(files.length).toBeGreaterThanOrEqual(4);
     for (const file of files) {
       const text = await readFile(file, 'utf8');
       const imports = [...text.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1] ?? '');
       for (const specifier of imports) {
-        const allowed =
-          specifier.startsWith('.') ||
-          ALLOWED_IMPORT_PREFIXES.some((prefix) => specifier.startsWith(prefix));
+        const allowed = isAllowedCliImport(specifier);
         expect(allowed, `forbidden import '${specifier}' in ${path.basename(file)}`).toBe(true);
       }
+    }
+  });
+
+  it('CF-1: the public Domain App root is admitted by exact equality; the deep specifier stays rejected', async () => {
+    // Exact package-root import: the ONLY admitted form.
+    expect(isAllowedCliImport('@xdownload/download-domain-app')).toBe(true);
+    // Deep specifiers are never admitted by the exact-equality rule.
+    expect(isAllowedCliImport('@xdownload/download-domain-app/src/contracts/index.ts')).toBe(false);
+    expect(isAllowedCliImport('@xdownload/download-domain-app/src/index.ts')).toBe(false);
+    expect(isAllowedCliImport('@xdownload/download-domain-app/subpath')).toBe(false);
+    // The CLI sources hold no deep Domain App specifier anywhere on disk.
+    for (const file of await srcFiles()) {
+      const text = await readFile(file, 'utf8');
+      expect(
+        text.includes('@xdownload/download-domain-app/'),
+        `deep Domain App specifier in ${path.basename(file)}`,
+      ).toBe(false);
     }
   });
 

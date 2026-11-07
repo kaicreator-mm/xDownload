@@ -64,6 +64,10 @@ describe('strong-and-no-validators: validated resume via If-Range (U5)', () => {
       ...directRequest(baseUri, '/strong.bin', FULL, {
         effectId: 'effect-001',
         attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
         expectedTotalBytes: 100,
       }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
@@ -116,6 +120,10 @@ describe('strong-and-no-validators: no usable validator forbids append', () => {
       ...directRequest(baseUri, '/no-validator.bin', FULL, {
         effectId: 'effect-001',
         attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
       }),
       resumeFrom: carriedPartial({}, PREFIX),
     };
@@ -132,13 +140,56 @@ describe('strong-and-no-validators: no usable validator forbids append', () => {
     expect(outcome.effectId).toBe('effect-001');
   });
 
+  it.each([
+    ['weak value in the strongETag slot', 'W/"weak"'],
+    ['unquoted value', 'v1'],
+    ['unterminated quoted value', '"v1'],
+    ['empty value', ''],
+  ])(
+    'malformed partial strong validator (%s) safely restarts from zero',
+    async (_label, strongETag) => {
+      fixture.serveFile('/malformed-partial-validator.bin', { body: FULL, etag: '"v1"' });
+      const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+      const adapter = new DirectHttpAdapter(ledger);
+      const request = {
+        ...directRequest(baseUri, '/malformed-partial-validator.bin', FULL, {
+          effectId: 'effect-001',
+          attempt: 1,
+          retryLineage: {
+            effectId: effectIdOf('effect-001'),
+            targetId: targetIdOf('target-file-001'),
+          },
+        }),
+        resumeFrom: carriedPartial({ strongETag }, PREFIX),
+      };
+
+      const outcome = unwrapOrThrow(await adapter.acquire(request));
+
+      expect(outcome.resumeDecision).toEqual({
+        kind: 'SAFE_RESTART',
+        reason: 'NO_STRONG_VALIDATOR',
+      });
+      expect(fixture.requests.at(-1)?.range).toBeUndefined();
+      expect(fixture.requests.at(-1)?.ifRange).toBeUndefined();
+      expect(outcome.bytes).toEqual(FULL);
+      expect(outcome.reason).toBe('COMPLETED');
+    },
+  );
+
   it('weak-only validator is not sufficient representation identity for append', async () => {
     fixture.serveFile('/weak.bin', { body: FULL, etag: 'W/"v1"' });
     const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/weak.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/weak.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ weakETag: 'W/"v1"' }, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -197,7 +248,14 @@ describe('validator-change-and-range-support: change detection and range handlin
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/changed.bin', v2, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/changed.bin', v2, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, payload(40, 7)),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -212,13 +270,92 @@ describe('validator-change-and-range-support: change detection and range handlin
     expect(outcome.observedIdentity.strongETag).toBe('"v2"');
   });
 
+  it('refuses a 206 that omits the recorded strong ETag instead of appending', async () => {
+    fixture.on('/missing-response-etag.bin', (_request, response) => {
+      response.writeHead(206, {
+        'content-type': 'application/octet-stream',
+        'content-length': '60',
+        'content-range': 'bytes 40-99/100',
+      });
+      response.end(Buffer.from(FULL.subarray(40)));
+    });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const request = {
+      ...directRequest(baseUri, '/missing-response-etag.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
+      resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
+    };
+
+    const outcome = unwrapOrThrow(await adapter.acquire(request));
+
+    expect(outcome.reason).toBe('UNSUPPORTED_RESPONSE');
+    expect(outcome.bytes).toBeUndefined();
+    expect(outcome.resumeDecision).toEqual({
+      kind: 'SAFE_RESTART',
+      reason: 'PROTOCOL_VIOLATION',
+    });
+    expect(outcome.validations.find((check) => check.layer === 'transfer')).toMatchObject({
+      passed: false,
+      code: 'PROTOCOL_VIOLATION',
+    });
+    expect(outcome.terminalResult.selectionAcquisition).not.toBe('COMPLETE');
+  });
+
+  it('rejects a 206 whose body length does not match its Content-Range span', async () => {
+    fixture.on('/range-span-mismatch.bin', (_request, response) => {
+      response.writeHead(206, {
+        'content-type': 'application/octet-stream',
+        'content-length': '60',
+        'content-range': 'bytes 40-98/100',
+        etag: '"v1"',
+      });
+      response.end(Buffer.from(FULL.subarray(40)));
+    });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const request = {
+      ...directRequest(baseUri, '/range-span-mismatch.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
+      resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
+    };
+
+    const outcome = unwrapOrThrow(await adapter.acquire(request));
+
+    expect(outcome.reason).toBe('TRUNCATED');
+    expect(outcome.validations.find((check) => check.layer === 'transfer')).toMatchObject({
+      passed: false,
+      code: 'RANGE_LENGTH_MISMATCH',
+    });
+    expect(outcome.terminalResult.selectionAcquisition).not.toBe('COMPLETE');
+  });
+
   it('range support change: server without ranges forces restart with the full representation', async () => {
     fixture.serveFile('/no-ranges.bin', { body: FULL, etag: '"v1"', acceptRanges: false });
     const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/no-ranges.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/no-ranges.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -236,7 +373,14 @@ describe('validator-change-and-range-support: change detection and range handlin
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/budgeted.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/budgeted.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({ strongETag: '"v1"' }, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -257,7 +401,14 @@ describe('safe-restart: restart stays in lineage without budget replenishment', 
     const adapter = new DirectHttpAdapter(ledger);
 
     const request = {
-      ...directRequest(baseUri, '/restart.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/restart.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: carriedPartial({}, PREFIX),
     };
     const outcome = unwrapOrThrow(await adapter.acquire(request));
@@ -276,7 +427,14 @@ describe('safe-restart: restart stays in lineage without budget replenishment', 
     const before = fixture.requests.length;
 
     const rejected = await adapter.acquire({
-      ...directRequest(baseUri, '/other-lineage.bin', FULL, { effectId: 'effect-001', attempt: 1 }),
+      ...directRequest(baseUri, '/other-lineage.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
       resumeFrom: {
         bytes: PREFIX,
         receivedBytes: 40,

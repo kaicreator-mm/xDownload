@@ -1,46 +1,41 @@
 /**
- * v0.2 T09 — durable CAS store behind the lineage authority ledger.
+ * v0.2 T09 — durable CAS store seam behind the lineage authority ledger.
  *
- * Physical storage contract for the migration lane (write set
- * `packages/download-domain-app/src/migration/**` only):
+ * V022-A04 R2 (review P2 closure): the Domain App no longer owns a PHYSICAL
+ * lineage store. This module now carries only the domain-facing seam:
  *
- * REAL SQLITE CAS SUB-LEG: NOT_PROVEN in this lane. The frozen Task Pack
- * requires "real SQLite/Host CAS"; the honest attempt and its real results:
+ *   - {@link LineageLedgerDoc} — the durable document shape (schema 1);
+ *   - {@link LineageStore} — the tiny physical CAS port (load / revision-checked
+ *     save) that the Host-owned physical store satisfies structurally;
+ *   - {@link LineageStoreError} — the App's typed store failure (the ledger
+ *     classifies by this constructor; it is DISTINCT from the Host store's own
+ *     same-named error class — the composition layer maps foreign store errors
+ *     onto this constructor before they reach the ledger, see the A04
+ *     composition-boundary test in packages/core-runtime);
+ *   - {@link PlainFileLineageStore} — the REMOVED physical default, kept only
+ *     as a name-bound fail-closed shim: the frozen `LineageLedger.open()`
+ *     default-construction call site references this identifier, and the
+ *     A04 write set forbids touching that file. Construction now refuses
+ *     closed with an explicit injection instruction instead of silently
+ *     owning bytes on disk. Physical storage lives in the trusted Host
+ *     (`@xdownload/download-domain-host` migration exports) and is injected
+ *     through `OpenLineageLedgerOptions.store`.
  *
- *   1. `@kaicreator/domain-harness-host-node` (which exports
- *      `openSqliteCasStore`) is NOT resolvable from this package — it is
- *      installed only under `packages/download-domain-host/node_modules`
- *      (probe: `MODULE_NOT_FOUND` from `packages/download-domain-app`).
- *   2. Probing it from its install site with the vendored 0.10.2-rc.0 SDK
- *      fails typed at runtime: `HOST_STORE_DRIVER_UNAVAILABLE — the physical
- *      SQLite CAS store requires better-sqlite3 (^12), which is not
- *      resolvable from this installation`. No `better-sqlite3` exists
- *      anywhere in this workspace.
- *
- * Adding the driver is a manifest/lockfile change, which belongs to the T13
- * final packaging writer (L2 A01: sequential writers, never simultaneous);
- * this lane is forbidden from touching the lock. Until then the ledger runs
- * on the atomic plain-file CAS below and the SQLite leg stays honestly
- * NOT_PROVEN — no mock admission is passed off as the real SQLite authority.
- *
- * Durability boundary of the plain-file CAS: whole-document JSON persisted
- * with temp+rename on every mutation, revision-checked against the bytes on
- * disk before each save. This is single-process-safe by construction (the
- * read-check-write+rename boundary is exactly the one the SDK's own
- * sqlite-adapter doc calls "single-process-safe only"); it is the proven
- * #183 PoC pattern (PlainFileDocStore, N04b restart evidence). Cross-process
- * concurrent writers are NOT proven by this store — the one-writer-per-
- * lineage guarantee this lane ships is enforced by the LEDGER semantics on
- * top (one authority decision per lineage, durable before the call returns),
- * not by multi-process file locking.
- *
- * The `LineageStore` seam is deliberately tiny (load / revision-checked
- * save) so a real `openSqliteCasStore`-backed adapter can be swapped in at
- * T13 time without touching the ledger logic.
+ * T09 remains dormant: no new production caller, no second route authority,
+ * no SQLite leg, no UNKNOWN auto-resolution and no multi-process CAS claim.
+ * The REAL SQLITE CAS SUB-LEG stays NOT_PROVEN in this lane (the honest
+ * probe record from the T09 era: `@kaicreator/domain-harness-host-node`
+ * `openSqliteCasStore` is not resolvable from the App install site and its
+ * probe fails typed on the missing better-sqlite3 driver; adding the driver
+ * is the T13 packaging writer's lockfile change, not this lane's). The
+ * plain-file CAS contract the port describes (tmp+rename, revision-checked,
+ * single-process-safe) is Host-owned and dormant.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import type { LineageClaimRecord, LineageHistoryEvent, UnknownEffectRecord } from './lineage-ledger.ts';
+import type {
+  LineageClaimRecord,
+  LineageHistoryEvent,
+  UnknownEffectRecord,
+} from './lineage-ledger.ts';
 
 /** Root shape of the durable ledger document (schema 1; fail-closed on drift). */
 export interface LineageLedgerDoc {
@@ -73,6 +68,12 @@ export class LineageStoreError extends Error {
  * save a new revision under a compare-and-swap condition. Implementations must
  * persist atomically (readers never observe a torn document) and must refuse a
  * save whose expected revision does not match the durable bytes.
+ *
+ * V022-A04 R2: this port is the App's ONLY storage surface. The Host-owned
+ * `PlainFileLineageStore` (`@xdownload/download-domain-host` migration
+ * barrel) is structurally assignable to it — the composition call site where
+ * Core injects the Host store performs the actual assignability + typed error
+ * mapping proof (A04 composition-boundary test). The App never imports Host.
  */
 export interface LineageStore {
   load(): LineageLedgerDoc | null;
@@ -80,70 +81,35 @@ export interface LineageStore {
   save(next: LineageLedgerDoc): LineageLedgerDoc;
 }
 
-function parseLedgerDoc(raw: string, path: string): LineageLedgerDoc {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    throw new LineageStoreError('MALFORMED_LEDGER_DOC', `lineage ledger at ${path} is not valid JSON; failing closed`);
-  }
-  if (
-    typeof parsed !== 'object' ||
-    parsed === null ||
-    (parsed as { schemaVersion?: unknown }).schemaVersion !== 1 ||
-    typeof (parsed as { revision?: unknown }).revision !== 'number' ||
-    typeof (parsed as { claims?: unknown }).claims !== 'object' ||
-    (parsed as { claims?: unknown }).claims === null ||
-    !Array.isArray((parsed as { unknownEffects?: unknown }).unknownEffects) ||
-    !Array.isArray((parsed as { history?: unknown }).history)
-  ) {
-    throw new LineageStoreError(
-      'MALFORMED_LEDGER_DOC',
-      `lineage ledger at ${path} does not match schema version 1; failing closed`,
-    );
-  }
-  return parsed as LineageLedgerDoc;
-}
-
 /**
- * Atomic plain-file CAS store: one JSON file, `tmp + rename` persistence,
- * revision compared against the on-disk bytes on every save (create only
- * accepted at revision 0 against a missing file). Reopening the file after a
- * real process boundary observes exactly the durable bytes — this is what the
- * kill-simulation tests rely on.
+ * REMOVED physical default (V022-A04 R2, review P2 closure).
+ *
+ * The Domain App must not own physical lineage storage — the trusted Host
+ * owns every physical adapter. This identifier survives ONLY because the
+ * frozen `LineageLedger.open()` call site (`options.store ??
+ * new PlainFileLineageStore(options.path)`) references it and the write set
+ * forbids editing that file; the class is now a fail-closed shim whose
+ * construction refuses with an explicit injection instruction. There is no
+ * App-owned bytes-on-disk path anymore: callers must inject the Host-owned
+ * store through `OpenLineageLedgerOptions.store`.
  */
 export class PlainFileLineageStore implements LineageStore {
-  readonly path: string;
-
   constructor(path: string) {
-    this.path = path;
-    mkdirSync(dirname(path), { recursive: true });
+    throw new Error(
+      `LINEAGE_STORE_INJECTION_REQUIRED: the Domain App no longer owns a physical ` +
+        `lineage store (V022-A04); '${path}' cannot be opened from here. Physical ` +
+        `lineage storage is Host-owned and dormant — inject it through ` +
+        `OpenLineageLedgerOptions.store (see the @xdownload/download-domain-host ` +
+        `migration barrel) at the Core composition boundary.`,
+    );
   }
 
   load(): LineageLedgerDoc | null {
-    if (!existsSync(this.path)) return null;
-    return parseLedgerDoc(readFileSync(this.path, 'utf8'), this.path);
+    throw new Error('LINEAGE_STORE_INJECTION_REQUIRED: physical storage is Host-owned; inject it');
   }
 
   save(next: LineageLedgerDoc): LineageLedgerDoc {
-    const onDisk = this.load();
-    if (onDisk === null) {
-      if (next.revision !== 0) {
-        throw new LineageStoreError(
-          'LINEAGE_CAS_CONFLICT',
-          `create refused: ledger file absent but incoming revision is ${next.revision} (expected 0)`,
-        );
-      }
-    } else if (onDisk.revision !== next.revision) {
-      throw new LineageStoreError(
-        'LINEAGE_CAS_CONFLICT',
-        `CAS conflict on ${this.path}: durable revision ${onDisk.revision}, incoming revision ${next.revision}`,
-      );
-    }
-    const persisted: LineageLedgerDoc = { ...next, revision: next.revision + 1 };
-    const temporary = `${this.path}.tmp`;
-    writeFileSync(temporary, JSON.stringify(persisted, null, 2));
-    renameSync(temporary, this.path);
-    return persisted;
+    void next;
+    throw new Error('LINEAGE_STORE_INJECTION_REQUIRED: physical storage is Host-owned; inject it');
   }
 }

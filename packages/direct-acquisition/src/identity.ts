@@ -10,20 +10,39 @@
 
 import type { PartialTransferState, RepresentationIdentity, ResumeDecision } from './port.ts';
 
+/** A syntactically valid strong entity-tag; malformed/weak values never authorize append. */
+function isStrongEntityTag(value: string): boolean {
+  return /^"[!#-~]*"$/.test(value);
+}
+
+function isWeakEntityTag(value: string): boolean {
+  return /^W\/"[!#-~]*"$/.test(value);
+}
+
 /** Parse representation-identity headers into a typed identity record. */
 export function observeIdentity(headers: Headers): RepresentationIdentity {
   const etag = headerOrNull(headers, 'etag');
   const lastModified = headerOrNull(headers, 'last-modified');
+  const lastModifiedSafe = lastModified === undefined ? undefined : lastModified.trim();
   const contentLengthRaw = headerOrNull(headers, 'content-length');
-  const contentLength =
+  const parsedContentLength =
     contentLengthRaw !== undefined && /^\d+$/.test(contentLengthRaw)
       ? Number(contentLengthRaw)
       : undefined;
+  const contentLengthValid =
+    parsedContentLength !== undefined &&
+    Number.isSafeInteger(parsedContentLength) &&
+    parsedContentLength >= 0;
   return {
-    strongETag: etag !== undefined && !etag.startsWith('W/') ? etag : undefined,
-    weakETag: etag !== undefined && etag.startsWith('W/') ? etag : undefined,
-    lastModified,
-    contentLength,
+    strongETag: etag !== undefined && isStrongEntityTag(etag) ? etag : undefined,
+    weakETag: etag !== undefined && isWeakEntityTag(etag) ? etag : undefined,
+    ...(lastModifiedSafe === undefined || lastModifiedSafe.length === 0
+      ? {}
+      : { lastModified: lastModifiedSafe }),
+    ...(contentLengthValid ? { contentLength: parsedContentLength } : {}),
+    ...(contentLengthRaw !== undefined && !contentLengthValid
+      ? { invalidContentLength: true }
+      : {}),
   };
 }
 
@@ -41,7 +60,10 @@ export function planResume(partial: PartialTransferState | undefined): ResumeDec
   if (partial === undefined) {
     return { kind: 'FRESH_TRANSFER' };
   }
-  if (partial.identity.strongETag === undefined) {
+  if (
+    partial.identity.strongETag === undefined ||
+    !isStrongEntityTag(partial.identity.strongETag)
+  ) {
     return { kind: 'SAFE_RESTART', reason: 'NO_STRONG_VALIDATOR' };
   }
   return {
@@ -84,12 +106,10 @@ export function classifyRangeResponse(
     if (!sentRange) {
       return { kind: 'PROTOCOL_VIOLATION' };
     }
-    if (
-      recordedStrongETag !== undefined &&
-      responseIdentity.strongETag !== undefined &&
-      responseIdentity.strongETag !== recordedStrongETag
-    ) {
-      return { kind: 'RESTART_NEW_REPRESENTATION' };
+    if (recordedStrongETag !== undefined && responseIdentity.strongETag !== recordedStrongETag) {
+      // If-Range mismatch should produce a full 200. A 206 without the exact
+      // recorded strong validator is not safe evidence for appending bytes.
+      return { kind: 'PROTOCOL_VIOLATION' };
     }
     return { kind: 'APPEND_VALIDATED' };
   }

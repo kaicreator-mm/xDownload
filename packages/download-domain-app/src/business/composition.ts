@@ -54,8 +54,10 @@ function sha256Hex(text: string): string {
  * The kernel-primary seal IS the raw payload file hash; the standard-primary
  * seal is the composed SDK+router bundle hash (same producer template below).
  */
-export const POC183_KERNEL_MODULE_SHA256 = 'e1ed59556f8b447b5f559302a893738eeae1d272e3a30ac4545fedfb1da8a3e7';
-export const POC183_STANDARD_MODULE_SHA256 = '93aad26d2c3118548e2be3eefc0bcb9012e20bd6381077b58fbd1d2f59ce4606';
+export const POC183_KERNEL_MODULE_SHA256 =
+  'e1ed59556f8b447b5f559302a893738eeae1d272e3a30ac4545fedfb1da8a3e7';
+export const POC183_STANDARD_MODULE_SHA256 =
+  '93aad26d2c3118548e2be3eefc0bcb9012e20bd6381077b58fbd1d2f59ce4606';
 
 export const APP_ID = 'app:xdownload-download-domain-t03';
 export const AUDIENCE = 'aud:xdownload-v02';
@@ -158,7 +160,9 @@ function sealModules(): readonly V10ModuleInput[] {
       endpoint: 'capability-endpoint',
       provides: ['capability:acquisition/1'],
       capabilityId: 'acquisition',
-      handlers: [{ operationId: ACQUISITION_ROUTE.operationId, handler: ACQUISITION_ROUTE.handlerId }],
+      handlers: [
+        { operationId: ACQUISITION_ROUTE.operationId, handler: ACQUISITION_ROUTE.handlerId },
+      ],
       externalEffect: true,
       dependencies: [],
       requires: [],
@@ -207,10 +211,14 @@ export function buildDownloadDomainApp(): BuiltDownloadDomainApp {
   const sealedKernel = built.modules.find((module) => module.role === 'kernel-primary');
   const sealedStandard = built.modules.find((module) => module.role === 'standard-primary');
   if (sealedKernel?.moduleSha256 !== POC183_KERNEL_MODULE_SHA256) {
-    throw new Error('DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed kernel-primary lost the #183 PoC manifest hash');
+    throw new Error(
+      'DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed kernel-primary lost the #183 PoC manifest hash',
+    );
   }
   if (sealedStandard?.moduleSha256 !== POC183_STANDARD_MODULE_SHA256) {
-    throw new Error('DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed standard-primary lost the #183 PoC manifest hash');
+    throw new Error(
+      'DOWNLOAD_PAYLOAD_SEAL_MISMATCH: sealed standard-primary lost the #183 PoC manifest hash',
+    );
   }
 
   return { built, routes };
@@ -224,7 +232,9 @@ export function buildDownloadDomainApp(): BuiltDownloadDomainApp {
 export function verifySealedModules(built: Pick<V10BuiltApp, 'modules'>): void {
   for (const module of built.modules) {
     if (sha256Hex(module.moduleSource) !== module.moduleSha256) {
-      throw new Error(`SEALED_BUILD_MODULE_ALTERED: ${module.packageId} bytes no longer match the sealed moduleSha256`);
+      throw new Error(
+        `SEALED_BUILD_MODULE_ALTERED: ${module.packageId} bytes no longer match the sealed moduleSha256`,
+      );
     }
   }
 }

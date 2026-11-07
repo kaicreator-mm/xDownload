@@ -51,6 +51,7 @@ import {
   type TargetOptions,
   type WaitOptions,
 } from './args.ts';
+import { runDomainAppInput } from './domain-app-cli.ts';
 import {
   EXIT,
   renderAcceptanceDocument,
@@ -134,6 +135,11 @@ export const DEFAULT_WAIT: WaitOptions = { timeoutMs: 30_000, pollMs: 200 };
 interface Session {
   readonly client: SeamClient;
   readonly peer: PeerIdentity;
+}
+
+/** The CLI's presenting peer identity (SurfaceKind 'CLI'; seam re-decides). */
+export function buildCliPeer(target: TargetOptions): PeerIdentity {
+  return buildPeer(target);
 }
 
 function buildPeer(target: TargetOptions): PeerIdentity {
@@ -1823,13 +1829,27 @@ async function runBatch(
 /**
  * Parse-and-run entry used by the process shell and the concern tests: argv
  * parse failures map to the same typed error document as adapter failures.
+ * Explicit `--route v0.2` inputs go to the Domain App route runner (T04);
+ * everything else keeps the legacy v1 adapter verbatim.
  */
 export async function runArgv(
   argv: readonly string[],
   ports: AdapterPorts,
 ): Promise<AdapterResult> {
+  let input: ParsedInput;
   try {
-    return await runAdapter(parseArgv(argv), ports);
+    input = parseArgv(argv);
+  } catch (error) {
+    if (error instanceof CliInputError) {
+      return inputResult(error);
+    }
+    return transportResult(error);
+  }
+  if (input.kind === 'domain-app') {
+    return runDomainAppInput(input, ports);
+  }
+  try {
+    return await runAdapter(input, ports);
   } catch (error) {
     if (error instanceof CliInputError) {
       return inputResult(error);
@@ -1874,6 +1894,13 @@ export async function runAdapter(input: ParsedInput, ports: AdapterPorts): Promi
         return await runSimpleCommand(session, ports, input);
       case 'batch':
         return await runBatch(session, ports, input);
+      case 'domain-app':
+        // Fail closed: v0.2 Domain App inputs route through runArgv /
+        // runDomainAppInput (main.ts); the legacy adapter never executes one.
+        throw new CliInputError(
+          'USAGE',
+          'route v0.2 inputs run through the Domain App command layer, not the legacy adapter',
+        );
       default: {
         // Unreachable: parseArgv produces only the kinds above (help is
         // handled before the session opens).

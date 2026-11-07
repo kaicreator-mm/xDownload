@@ -329,7 +329,14 @@ export class DirectHttpAdapter {
           : { kind: 'SAFE_RESTART', reason: 'IDENTITY_CHANGED' }
         : plan;
 
-    const read = await this.streamBytes(response, prefix, request.signal);
+    // Budget-bound completion is allowed only when the HTTP response itself
+    // declares the exact remaining body length. A caller's expected target
+    // total cannot prove EOF for a chunked/unknown-length response.
+    const declaredStreamTotal =
+      responseIdentity.contentLength === undefined
+        ? undefined
+        : (prefix?.byteLength ?? 0) + responseIdentity.contentLength;
+    const read = await this.streamBytes(response, prefix, request.signal, declaredStreamTotal);
     if (read.aborted) {
       // The cancellation checkpoint fired mid-body: what arrived stays
       // partial/unaccepted truth — never a completed transfer (P2-1).
@@ -387,15 +394,24 @@ export class DirectHttpAdapter {
       }
     }
 
-    const transferCheck = validateTransfer({
-      status: response.status,
-      sentRange,
-      resumeOffsetBytes: resumeOffset,
-      responseIdentity,
-      receivedBytes: bytes.byteLength,
-      expectedTotalBytes: request.expectedTotalBytes,
-      contentRange,
-    });
+    // A read error is not EOF. Keep Transfer failure while reporting Format
+    // and Target checks on the arrived bytes; never complete the attempt.
+    const transferCheck: ValidationLayerOutcome = read.streamFailure
+      ? {
+          layer: 'transfer',
+          passed: false,
+          code: 'STREAM_INTERRUPTED',
+          failure: 'response body stream terminated with a read error before completion',
+        }
+      : validateTransfer({
+          status: response.status,
+          sentRange,
+          resumeOffsetBytes: resumeOffset,
+          responseIdentity,
+          receivedBytes: bytes.byteLength,
+          expectedTotalBytes: request.expectedTotalBytes,
+          contentRange,
+        });
     const formatCheck = validateFormat({
       contentType,
       bodyPrefix: bytes,
@@ -458,15 +474,22 @@ export class DirectHttpAdapter {
     response: Response,
     prefix: Uint8Array | undefined,
     signal?: AbortSignal,
+    declaredStreamTotalBytes?: number,
   ): Promise<{
     chunks: Uint8Array[];
     budgetStop: 'TRANSFER_BUDGET_EXHAUSTED' | 'GLOBAL_SAFETY_EXHAUSTED' | undefined;
     aborted: boolean;
+    streamFailure: boolean;
   }> {
     const chunks: Uint8Array[] = prefix !== undefined ? [prefix] : [];
     const reader = response.body?.getReader();
     if (reader === undefined) {
-      return { chunks, budgetStop: undefined, aborted: signal?.aborted === true };
+      return {
+        chunks,
+        budgetStop: undefined,
+        aborted: signal?.aborted === true,
+        streamFailure: false,
+      };
     }
     try {
       for (;;) {
@@ -474,7 +497,7 @@ export class DirectHttpAdapter {
           // Checkpoint fired between chunks: tear the stream down at once
           // (reader.cancel closes the connection — no lingering socket).
           await reader.cancel('user cancelled').catch(() => undefined);
-          return { chunks, budgetStop: undefined, aborted: true };
+          return { chunks, budgetStop: undefined, aborted: true, streamFailure: false };
         }
         const next = await reader.read();
         if (next.done) {
@@ -491,35 +514,39 @@ export class DirectHttpAdapter {
           bytes: value.byteLength,
         });
         if (after.globalSafety.exhausted || after.transfer.exhausted) {
-          // Budget boundary: only stop work when more bytes are still coming;
-          // a body that ends exactly at the boundary is a complete transfer.
-          let moreBytesComing = false;
-          try {
-            moreBytesComing = !(await reader.read()).done;
-          } catch {
-            moreBytesComing = false;
+          // Never read one more chunk to discover whether the body ended at
+          // the boundary: that would receive uncharged bytes beyond budget.
+          // Only the declared response framing proves an exact body boundary.
+          if (
+            declaredStreamTotalBytes !== undefined &&
+            byteLengthOf(chunks) === declaredStreamTotalBytes
+          ) {
+            // The declared byte total is complete, but this branch exits before
+            // reader.read() can observe EOF. Cancel explicitly so the response
+            // stream/socket is not left live after a budget-bound completion.
+            await reader.cancel('declared transfer total reached').catch(() => undefined);
+            break;
           }
-          if (moreBytesComing) {
-            await reader.cancel('budget exhausted');
-            return {
-              chunks,
-              budgetStop: after.globalSafety.exhausted
-                ? 'GLOBAL_SAFETY_EXHAUSTED'
-                : 'TRANSFER_BUDGET_EXHAUSTED',
-              aborted: false,
-            };
-          }
-          break;
+          await reader.cancel('budget exhausted').catch(() => undefined);
+          return {
+            chunks,
+            budgetStop: after.globalSafety.exhausted
+              ? 'GLOBAL_SAFETY_EXHAUSTED'
+              : 'TRANSFER_BUDGET_EXHAUSTED',
+            aborted: false,
+            streamFailure: false,
+          };
         }
       }
     } catch {
-      // Premature close / connection reset / fired abort signal: return what
-      // arrived so Transfer Validation reports the stop truthfully.
+      // A transport read error is not EOF. Preserve arrived bytes as partial
+      // truth and let the caller emit a failed Transfer validation.
       if (signal?.aborted === true) {
-        return { chunks, budgetStop: undefined, aborted: true };
+        return { chunks, budgetStop: undefined, aborted: true, streamFailure: false };
       }
+      return { chunks, budgetStop: undefined, aborted: false, streamFailure: true };
     }
-    return { chunks, budgetStop: undefined, aborted: false };
+    return { chunks, budgetStop: undefined, aborted: false, streamFailure: false };
   }
 
   // --- helpers ------------------------------------------------------------
@@ -743,6 +770,23 @@ export function declaredHostAdmits(
 }
 
 function validateRequestShape(request: DirectTransferRequest): DomainValidationResult<void> {
+  if (!Number.isSafeInteger(request.attempt) || request.attempt < 0) {
+    return rejectRequest(
+      'MALFORMED_REQUIRED_FIELD',
+      'attempt',
+      'attempt must be a non-negative safe integer',
+    );
+  }
+  if (
+    (request.attempt === 0 && request.retryLineage !== undefined) ||
+    (request.attempt > 0 && request.retryLineage === undefined)
+  ) {
+    return rejectRequest(
+      'MALFORMED_REQUIRED_FIELD',
+      'retryLineage',
+      'attempt zero must not carry retryLineage and every retry attempt must bind its original effect/target lineage',
+    );
+  }
   if (request.expectedSha256 !== undefined && !isSha256Hex(request.expectedSha256)) {
     return rejectRequest(
       'MALFORMED_REQUIRED_FIELD',
@@ -788,6 +832,27 @@ function validateRequestShape(request: DirectTransferRequest): DomainValidationR
   }
   const partial: PartialTransferState | undefined = request.resumeFrom;
   if (partial !== undefined) {
+    if (request.attempt === 0) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        'resumeFrom',
+        'partial transfer state can only be supplied by a later attempt in the same lineage',
+      );
+    }
+    if (
+      !(partial.bytes instanceof Uint8Array) ||
+      !Number.isSafeInteger(partial.receivedBytes) ||
+      partial.receivedBytes < 0 ||
+      partial.bytes.byteLength !== partial.receivedBytes ||
+      typeof partial.identity !== 'object' ||
+      partial.identity === null
+    ) {
+      return rejectRequest(
+        'MALFORMED_REQUIRED_FIELD',
+        'resumeFrom',
+        'partial bytes, receivedBytes and representation identity must agree exactly',
+      );
+    }
     if (partial.effectId !== request.effectId || partial.targetId !== request.binding.identity) {
       return rejectRequest(
         'MEMBERSHIP_DRIFT',

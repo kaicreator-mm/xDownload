@@ -1,0 +1,33 @@
+# xDownload UI R0 integration gate (Issue #305, U06 lane).
+# Runs the same aggregate gate as `.github/workflows/ci.yml` (pnpm ci:verify)
+# on the WIP UI integration branch, on the self-hosted local-backend agents
+# (Alpine, Node 24). This Woodpecker pipeline is the CI authority for the
+# v0.2.2 UI successor initiative; GitHub Actions is not used as a gate.
+when:
+  - event: push
+    branch: [wip/v0.2.2-ui-rebuild-r0]
+  - event: manual
+
+# Local backend: steps run directly inside the agent container (Node 24 +
+# corepack + git). The `image:` field is documentation only.
+labels:
+  backend: local
+
+steps:
+  - name: ci-verify
+    image: bash
+    environment:
+      # ci:verify (format/lint/typecheck/test:unit) never needs the Electron
+      # binary; skip the postinstall download (agents cannot reach the
+      # default Electron CDN). Packaged smokes stay on dev hosts.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    commands:
+      - node --version && git --version
+      - test "$(git rev-parse HEAD)" = "$CI_COMMIT_SHA"
+      - node -e 'const v=process.versions.node; if (Number(v.split(".")[0]) < 24) { console.error("Node >=24 required, got " + v); process.exit(1); }'
+      - corepack pnpm --version
+      - corepack pnpm install --frozen-lockfile
+      - corepack pnpm run format:check
+      - corepack pnpm run lint
+      - corepack pnpm run typecheck
+      - corepack pnpm run test:unit

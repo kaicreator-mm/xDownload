@@ -114,10 +114,16 @@ export async function submitConfirmedDownload(
   const { confirmed, intent } = confirmDownloadRequest(candidate, { messageId: options.messageId });
 
   if (options.signal?.aborted === true) {
-    return failed(confirmed, {
-      code: 'SUBMISSION_ABORTED',
-      message: 'the caller aborted the submission before send; zero effects were created',
-    }, null, null, true);
+    return failed(
+      confirmed,
+      {
+        code: 'SUBMISSION_ABORTED',
+        message: 'the caller aborted the submission before send; zero effects were created',
+      },
+      null,
+      null,
+      true,
+    );
   }
 
   // Cancellation plumbing: bridge the caller's signal onto the runtime's
@@ -148,7 +154,10 @@ export async function submitConfirmedDownload(
   if (effect === undefined) {
     return failed(
       confirmed,
-      { code: 'EFFECT_ENVELOPE_MISSING', message: 'the admitted receipt carries no external effect envelope' },
+      {
+        code: 'EFFECT_ENVELOPE_MISSING',
+        message: 'the admitted receipt carries no external effect envelope',
+      },
       null,
       receipt,
       false,
@@ -172,7 +181,10 @@ export async function submitConfirmedDownload(
     // await:'terminal' — an accepted/running ACK can never settle success.
     return failed(
       confirmed,
-      { code: 'EFFECT_NOT_TERMINAL', message: `effect settled at phase '${terminal.phase}' under await:'terminal'` },
+      {
+        code: 'EFFECT_NOT_TERMINAL',
+        message: `effect settled at phase '${terminal.phase}' under await:'terminal'`,
+      },
       terminal,
       receipt,
       false,
@@ -188,7 +200,10 @@ export async function submitConfirmedDownload(
   if (typeof permitEffectId !== 'string' || permitEffectId.length === 0) {
     return failed(
       confirmed,
-      { code: 'EVIDENCE_PERMIT_IDENTITY_MISSING', message: 'the terminal output carries no permit effect identity' },
+      {
+        code: 'EVIDENCE_PERMIT_IDENTITY_MISSING',
+        message: 'the terminal output carries no permit effect identity',
+      },
       terminal,
       receipt,
       false,
@@ -208,7 +223,9 @@ export async function submitConfirmedDownload(
       confirmed,
       {
         code: evidenceCheck.diagnostics[0]?.code ?? 'EVIDENCE_INVALID',
-        message: evidenceCheck.diagnostics[0]?.message ?? 'materialized evidence refused by the T01 grammar',
+        message:
+          evidenceCheck.diagnostics[0]?.message ??
+          'materialized evidence refused by the T01 grammar',
       },
       terminal,
       receipt,

@@ -1,9 +1,16 @@
 /**
- * T013 CLI process entry — a thin shell over the adapter: bind real process
- * ports (loopback seam transport, fs/stdin payload sources, real clock),
- * parse argv, run, write exactly one JSON document to stdout and exit with
- * the documented code. All behavior lives in `adapter.ts` and is tested
- * there; this file adds no semantics.
+ * CLI process entry (T04) — bind real process ports, parse argv and route:
+ *
+ * - explicit `--route v0.2` inputs go through `domain-app-cli.ts` →
+ *   `domain-app-commands.ts` (the frozen public facade calls) → the
+ *   seam-bound public DomainApp facade (`domain-app-seam-facade.ts`) → the
+ *   admitted K composition inside the installed Core process (CF-1 chain);
+ * - everything else keeps the legacy v1 adapter (`adapter.ts`) verbatim.
+ *
+ * Both paths write exactly one machine-readable JSON document to stdout,
+ * human-readable mode/progress notes to stderr and exit with the documented
+ * code. The CLI never owns Core lifecycle truth and never falls back to a
+ * second transport.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -23,6 +30,7 @@ import {
   type SelectionGesture,
   type SourceRequest,
 } from './adapter.ts';
+import { runDomainAppInput } from './domain-app-cli.ts';
 import { CLI_USAGE } from './args.ts';
 import { renderErrorDocument, toJson } from './render.ts';
 
@@ -48,6 +56,20 @@ async function readSource(source: SourceRequest): Promise<string> {
   return readFile(source.file, 'utf8');
 }
 
+/**
+ * The checked Core endpoint transport. A requested Windows verified Core
+ * pipe never degrades into TCP on error (no silent transport fallback).
+ */
+function selectClientTransport(pipeName: string | undefined): SeamClientTransport {
+  if (pipeName !== undefined) {
+    if (process.platform !== 'win32') {
+      throw new Error('Windows Core named-pipe transport is supported only on Windows');
+    }
+    return createWindowsPipeClientTransport();
+  }
+  return createLoopbackClientTransport();
+}
+
 async function main(): Promise<void> {
   let input;
   try {
@@ -65,18 +87,43 @@ async function main(): Promise<void> {
     process.stdout.write(`${CLI_USAGE}\n`);
     return;
   }
-  // S3 cannot borrow loopback TCP's caller-presented peer identity.
-  // A requested Windows verified Core pipe never degrades into TCP on error.
+  // CF-1 (T04): explicit --route v0.2 argv reaches the Domain App command
+  // layer with the REAL seam-bound facade (one Core-owned K composition).
+  if (input.kind === 'domain-app') {
+    let clientTransport: SeamClientTransport;
+    try {
+      clientTransport = selectClientTransport(input.target.pipeName);
+    } catch {
+      process.stdout.write(
+        `${toJson(
+          renderErrorDocument({
+            error: 'USAGE',
+            message:
+              'requested Core named-pipe transport is unavailable; TCP fallback is forbidden',
+            usage: true,
+          }),
+        )}\n`,
+      );
+      process.stderr.write('Core transport unavailable\n');
+      process.exitCode = 1;
+      return;
+    }
+    const result = await runDomainAppInput(input, {
+      clientTransport,
+      readSource,
+      now: () => new Date().toISOString(),
+      makeRequestId: () => `req-${randomUUID()}`,
+      sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+      epochMs: () => Date.now(),
+    });
+    process.stdout.write(`${result.document}\n`);
+    process.stderr.write(result.stderr);
+    process.exitCode = result.exitCode;
+    return;
+  }
   let clientTransport: SeamClientTransport;
   try {
-    if (input.target.pipeName !== undefined) {
-      if (process.platform !== 'win32') {
-        throw new Error('Windows Core named-pipe transport is supported only on Windows');
-      }
-      clientTransport = createWindowsPipeClientTransport();
-    } else {
-      clientTransport = createLoopbackClientTransport();
-    }
+    clientTransport = selectClientTransport(input.target.pipeName);
   } catch {
     process.stdout.write(
       `${toJson(

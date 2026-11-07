@@ -37,15 +37,13 @@ import {
   makeLogicalTargetId,
   makeMemberId,
   unwrapOrThrow,
-  type EffectId,
-} from '@xdownload/domain-contracts';
-import {
   validateArtifactPath,
-  validateConfirmedIntent,
+  validateDirectHostAcquisitionRequest,
   validateMaterializedEvidence,
-  type ConfirmedDownloadIntent,
+  type DirectHostAcquisitionRequest,
+  type EffectId,
   type EffectEnvelope,
-} from '@xdownload/download-domain-app/src/contracts/index.ts';
+} from '@xdownload/domain-contracts';
 import {
   DirectHttpAdapter,
   type TransferBudgetLedgerPort,
@@ -122,7 +120,34 @@ export class DirectAcquisitionBridge {
   ): Promise<EffectEnvelope> {
     this.counters.acquireCalls += 1;
 
-    // 1. Permit gate — before any registry lookup, ledger touch, network or file.
+    // 1. Re-verify the confirmed scope from unknown through the A01 neutral
+    //    Direct Host request DTO — before the permit gate, the registry
+    //    lookup, the ledger, the network and the filesystem. The DTO pins
+    //    allowedOperation to acquisition.acquire and the slice to S1|S3, so
+    //    a widened or malformed K payload can never reach any effect.
+    const intentCheck = validateDirectHostAcquisitionRequest(intent);
+    if (!intentCheck.ok) {
+      this.counters.scopeRefusals += 1;
+      return refusalEnvelope(
+        'unpermitted',
+        intentCheck.diagnostics[0]!.code,
+        intentCheck.diagnostics[0]!.message,
+      );
+    }
+    const confirmed: DirectHostAcquisitionRequest = intentCheck.value;
+    if (confirmed.allowedOperation !== OPERATION_ACQUIRE) {
+      // Defense in depth behind the DTO pin: the validator already refuses
+      // any other operation; this branch can only fire if the contract above
+      // ever widens.
+      this.counters.scopeRefusals += 1;
+      return refusalEnvelope(
+        'unpermitted',
+        'OPERATION_NOT_SUPPORTED',
+        `the direct bridge serves only ${OPERATION_ACQUIRE}, not '${confirmed.allowedOperation}'`,
+      );
+    }
+
+    // 2. Permit gate — before any registry lookup, ledger touch, network or file.
     const permitGate = parsePermit(permit);
     if (permitGate !== null) {
       this.counters.permitRefusals += 1;
@@ -131,37 +156,30 @@ export class DirectAcquisitionBridge {
     const permitContext = permit as KernelPermitContext;
     const externalRef = permitContext.effectId;
 
-    // 2. Re-verify the confirmed scope — a K payload can never widen it.
-    const intentCheck = validateConfirmedIntent(intent);
-    if (!intentCheck.ok) {
-      this.counters.scopeRefusals += 1;
-      return refusalEnvelope(externalRef, intentCheck.diagnostics[0]!.code, intentCheck.diagnostics[0]!.message);
-    }
-    const confirmed: ConfirmedDownloadIntent = intentCheck.value;
-    if (confirmed.allowedOperation !== OPERATION_ACQUIRE) {
-      this.counters.scopeRefusals += 1;
-      return refusalEnvelope(
-        externalRef,
-        'OPERATION_NOT_SUPPORTED',
-        `the direct bridge serves only ${OPERATION_ACQUIRE}, not '${confirmed.allowedOperation}'`,
-      );
-    }
-
     // 3. Resolve the opaque targetRef through the injected registry only.
     const recordCheck = this.registry.resolve(confirmed.targetRef);
     if (!recordCheck.ok) {
       this.counters.targetRefRefusals += 1;
-      return refusalEnvelope(externalRef, recordCheck.diagnostics[0]!.code, recordCheck.diagnostics[0]!.message);
+      return refusalEnvelope(
+        externalRef,
+        recordCheck.diagnostics[0]!.code,
+        recordCheck.diagnostics[0]!.message,
+      );
     }
     const record = recordCheck.value;
 
     // 4. Artifact path containment BEFORE any network (a refused path is a
     // zero-transfer refusal by construction).
-    const requestedPath = options.artifactPath ?? join(confirmed.outputRootScope, `${confirmed.requestId}.bin`);
+    const requestedPath =
+      options.artifactPath ?? join(confirmed.outputRootScope, `${confirmed.requestId}.bin`);
     const pathCheck = validateArtifactPath(confirmed.outputRootScope, requestedPath);
     if (!pathCheck.ok) {
       this.counters.pathRefusals += 1;
-      return refusalEnvelope(externalRef, pathCheck.diagnostics[0]!.code, pathCheck.diagnostics[0]!.message);
+      return refusalEnvelope(
+        externalRef,
+        pathCheck.diagnostics[0]!.code,
+        pathCheck.diagnostics[0]!.message,
+      );
     }
     const resolvedRoot = resolve(confirmed.outputRootScope);
     const resolvedPath = resolve(pathCheck.value);
@@ -196,13 +214,23 @@ export class DirectAcquisitionBridge {
     // 6. Terminal acceptance: adapter projection must be a completed,
     // all-validations-passed transfer carrying bytes.
     if (!transfer.ok) {
-      return refusalEnvelope(externalRef, transfer.diagnostics[0]!.code, transfer.diagnostics[0]!.message);
+      return refusalEnvelope(
+        externalRef,
+        transfer.diagnostics[0]!.code,
+        transfer.diagnostics[0]!.message,
+      );
     }
     const outcome = transfer.value;
     const completed =
-      outcome.reason === 'COMPLETED' && outcome.bytes !== undefined && outcome.allApplicableValidationPassed;
+      outcome.reason === 'COMPLETED' &&
+      outcome.bytes !== undefined &&
+      outcome.allApplicableValidationPassed;
     if (!completed || outcome.bytes === undefined) {
-      return refusalEnvelope(externalRef, outcome.reason, `transfer did not complete (${outcome.reason})`);
+      return refusalEnvelope(
+        externalRef,
+        outcome.reason,
+        `transfer did not complete (${outcome.reason})`,
+      );
     }
 
     // 7. Digest re-check (defense in depth behind the adapter target layer):
@@ -281,7 +309,8 @@ function parsePermit(permit: unknown): PermitRefusal | null {
   if (typeof permit !== 'object' || permit === null || Array.isArray(permit)) {
     return {
       code: 'PERMIT_REQUIRED',
-      message: 'direct acquisition requires a kernel permit context (effectId + durableControlTurnId)',
+      message:
+        'direct acquisition requires a kernel permit context (effectId + durableControlTurnId)',
     };
   }
   const record = permit as Record<string, unknown>;

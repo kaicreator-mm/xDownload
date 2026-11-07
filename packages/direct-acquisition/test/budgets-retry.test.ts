@@ -221,6 +221,76 @@ describe('retries: same lineage only (C12), budget boundaries enforced', () => {
     expect(fixture.requests.length).toBe(before);
   });
 
+  it('retry without an explicit original-lineage anchor is rejected before transfer', async () => {
+    fixture.serveFile('/missing-retry-lineage.bin', { body: FULL });
+    const ledger = new InMemoryAuthoritativeLedger(
+      transferProfile({ maxBytes: 100_000, maxRetryTransferRequests: 5 }),
+    );
+    const adapter = new DirectHttpAdapter(ledger);
+    const before = fixture.requests.length;
+
+    const rejected = await adapter.acquire(
+      directRequest(baseUri, '/missing-retry-lineage.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+      }),
+    );
+
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) {
+      expect(rejected.diagnostics[0]?.code).toBe('MALFORMED_REQUIRED_FIELD');
+    }
+    expect(fixture.requests.length).toBe(before);
+  });
+
+  it('negative or unsafe attempt numbers are rejected before transfer', async () => {
+    fixture.serveFile('/negative-attempt.bin', { body: FULL });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const before = fixture.requests.length;
+
+    const rejected = await adapter.acquire(
+      directRequest(baseUri, '/negative-attempt.bin', FULL, { attempt: -1 }),
+    );
+
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) {
+      expect(rejected.diagnostics[0]?.code).toBe('MALFORMED_REQUIRED_FIELD');
+    }
+    expect(fixture.requests.length).toBe(before);
+  });
+
+  it('partial state byte count must equal the carried bytes before any request', async () => {
+    fixture.serveFile('/mismatched-partial.bin', { body: FULL, etag: '"v1"' });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const before = fixture.requests.length;
+
+    const rejected = await adapter.acquire({
+      ...directRequest(baseUri, '/mismatched-partial.bin', FULL, {
+        effectId: 'effect-001',
+        attempt: 1,
+        retryLineage: {
+          effectId: effectIdOf('effect-001'),
+          targetId: targetIdOf('target-file-001'),
+        },
+      }),
+      resumeFrom: {
+        bytes: payload(40),
+        receivedBytes: 39,
+        identity: { strongETag: '"v1"' },
+        effectId: effectIdOf('effect-001'),
+        targetId: targetIdOf('target-file-001'),
+      },
+    });
+
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) {
+      expect(rejected.diagnostics[0]?.code).toBe('MALFORMED_REQUIRED_FIELD');
+    }
+    expect(fixture.requests.length).toBe(before);
+  });
+
   it('retry beyond exhausted retry budget is blocked at the seam (no request)', async () => {
     fixture.serveFile('/exhausted.bin', { body: FULL });
     const ledger = new InMemoryAuthoritativeLedger(
@@ -258,6 +328,10 @@ describe('retries: same lineage only (C12), budget boundaries enforced', () => {
         ...directRequest(baseUri, '/restart-lineage.bin', FULL, {
           effectId: 'effect-001',
           attempt: 1,
+          retryLineage: {
+            effectId: effectIdOf('effect-001'),
+            targetId: targetIdOf('target-file-001'),
+          },
         }),
         resumeFrom: carriedPartial(payload(40)),
       }),

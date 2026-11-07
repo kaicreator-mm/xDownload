@@ -1,0 +1,45 @@
+{
+  "suite": "windows-desktop-packaged-smoke",
+  "overall": "PASS",
+  "executedAt": "2026-11-01T04:54:01.346Z",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26300",
+    "node": "v24.21.0",
+    "executable": "C:\\Users\\15549\\AppData\\Local\\fnm_multishells\\29756_1793508831723\\node.exe"
+  },
+  "installer": {
+    "root": "C:\\xDev\\kAiCreator\\xDownload\\xd-t09r1-bld\\out\\installer\\xdownload-v0.2.1-windows-x64",
+    "desktopExecutable": "C:\\xDev\\kAiCreator\\xDownload\\xd-t09r1-bld\\out\\installer\\xdownload-v0.2.1-windows-x64\\payload\\desktop\\xdownload.exe",
+    "desktopExecutableSha256": "c579acaab64b1c456bda1693cdf1a2ec7e4de7738b0e2d1b6349d60e8087143c",
+    "electronVersion": "45.1.0"
+  },
+  "checks": [
+    {
+      "id": "packaged-desktop-exe-boots-and-renders",
+      "status": "PASS",
+      "detail": "exe exit=0 verdict.ok=true electron=45.1.0 bridge=true isolated=true csp=true"
+    },
+    {
+      "id": "packaged-desktop-exe-reaches-packaged-core",
+      "status": "PASS",
+      "detail": "core reachability check: PASS (core.connection=REJECTED_PROJECTION)"
+    },
+    {
+      "id": "packaged-desktop-exe-fail-closed-without-core",
+      "status": "PASS",
+      "detail": "exe exit=1 verdict.ok=false core detail=core.connection=DISCONNECTED (truthful DISCONNECTED, no crash, no fabricated success)"
+    },
+    {
+      "id": "packaged-core-refuses-foreign-peer-identity",
+      "status": "PASS",
+      "detail": "foreign peer → REJECTED [{\"code\":\"PEER_IDENTITY_REJECTED\",\"path\":\"peer\",\"message\":\"peer is not the expected same-install/same-user identity\",\"invariant\":\"L2-§12\"}]; matching peer → REJECTED [{\"code\":\"V02_INTENT_VALIDATOR_UNAVAILABLE\",\"path\":\"payload.intent\",\"message\":\"the canonical Domain App no-widening validator is not installed\"}]"
+    },
+    {
+      "id": "packaged-desktop-exe-truthful-against-refusing-core",
+      "status": "PASS",
+      "detail": "exe exit=0 core.connection=REJECTED_PROJECTION (answered-and-refused, never CONNECTED; no crash, no fabricated success)"
+    }
+  ]
+}

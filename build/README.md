@@ -194,3 +194,33 @@ SDK/payload hash re-verification, `pnpm pack` content checks against the
 declared `exports`, a clean install (no duplicate package root) and a real
 sealed-composition smoke over the installed bytes. Everything else in this
 directory is unchanged by T13.
+
+## T09 additions (v0.2.1): browser-zone build repair, native-host v0.2 relay, installer layer
+
+- **Browser node-builtin stubs (`browser-node-stubs.ts`)**: the `@xdownload/core-seam`
+  barrel re-exports node-only modules, so the browser artifact's bundle needs
+  their `node:*` imports resolvable at package time even though the reachable
+  browser surface never calls them. For browser-platform bundles ONLY, each
+  stubbed builtin resolves to a generated module whose exports throw on call
+  (fail-closed); node artifacts keep real builtins (tested both ways).
+- **Native-host v0.2 relay (`native-host-entry.ts`)**: the packaged stdio
+  broker now intercepts frames whose decoded payload names `route: 'v0.2'`,
+  relays them verbatim to the ONE configured Core authority (canonical pipe
+  preferred, explicit loopback per the same config the v1 lanes use) and
+  answers with the Core's verbatim SeamResponse. The closed v0.2 vocabulary
+  (`DOMAIN_APP_SEND` command, `READ_JOB_PROJECTION` query) is enforced
+  fail-closed before anything is forwarded; unbound installs and unreachable
+  Cores get typed refusals, never simulated sessions. Everything that is not
+  an explicit v0.2 frame still reaches the unmodified broker session.
+- **Installer layer (`../installers/compose-installer.ts` +
+  `../scripts/install-host/`)**: `node installers/compose-installer.ts`
+  composes the user-installable Windows x64 package from a built dist — the
+  audit runs over the exact bytes before anything is copied, every artifact
+  identity re-verifies against the copied payload, and the output tree
+  (payload + per-user install/uninstall/status/verify entry scripts +
+  `SHA256SUMS` + `installer-identity.json`) is packed into a deterministic
+  zip (sorted entries, fixed timestamps). The shipped
+  `verify-installer.mjs` re-hashes the extracted tree fail-closed; the
+  installer tests cover composition, tamper refusal, rebuild reproducibility,
+  archive extraction and a clean install/registration-readback/uninstall
+  round-trip from the composed payload (machine restored as found).

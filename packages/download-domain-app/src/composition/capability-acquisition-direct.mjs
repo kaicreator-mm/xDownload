@@ -25,27 +25,32 @@
  * ENDPOINTS identity, sealed OPERATIONS table, BUILD-bound handlers.
  */
 
-export const MODULE_ID = "capability-acquisition-direct@0.2.0-t11";
-export const PACKAGE_KIND = "capability";
-export const ABI_VERSION = "v08-capability-abi/1";
-export const ENDPOINTS = [{ endpointId: "capability:acquisition-direct", kind: "capability-endpoint" }];
+export const MODULE_ID = 'capability-acquisition-direct@0.2.0-t11';
+export const PACKAGE_KIND = 'capability';
+export const ABI_VERSION = 'v08-capability-abi/1';
+export const ENDPOINTS = [
+  { endpointId: 'capability:acquisition-direct', kind: 'capability-endpoint' },
+];
 
 export const OPERATIONS = [
   {
-    operationId: "acquisition.acquire",
-    effectClass: "non-idempotent",
-    intentType: "confirmDownload",
-    resource: { key: "acquisition", operation: "acquisition.acquire" },
+    operationId: 'acquisition.acquire',
+    effectClass: 'non-idempotent',
+    intentType: 'confirmDownload',
+    resource: { key: 'acquisition', operation: 'acquisition.acquire' },
     externalEffect: true,
   },
 ];
 
-const HOST_NOTICE = "the trusted T04 DirectAcquisitionBridge must be pinned by the composition before load";
+const HOST_NOTICE =
+  'the trusted T04 DirectAcquisitionBridge must be pinned by the composition before load';
 
 function bridge() {
   const b = globalThis.__xdownloadDirectAcquisitionBridge;
-  if (b === undefined || b === null || typeof b.acquire !== "function") {
-    throw new Error(`acquisition.acquire requires the trusted Host direct acquisition bridge (${HOST_NOTICE})`);
+  if (b === undefined || b === null || typeof b.acquire !== 'function') {
+    throw new Error(
+      `acquisition.acquire requires the trusted Host direct acquisition bridge (${HOST_NOTICE})`,
+    );
   }
   return b;
 }
@@ -62,10 +67,12 @@ function bridge() {
  */
 export function acquire(payload, dispatchContext) {
   if (arguments.length !== 2) {
-    throw new Error("acquisition.acquire receives exactly (payload, dispatchContext)");
+    throw new Error('acquisition.acquire receives exactly (payload, dispatchContext)');
   }
-  const record = payload === null || typeof payload !== "object" ? {} : payload;
+  const record = payload === null || typeof payload !== 'object' ? {} : payload;
   const permit =
-    dispatchContext && typeof dispatchContext === "object" ? dispatchContext.effectPermit : undefined;
+    dispatchContext && typeof dispatchContext === 'object'
+      ? dispatchContext.effectPermit
+      : undefined;
   return bridge().acquire(record, permit);
 }

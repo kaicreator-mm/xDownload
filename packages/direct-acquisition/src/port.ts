@@ -35,6 +35,8 @@ export interface RepresentationIdentity {
   readonly weakETag?: string;
   readonly lastModified?: string;
   readonly contentLength?: number;
+  /** True when a present Content-Length header is malformed or unsafe. */
+  readonly invalidContentLength?: boolean;
 }
 
 /** Partial bytes carried over from a previous attempt of the same lineage. */

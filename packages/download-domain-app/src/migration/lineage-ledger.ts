@@ -168,14 +168,20 @@ const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 
 function boundedId(kind: string, value: unknown): string {
   if (typeof value !== 'string' || !ID_PATTERN.test(value)) {
-    throw new LineageLedgerError('MALFORMED_LEDGER_INPUT', `${kind} must match ${ID_PATTERN.source}`);
+    throw new LineageLedgerError(
+      'MALFORMED_LEDGER_INPUT',
+      `${kind} must match ${ID_PATTERN.source}`,
+    );
   }
   return value;
 }
 
 function plainRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new LineageLedgerError('MALFORMED_LEDGER_INPUT', 'effect/resolution must be a plain object');
+    throw new LineageLedgerError(
+      'MALFORMED_LEDGER_INPUT',
+      'effect/resolution must be a plain object',
+    );
   }
   return value as Record<string, unknown>;
 }
@@ -240,7 +246,11 @@ export class LineageLedger {
       unknownEffects: [],
       history: [],
     };
-    return new LineageLedger(loaded ?? fresh, store, options.now ?? (() => new Date().toISOString()));
+    return new LineageLedger(
+      loaded ?? fresh,
+      store,
+      options.now ?? (() => new Date().toISOString()),
+    );
   }
 
   // ------------------------------------------------------------------
@@ -315,7 +325,13 @@ export class LineageLedger {
       claims: { ...this.doc.claims, [id]: record },
       history: [
         ...this.doc.history,
-        { at: this.now(), kind: 'legacy-registered', lineageId: id, writerId: record.ownerWriterId, detail: 'old lineage permanently partitioned to the v0.1 legacy runtime (no migration)' },
+        {
+          at: this.now(),
+          kind: 'legacy-registered',
+          lineageId: id,
+          writerId: record.ownerWriterId,
+          detail: 'old lineage permanently partitioned to the v0.1 legacy runtime (no migration)',
+        },
       ],
     });
     return record;
@@ -336,7 +352,10 @@ export class LineageLedger {
       writer === null ||
       (writer.kind !== 'old-core' && writer.kind !== 'new-k')
     ) {
-      throw new LineageLedgerError('MALFORMED_LEDGER_INPUT', 'writer.kind must be old-core | new-k');
+      throw new LineageLedgerError(
+        'MALFORMED_LEDGER_INPUT',
+        'writer.kind must be old-core | new-k',
+      );
     }
     boundedId('writer.writerId', writer.writerId);
     const authorization = this.requireAuthorization(input.authorization);
@@ -389,7 +408,9 @@ export class LineageLedger {
           kind: isReclaim ? 're-claimed' : 'claimed',
           lineageId: id,
           writerId: writer.writerId,
-          detail: isReclaim ? 'released lineage re-claimed under a new authorization grant' : 'exclusive new-K claim (CAS create)',
+          detail: isReclaim
+            ? 'released lineage re-claimed under a new authorization grant'
+            : 'exclusive new-K claim (CAS create)',
         },
       ],
     });
@@ -408,7 +429,10 @@ export class LineageLedger {
     const id = boundedId('lineageId', input.lineageId);
     const writer = input.writer;
     if (typeof writer !== 'object' || writer === null) {
-      throw new LineageLedgerError('MALFORMED_LEDGER_INPUT', 'writer must be a LineageWriterIdentity');
+      throw new LineageLedgerError(
+        'MALFORMED_LEDGER_INPUT',
+        'writer must be a LineageWriterIdentity',
+      );
     }
     boundedId('writer.writerId', writer.writerId);
     const existing = this.doc.claims[id];
@@ -433,7 +457,13 @@ export class LineageLedger {
       claims: { ...this.doc.claims, [id]: released },
       history: [
         ...this.doc.history,
-        { at, kind: 'released', lineageId: id, writerId: writer.writerId, detail: 'explicit new-K release; claim history preserved' },
+        {
+          at,
+          kind: 'released',
+          lineageId: id,
+          writerId: writer.writerId,
+          detail: 'explicit new-K release; claim history preserved',
+        },
       ],
     });
     return released;
@@ -464,7 +494,13 @@ export class LineageLedger {
       unknownEffects: [...this.doc.unknownEffects, record],
       history: [
         ...this.doc.history,
-        { at, kind: 'unknown-recorded', lineageId, writerId, detail: `UNKNOWN effect recorded as ${record.unknownId}; awaiting explicit authorized resolution` },
+        {
+          at,
+          kind: 'unknown-recorded',
+          lineageId,
+          writerId,
+          detail: `UNKNOWN effect recorded as ${record.unknownId}; awaiting explicit authorized resolution`,
+        },
       ],
     });
     return record;
@@ -482,14 +518,23 @@ export class LineageLedger {
     const resolution = plainRecord(input.resolution);
     const index = this.doc.unknownEffects.findIndex((record) => record.unknownId === unknownId);
     if (index < 0) {
-      throw new LineageLedgerError('UNKNOWN_NOT_FOUND', `no UNKNOWN effect '${unknownId}' in the reconciliation book`);
+      throw new LineageLedgerError(
+        'UNKNOWN_NOT_FOUND',
+        `no UNKNOWN effect '${unknownId}' in the reconciliation book`,
+      );
     }
     const existing = this.doc.unknownEffects[index];
     if (existing === undefined) {
-      throw new LineageLedgerError('UNKNOWN_NOT_FOUND', `no UNKNOWN effect '${unknownId}' in the reconciliation book`);
+      throw new LineageLedgerError(
+        'UNKNOWN_NOT_FOUND',
+        `no UNKNOWN effect '${unknownId}' in the reconciliation book`,
+      );
     }
     if (existing.resolvedAt !== null) {
-      throw new LineageLedgerError('UNKNOWN_ALREADY_RESOLVED', `UNKNOWN effect '${unknownId}' was already resolved at ${existing.resolvedAt}`);
+      throw new LineageLedgerError(
+        'UNKNOWN_ALREADY_RESOLVED',
+        `UNKNOWN effect '${unknownId}' was already resolved at ${existing.resolvedAt}`,
+      );
     }
     const at = this.now();
     const resolved: UnknownEffectRecord = {
@@ -505,7 +550,13 @@ export class LineageLedger {
       unknownEffects,
       history: [
         ...this.doc.history,
-        { at, kind: 'unknown-resolved', lineageId: resolved.lineageId, writerId: resolved.writerId, detail: `UNKNOWN effect ${unknownId} explicitly resolved under a new authorization grant` },
+        {
+          at,
+          kind: 'unknown-resolved',
+          lineageId: resolved.lineageId,
+          writerId: resolved.writerId,
+          detail: `UNKNOWN effect ${unknownId} explicitly resolved under a new authorization grant`,
+        },
       ],
     });
     return resolved;
@@ -516,7 +567,11 @@ export class LineageLedger {
   // ------------------------------------------------------------------
 
   private requireAuthorization(authorization: unknown): string {
-    if (typeof authorization !== 'string' || authorization.length === 0 || !ID_PATTERN.test(authorization)) {
+    if (
+      typeof authorization !== 'string' ||
+      authorization.length === 0 ||
+      !ID_PATTERN.test(authorization)
+    ) {
       throw new LineageLedgerError(
         'LINEAGE_AUTHORIZATION_REQUIRED',
         'a bounded non-empty authorization grant is required for this authority transition',

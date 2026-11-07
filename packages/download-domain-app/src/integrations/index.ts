@@ -2,12 +2,30 @@
  * v0.2 T12 — integration-other lane public index (S2–S6 + media convergence
  * under K). Consumers import only these named exports.
  *
+ * V022-A02/A04: this barrel no longer surfaces Host bridge/runtime assembly
+ * (`assembleMediaRuntime`, `assembleS4HlsRuntime`) — the physical assembly
+ * moved to the Core composition root (A04). Domain-owned surfaces stay:
+ * sealed BUILD producers/identities, the frozen routes and operation
+ * declarations, Business Intent validators, the S4 contribution seam, the
+ * domain journeys (over the domain-facing runtime ports in
+ * ../composition/runtime.ts), and the V022-A04 Core composition-root pin
+ * seams re-exported below (the root re-exports this barrel verbatim).
+ *
+ * The media targetRef registry grammar moved to the trusted Host
+ * (`@xdownload/download-domain-host`, A04): resolution facts are physical
+ * delivery truth. The App boundary regression test pins the absence.
+ *
  * Release-claimed journey coverage (T10 baseline vocabulary):
  *
  *   - S3 "Direct Media File"  → `submitConfirmedMediaDownload` over the
  *     sealed media composition + the T06 media bridge. PROVEN at
  *     bounded-HLS-fixture level (real master→playlist→segments run through
- *     the existing engine under one K permit, digest-backed materialization).
+ *     the existing engine under one K permit, digest-backed materialization);
+ *     the fixture proof is re-established at the Core composition root
+ *     (packages/core-runtime/test/domain-app-media-flow.test.ts, A04; R2
+ *     scoped as component-level evidence — the media route cannot compose
+ *     into the production S4 one-K, exact SDK limitation on
+ *     kaicreator-mm/xDownload#357).
  *     Installed-path media validation is NOT_PROVEN here (owner: T16
  *     validation-product).
  *   - S2 "Browser Download Handoff / Explicit Current-page Attachment" →
@@ -31,30 +49,17 @@ export {
   APP_ID_MEDIA,
   BUILD_ID_MEDIA,
   MEDIA_ACQUIRE_OPERATION,
-  MEDIA_BRIDGE_PIN,
   MEDIA_BUSINESS_MODULE_ID,
   MEDIA_CAPABILITY_MODULE_ID,
   MEDIA_ROUTE,
   MEDIA_SLICE,
-  assembleMediaRuntime,
   sealMediaComposition,
   submitConfirmedMediaDownload,
-  type AssembleMediaRuntimeOptions,
-  type MediaDownloadRuntime,
   type MediaJourneySummary,
-  type MediaPinCounters,
   type MediaSubmissionOutcome,
-  type MediaTargetSeed,
   type SealedMediaComposition,
   type SubmitConfirmedMediaOptions,
 } from './s3-media.ts';
-export {
-  MEDIA_REGISTRY_PROTOCOLS,
-  InMemoryMediaTargetRegistry,
-  validateMediaTargetRecord,
-  type MediaTargetRecord,
-  type MediaTargetRefSeed,
-} from './media-registry.ts';
 export {
   runS2DiscoveryJourney,
   type S2ConfirmationFacts,
@@ -78,7 +83,6 @@ export {
   decidedOutcomePlan,
   intentCandidateDiagnostics,
   submitConfirmedMembers,
-  validateBatchConfirmation,
   type SliceBatchConfirmationFacts,
   type SliceCallerIdentity,
   type SliceCollectionSummary,
@@ -86,3 +90,56 @@ export {
   type SliceMemberDeliveryFacts,
   type SliceMemberOutcome,
 } from './slice-journey-shared.ts';
+
+export {
+  APP_ID_S4_HLS_VOD,
+  BUILD_ID_S4_HLS_VOD,
+  S4_HLS_ROUTE,
+  buildS4HlsSingleKComposition,
+  sealS4HlsComposition,
+  s4HlsCompositionContribution,
+  s4HlsSealedPassthrough,
+  submitConfirmedS4HlsVod,
+  type S4HlsContribution,
+  type S4HlsJourneyResult,
+} from './s4-hls-vod.ts';
+export {
+  S4_HLS_MEDIA_OPERATION,
+  S4_HLS_MEDIA_PROFILE,
+  s4HlsSelectionTupleDigest,
+  validateConfirmedS4HlsIntent,
+  type ConfirmedS4HlsIntent,
+  type S4ConfirmedSelection,
+} from './s4-hls-vod-contract.ts';
+
+// ---------------------------------------------------------------------------
+// V022-A04 — Core composition-root pin seams and domain-facing runtime
+// contracts. The Core composition root (the only production assembly
+// authority) consumes the App exclusively through the stable package root;
+// the root re-exports this barrel verbatim, so the pin seams the sealed
+// capability modules reach and the journey runtime contracts ride here.
+// These are DOMAIN CONTRACT vocabulary (pin names, the single-owner S4
+// registrar, structural port types) — never physical Host bridges, stores
+// or registries, which stay Host-owned (A03/A04).
+// ---------------------------------------------------------------------------
+export { MEDIA_BRIDGE_PIN, type MediaDownloadRuntime, type MediaPinCounters } from './s3-media.ts';
+export {
+  S4_HLS_BRIDGE_PIN,
+  acquireS4HlsBridgePin,
+  type S4HlsBridgeLease,
+  type S4HlsBridgePin,
+  type S4HlsBridgeRegistration,
+  type S4HlsPinCounters,
+  type S4HlsRuntime,
+} from './s4-hls-vod.ts';
+// Direct-lane pin seam the Core-side direct-runtime installer reaches,
+// re-exported from the composition lane (src/index.ts is outside the A04
+// write set; this barrel is the stable root surface channel).
+export {
+  DIRECT_BRIDGE_PIN,
+  type DirectBridgeCountersView,
+  type DownloadRuntime,
+  type KDocStoreEvidencePort,
+  type TargetRefSeed,
+  type TransitionalDirectBridgeView,
+} from '../composition/runtime.ts';

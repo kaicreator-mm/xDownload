@@ -1,0 +1,19 @@
+{
+  "name": "@xdownload/desktop-shell",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "T07 minimal Electron shell — hardened main/preload over the existing Core seam; the renderer UI is T08's",
+  "main": "dist/main/main.cjs",
+  "scripts": {
+    "build:smoke": "node test/smoke/build-shell.mjs",
+    "smoke": "node test/smoke/electron-shell-smoke.mjs"
+  },
+  "dependencies": {
+    "@xdownload/core-seam": "workspace:*",
+    "@xdownload/desktop-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "45.1.0"
+  }
+}

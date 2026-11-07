@@ -46,9 +46,32 @@ export {
 } from './render.ts';
 export {
   DEFAULT_WAIT,
+  buildCliPeer,
   runAdapter,
   runArgv,
   type AdapterPorts,
   type AdapterResult,
   type SourceRequest,
 } from './adapter.ts';
+export {
+  runDomainAppInput,
+  type DomainAppCliPorts,
+  type DomainAppCliResult,
+} from './domain-app-cli.ts';
+export {
+  createSeamDomainAppFacade,
+  SeamRefusalError,
+  type SeamDomainAppFacade,
+  type SeamDomainAppFacadeOptions,
+} from './domain-app-seam-facade.ts';
+export {
+  DOMAIN_APP_CANCEL_INTENT_TYPE,
+  executeDomainAppCommand,
+  domainAppExitCode,
+} from './domain-app-commands.ts';
+export {
+  DOMAIN_APP_FACADE_KEYS,
+  isDomainAppFacadeLike,
+  type DomainAppFacade,
+  type V10PublicIntent,
+} from './domain-app-facade.ts';

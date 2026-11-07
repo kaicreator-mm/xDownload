@@ -15,14 +15,12 @@ import {
   decodeBudgetProfile,
   diagnostic,
   fail,
+  INTENT_FIELD_PATTERN,
   ok,
+  REFERENCE_TOKEN_PATTERN,
   type BudgetProfile,
   type DomainValidationResult,
 } from '@xdownload/domain-contracts';
-import {
-  INTENT_FIELD_PATTERN,
-  REFERENCE_TOKEN_PATTERN,
-} from '../../../download-domain-app/src/contracts/index.ts';
 
 /** The only C operation this lane executes (frozen v0.2 operation vocabulary). */
 export const MEDIA_ACQUIRE_OPERATION = 'media.acquire';

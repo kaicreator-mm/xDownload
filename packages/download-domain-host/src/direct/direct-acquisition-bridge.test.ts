@@ -16,16 +16,16 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { describe, it, type TestContext } from 'node:test';
-import { validateMaterializedEvidence } from '@xdownload/download-domain-app/src/contracts/index.ts';
+import { validateMaterializedEvidence } from '@xdownload/domain-contracts';
 import { CanonicalBudgetLedger } from './budget-ledger.ts';
-import {
-  DirectAcquisitionBridge,
-  type KernelPermitContext,
-} from './direct-acquisition-bridge.ts';
+import { DirectAcquisitionBridge, type KernelPermitContext } from './direct-acquisition-bridge.ts';
 import { InMemoryTargetRefRegistry, type TargetRefRecord } from './target-ref-registry.ts';
 
 const HANDLE = 'ref:file-001';
-const PERMIT: KernelPermitContext = { effectId: 'effect-req-001', durableControlTurnId: 'turn-001' };
+const PERMIT: KernelPermitContext = {
+  effectId: 'effect-req-001',
+  durableControlTurnId: 'turn-001',
+};
 
 function payload(size: number, seed = 7): Buffer {
   const bytes = Buffer.alloc(size);
@@ -135,16 +135,25 @@ interface Lane {
 function budgetProfile(maxTransferBytes?: number): unknown {
   return {
     discovery: { domain: 'discovery' },
-    transfer: { domain: 'transfer', ...(maxTransferBytes === undefined ? {} : { maxBytes: maxTransferBytes }) },
+    transfer: {
+      domain: 'transfer',
+      ...(maxTransferBytes === undefined ? {} : { maxBytes: maxTransferBytes }),
+    },
     globalSafety: { domain: 'global_safety' },
   };
 }
 
-async function makeLane(test: TestContext, options: { maxTransferBytes?: number } = {}): Promise<Lane> {
+async function makeLane(
+  test: TestContext,
+  options: { maxTransferBytes?: number } = {},
+): Promise<Lane> {
   const fixture = new LocalHttpFixture();
   await fixture.start();
   const registry = new InMemoryTargetRefRegistry();
-  const record: TargetRefRecord = { uri: fixture.uri('/file.bin'), allowedRedirectHosts: [fixture.host] };
+  const record: TargetRefRecord = {
+    uri: fixture.uri('/file.bin'),
+    allowedRedirectHosts: [fixture.host],
+  };
   assert.equal(registry.register(HANDLE, record).ok, true);
   const ledger = new CanonicalBudgetLedger(budgetProfile(options.maxTransferBytes));
   const bridge = new DirectAcquisitionBridge(registry, ledger);
@@ -160,7 +169,11 @@ async function makeLane(test: TestContext, options: { maxTransferBytes?: number 
   };
 }
 
-function intentFor(lane: Lane, body: Uint8Array, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function intentFor(
+  lane: Lane,
+  body: Uint8Array,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     requestId: 'req-001',
     lineageId: 'lineage-001',
@@ -186,7 +199,10 @@ describe('T04 DirectAcquisitionBridge', () => {
       assert.equal(envelope.phase, 'terminal');
       assert.equal(envelope.externalRef, PERMIT.effectId);
       assert.ok(envelope.phase === 'terminal' && envelope.outcome.ok === true);
-      const output = envelope.phase === 'terminal' && envelope.outcome.ok === true ? envelope.outcome.output : {};
+      const output =
+        envelope.phase === 'terminal' && envelope.outcome.ok === true
+          ? envelope.outcome.output
+          : {};
       const artifactPath = join(lane.root, 'req-001.bin');
       assert.equal(output['artifactPath'], artifactPath);
       assert.equal(output['fileSha256'], sha256(body));
@@ -291,10 +307,16 @@ describe('T04 DirectAcquisitionBridge', () => {
     try {
       lane.fixture.redirect('/hop.bin', lane.fixture.uri('/file.bin'));
       lane.fixture.serveBytes('/file.bin', body);
-      const record: TargetRefRecord = { uri: lane.fixture.uri('/hop.bin'), allowedRedirectHosts: [lane.fixture.host] };
+      const record: TargetRefRecord = {
+        uri: lane.fixture.uri('/hop.bin'),
+        allowedRedirectHosts: [lane.fixture.host],
+      };
       assert.equal(lane.registry.register('ref:hop-001', record).ok, true);
 
-      const envelope = await lane.bridge.acquire(intentFor(lane, body, { targetRef: 'ref:hop-001' }), PERMIT);
+      const envelope = await lane.bridge.acquire(
+        intentFor(lane, body, { targetRef: 'ref:hop-001' }),
+        PERMIT,
+      );
       assert.ok(envelope.phase === 'terminal' && envelope.outcome.ok === true);
       const artifactPath = join(lane.root, 'req-001.bin');
       assert.equal(existsSync(artifactPath), true);
@@ -314,7 +336,10 @@ describe('T04 DirectAcquisitionBridge', () => {
       lane.fixture.serveBytes('/file.bin', body);
       // Confirmed anchor belongs to DIFFERENT bytes: the transfer must never
       // be accepted and nothing may be written.
-      const envelope = await lane.bridge.acquire(intentFor(lane, body, { digestAnchor: sha256(other) }), PERMIT);
+      const envelope = await lane.bridge.acquire(
+        intentFor(lane, body, { digestAnchor: sha256(other) }),
+        PERMIT,
+      );
       assert.ok(envelope.phase === 'terminal' && !envelope.outcome.ok);
       if (envelope.phase === 'terminal' && !envelope.outcome.ok) {
         assert.equal(envelope.outcome.error.code, 'WRONG_TARGET');
@@ -363,7 +388,10 @@ describe('T04 DirectAcquisitionBridge', () => {
     try {
       lane.fixture.serveBytes('/file.bin', body);
       const rawUrl = lane.fixture.uri('/file.bin');
-      const envelope = await lane.bridge.acquire(intentFor(lane, body, { targetRef: rawUrl }), PERMIT);
+      const envelope = await lane.bridge.acquire(
+        intentFor(lane, body, { targetRef: rawUrl }),
+        PERMIT,
+      );
       assert.ok(envelope.phase === 'terminal' && !envelope.outcome.ok);
       if (envelope.phase === 'terminal' && !envelope.outcome.ok) {
         assert.equal(envelope.outcome.error.code, 'LOCATOR_SUBSTITUTION_REJECTED');
@@ -375,7 +403,10 @@ describe('T04 DirectAcquisitionBridge', () => {
 
       // Registry-level assertion: a locator-shaped handle can never be
       // seeded, and a locator-shaped targetRef can never resolve.
-      assert.equal(lane.registry.register(rawUrl, { uri: rawUrl, allowedRedirectHosts: [] }).ok, false);
+      assert.equal(
+        lane.registry.register(rawUrl, { uri: rawUrl, allowedRedirectHosts: [] }).ok,
+        false,
+      );
       const resolved = lane.registry.resolve(rawUrl);
       assert.equal(resolved.ok, false);
       if (!resolved.ok) {
@@ -392,7 +423,10 @@ describe('T04 DirectAcquisitionBridge', () => {
     const lane = await makeLane(test);
     try {
       lane.fixture.serveBytes('/file.bin', body);
-      const envelope = await lane.bridge.acquire(intentFor(lane, body, { targetRef: 'ref:missing' }), PERMIT);
+      const envelope = await lane.bridge.acquire(
+        intentFor(lane, body, { targetRef: 'ref:missing' }),
+        PERMIT,
+      );
       assert.ok(envelope.phase === 'terminal' && !envelope.outcome.ok);
       if (envelope.phase === 'terminal' && !envelope.outcome.ok) {
         assert.equal(envelope.outcome.error.code, 'CONTRACT_BINDING_MISMATCH');
@@ -414,13 +448,53 @@ describe('T04 DirectAcquisitionBridge', () => {
       lane.fixture.stallAfterBytes('/file.bin', body, 64);
       const controller = new AbortController();
       setTimeout(() => controller.abort(), 150);
-      const envelope = await lane.bridge.acquire(intentFor(lane, body), PERMIT, { signal: controller.signal });
+      const envelope = await lane.bridge.acquire(intentFor(lane, body), PERMIT, {
+        signal: controller.signal,
+      });
       assert.ok(envelope.phase === 'terminal' && !envelope.outcome.ok);
       if (envelope.phase === 'terminal' && !envelope.outcome.ok) {
         assert.equal(envelope.outcome.error.code, 'USER_CANCELLED');
       }
       assert.equal(existsSync(join(lane.root, 'req-001.bin')), false);
       assert.equal(lane.bridge.counters.filesWritten, 0);
+    } finally {
+      await lane.fixture.stop();
+      rmSync(lane.root, { recursive: true, force: true });
+    }
+  });
+
+  it('negative: a widened/malformed request refuses through the neutral A01 DTO before permit and effects', async (test) => {
+    const body = payload(1024);
+    const lane = await makeLane(test);
+    try {
+      lane.fixture.serveBytes('/file.bin', body);
+      const widened = [
+        // wrong operation: the DTO pins acquisition.acquire
+        intentFor(lane, body, { allowedOperation: 'media.acquire' }),
+        // wrong slice vocabulary
+        intentFor(lane, body, { slice: 'S9' }),
+        // unknown field: the no-widening contract refuses, never drops
+        { ...intentFor(lane, body), extraField: 'widened' },
+      ];
+      for (const candidate of widened) {
+        const envelope = await lane.bridge.acquire(candidate, PERMIT);
+        assert.ok(envelope.phase === 'terminal' && !envelope.outcome.ok);
+        if (envelope.phase === 'terminal' && !envelope.outcome.ok) {
+          assert.ok(
+            envelope.outcome.error.code === 'CONTRACT_BINDING_MISMATCH' ||
+              envelope.outcome.error.code === 'MALFORMED_REQUIRED_FIELD' ||
+              envelope.outcome.error.code === 'SCOPE_WIDENING_REFUSED',
+            `unexpected refusal code: ${envelope.outcome.error.code}`,
+          );
+        }
+      }
+      // Every refusal landed before the permit gate and before any effect.
+      assert.equal(lane.fixture.requests.length, 0);
+      assert.equal(lane.bridge.counters.permitRefusals, 0);
+      assert.equal(lane.bridge.counters.scopeRefusals, widened.length);
+      assert.equal(lane.bridge.counters.filesWritten, 0);
+      assert.equal(lane.bridge.transferStarts.length, 0);
+      assert.equal(existsSync(join(lane.root, 'req-001.bin')), false);
     } finally {
       await lane.fixture.stop();
       rmSync(lane.root, { recursive: true, force: true });
