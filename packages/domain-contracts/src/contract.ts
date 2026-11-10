@@ -560,10 +560,7 @@ export function assertContractTransition(
         ),
       );
     }
-    if (
-      previous.status === 'CONFIRMED' &&
-      previous.confirmedAt !== next.confirmedAt
-    ) {
+    if (previous.status === 'CONFIRMED' && previous.confirmedAt !== next.confirmedAt) {
       diagnostics.push(
         diagnostic(
           'SCOPE_MUTATION',
