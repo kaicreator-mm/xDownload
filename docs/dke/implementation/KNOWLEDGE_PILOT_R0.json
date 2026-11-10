@@ -12,7 +12,7 @@
     "handoff_blob": "6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
     "formal_g5": "NOT_ACCEPTED"
   },
-  "classification": "BOUNDED_SOURCE_FIRST_AUTHOR_CANDIDATE_NOT_QUALIFIED",
+  "classification": "BOUNDED_SOURCE_FIRST_AUTHOR_CANDIDATE_WITH_CONFIRMED_CONTRACT_TRANSITION_REPAIR_NATIVE_UNEXECUTED",
   "source_provenance": {
     "original_revision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
     "read_sources": [
@@ -31,7 +31,21 @@
         "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026",
         "role": "TEST_DEFINITION_NOT_RUN"
       }
-    ]
+    ],
+    "author_scoped_repair": {
+      "finding_id": "XD04_CONFIRMED_CONTRACT_IDENTITY_REVERSION_AND_CONFIRMATION_RESTAMP",
+      "severity": "P1_CANDIDATE_SOURCE_FLOW_OBSERVED_NOT_NATIVE_VERIFIED",
+      "behavior": "assertContractTransition(previous,next) on same contract ID previously compared requestedScope, continuationScope and authorizationContextRef, but omitted previous CONFIRMED -> next DRAFT and confirmedAt change. A separately decoded contract with the same ID could erase/rewire the prior confirmation truth without requiring a successor.",
+      "original_contract_blob": "eb49defb40557ca9189daee20f6b3e1f475226b2",
+      "repaired_contract_blob": "b0a4f23ca0af97e402b6fb41e3c2079f32bec6b4",
+      "original_contract_test_blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026",
+      "new_contract_test_blob": "b6a0f51c63796dc70c1678f3af7816f3078b4a2c",
+      "change": "Same identity rejects previously CONFIRMED status reverting to DRAFT or confirmedAt changing, using existing SCOPE_MUTATION diagnostic. DRAFT -> CONFIRMED via confirmContract remains legal and same-state idempotent.",
+      "native_tests": "NOT_RUN",
+      "independent_review": "NOT_RUN",
+      "owner_decision": "NOT_RUN",
+      "scope_boundary": "No changes to provider traversal, transfer, result validation, DKE SAP or legal content rights"
+    }
   },
   "scope": {
     "included": "RequestedScope/ContinuationScope immutable confirmed acquisition, finite declared exploration, multidimensional transfer/content validation/organization boundaries",
@@ -41,12 +55,13 @@
     {
       "id": "XD01",
       "kind": "SCOPE_IMPLEMENTATION",
-      "status": "BOUNDED_CONTRACT_SUPPORTED_NOT_EXECUTED",
+      "status": "BOUNDED_SCOPE_AND_CONFIRMATION_HISTORY_REPAIR_SUBMITTED_UNEXECUTED",
       "statement": "Confirmed requestedScope and continuationScope have stable identity; a material mutation must derive a successor Contract. The v0.2.0 source and scoped test definitions describe this without proving all download adapters honor it.",
       "negative": "Same contract identity changes scope or budget change silently grants additional URLs.",
       "needed": [
         "Execute native scope mutation/successor negative and confirm CLI/runtime consumers do not bypass it",
-        "Re-pin v0.2.1/v0.2.2 actual Product scope before reuse as current production fact"
+        "Re-pin v0.2.1/v0.2.2 actual Product scope before reuse as current production fact",
+        "Execute same-contract confirmed→draft and confirmedAt restamp negative cases; confirm DRAFT→CONFIRMED positive and idempotent same ID"
       ]
     },
     {
@@ -113,8 +128,9 @@
     {
       "id": "CQ-XD01",
       "positive": "successor identity for scope increase with explicit user approval",
-      "negative": "same ID scope mutation or budget enlargement alters authorized members",
-      "state": "NOT_RUN"
+      "negative": "same ID scope mutation or budget enlargement alters authorized members; confirmed same-ID contract must not revert to DRAFT or restamp confirmedAt",
+      "state": "NOT_RUN",
+      "status": "TEST_DEFINITIONS_ADDED_NOT_RUN"
     },
     {
       "id": "CQ-XD02",
@@ -135,7 +151,8 @@
       "scope.ts continuation primitive",
       "actual acquisition/validation runtime effect",
       "ResultPolicy and end-user output",
-      "active version Product/SDK source"
+      "active version Product/SDK source",
+      "assertContractTransition confirmed status and confirmedAt semantic history"
     ],
     "impact": [
       "claim_assessments",
@@ -154,5 +171,5 @@
     "dis_eligible": false,
     "source_rights_external": "UNKNOWN"
   },
-  "next_action": "Source-first run scoped contract and result policy negatives, inspect runtime/installed paths, reconcile v0.2 historical PRD versus live versions, no K4/K5 claim without Owner source rights."
+  "next_action": "Native pnpm run test:unit -- packages/domain-contracts/test/contract-scope.test.ts (or actual vitest command) and typecheck at exact HEAD; independent original-source-first review of contract status lifecycle, restamping/successor semantics; Owner review before K4. Current typed contract does not prove real downloaded bytes or rights."
 }
