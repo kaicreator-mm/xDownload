@@ -1,0 +1,158 @@
+{
+  "schema": "devkit/dke-project-knowledge-pilot-r0",
+  "as_of": "2026-11-11",
+  "project": "xDownload",
+  "authority_issue": "https://github.com/kaicreator-mm/devkit/issues/7",
+  "method_owner": "https://github.com/kaicreator-mm/domain-forge/issues/209",
+  "preparation": {
+    "pr": "https://github.com/kaicreator-mm/xDownload/pull/398",
+    "head": "a92d140ea30a86571882fe584ffd9edf2c62d121",
+    "packet_blob": "960ceb9b25ae29b64aed188da3941a1504bb2e35",
+    "matrix_blob": "c4867a4dcf6bdfb7e5835e500432e1464b1becf1",
+    "handoff_blob": "6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+    "formal_g5": "NOT_ACCEPTED"
+  },
+  "classification": "BOUNDED_SOURCE_FIRST_AUTHOR_CANDIDATE_NOT_QUALIFIED",
+  "source_provenance": {
+    "original_revision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+    "read_sources": [
+      {
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89",
+        "role": "HISTORICAL_PRODUCT_V0_2_R0_FROZEN_FOR_ITS_SCOPE"
+      },
+      {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2",
+        "role": "IMPLEMENTATION_CONTRACT"
+      },
+      {
+        "path": "packages/domain-contracts/test/contract-scope.test.ts",
+        "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026",
+        "role": "TEST_DEFINITION_NOT_RUN"
+      }
+    ]
+  },
+  "scope": {
+    "included": "RequestedScope/ContinuationScope immutable confirmed acquisition, finite declared exploration, multidimensional transfer/content validation/organization boundaries",
+    "excluded": "real HTTP/file transfer, DRM bypass, copyright permission, downloaded artifact integrity, all release versions and DomainHarness SDK runtime"
+  },
+  "claim_assessments": [
+    {
+      "id": "XD01",
+      "kind": "SCOPE_IMPLEMENTATION",
+      "status": "BOUNDED_CONTRACT_SUPPORTED_NOT_EXECUTED",
+      "statement": "Confirmed requestedScope and continuationScope have stable identity; a material mutation must derive a successor Contract. The v0.2.0 source and scoped test definitions describe this without proving all download adapters honor it.",
+      "negative": "Same contract identity changes scope or budget change silently grants additional URLs.",
+      "needed": [
+        "Execute native scope mutation/successor negative and confirm CLI/runtime consumers do not bypass it",
+        "Re-pin v0.2.1/v0.2.2 actual Product scope before reuse as current production fact"
+      ]
+    },
+    {
+      "id": "XD02",
+      "kind": "FINITE_EXPLORATION_POLICY",
+      "status": "BOUNDED_CONTRACT_ONLY",
+      "statement": "contract.ts has finite ExplorationPermission enumerants NONE/COLLECTION_MEMBER_EDGES/DECLARED_CONTINUATION_EDGES; arbitrary crawler frontier not an admitted permission primitive. Not sufficient to prove all HTTP/discovery engines enforce the boundary.",
+      "negative": "Provider page supplies unrelated next URL and acquisition engine traverses it without confirmed continuation.",
+      "needed": [
+        "Run provider adapter negative and multiple-page redirect scope tests on exact HEAD",
+        "Check authentication/network/path confinement independently"
+      ]
+    },
+    {
+      "id": "XD03",
+      "kind": "MULTIDIMENSIONAL_RESULT_SEMANTICS",
+      "status": "RELEASE_EFFECT_NOT_PROVEN",
+      "statement": "ResultPolicy requires multidimensional result and separate transfer/content validation outcome; contract-scope.test.ts does not establish successful bytes, validation, organization or copyright permission. Product forbids synthetic COMPLETED.",
+      "negative": "Transfer 200/bytes fetched becomes COMPLETED despite bad media, failed organization, or no rights/source validation.",
+      "needed": [
+        "Find actual ResultPolicy/outcome tests and physical file receipts",
+        "Run native content verification/cancel/replay negative and rights policy Owner review"
+      ]
+    }
+  ],
+  "relation_candidate": {
+    "id": "REL-XD01",
+    "subject": "Acquisition.RequestedScope",
+    "predicate": "bounds_permitted_provider_continuation_without_granting_rights",
+    "object": "SourceProvider.Continuation",
+    "owner": "xDownload owns authorized finite request; providers and rights holders own external legal/source truth",
+    "status": "CANDIDATE"
+  },
+  "element_strategy_candidates": [
+    {
+      "id": "A",
+      "root": "AcquisitionContractKnowledge",
+      "children": [
+        "ConfirmedRequestedScope",
+        "FiniteContinuation",
+        "SuccessorContract",
+        "TransferResult",
+        "ValidationAndOrganization"
+      ],
+      "status": "PROPOSED"
+    },
+    {
+      "id": "B",
+      "root": "Acquisition",
+      "children": [
+        "IntentAndScope",
+        "ObservedAcquisition"
+      ],
+      "separate_contexts": [
+        "ProviderTraversal",
+        "ContentValidation",
+        "RightsAndPermission"
+      ],
+      "global": "NoSyntheticCompletedFromTransferAlone (conditional)",
+      "status": "COMPETING_PROPOSAL"
+    }
+  ],
+  "cq_worklist": [
+    {
+      "id": "CQ-XD01",
+      "positive": "successor identity for scope increase with explicit user approval",
+      "negative": "same ID scope mutation or budget enlargement alters authorized members",
+      "state": "NOT_RUN"
+    },
+    {
+      "id": "CQ-XD02",
+      "positive": "only declared member and continuation edges are traversable",
+      "negative": "arbitrary next/frontier URL is treated as scope authorization",
+      "state": "NOT_RUN"
+    },
+    {
+      "id": "CQ-XD03",
+      "positive": "transfer + validation + organization evidence available independently",
+      "negative": "download success/HTTP200 masquerades as validated accepted artifact or rights permission",
+      "state": "NOT_RUN"
+    }
+  ],
+  "incremental_invalidation": {
+    "triggers": [
+      "contract.ts scope and successor ABI",
+      "scope.ts continuation primitive",
+      "actual acquisition/validation runtime effect",
+      "ResultPolicy and end-user output",
+      "active version Product/SDK source"
+    ],
+    "impact": [
+      "claim_assessments",
+      "relation_candidate",
+      "element_strategy_candidates",
+      "cq_worklist"
+    ],
+    "replay": "NOT_RUN"
+  },
+  "qualification": {
+    "upstream_g5": "NOT_ACCEPTED",
+    "independent_k4": "NOT_RUN",
+    "native_tests": "NOT_RUN",
+    "owner": "NOT_RUN",
+    "sap_k5": "NOT_QUALIFIED",
+    "dis_eligible": false,
+    "source_rights_external": "UNKNOWN"
+  },
+  "next_action": "Source-first run scoped contract and result policy negatives, inspect runtime/installed paths, reconcile v0.2 historical PRD versus live versions, no K4/K5 claim without Owner source rights."
+}
