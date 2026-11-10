@@ -1,0 +1,593 @@
+{
+  "schema": "devkit/dke-relevant-source-shortlist-r3",
+  "date": "2026-11-11",
+  "project": "xDownload",
+  "reference_source_revision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+  "source_authority_warning": "PRODUCT_PRD_IS_REVIEW_CANDIDATE_NOT_FROZEN",
+  "product_doc": {
+    "path": "docs/product/PRD-v0.4.1-review-candidate.md",
+    "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+  },
+  "r1_representative_source_test_anchors": [
+    {
+      "path": "packages/domain-contracts/src/contract.ts",
+      "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+    },
+    {
+      "path": "packages/domain-contracts/test/contract-scope.test.ts",
+      "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+    }
+  ],
+  "method": "Domain-related path keywords applied to pinned full Git tree; shortlist cap 36 per semantic context, with R1 anchored source/test validated by Blob",
+  "candidate_groups": [
+    {
+      "context_candidate": "AcquisitionIntent",
+      "selector": "acquisition|intent|collection|single",
+      "matched_paths": 76,
+      "shortlist": [
+        {
+          "path": "apps/browser-extension/src/background/s5-group-intent.ts",
+          "blob": "0d2e91c62184fa8f8ea9f0885124bd0f9dd6128e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/browser-extension/src/background/s6-collection-batch.ts",
+          "blob": "13744dbb0b649e0bf75de326445f9fef9d58c9e0",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/browser-extension/src/background/s6-collection-intent.ts",
+          "blob": "3b2c419c7b4572c7a90fc016dbf02a9e7c6ae60e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/browser-extension/test/s5-group-intent.test.ts",
+          "blob": "c0d7fc707f1b958ced6cac0a27d2a7ee324a49f6",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/desktop/test/s1-direct-acquisition.test.ts",
+          "blob": "ef84651470a3a4ea073c0bf5777ed256746d2519",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/architecture/L2_S5_COLLECTION_EXECUTION_SUCCESSOR_v0.1.0.md",
+          "blob": "21d66cf932b1a9f362f8225487a1171eec812bec",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/S2_DELIVERED_ACQUISITION_LIMITS.md",
+          "blob": "24b1c9fff27ad9203b20acce8ad20fbbdd0a71e5",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T011_recipe-discovery-collection.md",
+          "blob": "2e4a3b178bb33a41ff8e47307a3915c4a0ca872d",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T016_browser-collection-integration.md",
+          "blob": "39e1e87c1126e3c7bf93d4e84d234fcc92cf0dc9",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/package.json",
+          "blob": "c92fff072658f56fe839ec5bd9e372b7c024da34",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/auth-lifecycle.ts",
+          "blob": "a454b43c39904b8678abc5207f3a9aa714fe0c26",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/collection-flow.ts",
+          "blob": "0595dff0c9f55cf94c0daad0d456aa6e975ebc8e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/continuation-lane.ts",
+          "blob": "9dc92ee0e0bd3996dcc186c333eee7aacc7883c8",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/index.ts",
+          "blob": "4705c4f53f3fadaa9c421a9292f5bea325b8d967",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s2-handoff.ts",
+          "blob": "7426c465f8d1300caeefa355e3ace0137e0a87db",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s2-installed-lane.ts",
+          "blob": "9459cde05a04f907e3c6c97e363950802ccf467e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s5-confirmed-group.ts",
+          "blob": "8c4b2b930dcd4e1583d6f951655afc7eebed079d",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s5-installed-execution.ts",
+          "blob": "5da6dfe397f62936378e34cae31296d6aa3db2a1",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s5-installed-lane.ts",
+          "blob": "50fda13cadc3282f9bbcd8c98ea65662211248ed",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s6-confirmed-collection.ts",
+          "blob": "ec36386a8026ebce3291498faab932f3d8dc6452",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s6-installed-execution.ts",
+          "blob": "dc6eeb6cba158b9aeb131b61afc0a18b8399dbae",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/src/s6-installed-lane.ts",
+          "blob": "b9abb6e8b95a07cc3414e0f23d3f66e1bfa7533d",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/auth-expiry.test.ts",
+          "blob": "42607494ff3c2167c6f671b6c5fe5b200bdc407a",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/continuation-rules.test.ts",
+          "blob": "aed1453b382d45629ad3c26632728932c90b3638",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/fixtures.ts",
+          "blob": "65e7f74c3a4ccd8e92eaa48afe2491cd0f276bc5",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/partial-truncated-unknown.test.ts",
+          "blob": "647f78ef50fff113376a2ec25600842cc7f8b396",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/provenance-redirects.test.ts",
+          "blob": "a6ec91db245969c8332826b36afda76d5374f817",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/real-browser-flows.test.ts",
+          "blob": "28027723018737b414aa394c37990f231840f8cf",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/restart-inheritance.test.ts",
+          "blob": "03703fa0170f604d4be87650d47b1256252feaa6",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/s2-handoff.test.ts",
+          "blob": "2f668278e7bba2ea0ab50ef3de056290ce30b040",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/s2-installed-lane.test.ts",
+          "blob": "0abb5adac180a2fc7431dbebca6abb47037cf0f7",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/s5-confirmed-core-flow.test.ts",
+          "blob": "539746f285afce01305c588ac687df084c7f15a5",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/s5-confirmed-group.test.ts",
+          "blob": "25391354243acdae0c7f74dc3c9bf04456f7dfdf",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/s5-current-page.test.ts",
+          "blob": "d1547d68daf44003496d9b7911847ceed8e191d3",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/s5-installed-execution.test.ts",
+          "blob": "d257ddccafb6988590bbf1cdb8e233666d36b68a",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/browser-collection-workflow/test/s5-installed-lane.test.ts",
+          "blob": "ade191a760dc3c4e6b0644d84f7fd2f179072bfb",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        }
+      ]
+    },
+    {
+      "context_candidate": "ScopeAndAuthorization",
+      "selector": "scope|authorization|permission|contract",
+      "matched_paths": 93,
+      "shortlist": [
+        {
+          "path": ".agent/execution/T001/EXECUTION_CONTRACT.md",
+          "blob": "a03ad6d298bfb0fc874dc689287b54aaa87da0b7",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T002/EXECUTION_CONTRACT.md",
+          "blob": "a2352348517ce537ae4cb0f398d79dfb2d0d81e9",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T003/EXECUTION_CONTRACT.md",
+          "blob": "4dc6e73b6620982e194b8cdf40aa848831113abf",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T004/EXECUTION_CONTRACT.md",
+          "blob": "6520a1b3265c26e77968db1172e7210394556acc",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T005/EXECUTION_CONTRACT.md",
+          "blob": "fd59b108effed82170f5058b98bd19c1eff067ee",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T006/EXECUTION_CONTRACT.md",
+          "blob": "5de1bc40040d3b3023db2229d4c6b0fb151f3c11",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T007/EXECUTION_CONTRACT.md",
+          "blob": "4fee89859cd42aa5995459434fe06284cb3dc7be",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T008/EXECUTION_CONTRACT.md",
+          "blob": "0c68eab54b8e1a42b3c884d4537d3e6792ff6a37",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T009/EXECUTION_CONTRACT.md",
+          "blob": "dde1fc35b6dfd33b54d69ea60d386b57f9196a30",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T010/EXECUTION_CONTRACT.md",
+          "blob": "75238d3fdd7be82afc4fdc3cd84df894d7ce56ab",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T011/EXECUTION_CONTRACT.md",
+          "blob": "2cb1ba67368e5bd9387b092b4a9da8c6d5efda54",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T012/EXECUTION_CONTRACT.md",
+          "blob": "b52aa1d7054d4b716120a1ae273b10931a5632c6",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T013/EXECUTION_CONTRACT.md",
+          "blob": "7afc9ac34ca25323df8cfd367fb3725d32104f64",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T014/EXECUTION_CONTRACT.md",
+          "blob": "dc68218bc0c78392960848a7404e9522d28a76e9",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T015/EXECUTION_CONTRACT.md",
+          "blob": "d4cc00b3d28f826c5528e0c388832584038a1466",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T016/EXECUTION_CONTRACT.md",
+          "blob": "c30e2bdd3e166652e620256023dda24e32ed9cf0",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T017/EXECUTION_CONTRACT.md",
+          "blob": "15d24e46d5469d1f59200144b34b84cae1a5acf3",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T018/EXECUTION_CONTRACT.md",
+          "blob": "3c5a48b26431372fcac26fa6dbe9a7eba03d83f8",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": ".agent/execution/T019/EXECUTION_CONTRACT.md",
+          "blob": "2495b00493e6765b0a9cdedc24aded69c7a2edab",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/browser-extension/src/domain-app/authorization-gate.ts",
+          "blob": "43e4d8dfbb0b44139a443af3ab16c245fe01e6c9",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/browser-extension/src/domain-app/authorization-request.ts",
+          "blob": "ecce5a6c81b71381dbacd2eab1c6f739e8cd468e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/browser-extension/src/domain-app/permission-gate.ts",
+          "blob": "b7bd2ad893cca7685bcbe67e8d58df898ff7f3c7",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/desktop-shell/src/main/shell-contract.ts",
+          "blob": "ad407287e47e4afab7b7a1a14a62e224d24229af",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/desktop/test/immutable-scope.test.ts",
+          "blob": "498039ce9290548a73c57640d7a7b355c71b6f51",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/architecture/L2_S4_SEAM12_CLOSED_COMMAND_CONTRACT_v0.1.0.md",
+          "blob": "b4b4c8833cc344ff3b5e2b46a711fd0a35b44301",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T002_canonical-domain-contracts.md",
+          "blob": "ca43f082a9ecf083b4ca755c2706809c5fab82f4",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/planning/STAGE1_PRODUCT_SCOPE_FREEZE.md",
+          "blob": "f59031f7aab8cda1a37c2b290db192ebeec421f4",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/planning/v0.2.0/PRODUCT_SCOPE_AMENDMENT_R1.md",
+          "blob": "bacbb316a7eb61d519d7142a5fdaa3e857c72862",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/ux/v0.2.2/UI_REBUILD_SCOPE_R0.md",
+          "blob": "277f80021169251d11ad67dd707ab357c8cf7506",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/converged-runtime/test/cross-surface-same-contract-status.test.ts",
+          "blob": "b96d8e09b77376189d123dd55556561e2c382434",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/core-seam/test/peer-authorization.test.ts",
+          "blob": "d2b5195d0d49ff92ffc76a4654a7662551f2e856",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/domain-contracts/package.json",
+          "blob": "bb27e9e2b45184ba04ef682547b41c84c37471ff",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/domain-contracts/src/budget.ts",
+          "blob": "9ee3b474fca597970f4dcc1f873230fdae811ac4",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/domain-contracts/src/coverage-accounting.ts",
+          "blob": "937e335152bad3035eb92557b6d8135e0c29d936",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "packages/domain-contracts/src/decode.ts",
+          "blob": "d33d7f5dc5d0ce0efd5cfae8a1a884288e08dd67",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        }
+      ]
+    },
+    {
+      "context_candidate": "TransferAndResult",
+      "selector": "transfer|download|result|validation|recipe",
+      "matched_paths": 202,
+      "shortlist": [
+        {
+          "path": ".agent/execution/T019/logs/03-vitest-results.json",
+          "blob": "1b10aaffe97a4d0577c8a04c81cb01d1f0ae55fe",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/cli/test/acceptance-vs-result.test.ts",
+          "blob": "6655a6d5a2d68c33fec1cf6d17278fba8662f14c",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "apps/cli/test/download.test.ts",
+          "blob": "e15f5f04c944cde52be85e22bdcccdef9c8f3797",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "build/evidence/windows-s1-direct-download.json",
+          "blob": "367842c6489932b2d163f69f293b91f75cc19c65",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T003_validation-harness-corpora.md",
+          "blob": "39c205ec8ee9ccd9b6f47eeca401ec1ee76c307e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T007_evidence-validation-result-projection.md",
+          "blob": "6f5dddfa89b8054bb1cca0e7a60bb5a194ede7be",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T008_direct-http-transfer.md",
+          "blob": "8e4135d31bf495915f98586ff958415a467e4d52",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T011_recipe-discovery-collection.md",
+          "blob": "2e4a3b178bb33a41ff8e47307a3915c4a0ca872d",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T020_core-recovery-validation.md",
+          "blob": "a799df822b4cd777bc62aa0e3979eeaadebddc2e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T021_browser-security-validation.md",
+          "blob": "acaa48d7b057fa7948703c48ec2c434f5d46cacb",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T022_product-critical-journey-validation.md",
+          "blob": "f67929835f5fa3809c9610fc72f62f5943c98e37",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/implementation/v0.1.0/task-packs/T025_hidden-validation.md",
+          "blob": "e91bc441ec66faec19de6e7d15304da90d419450",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/release/v0.2.1/hidden/HIDDEN_VALIDATION_R1.md",
+          "blob": "e37d6d7d7a7261b1220c80350f7b6e512f4973d0",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/browser/VALIDATION_BROWSER_R1.md",
+          "blob": "030cbc5c3f6ce58e1c6cc0a8662068b018651278",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/VALIDATION_CORE_R1.md",
+          "blob": "8267bacc7b84b29caa352922b9907745b5eacb86",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/drivers/child-readback.mjs",
+          "blob": "6b9ff647934871b37f73f67972365cef1a8651f9",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/drivers/sqlite-leg-probe.mjs",
+          "blob": "c1c78d1fbebe26ab45f9acfdd7929f18a2a62c7e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/drivers/v01-crash-restart-replay.test.ts",
+          "blob": "1a17bf0866fa8b29e0cb4523f29a304fe9c08ed9",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/drivers/v02-unknown-reconcile-abort.test.ts",
+          "blob": "7249c7cc79f08a0a64ac394226daae6fb2a27753",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/drivers/v04-no-double-grant.test.ts",
+          "blob": "c52e6c31862411eb410529e9818f1a6bd509fe65",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v01-run.log",
+          "blob": "a2960eb0eb934e9ee99929dfedf2e9773f12e775",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v02-run.log",
+          "blob": "18dff1f9f8183b205828bd174f3adf81002e135b",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v03-payload-test.log",
+          "blob": "3461ab3b9fa97575485e00eaede96f55f76da123",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v03-payloads-shasums.log",
+          "blob": "ce0882f623cf02179bb0e4e49a1fefaff1edef40",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v03-tamper-reject.log",
+          "blob": "5c41ded765bad852757ff4d1b1d0e1499eab533e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v03-vendor-shasums.log",
+          "blob": "d3f8c2aa994f5e3be0a07e8195c8c3433ae95c8b",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v04-run.log",
+          "blob": "dd93cfb72d45c9348cd5081c7f7cad39e104d8ab",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v05-cli-headless-isolated.log",
+          "blob": "91b5f199481d42ead825195e5be88676ed7ae332",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v05-lane-domain-app.log",
+          "blob": "0d81cb9f505aad153525aba12d0deef4dfbf4aaf",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v05-lane-domain-host.log",
+          "blob": "eab5a0056973cb036b203f07ee54a4230a63f556",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v05-lane-t10-harness.log",
+          "blob": "50f2ffd707959520f692c2e4abca09105d5c9194",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v05-lane-vitest-unit.log",
+          "blob": "3302a0dc98e5273be034b838454d86804904935e",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/core/evidence/v06-sqlite-leg-probe.log",
+          "blob": "57e3e465b196b0a9379564e1cc2ba9d2e4a777d1",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/platform/VALIDATION_PLATFORM_R1.md",
+          "blob": "952f11153fdf676428a1cc3f56e531ca104c1fe6",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.0/product/VALIDATION_PRODUCT_R1.md",
+          "blob": "33e8278c5f9d0d5c87a4814029ff3831c992e4ac",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        },
+        {
+          "path": "docs/validation/v0.2.1/browser/EVIDENCE.md",
+          "blob": "db0e239d59156c5d1ee64cfb302e8fb56816a8b1",
+          "review": "NOT_READ_CONTENT_BY_THIS_CATALOG"
+        }
+      ]
+    }
+  ],
+  "scope": "SC02_KNOWLEDGE_RELEVANCE_CANDIDATE",
+  "limitations": [
+    "Heuristic path matches are not content-reviewed",
+    "Some relevant business code may lack keywords",
+    "External domain sources/permission not yet admitted",
+    "Source version drift is reviewed separately"
+  ],
+  "qualification": "NOT_INDEPENDENTLY_ACCEPTED"
+}
