@@ -11,6 +11,7 @@ import {
   deriveSuccessorContract,
   sameScopeIdentity,
   validateScopeContinuationPair,
+  validateContractSemantics,
 } from '../src/index.ts';
 import {
   confirmedCollectionContract,
@@ -85,6 +86,37 @@ describe('immutable-requested-scope', () => {
     const newlyConfirmed = decodeOk(confirmContract(draft, '2026-10-04T02:00:00Z'));
     expect(assertContractTransition(draft, newlyConfirmed).ok).toBe(true);
     expect(assertContractTransition(newlyConfirmed, newlyConfirmed).ok).toBe(true);
+  });
+
+  it('direct confirmation cannot bypass ISO timestamp decoding semantics', () => {
+    const draft = decodeOk(
+      decodeAcquisitionContract(
+        rawCollectionContract({ status: 'DRAFT', confirmedAt: undefined }),
+      ),
+    );
+    const invalidTimes = [
+      'not-a-time',
+      '2026-10-04',
+      '2026-10-04T02:00:00',
+      '',
+    ];
+    for (const confirmedAt of invalidTimes) {
+      // confirmContract previously accepted any string because it never
+      // re-entered decodeAcquisitionContract after constructing the value.
+      expectCode(confirmContract(draft, confirmedAt), 'MALFORMED_REQUIRED_FIELD');
+      expectCode(
+        validateContractSemantics({
+          ...draft,
+          status: 'CONFIRMED',
+          confirmedAt,
+        }),
+        'MALFORMED_REQUIRED_FIELD',
+      );
+    }
+    const valid = decodeOk(confirmContract(draft, '2026-10-04T02:00:00Z'));
+    expect(valid.status).toBe('CONFIRMED');
+    expect(valid.confirmedAt).toBe('2026-10-04T02:00:00Z');
+    expect(Object.isFrozen(valid)).toBe(true);
   });
 
   it('continuation_scope is explicit and immutable after confirmation', () => {
