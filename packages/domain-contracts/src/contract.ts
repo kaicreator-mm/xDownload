@@ -488,6 +488,19 @@ export function validateContractSemantics(
       ),
     );
   }
+  if (contract.status === 'CONFIRMED' && contract.confirmedAt !== undefined) {
+    // Do not rely on the untrusted-input decoder alone: confirmContract
+    // constructs typed contracts directly and must enforce the same
+    // canonical ISO-8601 timestamp contract before freezing authority.
+    const timestamp = requireIsoTimestamp(
+      { confirmedAt: contract.confirmedAt },
+      'confirmedAt',
+      'contract',
+    );
+    if (!timestamp.ok) {
+      diagnostics.push(...timestamp.diagnostics);
+    }
+  }
   if (contract.status === 'DRAFT' && contract.confirmedAt !== undefined) {
     diagnostics.push(
       diagnostic(
