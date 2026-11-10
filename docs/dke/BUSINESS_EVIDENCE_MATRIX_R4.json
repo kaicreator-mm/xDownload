@@ -7,8 +7,8 @@
   "business_scope": "CURRENT_IMPL_WITH_HISTORICAL_UNFROZEN_PRD",
   "source_witness": {
     "product": {
-      "path": "docs/product/PRD-v0.4.1-review-candidate.md",
-      "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+      "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+      "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
     },
     "implementation": {
       "path": "packages/domain-contracts/src/contract.ts",
@@ -28,8 +28,8 @@
       "obligation": "Confirmed RequestedScope and ContinuationScope immutable; material change uses successor",
       "bounded_context": "CONTRACT_IMMUTABILITY",
       "doc": {
-        "path": "docs/product/PRD-v0.4.1-review-candidate.md",
-        "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
       },
       "code": {
         "path": "packages/domain-contracts/src/contract.ts",
@@ -49,8 +49,8 @@
       "obligation": "Exploration permission is only permitted finite edges not arbitrary crawler frontier",
       "bounded_context": "PERMISSION_BOUNDARY",
       "doc": {
-        "path": "docs/product/PRD-v0.4.1-review-candidate.md",
-        "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
       },
       "code": {
         "path": "packages/domain-contracts/src/contract.ts",
@@ -70,21 +70,19 @@
       "obligation": "Transfer, content validation and organization are separate outcomes",
       "bounded_context": "MULTIDIMENSIONAL_RESULT",
       "doc": {
-        "path": "docs/product/PRD-v0.4.1-review-candidate.md",
-        "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
       },
       "code": {
         "path": "packages/domain-contracts/src/contract.ts",
         "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
       },
-      "test": {
-        "path": "packages/domain-contracts/test/contract-scope.test.ts",
-        "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
-      },
-      "positive_witness": "SOURCE_PATH_AND_TEST_DEFINITION_PRESENT_NOT_EXECUTED",
+      "test": null,
+      "positive_witness": "PRODUCT_AND_IMPLEMENTATION_RESULT_POLICY_ONLY_TEST_SCOPE_GAP",
       "negative_proposal": "File downloaded does not imply valid media or copyright permission",
-      "review_state": "BOUNDED_SOURCE_OBSERVATION",
-      "professional_domain_fact": "NOT_ASSERTED"
+      "review_state": "CONTRACT_SCOPE_TEST_DOES_NOT_ASSERT_MULTIDIMENSIONAL_RESULT",
+      "professional_domain_fact": "NOT_ASSERTED",
+      "source_gap": "contract-scope.test.ts covers immutable scope and finite collection; claims about validated transfer result need separate ResultPolicy/outcome test witness"
     }
   ],
   "unreviewed": [
@@ -94,5 +92,47 @@
     "Runtime/real device E2E not claimed"
   ],
   "qualified_gates": "PENDING_REVIEW",
-  "preparation_value": "SC03_BOUNDED_MATRIX_NOW_HAS_3_CONCRETE_ROWS"
+  "preparation_value": "SC03_BOUNDED_MATRIX_NOW_HAS_3_CONCRETE_ROWS",
+  "product_authority_chain": [
+    {
+      "stage": "INITIAL_V0_1_FROZEN_PRODUCT",
+      "doc": {
+        "path": "docs/planning/STAGE1_PRODUCT_SCOPE_FREEZE.md",
+        "blob": "f59031f7aab8cda1a37c2b290db192ebeec421f4"
+      },
+      "frozen_subject": {
+        "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+        "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+      },
+      "comment": "Stage1 freeze receipt supersedes unfrozen candidate header; frozen PRD v0.4.2 replaces v0.4.1"
+    },
+    {
+      "stage": "V0_2_0_FROZEN_SCOPE",
+      "doc": {
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+      }
+    },
+    {
+      "stage": "V0_2_1_CANDIDATE_CLOSURE",
+      "doc": {
+        "path": "docs/release/v0.2.1/closure/VERSION_CLOSURE_R1.md",
+        "blob": "b9ef3102ab3b5ed0602b3dcd5b6f1e0bf744e614"
+      },
+      "comment": "Version closure from frozen candidate source != unlimited product release"
+    },
+    {
+      "stage": "V0_2_2_UI_WIP",
+      "doc": {
+        "path": "docs/ux/v0.2.2/UI_REBUILD_SCOPE_R0.md",
+        "blob": "277f80021169251d11ad67dd707ab357c8cf7506"
+      },
+      "comment": "UI change draft not product freeze"
+    }
+  ],
+  "author_side_b2": {
+    "review_id": 5847155892,
+    "independent": false,
+    "scope": "Replace historical unfrozen v0.4.1 PRD as current authority; record actual staged freeze and v0.2.x lifecycle. No product release invented"
+  }
 }
