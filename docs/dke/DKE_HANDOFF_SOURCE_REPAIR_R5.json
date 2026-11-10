@@ -21,6 +21,10 @@
         {
           "path": "packages/domain-contracts/test/contract-scope.test.ts",
           "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+        },
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
         }
       ],
       "applicability": {
@@ -54,6 +58,10 @@
         {
           "path": "packages/domain-contracts/test/contract-scope.test.ts",
           "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+        },
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
         }
       ],
       "applicability": {
@@ -73,7 +81,7 @@
     },
     {
       "id": "XD03",
-      "statement": "Transfer, content validation and organization are separate outcomes",
+      "statement": "Request fulfillment, acquisition and validation have distinct terminal dimensions; optional file organization cannot be inferred from successful transfer or result tuple",
       "kind": "IMPLEMENTATION_OR_PROJECT_POLICY_CANDIDATE",
       "sourceRefs": [
         {
@@ -83,6 +91,26 @@
         {
           "path": "packages/domain-contracts/src/contract.ts",
           "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+        },
+        {
+          "path": "packages/domain-contracts/src/result.ts",
+          "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e"
+        },
+        {
+          "path": "packages/domain-contracts/src/result-projector.ts",
+          "blob": "ef11880cad8702141e584c4dce1206511ea2f818"
+        },
+        {
+          "path": "packages/domain-contracts/test/result-combinations.test.ts",
+          "blob": "072c86c8ff68a16b42a5572b532ab0cd440d5e95"
+        },
+        {
+          "path": "packages/domain-contracts/test/t007-result-projector.test.ts",
+          "blob": "91dbd8ae73fefc71ceb2fd7b944decc3983066a9"
         }
       ],
       "applicability": {
@@ -91,13 +119,13 @@
         "externalFactClaim": false
       },
       "confidence": "SOURCE_WITNESS_ONLY_NOT_SEMANTICALLY_APPROVED",
-      "negativeFalsifier": "File downloaded does not imply valid media or copyright permission",
-      "positiveEvidencePlan": "Inspect the existing test definition and if required run it against the exact source revision; preserve terminal outcome; do not claim existing test executed",
+      "negativeFalsifier": "ACCEPTED request, completed transport or passed subset validation does not imply full fulfillment or organized output",
+      "positiveEvidencePlan": "Verify source/test definitions at their exact Git blobs; later execute targeted outcome tests with actual output receipt before claiming implementation behavior; organization requires separate operational evidence",
       "negativeEvidencePlan": "Inject the named counterexample, retain observed tool output and independent reviewer verdict",
       "whenSourceChanges": "Invalidate only consumer claims that cite the modified source Blob and matching context; keep history immutable",
-      "source_coverage": "CONTRACT_SCOPE_TEST_DOES_NOT_ASSERT_MULTIDIMENSIONAL_RESULT",
+      "source_coverage": "BOUNDED_TERMINAL_RESULT_MODEL_AND_TEST_DEFINITION_NOT_EXECUTED",
       "claim_qualification": "UNQUALIFIED_SCOPE_CORRECTED",
-      "source_gaps": "contract-scope.test.ts covers immutable scope and finite collection; claims about validated transfer result need separate ResultPolicy/outcome test witness",
+      "source_gaps": "Original contract-scope.test.ts covers requested/continuation scope only. result.ts/projector.ts and their tests model six terminal dimensions and forbidden success combinations, but test definitions were NOT executed in this review and none establish actual file organization, final persisted bytes or real native transfer.",
       "external_promotion_allowed": false
     }
   ],
@@ -148,16 +176,45 @@
     },
     {
       "id": "CQ3",
-      "question": "Within MULTIDIMENSIONAL_RESULT, how does transfer, content validation and organization are separate outcomes hold, and what evidence blocks the counterexample?",
+      "question": "What separate terminal acquisition, fulfillment, validation and coverage signals does the current Product require, and why does neither ACCEPTED nor these signals alone prove optional file organization?",
       "answerSource": {
-        "path": "packages/domain-contracts/src/contract.ts",
-        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        "path": "packages/domain-contracts/src/result.ts",
+        "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e"
       },
-      "counterexample": "File downloaded does not imply valid media or copyright permission",
+      "counterexample": "Submission ACCEPTED and a successful transfer cannot be promoted to validated complete fulfillment or a physically organized file without distinct actual verification receipts",
       "missingSourceVerdict": "UNKNOWN",
       "positiveFixture": "NOT_EXECUTED",
       "negativeFixture": "NOT_EXECUTED",
-      "independentReviewer": "NOT_ASSIGNED"
+      "independentReviewer": "NOT_ASSIGNED",
+      "answerSources": [
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6",
+          "role": "CURRENT_SELF_CONTAINED_PRODUCT_SCOPE"
+        },
+        {
+          "path": "packages/domain-contracts/src/result.ts",
+          "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e",
+          "role": "TERMINAL_RESULT_SCHEMA"
+        },
+        {
+          "path": "packages/domain-contracts/src/result-projector.ts",
+          "blob": "ef11880cad8702141e584c4dce1206511ea2f818",
+          "role": "DETERMINISTIC_RESULT_PROJECTION"
+        },
+        {
+          "path": "packages/domain-contracts/test/result-combinations.test.ts",
+          "blob": "072c86c8ff68a16b42a5572b532ab0cd440d5e95",
+          "role": "NEGATIVE_TEST_DEFINITIONS_NOT_EXECUTED"
+        },
+        {
+          "path": "packages/domain-contracts/test/t007-result-projector.test.ts",
+          "blob": "91dbd8ae73fefc71ceb2fd7b944decc3983066a9",
+          "role": "DETERMINISTIC_RESULT_TEST_DEFINITIONS_NOT_EXECUTED"
+        }
+      ],
+      "sourceCoverage": "SOURCE_AND_TEST_DEFINITIONS_GROUNDED_NO_NATIVE_EXECUTION",
+      "unverified": "Actual transferred bytes, independent validation outcome, filesystem organization and true external source permission remain unverified"
     }
   ],
   "external_oracle": {
@@ -169,7 +226,7 @@
   "review_receipt_kind": "AUTHOR_SIDE_B2_COMMENT_REVIEW_NOT_INDEPENDENT",
   "review_id": 5847155892,
   "formal_g1_g5_accepted": false,
-  "review_status": "REPAIR_COMPLETED_INDEPENDENT_RECHECK_PENDING",
+  "review_status": "R14_SOURCE_REPAIR_COMPLETE_FINAL_INDEPENDENT_RECHECK_PENDING",
   "authority_chain": [
     {
       "stage": "INITIAL_V0_1_FROZEN_PRODUCT",
@@ -207,5 +264,22 @@
       "comment": "UI change draft not product freeze"
     }
   ],
-  "note": "This repair corrects old source evidence links and does not qualify professional/industry knowledge, product release or runtime effect."
+  "note": "This repair corrects old source evidence links and does not qualify professional/industry knowledge, product release or runtime effect.",
+  "r14_independent_technical_review_repair": {
+    "finding": "XD-R14-01",
+    "severity": "P2",
+    "stage0Comment": 6780146092,
+    "stage1FindingComment": 6780227341,
+    "baselineHead": "a92d140ea30a86571882fe584ffd9edf2c62d121",
+    "status": "REPAIRED_CQ3_RESULT_PROVENANCE_AND_PRODUCT_REVISION",
+    "currentProduct": {
+      "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+      "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+    },
+    "strictIndependentReview": false,
+    "reviewerRepairerIndependence": "NOT_ATTESTED",
+    "formalG1G5Accepted": false,
+    "noTestExecution": true,
+    "organizationStillUnknown": true
+  }
 }
