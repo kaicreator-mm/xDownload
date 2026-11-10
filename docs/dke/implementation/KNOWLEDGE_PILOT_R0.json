@@ -37,14 +37,26 @@
       "severity": "P1_CANDIDATE_SOURCE_FLOW_OBSERVED_NOT_NATIVE_VERIFIED",
       "behavior": "assertContractTransition(previous,next) on same contract ID previously compared requestedScope, continuationScope and authorizationContextRef, but omitted previous CONFIRMED -> next DRAFT and confirmedAt change. A separately decoded contract with the same ID could erase/rewire the prior confirmation truth without requiring a successor.",
       "original_contract_blob": "eb49defb40557ca9189daee20f6b3e1f475226b2",
-      "repaired_contract_blob": "b0a4f23ca0af97e402b6fb41e3c2079f32bec6b4",
+      "repaired_contract_blob": "7eb208e8b0d46e5be14835b1e96bcc62a336cab3",
       "original_contract_test_blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026",
-      "new_contract_test_blob": "b6a0f51c63796dc70c1678f3af7816f3078b4a2c",
+      "new_contract_test_blob": "901a30b6c3389bb2a435eb9d3e75afa2e295ec96",
       "change": "Same identity rejects previously CONFIRMED status reverting to DRAFT or confirmedAt changing, using existing SCOPE_MUTATION diagnostic. DRAFT -> CONFIRMED via confirmContract remains legal and same-state idempotent.",
       "native_tests": "NOT_RUN",
       "independent_review": "NOT_RUN",
       "owner_decision": "NOT_RUN",
-      "scope_boundary": "No changes to provider traversal, transfer, result validation, DKE SAP or legal content rights"
+      "scope_boundary": "No changes to provider traversal, transfer, result validation, DKE SAP or legal content rights",
+      "follow_up": {
+        "finding_id": "XD05_TYPED_CONFIRMATION_BYPASSES_CANONICAL_TIMESTAMP",
+        "severity": "P2_SOURCE_CONFIRMED_NATIVE_NOT_RUN",
+        "original_behavior": "decodeAcquisitionContract validates ISO confirmedAt, but confirmContract(draft, confirmedAt) constructs a typed confirmed value and only checks nonundefined confirmedAt. Values 'not-a-time' and '2026-10-04' could be frozen as valid confirmation despite decoder rejecting them.",
+        "repair": "validateContractSemantics now reuses requireIsoTimestamp for any confirmed value, applying the same source-bound validation to direct confirmContract and typed construction; previous canonical decode remains unchanged.",
+        "code_blob": "7eb208e8b0d46e5be14835b1e96bcc62a336cab3",
+        "test_blob": "901a30b6c3389bb2a435eb9d3e75afa2e295ec96",
+        "new_test": "four malformed confirmation time strings rejected by confirmContract and validateContractSemantics, canonical ISO UTC accepted and result frozen",
+        "native_run": "NOT_RUN",
+        "independent_review": "NOT_RUN",
+        "owner_decision": "NOT_RUN"
+      }
     }
   },
   "scope": {
@@ -128,9 +140,9 @@
     {
       "id": "CQ-XD01",
       "positive": "successor identity for scope increase with explicit user approval",
-      "negative": "same ID scope mutation or budget enlargement alters authorized members; confirmed same-ID contract must not revert to DRAFT or restamp confirmedAt",
+      "negative": "same ID scope mutation or budget enlargement alters authorized members; confirmed same-ID contract must not revert to DRAFT or restamp confirmedAt; malformed confirmedAt in direct confirmContract must fail with MALFORMED_REQUIRED_FIELD rather than freeze authority",
       "state": "NOT_RUN",
-      "status": "TEST_DEFINITIONS_ADDED_NOT_RUN"
+      "status": "SOURCE_GUARDS_AND_TEST_DEFINITIONS_ADDED_NATIVE_NOT_RUN"
     },
     {
       "id": "CQ-XD02",
@@ -152,7 +164,8 @@
       "actual acquisition/validation runtime effect",
       "ResultPolicy and end-user output",
       "active version Product/SDK source",
-      "assertContractTransition confirmed status and confirmedAt semantic history"
+      "assertContractTransition confirmed status and confirmedAt semantic history",
+      "confirmContract direct construction and validateContractSemantics timestamp validation parity"
     ],
     "impact": [
       "claim_assessments",
@@ -171,5 +184,5 @@
     "dis_eligible": false,
     "source_rights_external": "UNKNOWN"
   },
-  "next_action": "Native pnpm run test:unit -- packages/domain-contracts/test/contract-scope.test.ts (or actual vitest command) and typecheck at exact HEAD; independent original-source-first review of contract status lifecycle, restamping/successor semantics; Owner review before K4. Current typed contract does not prove real downloaded bytes or rights."
+  "next_action": "Run native pnpm run test:unit -- packages/domain-contracts/test/contract-scope.test.ts + pnpm typecheck at current PR SHA; independent original-first review of typed direct confirmation and same-ID history guard, Owner policy. This does not prove actual transfer/rights."
 }
