@@ -2,7 +2,7 @@
   "schema": "devkit/dke-project-knowledge-pilot-r0",
   "as_of": "2026-11-11",
   "project": "xDownload",
-  "authority_issue": "https://github.com/kaicreator-mm/devkit/issues/7",
+  "authority_issue": "https://github.com/kaicreator-mm/domain-intelligence-engineering/issues/9",
   "method_owner": "https://github.com/kaicreator-mm/domain-forge/issues/209",
   "preparation": {
     "pr": "https://github.com/kaicreator-mm/xDownload/pull/398",
@@ -69,7 +69,7 @@
       "kind": "SCOPE_IMPLEMENTATION",
       "status": "XD04_XD05_FRESH_INDEPENDENT_REVIEW_AND_NATIVE_PASS",
       "statement": "Confirmed requestedScope and continuationScope have stable identity; a material mutation must derive a successor Contract. The v0.2.0 source and scoped test definitions describe this without proving all download adapters honor it.",
-      "negative": "Same contract identity changes scope or budget change silently grants additional URLs.",
+      "negative": "Same contract identity changes authorized requestedScope, or an adapter treats a larger budget as authorization to collect additional URLs without an explicitly authorized successor scope.",
       "needed": [
         "Execute native scope mutation/successor negative and confirm CLI/runtime consumers do not bypass it",
         "Re-pin v0.2.1/v0.2.2 actual Product scope before reuse as current production fact",
@@ -188,7 +188,7 @@
     "formal_k4c": "NOT_RUN",
     "k4_complete": false
   },
-  "next_action": "Run native pnpm run test:unit -- packages/domain-contracts/test/contract-scope.test.ts + pnpm typecheck at current PR SHA; independent original-first review of typed direct confirmation and same-ID history guard, Owner policy. This does not prove actual transfer/rights.",
+  "next_action": "Native scoped/full regression and typecheck were executed on source-equivalent formatted code at 8a0a8ee60966d928d7b1bcd43ff407752bf8fc8f (11/11 focused; 2559 full PASS; typecheck/lint/format EXIT=0). Do not rerun only for this docs-only change. Obtain an independent final-code/Blob review and Owner dispositions O1–O4; full K4/K5/Closure remain blocked pending Owner/SAP.",
   "native_execution": {
     "state": "K4A_AND_K4B_PASS_K4C_PENDING",
     "tested_exact_head": "8a0a8ee60966d928d7b1bcd43ff407752bf8fc8f",
