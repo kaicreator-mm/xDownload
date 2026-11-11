@@ -488,6 +488,19 @@ export function validateContractSemantics(
       ),
     );
   }
+  if (contract.status === 'CONFIRMED' && contract.confirmedAt !== undefined) {
+    // Do not rely on the untrusted-input decoder alone: confirmContract
+    // constructs typed contracts directly and must enforce the same
+    // canonical ISO-8601 timestamp contract before freezing authority.
+    const timestamp = requireIsoTimestamp(
+      { confirmedAt: contract.confirmedAt },
+      'confirmedAt',
+      'contract',
+    );
+    if (!timestamp.ok) {
+      diagnostics.push(...timestamp.diagnostics);
+    }
+  }
   if (contract.status === 'DRAFT' && contract.confirmedAt !== undefined) {
     diagnostics.push(
       diagnostic(
@@ -534,6 +547,29 @@ export function assertContractTransition(
 ): DomainValidationResult<void> {
   if (previous.contractId === next.contractId) {
     const diagnostics: ValidationDiagnostic[] = [];
+    // Confirmation is a one-way, time-stamped authority transition.
+    // A decoded DRAFT cannot erase a previously confirmed contract's
+    // identity/authorization history by reusing the contract ID.
+    if (previous.status === 'CONFIRMED' && next.status !== 'CONFIRMED') {
+      diagnostics.push(
+        diagnostic(
+          'SCOPE_MUTATION',
+          'contract.status',
+          'a confirmed contract cannot revert to draft under the same identity',
+          'PRD-§8',
+        ),
+      );
+    }
+    if (previous.status === 'CONFIRMED' && previous.confirmedAt !== next.confirmedAt) {
+      diagnostics.push(
+        diagnostic(
+          'SCOPE_MUTATION',
+          'contract.confirmedAt',
+          'the confirmation timestamp cannot be rewritten under the same identity',
+          'PRD-§8',
+        ),
+      );
+    }
     if (!sameScopeIdentity(previous.requestedScope, next.requestedScope)) {
       diagnostics.push(
         diagnostic(

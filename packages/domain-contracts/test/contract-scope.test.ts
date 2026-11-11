@@ -11,6 +11,7 @@ import {
   deriveSuccessorContract,
   sameScopeIdentity,
   validateScopeContinuationPair,
+  validateContractSemantics,
 } from '../src/index.ts';
 import {
   confirmedCollectionContract,
@@ -55,6 +56,54 @@ describe('immutable-requested-scope', () => {
     expect(successor.supersedesContractId).toBe(contract.contractId);
     // original remains untouched historical authority
     expect(contract.requestedScope.kind).toBe('entire_supported_collection');
+  });
+
+  it('confirmed contract identity cannot revert to DRAFT or rewrite confirmation time', () => {
+    const confirmed = confirmedCollectionContract();
+    const downgraded = decodeOk(
+      decodeAcquisitionContract(rawCollectionContract({ status: 'DRAFT', confirmedAt: undefined })),
+    );
+    // Reusing the confirmed ID with an otherwise unchanged scope must not
+    // erase the confirmation boundary or re-open acquisition authorizations.
+    expect(downgraded.contractId).toBe(confirmed.contractId);
+    expectCode(assertContractTransition(confirmed, downgraded), 'SCOPE_MUTATION', 'PRD-§8');
+
+    const restamped = decodeOk(
+      decodeAcquisitionContract(rawCollectionContract({ confirmedAt: '2026-10-05T00:00:00Z' })),
+    );
+    expectCode(assertContractTransition(confirmed, restamped), 'SCOPE_MUTATION', 'PRD-§8');
+
+    // Valid one-way confirmation keeps the identity and is not a successor.
+    const draft = decodeOk(
+      decodeAcquisitionContract(rawCollectionContract({ status: 'DRAFT', confirmedAt: undefined })),
+    );
+    const newlyConfirmed = decodeOk(confirmContract(draft, '2026-10-04T02:00:00Z'));
+    expect(assertContractTransition(draft, newlyConfirmed).ok).toBe(true);
+    expect(assertContractTransition(newlyConfirmed, newlyConfirmed).ok).toBe(true);
+  });
+
+  it('direct confirmation cannot bypass ISO timestamp decoding semantics', () => {
+    const draft = decodeOk(
+      decodeAcquisitionContract(rawCollectionContract({ status: 'DRAFT', confirmedAt: undefined })),
+    );
+    const invalidTimes = ['not-a-time', '2026-10-04', '2026-10-04T02:00:00', ''];
+    for (const confirmedAt of invalidTimes) {
+      // confirmContract previously accepted any string because it never
+      // re-entered decodeAcquisitionContract after constructing the value.
+      expectCode(confirmContract(draft, confirmedAt), 'MALFORMED_REQUIRED_FIELD');
+      expectCode(
+        validateContractSemantics({
+          ...draft,
+          status: 'CONFIRMED',
+          confirmedAt,
+        }),
+        'MALFORMED_REQUIRED_FIELD',
+      );
+    }
+    const valid = decodeOk(confirmContract(draft, '2026-10-04T02:00:00Z'));
+    expect(valid.status).toBe('CONFIRMED');
+    expect(valid.confirmedAt).toBe('2026-10-04T02:00:00Z');
+    expect(Object.isFrozen(valid)).toBe(true);
   });
 
   it('continuation_scope is explicit and immutable after confirmation', () => {
