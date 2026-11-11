@@ -12,7 +12,7 @@
     "handoff_blob": "6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
     "formal_g5": "NOT_ACCEPTED"
   },
-  "classification": "BOUNDED_SOURCE_FIRST_AUTHOR_CANDIDATE_WITH_CONFIRMED_CONTRACT_TRANSITION_REPAIR_NATIVE_UNEXECUTED",
+  "classification": "BOUNDED_SOURCE_FIRST_XD04_XD05_INDEPENDENT_REVIEW_NATIVE_PASS_OWNER_PENDING",
   "source_provenance": {
     "original_revision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
     "read_sources": [
@@ -67,7 +67,7 @@
     {
       "id": "XD01",
       "kind": "SCOPE_IMPLEMENTATION",
-      "status": "BOUNDED_SCOPE_AND_CONFIRMATION_HISTORY_REPAIR_SUBMITTED_UNEXECUTED",
+      "status": "XD04_XD05_FRESH_INDEPENDENT_REVIEW_AND_NATIVE_PASS",
       "statement": "Confirmed requestedScope and continuationScope have stable identity; a material mutation must derive a successor Contract. The v0.2.0 source and scoped test definitions describe this without proving all download adapters honor it.",
       "negative": "Same contract identity changes scope or budget change silently grants additional URLs.",
       "needed": [
@@ -142,7 +142,7 @@
       "positive": "successor identity for scope increase with explicit user approval",
       "negative": "same ID scope mutation or budget enlargement alters authorized members; confirmed same-ID contract must not revert to DRAFT or restamp confirmedAt; malformed confirmedAt in direct confirmContract must fail with MALFORMED_REQUIRED_FIELD rather than freeze authority",
       "state": "NOT_RUN",
-      "status": "SOURCE_GUARDS_AND_TEST_DEFINITIONS_ADDED_NATIVE_NOT_RUN"
+      "status": "NATIVE_11_OF_11_TARGETED_PASS_FULL_2559_PASS_FORMAT_LINT_TYPECHECK_PASS"
     },
     {
       "id": "CQ-XD02",
@@ -177,12 +177,38 @@
   },
   "qualification": {
     "upstream_g5": "NOT_ACCEPTED",
-    "independent_k4": "NOT_RUN",
-    "native_tests": "NOT_RUN",
+    "independent_k4": "PASS_FRESH_SOURCE_FIRST_REVIEW_XD04_XD05",
+    "native_tests": "PASS_EXACT_HEAD_8A0A8EE",
     "owner": "NOT_RUN",
     "sap_k5": "NOT_QUALIFIED",
     "dis_eligible": false,
-    "source_rights_external": "UNKNOWN"
+    "source_rights_external": "UNKNOWN",
+    "formal_k4a": "PASS",
+    "formal_k4b": "PASS",
+    "formal_k4c": "NOT_RUN",
+    "k4_complete": false
   },
-  "next_action": "Run native pnpm run test:unit -- packages/domain-contracts/test/contract-scope.test.ts + pnpm typecheck at current PR SHA; independent original-first review of typed direct confirmation and same-ID history guard, Owner policy. This does not prove actual transfer/rights."
+  "next_action": "Run native pnpm run test:unit -- packages/domain-contracts/test/contract-scope.test.ts + pnpm typecheck at current PR SHA; independent original-first review of typed direct confirmation and same-ID history guard, Owner policy. This does not prove actual transfer/rights.",
+  "native_execution": {
+    "state": "K4A_AND_K4B_PASS_K4C_PENDING",
+    "tested_exact_head": "8a0a8ee60966d928d7b1bcd43ff407752bf8fc8f",
+    "independent_receipt": "https://github.com/kaicreator-mm/xDownload/pull/400#issuecomment-6780997851",
+    "native_receipt": "https://github.com/kaicreator-mm/xDownload/pull/400#issuecomment-6781315467",
+    "focused": "pnpm exec vitest run packages/domain-contracts/test/contract-scope.test.ts: 11/11 PASS EXIT=0",
+    "full": "pnpm run test:unit: 226/226 files, 2559 passed EXIT=0",
+    "typecheck": "pnpm typecheck EXIT=0",
+    "lint": "pnpm run lint EXIT=0",
+    "format": "pnpm run format:check EXIT=0",
+    "environment": "Node 24.21.0, pnpm 12.8.1, win32-x64",
+    "owner": "NOT_RUN O1-O4",
+    "external_transfer": "NOT_PROVEN",
+    "rights": "UNKNOWN"
+  },
+  "next": "K4a source-first and K4b native receipts already pass at exact code SHA; do not repeat. Obtain Owner dispositions for O1-O4 (confirmation invariant attribution/scope, XD01 wording, native-host manifest O4) and keep K4 complete/K5 blocked until K4c/SAP gates.",
+  "evidence_sync": {
+    "source_candidate_updated_from_native_receipt": true,
+    "tested_exact_head": "8a0a8ee60966d928d7b1bcd43ff407752bf8fc8f",
+    "source_and_test_blobs_unchanged": true,
+    "scope": "DOCS_ONLY_QUALIFICATION_RECEIPT_SYNC"
+  }
 }
