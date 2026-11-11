@@ -1,3 +1,5 @@
+> **HISTORICAL / SUPERSEDED — R18 XD-R18-01 repair.** The current reviewer packet is [PREPARATION_REVIEW_PACKET_R5.md](PREPARATION_REVIEW_PACKET_R5.md), and the current evidence matrix is [BUSINESS_EVIDENCE_MATRIX_R5.json](BUSINESS_EVIDENCE_MATRIX_R5.json). The current source-bound Claim/CQ handoff remains [DKE_HANDOFF_SOURCE_REPAIR_R5.json](DKE_HANDOFF_SOURCE_REPAIR_R5.json). This R4 packet is retained for historical traceability; do not treat its R4 matrix or candidate links as current.
+
 # xDownload — DKE Preparation R4 Reviewer Packet
 
 > [devkit #5](https://github.com/kaicreator-mm/devkit/issues/5), 2026-11-11. **REVIEWABLE RESEARCH INPUT, NOT VERIFIED DOMAIN KNOWLEDGE, NOT OFFICIALLY ACCEPTED.** Research base pinned to `e904f08c478b15147b1c07fbe53c610d2d81851f`; corrected active version must be checked separately.
