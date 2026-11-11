@@ -1,0 +1,285 @@
+{
+  "schema": "devkit/dke-handoff-source-repair-r5",
+  "project": "xDownload",
+  "based_on": "docs/dke/DKE_HANDOFF_CANDIDATE_R4.json",
+  "source_revision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+  "source_bound_scope": "PRODUCT_AND_SOURCE_POLICY_CANDIDATE_ONLY",
+  "claims": [
+    {
+      "id": "XD01",
+      "statement": "Confirmed RequestedScope and ContinuationScope immutable; material change uses successor",
+      "kind": "PRODUCT_CONTRACT",
+      "sourceRefs": [
+        {
+          "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+          "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+        },
+        {
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "path": "packages/domain-contracts/test/contract-scope.test.ts",
+          "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+        },
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+        }
+      ],
+      "applicability": {
+        "sourceRevision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+        "boundedContext": "CONTRACT_IMMUTABILITY",
+        "externalFactClaim": false
+      },
+      "confidence": "SOURCE_WITNESS_ONLY_NOT_SEMANTICALLY_APPROVED",
+      "negativeFalsifier": "Budget extension cannot silently expand authorized collection",
+      "positiveEvidencePlan": "Inspect the existing test definition and if required run it against the exact source revision; preserve terminal outcome; do not claim existing test executed",
+      "negativeEvidencePlan": "Inject the named counterexample, retain observed tool output and independent reviewer verdict",
+      "whenSourceChanges": "Invalidate only consumer claims that cite the modified source Blob and matching context; keep history immutable",
+      "source_coverage": "BOUNDED_SOURCE_OBSERVATION",
+      "claim_qualification": "UNQUALIFIED_SCOPE_CORRECTED",
+      "source_gaps": null,
+      "external_promotion_allowed": false
+    },
+    {
+      "id": "XD02",
+      "statement": "Exploration permission is only permitted finite edges not arbitrary crawler frontier",
+      "kind": "IMPLEMENTATION_OR_PROJECT_POLICY_CANDIDATE",
+      "sourceRefs": [
+        {
+          "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+          "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+        },
+        {
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "path": "packages/domain-contracts/test/contract-scope.test.ts",
+          "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+        },
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+        }
+      ],
+      "applicability": {
+        "sourceRevision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+        "boundedContext": "PERMISSION_BOUNDARY",
+        "externalFactClaim": false
+      },
+      "confidence": "SOURCE_WITNESS_ONLY_NOT_SEMANTICALLY_APPROVED",
+      "negativeFalsifier": "Any URL frontier as a scope primitive must be rejected",
+      "positiveEvidencePlan": "Inspect the existing test definition and if required run it against the exact source revision; preserve terminal outcome; do not claim existing test executed",
+      "negativeEvidencePlan": "Inject the named counterexample, retain observed tool output and independent reviewer verdict",
+      "whenSourceChanges": "Invalidate only consumer claims that cite the modified source Blob and matching context; keep history immutable",
+      "source_coverage": "BOUNDED_SOURCE_OBSERVATION",
+      "claim_qualification": "UNQUALIFIED_SCOPE_CORRECTED",
+      "source_gaps": null,
+      "external_promotion_allowed": false
+    },
+    {
+      "id": "XD03",
+      "statement": "Request fulfillment, acquisition and validation have distinct terminal dimensions; optional file organization cannot be inferred from successful transfer or result tuple",
+      "kind": "IMPLEMENTATION_OR_PROJECT_POLICY_CANDIDATE",
+      "sourceRefs": [
+        {
+          "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+          "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+        },
+        {
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+        },
+        {
+          "path": "packages/domain-contracts/src/result.ts",
+          "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e"
+        },
+        {
+          "path": "packages/domain-contracts/src/result-projector.ts",
+          "blob": "ef11880cad8702141e584c4dce1206511ea2f818"
+        },
+        {
+          "path": "packages/domain-contracts/test/result-combinations.test.ts",
+          "blob": "072c86c8ff68a16b42a5572b532ab0cd440d5e95"
+        },
+        {
+          "path": "packages/domain-contracts/test/t007-result-projector.test.ts",
+          "blob": "91dbd8ae73fefc71ceb2fd7b944decc3983066a9"
+        }
+      ],
+      "applicability": {
+        "sourceRevision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+        "boundedContext": "MULTIDIMENSIONAL_RESULT",
+        "externalFactClaim": false
+      },
+      "confidence": "SOURCE_WITNESS_ONLY_NOT_SEMANTICALLY_APPROVED",
+      "negativeFalsifier": "ACCEPTED request, completed transport or passed subset validation does not imply full fulfillment or organized output",
+      "positiveEvidencePlan": "Verify source/test definitions at their exact Git blobs; later execute targeted outcome tests with actual output receipt before claiming implementation behavior; organization requires separate operational evidence",
+      "negativeEvidencePlan": "Inject the named counterexample, retain observed tool output and independent reviewer verdict",
+      "whenSourceChanges": "Invalidate only consumer claims that cite the modified source Blob and matching context; keep history immutable",
+      "source_coverage": "BOUNDED_TERMINAL_RESULT_MODEL_AND_TEST_DEFINITION_NOT_EXECUTED",
+      "claim_qualification": "UNQUALIFIED_SCOPE_CORRECTED",
+      "source_gaps": "Original contract-scope.test.ts covers requested/continuation scope only. result.ts/projector.ts and their tests model six terminal dimensions and forbidden success combinations, but test definitions were NOT executed in this review and none establish actual file organization, final persisted bytes or real native transfer.",
+      "external_promotion_allowed": false
+    }
+  ],
+  "relation": {
+    "subject": "Acquisition.RequestedScope",
+    "object": "SourceProvider.Continuation",
+    "predicate": "bounds_navigation_permission",
+    "authority": "xDownload owns finite request; provider/rights holder owns external permission",
+    "sourceRef": {
+      "path": "packages/domain-contracts/src/contract.ts",
+      "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+    },
+    "qualification": "REQUIRES_SEMANTIC_CRITIC",
+    "sourceRefs": [
+      {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      }
+    ],
+    "status": "AUTHORIZATION_BOUNDARY_CANDIDATE_ONLY"
+  },
+  "cq_proposals": [
+    {
+      "id": "CQ1",
+      "question": "Within CONTRACT_IMMUTABILITY, how does confirmed requestedscope and continuationscope immutable; material change uses successor hold, and what evidence blocks the counterexample?",
+      "answerSource": {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      },
+      "counterexample": "Budget extension cannot silently expand authorized collection",
+      "missingSourceVerdict": "UNKNOWN",
+      "positiveFixture": "NOT_EXECUTED",
+      "negativeFixture": "NOT_EXECUTED",
+      "independentReviewer": "NOT_ASSIGNED"
+    },
+    {
+      "id": "CQ2",
+      "question": "Within PERMISSION_BOUNDARY, how does exploration permission is only permitted finite edges not arbitrary crawler frontier hold, and what evidence blocks the counterexample?",
+      "answerSource": {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      },
+      "counterexample": "Any URL frontier as a scope primitive must be rejected",
+      "missingSourceVerdict": "UNKNOWN",
+      "positiveFixture": "NOT_EXECUTED",
+      "negativeFixture": "NOT_EXECUTED",
+      "independentReviewer": "NOT_ASSIGNED"
+    },
+    {
+      "id": "CQ3",
+      "question": "What separate terminal acquisition, fulfillment, validation and coverage signals does the current Product require, and why does neither ACCEPTED nor these signals alone prove optional file organization?",
+      "answerSource": {
+        "path": "packages/domain-contracts/src/result.ts",
+        "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e"
+      },
+      "counterexample": "Submission ACCEPTED and a successful transfer cannot be promoted to validated complete fulfillment or a physically organized file without distinct actual verification receipts",
+      "missingSourceVerdict": "UNKNOWN",
+      "positiveFixture": "NOT_EXECUTED",
+      "negativeFixture": "NOT_EXECUTED",
+      "independentReviewer": "NOT_ASSIGNED",
+      "answerSources": [
+        {
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6",
+          "role": "CURRENT_SELF_CONTAINED_PRODUCT_SCOPE"
+        },
+        {
+          "path": "packages/domain-contracts/src/result.ts",
+          "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e",
+          "role": "TERMINAL_RESULT_SCHEMA"
+        },
+        {
+          "path": "packages/domain-contracts/src/result-projector.ts",
+          "blob": "ef11880cad8702141e584c4dce1206511ea2f818",
+          "role": "DETERMINISTIC_RESULT_PROJECTION"
+        },
+        {
+          "path": "packages/domain-contracts/test/result-combinations.test.ts",
+          "blob": "072c86c8ff68a16b42a5572b532ab0cd440d5e95",
+          "role": "NEGATIVE_TEST_DEFINITIONS_NOT_EXECUTED"
+        },
+        {
+          "path": "packages/domain-contracts/test/t007-result-projector.test.ts",
+          "blob": "91dbd8ae73fefc71ceb2fd7b944decc3983066a9",
+          "role": "DETERMINISTIC_RESULT_TEST_DEFINITIONS_NOT_EXECUTED"
+        }
+      ],
+      "sourceCoverage": "SOURCE_AND_TEST_DEFINITIONS_GROUNDED_NO_NATIVE_EXECUTION",
+      "unverified": "Actual transferred bytes, independent validation outcome, filesystem organization and true external source permission remain unverified"
+    }
+  ],
+  "external_oracle": {
+    "requiredForPromotingExternalClaims": true,
+    "sourceType": "APPROVED_AUTHORITATIVE_EXTERNAL_OR_HUMAN_DOMAIN_EXPERT",
+    "status": "NOT_RUN",
+    "note": "Not a precondition for constructing this preparation pack, is a precondition before promoting external industry facts"
+  },
+  "review_receipt_kind": "AUTHOR_SIDE_B2_COMMENT_REVIEW_NOT_INDEPENDENT",
+  "review_id": 5847155892,
+  "formal_g1_g5_accepted": false,
+  "review_status": "R14_SOURCE_REPAIR_COMPLETE_FINAL_INDEPENDENT_RECHECK_PENDING",
+  "authority_chain": [
+    {
+      "stage": "INITIAL_V0_1_FROZEN_PRODUCT",
+      "doc": {
+        "path": "docs/planning/STAGE1_PRODUCT_SCOPE_FREEZE.md",
+        "blob": "f59031f7aab8cda1a37c2b290db192ebeec421f4"
+      },
+      "frozen_subject": {
+        "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+        "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+      },
+      "comment": "Stage1 freeze receipt supersedes unfrozen candidate header; frozen PRD v0.4.2 replaces v0.4.1"
+    },
+    {
+      "stage": "V0_2_0_FROZEN_SCOPE",
+      "doc": {
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+      }
+    },
+    {
+      "stage": "V0_2_1_CANDIDATE_CLOSURE",
+      "doc": {
+        "path": "docs/release/v0.2.1/closure/VERSION_CLOSURE_R1.md",
+        "blob": "b9ef3102ab3b5ed0602b3dcd5b6f1e0bf744e614"
+      },
+      "comment": "Version closure from frozen candidate source != unlimited product release"
+    },
+    {
+      "stage": "V0_2_2_UI_WIP",
+      "doc": {
+        "path": "docs/ux/v0.2.2/UI_REBUILD_SCOPE_R0.md",
+        "blob": "277f80021169251d11ad67dd707ab357c8cf7506"
+      },
+      "comment": "UI change draft not product freeze"
+    }
+  ],
+  "note": "This repair corrects old source evidence links and does not qualify professional/industry knowledge, product release or runtime effect.",
+  "r14_independent_technical_review_repair": {
+    "finding": "XD-R14-01",
+    "severity": "P2",
+    "stage0Comment": 6780146092,
+    "stage1FindingComment": 6780227341,
+    "baselineHead": "a92d140ea30a86571882fe584ffd9edf2c62d121",
+    "status": "REPAIRED_CQ3_RESULT_PROVENANCE_AND_PRODUCT_REVISION",
+    "currentProduct": {
+      "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+      "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+    },
+    "strictIndependentReview": false,
+    "reviewerRepairerIndependence": "NOT_ATTESTED",
+    "formalG1G5Accepted": false,
+    "noTestExecution": true,
+    "organizationStillUnknown": true
+  }
+}

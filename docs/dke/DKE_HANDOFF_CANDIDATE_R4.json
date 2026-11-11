@@ -1,0 +1,174 @@
+{
+  "schema": "devkit/dke-candidate-handoff-r4",
+  "project": "xDownload",
+  "as_of": "2026-11-11",
+  "scope": "Source-bound preparation proposal only; not a proven domain graph",
+  "scope_owner": "xDownload owns finite request; provider/rights holder owns external permission",
+  "product_source": {
+    "path": "docs/product/PRD-v0.4.1-review-candidate.md",
+    "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+  },
+  "implementation_source": {
+    "path": "packages/domain-contracts/src/contract.ts",
+    "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+  },
+  "source_revision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+  "source_kind": "PROJECT_POLICY_OR_IMPLEMENTATION_BEHAVIOR_AS_MARKED",
+  "knowledge_candidates": [
+    {
+      "id": "XD01",
+      "statement": "Confirmed RequestedScope and ContinuationScope immutable; material change uses successor",
+      "kind": "PRODUCT_CONTRACT",
+      "sourceRefs": [
+        {
+          "path": "docs/product/PRD-v0.4.1-review-candidate.md",
+          "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+        },
+        {
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "path": "packages/domain-contracts/test/contract-scope.test.ts",
+          "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+        }
+      ],
+      "applicability": {
+        "sourceRevision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+        "boundedContext": "CONTRACT_IMMUTABILITY",
+        "externalFactClaim": false
+      },
+      "confidence": "SOURCE_WITNESS_ONLY_NOT_SEMANTICALLY_APPROVED",
+      "negativeFalsifier": "Budget extension cannot silently expand authorized collection",
+      "positiveEvidencePlan": "Inspect the existing test definition and if required run it against the exact source revision; preserve terminal outcome; do not claim existing test executed",
+      "negativeEvidencePlan": "Inject the named counterexample, retain observed tool output and independent reviewer verdict",
+      "whenSourceChanges": "Invalidate only consumer claims that cite the modified source Blob and matching context; keep history immutable"
+    },
+    {
+      "id": "XD02",
+      "statement": "Exploration permission is only permitted finite edges not arbitrary crawler frontier",
+      "kind": "IMPLEMENTATION_OR_PROJECT_POLICY_CANDIDATE",
+      "sourceRefs": [
+        {
+          "path": "docs/product/PRD-v0.4.1-review-candidate.md",
+          "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+        },
+        {
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "path": "packages/domain-contracts/test/contract-scope.test.ts",
+          "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+        }
+      ],
+      "applicability": {
+        "sourceRevision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+        "boundedContext": "PERMISSION_BOUNDARY",
+        "externalFactClaim": false
+      },
+      "confidence": "SOURCE_WITNESS_ONLY_NOT_SEMANTICALLY_APPROVED",
+      "negativeFalsifier": "Any URL frontier as a scope primitive must be rejected",
+      "positiveEvidencePlan": "Inspect the existing test definition and if required run it against the exact source revision; preserve terminal outcome; do not claim existing test executed",
+      "negativeEvidencePlan": "Inject the named counterexample, retain observed tool output and independent reviewer verdict",
+      "whenSourceChanges": "Invalidate only consumer claims that cite the modified source Blob and matching context; keep history immutable"
+    },
+    {
+      "id": "XD03",
+      "statement": "Transfer, content validation and organization are separate outcomes",
+      "kind": "IMPLEMENTATION_OR_PROJECT_POLICY_CANDIDATE",
+      "sourceRefs": [
+        {
+          "path": "docs/product/PRD-v0.4.1-review-candidate.md",
+          "blob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3"
+        },
+        {
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "path": "packages/domain-contracts/test/contract-scope.test.ts",
+          "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+        }
+      ],
+      "applicability": {
+        "sourceRevision": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+        "boundedContext": "MULTIDIMENSIONAL_RESULT",
+        "externalFactClaim": false
+      },
+      "confidence": "SOURCE_WITNESS_ONLY_NOT_SEMANTICALLY_APPROVED",
+      "negativeFalsifier": "File downloaded does not imply valid media or copyright permission",
+      "positiveEvidencePlan": "Inspect the existing test definition and if required run it against the exact source revision; preserve terminal outcome; do not claim existing test executed",
+      "negativeEvidencePlan": "Inject the named counterexample, retain observed tool output and independent reviewer verdict",
+      "whenSourceChanges": "Invalidate only consumer claims that cite the modified source Blob and matching context; keep history immutable"
+    }
+  ],
+  "cross_context_relation": {
+    "subject": "Acquisition.RequestedScope",
+    "object": "SourceProvider.Continuation",
+    "predicate": "bounds_navigation_permission",
+    "authority": "xDownload owns finite request; provider/rights holder owns external permission",
+    "sourceRef": {
+      "path": "packages/domain-contracts/src/contract.ts",
+      "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+    },
+    "qualification": "REQUIRES_SEMANTIC_CRITIC"
+  },
+  "competency_questions": [
+    {
+      "id": "CQ1",
+      "question": "Within CONTRACT_IMMUTABILITY, how does confirmed requestedscope and continuationscope immutable; material change uses successor hold, and what evidence blocks the counterexample?",
+      "answerSource": {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      },
+      "counterexample": "Budget extension cannot silently expand authorized collection",
+      "missingSourceVerdict": "UNKNOWN",
+      "positiveFixture": "NOT_EXECUTED",
+      "negativeFixture": "NOT_EXECUTED",
+      "independentReviewer": "NOT_ASSIGNED"
+    },
+    {
+      "id": "CQ2",
+      "question": "Within PERMISSION_BOUNDARY, how does exploration permission is only permitted finite edges not arbitrary crawler frontier hold, and what evidence blocks the counterexample?",
+      "answerSource": {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      },
+      "counterexample": "Any URL frontier as a scope primitive must be rejected",
+      "missingSourceVerdict": "UNKNOWN",
+      "positiveFixture": "NOT_EXECUTED",
+      "negativeFixture": "NOT_EXECUTED",
+      "independentReviewer": "NOT_ASSIGNED"
+    },
+    {
+      "id": "CQ3",
+      "question": "Within MULTIDIMENSIONAL_RESULT, how does transfer, content validation and organization are separate outcomes hold, and what evidence blocks the counterexample?",
+      "answerSource": {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      },
+      "counterexample": "File downloaded does not imply valid media or copyright permission",
+      "missingSourceVerdict": "UNKNOWN",
+      "positiveFixture": "NOT_EXECUTED",
+      "negativeFixture": "NOT_EXECUTED",
+      "independentReviewer": "NOT_ASSIGNED"
+    }
+  ],
+  "external_domain_oracle": {
+    "requiredForPromotingExternalClaims": true,
+    "sourceType": "APPROVED_AUTHORITATIVE_EXTERNAL_OR_HUMAN_DOMAIN_EXPERT",
+    "status": "NOT_RUN",
+    "note": "Not a precondition for constructing this preparation pack, is a precondition before promoting external industry facts"
+  },
+  "source_license": {
+    "status": "NOT_ASSIGNED",
+    "note": "Project-source quote/metadata available internally; external corpus rights must be checked separately"
+  },
+  "downstream": {
+    "issue": "https://github.com/kaicreator-mm/domain-forge/issues/209",
+    "status": "CANDIDATE_HANDOFF_LINK_ONLY_NOT_CONSUMED",
+    "target": "DKE SOURCE-first semantic evaluation, Element/global/recursive split and incremental invalidation"
+  },
+  "preparation_status": "CANDIDATE_PACK_COMPLETE_SOURCE_VERIFIED_INDEPENDENT_GATE_OPEN"
+}

@@ -1,0 +1,246 @@
+{
+  "schema": "devkit/dke-business-evidence-matrix-r5",
+  "as_of": "2026-11-11",
+  "project": "xDownload",
+  "source_pinned": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+  "semantic_source_active": "e904f08c478b15147b1c07fbe53c610d2d81851f",
+  "business_scope": "CURRENT_IMPL_WITH_HISTORICAL_UNFROZEN_PRD",
+  "source_witness": {
+    "product": {
+      "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+      "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+    },
+    "implementation": {
+      "path": "packages/domain-contracts/src/contract.ts",
+      "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+    },
+    "test_definition": {
+      "path": "packages/domain-contracts/test/contract-scope.test.ts",
+      "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+    }
+  },
+  "source_method": "Actually read representative Product + business source + test fixture through GitHub at pinned revision (Shun active draft separately), then anchored files to exact Blob",
+  "full_suite_executed": false,
+  "independent_reviewer": "PENDING_FRESH_POST_REPAIR_EXACT_SHA_REVIEW",
+  "rows": [
+    {
+      "id": "XD01",
+      "obligation": "Confirmed RequestedScope and ContinuationScope immutable; material change uses successor",
+      "bounded_context": "CONTRACT_IMMUTABILITY",
+      "doc": {
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+      },
+      "code": {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      },
+      "test": {
+        "path": "packages/domain-contracts/test/contract-scope.test.ts",
+        "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+      },
+      "positive_witness": "SOURCE_PATH_AND_TEST_DEFINITION_PRESENT_NOT_EXECUTED",
+      "negative_proposal": "Budget extension cannot silently expand authorized collection",
+      "review_state": "BOUNDED_SOURCE_OBSERVATION",
+      "professional_domain_fact": "NOT_ASSERTED"
+    },
+    {
+      "id": "XD02",
+      "obligation": "Exploration permission is only permitted finite edges not arbitrary crawler frontier",
+      "bounded_context": "PERMISSION_BOUNDARY",
+      "doc": {
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+      },
+      "code": {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+      },
+      "test": {
+        "path": "packages/domain-contracts/test/contract-scope.test.ts",
+        "blob": "6e263c7520f0123f4daf9ee585d1530d47e2b026"
+      },
+      "positive_witness": "SOURCE_PATH_AND_TEST_DEFINITION_PRESENT_NOT_EXECUTED",
+      "negative_proposal": "Any URL frontier as a scope primitive must be rejected",
+      "review_state": "BOUNDED_SOURCE_OBSERVATION",
+      "professional_domain_fact": "NOT_ASSERTED"
+    },
+    {
+      "id": "XD03",
+      "obligation": "Request fulfillment, target resolution, selection/acquisition, coverage, stop reason and validation summary are distinct terminal dimensions; optional file organization is separate and must not be inferred from transfer or result tuples.",
+      "bounded_context": "MULTIDIMENSIONAL_RESULT",
+      "doc": {
+        "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+        "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+      },
+      "code": {
+        "path": "packages/domain-contracts/src/result.ts",
+        "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e"
+      },
+      "test": {
+        "path": "packages/domain-contracts/test/result-combinations.test.ts",
+        "blob": "072c86c8ff68a16b42a5572b532ab0cd440d5e95"
+      },
+      "positive_witness": "The six-dimensional terminal result schema and deterministic projector are present, with test definitions for legal/forbidden tuples; source/test definitions were read at the pinned revision but NOT_EXECUTED.",
+      "negative_proposal": "An ACCEPTED request, completed transport or successful subset validation does not prove full fulfillment, final persisted bytes, validated content or physically organized output.",
+      "review_state": "SOURCE_SCOPE_REPAIRED_POST_REPAIR_EXACT_SHA_REVIEW_PENDING",
+      "professional_domain_fact": "NOT_ASSERTED",
+      "source_gap": "The original contract-scope.test.ts covers immutable request/continuation scope only. result.ts and result-projector.ts define the six terminal dimensions; result-combinations.test.ts and t007-result-projector.test.ts define legal/forbidden result and projector cases. These test definitions were NOT_EXECUTED and establish neither actual transferred bytes nor filesystem organization or native transfer.",
+      "additional_code": {
+        "path": "packages/domain-contracts/src/result-projector.ts",
+        "blob": "ef11880cad8702141e584c4dce1206511ea2f818"
+      },
+      "additional_tests": [
+        {
+          "path": "packages/domain-contracts/test/t007-result-projector.test.ts",
+          "blob": "91dbd8ae73fefc71ceb2fd7b944decc3983066a9"
+        }
+      ],
+      "source_refs": [
+        {
+          "role": "historical_frozen_product_scope",
+          "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+          "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+        },
+        {
+          "role": "domain_contract",
+          "path": "packages/domain-contracts/src/contract.ts",
+          "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2"
+        },
+        {
+          "role": "current_product_authority",
+          "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+          "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+        },
+        {
+          "role": "terminal_result_schema",
+          "path": "packages/domain-contracts/src/result.ts",
+          "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e"
+        },
+        {
+          "role": "deterministic_result_projection",
+          "path": "packages/domain-contracts/src/result-projector.ts",
+          "blob": "ef11880cad8702141e584c4dce1206511ea2f818"
+        },
+        {
+          "role": "negative_test_definitions_not_executed",
+          "path": "packages/domain-contracts/test/result-combinations.test.ts",
+          "blob": "072c86c8ff68a16b42a5572b532ab0cd440d5e95"
+        },
+        {
+          "role": "projector_test_definitions_not_executed",
+          "path": "packages/domain-contracts/test/t007-result-projector.test.ts",
+          "blob": "91dbd8ae73fefc71ceb2fd7b944decc3983066a9"
+        }
+      ],
+      "test_execution": "NOT_RUN",
+      "actual_organization": "UNKNOWN",
+      "external_permission": "UNKNOWN"
+    }
+  ],
+  "unreviewed": [
+    "Complete product implementation source inventory and all exception chains",
+    "External professional reference provenance, license and live facts",
+    "Independent source-first reviewer decision",
+    "Runtime/real device E2E not claimed"
+  ],
+  "qualified_gates": "PENDING_REVIEW",
+  "preparation_value": "SC03_BOUNDED_MATRIX_NOW_HAS_3_CONCRETE_ROWS",
+  "product_authority_chain": [
+    {
+      "stage": "INITIAL_V0_1_FROZEN_PRODUCT",
+      "doc": {
+        "path": "docs/planning/STAGE1_PRODUCT_SCOPE_FREEZE.md",
+        "blob": "f59031f7aab8cda1a37c2b290db192ebeec421f4"
+      },
+      "frozen_subject": {
+        "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+        "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6"
+      },
+      "comment": "Stage1 freeze receipt supersedes unfrozen candidate header; frozen PRD v0.4.2 replaces v0.4.1"
+    },
+    {
+      "stage": "V0_2_0_FROZEN_SCOPE",
+      "doc": {
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89"
+      }
+    },
+    {
+      "stage": "V0_2_1_CANDIDATE_CLOSURE",
+      "doc": {
+        "path": "docs/release/v0.2.1/closure/VERSION_CLOSURE_R1.md",
+        "blob": "b9ef3102ab3b5ed0602b3dcd5b6f1e0bf744e614"
+      },
+      "comment": "Version closure from frozen candidate source != unlimited product release"
+    },
+    {
+      "stage": "V0_2_2_UI_WIP",
+      "doc": {
+        "path": "docs/ux/v0.2.2/UI_REBUILD_SCOPE_R0.md",
+        "blob": "277f80021169251d11ad67dd707ab357c8cf7506"
+      },
+      "comment": "UI change draft not product freeze"
+    }
+  ],
+  "author_side_b2": {
+    "review_id": 5847155892,
+    "independent": false,
+    "scope": "Replace historical unfrozen v0.4.1 PRD as current authority; record actual staged freeze and v0.2.x lifecycle. No product release invented"
+  },
+  "supersedes": "docs/dke/BUSINESS_EVIDENCE_MATRIX_R4.json",
+  "repair_status": "XD-R18-01_REPAIRED_POST_REPAIR_EXACT_SHA_REVIEW_PENDING",
+  "formal_g1_g5_accepted": false,
+  "r18_repair": {
+    "finding": "XD-R18-01",
+    "severity": "P2",
+    "reviewed_head": "b21e7dac0f4fe9a6d30b1c2a9ae539cb20523440",
+    "status": "REPAIRED_IN_R5_MATRIX_AND_R5_PACKET_POST_REPAIR_EXACT_SHA_REVIEW_PENDING",
+    "repair_role": "REPAIRER_ONLY_NOT_INDEPENDENT_REVIEW",
+    "source_blob_readback": [
+      {
+        "path": "docs/planning/v0.2.0/PRODUCT_R0.md",
+        "blob": "f04ce9b06302c8620b206d755c80b326dedbcf89",
+        "match": true
+      },
+      {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "blob": "eb49defb40557ca9189daee20f6b3e1f475226b2",
+        "match": true
+      },
+      {
+        "path": "docs/product/PRD-v0.4.2-review-candidate.md",
+        "blob": "6e95583529afad6c6485cdbbe45539a2145ef4c6",
+        "match": true
+      },
+      {
+        "path": "packages/domain-contracts/src/result.ts",
+        "blob": "042d8bd9059d9d927c247e46f27642fe86ed106e",
+        "match": true
+      },
+      {
+        "path": "packages/domain-contracts/src/result-projector.ts",
+        "blob": "ef11880cad8702141e584c4dce1206511ea2f818",
+        "match": true
+      },
+      {
+        "path": "packages/domain-contracts/test/result-combinations.test.ts",
+        "blob": "072c86c8ff68a16b42a5572b532ab0cd440d5e95",
+        "match": true
+      },
+      {
+        "path": "packages/domain-contracts/test/t007-result-projector.test.ts",
+        "blob": "91dbd8ae73fefc71ceb2fd7b944decc3983066a9",
+        "match": true
+      }
+    ],
+    "native_tests": "NOT_RUN",
+    "github_actions": "NOT_USED",
+    "formal_g1_g5_accepted": false,
+    "changed_paths": [
+      "docs/dke/BUSINESS_EVIDENCE_MATRIX_R5.json",
+      "docs/dke/PREPARATION_REVIEW_PACKET_R4.md",
+      "docs/dke/PREPARATION_REVIEW_PACKET_R5.md"
+    ]
+  }
+}
