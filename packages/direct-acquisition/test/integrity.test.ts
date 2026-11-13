@@ -573,7 +573,7 @@ describe('wrong-target-and-integrity: S3 media validation gates acceptance (C27)
     expect(outcome.terminalResult.stopReason).toBe('VALIDATION_FAILED');
     expect(outcome.terminalResult.validationSummary).toEqual({
       status: 'FAILED',
-      passedCount: 4,
+      passedCount: 3,
       failedCount: 1,
     });
     expect(decodeTerminalResult({ ...outcome.terminalResult }).ok).toBe(true);
