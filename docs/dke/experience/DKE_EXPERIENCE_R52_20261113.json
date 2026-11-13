@@ -1,0 +1,127 @@
+{
+  "schema": "die/dke9-r52-original-project-evidence-positive-and-negative-experience/v1",
+  "id": "DKE9-XP-XDOWNLOAD-R52-02",
+  "project": "xDownload",
+  "claimId": "XD03",
+  "date": "2026-11-13",
+  "status": "SOURCE_OBSERVED_AUTHOR_METHOD_CANDIDATE",
+  "sourceR72": {
+    "repo": "kaicreator-mm/domain-intelligence-engineering",
+    "commit": "4151ecebd43b2ee045e09de41b9855827d25ccb4",
+    "path": "portfolio/preparation/ORIGINAL_PUBLISHER_TECHNICAL_TRUTH_BOUNDARY_R72_20261113.json",
+    "gitBlob": "fab4668b70514e03e2694eb38c5b455c1bc031cc",
+    "qualification": "SOURCE_REFERENCE_ONLY_UNQUALIFIED"
+  },
+  "originalSource": {
+    "repo": "kaicreator-mm/xDownload",
+    "claimId": "XD03",
+    "codeAndTestBlobs": [
+      [
+        "packages/direct-acquisition/src/direct-http-adapter.ts",
+        "3f903e7781517dd904c685f46f73efe4a5dbd8cd"
+      ],
+      [
+        "packages/direct-acquisition/test/resume-validators.test.ts",
+        "182aa123cfea4f3977a827b2943feffea171a68f"
+      ]
+    ],
+    "scope": "READ_ONLY_EXACT_GIT_SOURCE"
+  },
+  "bounded_context": "HttpResumeValidator≠OriginResponseReality≠CopyRight",
+  "hypothesis": "Conflating source-observed software guards, their test definitions and independently certified physical/external facts can produce false positive and false negative conclusions.",
+  "alternatives": [
+    {
+      "id": "ASSUME_MISSING_RANGE_LOGIC",
+      "decision": "REJECT",
+      "why": "Produces either a missing-protection false positive or an unjustified external-truth certification"
+    },
+    {
+      "id": "ASSUME_TEST_DEFINITION_IS_HOST_PASS",
+      "decision": "REJECT",
+      "why": "Produces either a missing-protection false positive or an unjustified external-truth certification"
+    },
+    {
+      "id": "BOUND_HTTP_PROTOCOL_AND_RIGHTS_AS_INDEPENDENT",
+      "decision": "SELECT_AUTHOR_MODEL",
+      "why": "Preserves real positive protections and UNKNOWN external authority"
+    }
+  ],
+  "decision": "BOUND_HTTP_PROTOCOL_AND_RIGHTS_AS_INDEPENDENT",
+  "observed_positive_source_evidence": "DirectHttpAdapter imports range response classifier and resume planner, while pinned resume-validators.test.ts defines strong-ETag If-Range validated resume and safe restart/no-validator scenarios",
+  "bounded_positive_case": "Source implements response-validator-aware adapter and test definitions include strong ETag+If-Range, safe restart on missing validator; do not claim protections absent",
+  "bounded_negative_counterexample": "A checked-in test definition does not prove Native ran; HTTP Range request or confirmed RequestedScope cannot guarantee HTTP 206 or granted redistribution rights",
+  "unknown_and_external_qualification": "Actual controlled origin 206/200/416/changed ETag request-receipt, full transfer verification, whole collection manifest and exact work-specific reuse license",
+  "element_split_counterexample": "A single Source/Root or Element that says 'HttpResumeValidator≠OriginResponseReality≠CopyRight' has been verified by passing internal shape/test guards is too broad; split by distinct issuer/proof method, version and falsifier.",
+  "proposed_recursion": {
+    "root": "PROJECT_REVIEWABLE_TRUTH_BOUNDARY",
+    "leaves": [
+      {
+        "id": "REQUESTED_SCOPE_AND_TARGET",
+        "depth": 1,
+        "status": "AUTHOR_PROPOSED_NOT_ORIGINAL_PRODUCT_IMPLEMENTATION",
+        "owner": "ORIGINAL_CODE_TECHNICAL"
+      },
+      {
+        "id": "RESPONSE_VALIDATOR_AND_REPRESENTATION_ID",
+        "depth": 2,
+        "status": "AUTHOR_PROPOSED_NOT_ORIGINAL_PRODUCT_IMPLEMENTATION",
+        "owner": "ORIGINAL_CODE_TECHNICAL"
+      },
+      {
+        "id": "REAL_ORIGIN_206_200_416_OBSERVATION",
+        "depth": 2,
+        "status": "AUTHOR_PROPOSED_NOT_ORIGINAL_PRODUCT_IMPLEMENTATION",
+        "owner": "QUALIFIED_EXTERNAL_ORACLE_OR_ORIGINAL_OWNER_PENDING"
+      },
+      {
+        "id": "TRANSFER_INTEGRITY",
+        "depth": 2,
+        "status": "AUTHOR_PROPOSED_NOT_ORIGINAL_PRODUCT_IMPLEMENTATION",
+        "owner": "QUALIFIED_EXTERNAL_ORACLE_OR_ORIGINAL_OWNER_PENDING"
+      },
+      {
+        "id": "WHOLE_COLLECTION_COMPLETENESS",
+        "depth": 2,
+        "status": "AUTHOR_PROPOSED_NOT_ORIGINAL_PRODUCT_IMPLEMENTATION",
+        "owner": "QUALIFIED_EXTERNAL_ORACLE_OR_ORIGINAL_OWNER_PENDING"
+      },
+      {
+        "id": "COPY_DERIVATIVE_WORK_LICENSE",
+        "depth": 2,
+        "status": "AUTHOR_PROPOSED_NOT_ORIGINAL_PRODUCT_IMPLEMENTATION",
+        "owner": "QUALIFIED_EXTERNAL_ORACLE_OR_ORIGINAL_OWNER_PENDING"
+      }
+    ],
+    "stopCriterion": "Single owner and non-overlapping proof kind/issuer/version/rights/falsifier per leaf; no generic 'all validation' leaf"
+  },
+  "observed_result": {
+    "success": "Existing original code has limited positive guard behavior; model need not fabricate missing implementation",
+    "failure": "Potential erroneous inference from implementation/test-source to external professional truth; NOT a demonstrated original product bug",
+    "type": "SOURCE_FIRST_STATIC_NOT_NATIVE"
+  },
+  "improvement": "Use positive source counterexample before alleging missing protection, distinguish machine checker positive, tested Native outcome, external issuer, rights, domain Oracle and Source/Claim Owner authority",
+  "source_evolution": {
+    "onOriginalCodeChange": "STALE affected technical guard/Element/SAP only; no cross-project revocation",
+    "onExternalPublisherChange": "Hold dependent professional truth until new issuer/rights/date confirmed",
+    "sourceOwner": "#8"
+  },
+  "applicability": "DKE-only scoped model and reusable proof-ladder method candidate for #24",
+  "exclusions": [
+    "No actual project Native this iteration",
+    "No existing business code modified",
+    "Not B5/P5/rights/real-world Oracle/qualified SAP",
+    "Not evidence full Kernel, hardware, server origin or medium was verified"
+  ],
+  "independent_qualified_domain_review": "NOT_RUN",
+  "real_pos_neg_native": "NOT_RUN",
+  "next_verification": "Run exact real fixture server 206/200/416/ETag changes and verify no unsafe append, then check independently work license; source definitions not execution",
+  "method_handoff": {
+    "issue": 24,
+    "existingMethod": "DKE-METHOD-GATED-SCOPE-R50",
+    "revision": "Include source-positive guard witness and distinguish validator definition/native/external rights/issuer; do not infer global protection absent from local layer",
+    "status": "CANDIDATE_ONLY"
+  },
+  "formalSAP": 0,
+  "refactorReady": false,
+  "experienceNotGate": true
+}
