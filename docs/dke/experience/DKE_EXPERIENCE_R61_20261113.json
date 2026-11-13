@@ -1,0 +1,119 @@
+{
+  "schema": "die/dke9-xdownload-xd03-result-projection-experience-r61/v1",
+  "id": "DKE9-XP-XDOWNLOAD-R57-EDITION-ORACLE",
+  "revision": "R61",
+  "date": "2026-11-13",
+  "project": "xDownload",
+  "experienceCountPolicy": "REVISE_PRIOR_R57_CASE_ID_NOT_NEW_DISTINCT_CASE",
+  "boundaries": {
+    "sourceOwner": "#8",
+    "modelOwner": "#9",
+    "methodOwner": "#24",
+    "originalBusiness": "READ_ONLY",
+    "functionAotRuntime": "NOT_IMPLEMENTED"
+  },
+  "originalCase": {
+    "id": "DKE9-XP-XDOWNLOAD-R57-EDITION-ORACLE",
+    "blob": "83d4069f7e34e1159b82cff90178b20155302af2",
+    "path": "docs/dke/experience/DKE_EXPERIENCE_R57_20261113.json",
+    "commit": "4049051321c7410b66a5613b95fb7d31bd9fb678"
+  },
+  "goal": "Correct the XD03 domain knowledge model's treatment of multi-result validation and terminal display truth, without changing any original product, code, tests or build.",
+  "originalHypothesis": "A fail-close adapter and an ALL_PASSED validationSummary necessarily agree, because there is only one check per validation layer.",
+  "alternativeApproaches": [
+    {
+      "name": "Treat first PASS as sufficient for every repeated layer",
+      "selected": false,
+      "reason": "Drops later same-layer negative evidence; cannot represent byte constraint failure."
+    },
+    {
+      "name": "Assume contradictory summary means bad bytes passed production Core",
+      "selected": false,
+      "reason": "Original adapter derives WRONG_TARGET/allApplicableValidationPassed=false and Core checks the guard, so this would be an unwarranted escalation."
+    },
+    {
+      "name": "Model producer checks, all applicable same-layer validation results, aggregation projection, canonical reason and Core consumption as separate Elements",
+      "selected": true,
+      "reason": "Retains actual fail-close success and isolates the first-match reporting defect with a falsifiable scoped witness."
+    }
+  ],
+  "source": {
+    "issue8": "R80",
+    "path": "portfolio/preparation/XDOWNLOAD_MULTI_VALIDATOR_RESULT_TRUTH_R80_20261113.json",
+    "gitBlob": "5a6ee669186b74b8ef6ff400b119982bc2acb4a5",
+    "owner": "#8",
+    "b5": "NOT_SIGNED",
+    "p5": "NOT_QUALIFIED",
+    "originalRepo": "kaicreator-mm/xDownload",
+    "originalPR": 398,
+    "originalExactHead": "aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105",
+    "claim": "kaicreator-mm/xDownload@aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105:XD03",
+    "verifiedHere": [
+      {
+        "path": "packages/direct-acquisition/src/projection.ts",
+        "gitBlob": "8970dae4c7ac77f061233cfd541e399af9ae56a9"
+      },
+      {
+        "path": "packages/direct-acquisition/src/direct-http-adapter.ts",
+        "gitBlob": "3f903e7781517dd904c685f46f73efe4a5dbd8cd"
+      },
+      {
+        "path": "packages/core-runtime/src/s3-selected-media.ts",
+        "gitBlob": "bdddfb036c9127b879d67e7f742f6e72104e15e6"
+      },
+      {
+        "path": "packages/domain-contracts/src/result.ts",
+        "gitBlob": "042d8bd9059d9d927c247e46f27642fe86ed106e"
+      },
+      {
+        "path": "packages/direct-acquisition/test/s3-media-profiles.test.ts",
+        "gitBlob": "d3629b3918ca8ac459c3aa3944f28df4e5e45ae3"
+      }
+    ],
+    "readback": "5_OF_5_EXACT_GIT_BLOBS_MATCH_CURRENT_PASS",
+    "originalProduct": "docs/product/PRD-v0.4.1-review-candidate.md is Stage1 review candidate, not frozen Product signoff"
+  },
+  "observedResult": {
+    "positive": "S3 adapter appends target failed on SHA mismatch, find(!passed) detects it, returns WRONG_TARGET; core S3 checks allApplicableValidationPassed and can record validation failure.",
+    "negative": "Result projection validationSummary performs .find(check.layer===layer), selecting prior target PASS rather than later target FAIL; ALL_PASSED 4/0 can coexist with FAILED + WRONG_TARGET.",
+    "fixture": [
+      "transfer PASS",
+      "format PASS",
+      "target PASS",
+      "media PASS",
+      "target FAIL BYTE_CONSTRAINT_MISMATCH"
+    ],
+    "initialAssumptionFailure": "Assuming one result per layer erased contradictory evidence; actual source allows multiple checks for same target layer.",
+    "correction": "Preserve or aggregate ALL same-layer checks; a later FAIL must dominate summary for its applicable layer. This is a DKE proposed invariant, NOT an original runtime patch.",
+    "runtimeEvidence": "R80 Node22.16.0 isolated source-equivalent reproduction, not original adapter/Host Native.",
+    "realBytesDelivered": "NOT_PROVED",
+    "professionalRightToCopy": "UNKNOWN_UNQUALIFIED",
+    "actualUserVisiblePresentation": "UNKNOWN"
+  },
+  "elementSplitCounterexample": "Single Element 'validated media' conflates 1) raw per-layer checks 2) aggregate canonical reason 3) terminal human/machine-readable status 4) Core disposition and 5) work-level rights. A valid Core rejection and false ALL_PASSED summary prove these need separately owned and independently falsifiable contracts.",
+  "boundedContextOwners": [
+    "S3_VALIDATION_PRODUCER",
+    "ALL_CHECK_EVIDENCE_COLLECTION",
+    "TERMINAL_PROJECTION_TRUTH",
+    "CORE_SELECTED_MEDIA_EFFECT",
+    "ORIGINAL_PRODUCT_SEMANTICS",
+    "WORK_COPY_RIGHTS"
+  ],
+  "domainModelDelta": "R61 adds a local XD03 root/Global, leaf Elements, Bounded Contexts, aggregates and candidate SAP cases that reject contradictory summary without claiming any original software runtime change.",
+  "alternativeFailureMechanism": "A consumer reading only summary could be misled, but an actual consumer reading allApplicableValidationPassed may remain fail-closed; distinguish observed and hypothetical impacts.",
+  "changeAndStaleness": "On XD03 producer or projection blob revision, invalidate only dependent XD03 check-aggregation/terminal-summary Element and SAP; do not invalidate PREMIS publisher facts, work-rights Oracle, or 13 other projects without actual source change.",
+  "professionalAndRights": "PREMIS 3.0 publisher reference is preservation metadata vocabulary, not rightsholder copy license or success of real HTTP transfer; actual content rights and professional Oracle pending.",
+  "pendingIndependentReview": "Separate-context non-Writer review at exact original PR #398 Head should run read-only original S3 native adapter test with SHA mismatch and compare reason, allApplicableValidationPassed, terminal summary and Core S3 consumer; have original Product Owner decide semantic requirement.",
+  "reusableMethodCandidate": "#24 TRUST_BOUNDARY_PROOF_LADDER / FIRST_MATCH_LOSES_LATE_NEGATIVE_EVIDENCE; revise existing method not new gate.",
+  "evidenceStatus": {
+    "sourceGit": "MATCHED",
+    "isolatedNodeCase": "REUSED_R80_SOURCE_EQUIVALENT",
+    "originalNative": "NOT_RUN",
+    "independentSourceReviewer": "NOT_RUN",
+    "ownerProduct": "NOT_SIGNED",
+    "professionalRightsOracle": "NOT_RUN",
+    "originalSAPQualified": 0,
+    "domainAppRefactorReady": false
+  },
+  "caseStatus": "AUTHOR_EVIDENCE_REVISION_WITH_SCOPED_NEGATIVE__NOT_FORMALLY_QUALIFIED"
+}
