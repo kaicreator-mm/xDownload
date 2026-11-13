@@ -1,0 +1,147 @@
+{
+  "schema": "die/dke9-r55-original-project-authority-chain-experience/v1",
+  "id": "DKE9-XP-XDOWNLOAD-R55-AUTHORITY",
+  "project": "xDownload",
+  "date": "2026-11-13",
+  "scope": "DKE_DOMAIN_KNOWLEDGE_AND_EXPERIENCE_NOT_ORIGINAL_BUSINESS_IMPLEMENTATION",
+  "sourceR74": {
+    "repo": "kaicreator-mm/domain-intelligence-engineering",
+    "exactHEAD": "72369539658e3832e64576c5c904d712d17c3053",
+    "path": "portfolio/preparation/ALL45_RELATIONAL_ORIGINAL_SOURCE_AUDIT_R74_20261113.json",
+    "gitBlob": "4b6db502a2f82cee46814030f2d14ba0ae57a2bc",
+    "sourceOwner": "#8_ONLY",
+    "status": "SOURCE_REFERENCE_ONLY_B5_UNSIGNED"
+  },
+  "originalRepo": {
+    "repo": "kaicreator-mm/xDownload",
+    "exactPreparationHEAD": "aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105",
+    "sourceClaimIds": [
+      "XD01",
+      "XD02",
+      "XD03"
+    ]
+  },
+  "observedGitFacts": {
+    "observedBy": "#8 R74 exact 60/60 readback; #9 reused immutable R74 and independently re-read selected Parts/Formula wrapper examples only",
+    "originalReferenceCount": 4,
+    "actualSourceTuples": [
+      {
+        "path": "docs/dke/DKE_HANDOFF_CANDIDATE_R4.json",
+        "gitBlob": "6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+        "sourceKind": "DKE_CANDIDATE_WRAPPER_NOT_AUTHORITY",
+        "exactHEAD": "aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105",
+        "sourceId": "S25"
+      },
+      {
+        "path": "docs/product/PRD-v0.4.1-review-candidate.md",
+        "gitBlob": "86170bd4a41bcc049b180ac513ef7bf7bba64bf3",
+        "sourceKind": "ORIGINAL_PRODUCT_CANDIDATE_NOT_AUTOMATIC_CURRENT_AUTHORITY",
+        "exactHEAD": "aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105",
+        "sourceId": "S26"
+      },
+      {
+        "path": "packages/domain-contracts/src/contract.ts",
+        "gitBlob": "eb49defb40557ca9189daee20f6b3e1f475226b2",
+        "sourceKind": "ORIGINAL_CODE_BEHAVIOR_NOT_FIELD_FACT",
+        "exactHEAD": "aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105",
+        "sourceId": "S27"
+      },
+      {
+        "path": "packages/domain-contracts/test/contract-scope.test.ts",
+        "gitBlob": "6e263c7520f0123f4daf9ee585d1530d47e2b026",
+        "sourceKind": "ORIGINAL_TEST_DEFINITION_NOT_EXECUTION",
+        "exactHEAD": "aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105",
+        "sourceId": "S28"
+      }
+    ],
+    "firstPartyCandidateClaimLabels": [
+      {
+        "id": "XD01",
+        "r63Composite": "xDownload::XD01::6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+        "scopedKey": "kaicreator-mm/xDownload@aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105:XD01",
+        "wrapperPath": "docs/dke/DKE_HANDOFF_CANDIDATE_R4.json",
+        "wrapperBlob": "6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+        "requestedSourceKind": "PRODUCT_CONTRACT",
+        "authorityStatus": "AUTHOR_CANDIDATE_NOT_QUALIFIED"
+      },
+      {
+        "id": "XD02",
+        "r63Composite": "xDownload::XD02::6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+        "scopedKey": "kaicreator-mm/xDownload@aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105:XD02",
+        "wrapperPath": "docs/dke/DKE_HANDOFF_CANDIDATE_R4.json",
+        "wrapperBlob": "6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+        "requestedSourceKind": "IMPLEMENTATION_OR_PROJECT_POLICY_CANDIDATE",
+        "authorityStatus": "AUTHOR_CANDIDATE_NOT_QUALIFIED"
+      },
+      {
+        "id": "XD03",
+        "r63Composite": "xDownload::XD03::6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+        "scopedKey": "kaicreator-mm/xDownload@aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105:XD03",
+        "wrapperPath": "docs/dke/DKE_HANDOFF_CANDIDATE_R4.json",
+        "wrapperBlob": "6892ae496bf7dc24eb6eb6495ca95d0356324d3f",
+        "requestedSourceKind": "IMPLEMENTATION_OR_PROJECT_POLICY_CANDIDATE",
+        "authorityStatus": "AUTHOR_CANDIDATE_NOT_QUALIFIED"
+      }
+    ],
+    "groundedFailureMode": "All 45 originalSource fields in #8 R63 refer to docs/dke self-authored candidate handoff, not accepted Product or an authenticated field issuer. #8 R74 verifies bytes, not normative authority or rights",
+    "specificDomainContrast": "scope contract & HTTP test definitions versus real server byte integrity/work license"
+  },
+  "hypothesis": "An exact Git Blob labeled originalSource in the handoff can independently grant authoritative semantic adoption and real-world domain validity.",
+  "alternatives": [
+    {
+      "id": "A",
+      "approach": "Promote docs/dke candidate wrapper as normative Product and expert Oracle after SHA match",
+      "decision": "REJECT",
+      "reason": "Content provenance does not identify a competent normative issuer/owner or rights"
+    },
+    {
+      "id": "B",
+      "approach": "Ignore all candidate Source/Code/Test until B5 clears",
+      "decision": "REJECT_AS_UNNECESSARY_WAIT",
+      "reason": "Scoped research and fallible model construction can proceed without authorization to implement"
+    },
+    {
+      "id": "C",
+      "approach": "Preserve scoped Claim identity and separate wrapper/Code/Test/Product/field issuer; accept only independently signed scope",
+      "decision": "SELECT_AS_AUTHOR_MODEL",
+      "reason": "Each evidence role has different truth ceiling and invalidation owner"
+    }
+  ],
+  "observedPositive": "The source snippets have actual pinned Git commit/path/Blob with constrained code/test/project metadata; 45/45 candidate labels are traceable rather than fabricated.",
+  "observedNegative": "Scope typed data and fixture definitions cannot certify actual server behavior or redistribution",
+  "elementSplitCounterexample": "Using one Claim/Element to cover both a docs/dke wrapper and an original per-work download and transfer safety domain outcome would let the wrapper's valid SHA falsely become field truth",
+  "knowledgeEvolution": "R74 source-role reclassification invalidates authority inference in model read contract only, preserving prior independent model structure, Claim labels, versioned source tuples and original project code. On later scoped Owner B5 re-evaluate only dependent Element/SAP/Blueprint.",
+  "successAndFailureMechanisms": {
+    "successful": "Found correct exact source provenance and role-limited technical observations, without changing original business code",
+    "failedPriorAssumption": "Confused integrity of candidate handoff document with normative Product/real-world authority; not evidence of a bug in original application",
+    "nativeOutcome": "NOT_RUN",
+    "professionalReviewer": "NOT_RUN",
+    "sourceOwnerAcceptance": "NOT_SIGNED"
+  },
+  "limitations": {
+    "allowed": "DKE-only candidate research, scoped model correction, independent review plan",
+    "denied": [
+      "No Source/Claim rights signature by #9",
+      "No claimed original Product release qualification",
+      "No original Native or real professional Oracle",
+      "No Function/ECP/AOT/SDK/Runtime"
+    ],
+    "professionalKnowledgeCompleteness": "UNKNOWN_OPEN_WORLD"
+  },
+  "validationPlan": [
+    "Check original exact project Product/Code/Test/rights metadata separately from docs/dke handoff candidate and record each issuer/edition",
+    "Use original project domain expert to review actual per-work download and transfer safety positive/negative cases and a distinct UNKNOWN rights/issuer case",
+    "Require #8 Source Owner signed scoped Claim adoption and specific rights, then independently challenge affected SAP/Blueprint",
+    "On source revision/rights revocation stale only local semantic closure; keep other projects and historical experience immutable"
+  ],
+  "methodHandoff": {
+    "issue": 24,
+    "existingCandidate": "TRUST-BOUNDARY-PROOF-LADDER",
+    "increment": "Verify source authority separately from Git byte identity; do not grant formal claims by field name originalSource",
+    "crossProjectValidation": "14_PROJECT_AUTHOR_SOURCE_CONTRAST_NOT_INDEPENDENT_PROFESSIONAL_SIGNOFF"
+  },
+  "experienceNotExtraGate": true,
+  "sourceB5": false,
+  "qualifiedOriginalSAP": 0,
+  "domainAppRefactorReady": false
+}
