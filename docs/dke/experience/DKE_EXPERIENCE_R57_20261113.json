@@ -1,0 +1,130 @@
+{
+  "schema": "die/dke9-r57-original-project-publisher-scope-and-modeling-experience/v1",
+  "id": "DKE9-XP-XDOWNLOAD-R57-EDITION-ORACLE",
+  "project": "xDownload",
+  "date": "2026-11-13",
+  "theme": "PREMIS_RIGHTS_METADATA_VS_AUTHENTIC_LICENSE_AND_TRANSFER",
+  "sourceLineage": {
+    "owner": "#8",
+    "r76": {
+      "repo": "kaicreator-mm/domain-intelligence-engineering",
+      "commit": "68f8eb3472428569ac2ad429bba49d64f869a7df",
+      "path": "portfolio/preparation/PRIMARY_PUBLISHER_SOURCE_BOUNDARIES_R76_20261113.json",
+      "gitBlob": "5698719d3b7e3a702438b23646e9a432a9d3efc2",
+      "sourceMinimalClaimId": "R76-DRAFT-XDOWNLOAD-PRESERVATION",
+      "status": "AUTHOR_DRAFT_REFERENCE_ONLY"
+    },
+    "originalRepo": "kaicreator-mm/xDownload",
+    "exactOriginalPreparationHEAD": "aa5c794ae2f79a36fdadbfdd4521b33b8cf2d105",
+    "claimIds": [
+      "XD01",
+      "XD02",
+      "XD03"
+    ],
+    "publisherScopes": [
+      {
+        "id": "R76-XDOWNLOAD-PREMIS3",
+        "issuer": "Library of Congress / PREMIS Editorial Committee",
+        "edition": "Version 3.0, updated 2015-11",
+        "url": "https://www.loc.gov/standards/premis/v3/",
+        "scope": "Preservation metadata vocabulary only; Rights entity does not itself grant rights, authenticate a rightsholder or prove transfer integrity.",
+        "rights": "Publisher reference only; no third-party content rights inferred."
+      }
+    ],
+    "priorDkeModel": {
+      "path": "portfolio/domain-knowledge-packages/projects/xDownload/DOMAIN_SOURCE_AUTHORITY_SEPARATION_R55.json",
+      "gitBlob": "5523ed964f586a5043b50aba8fcfc32265501948",
+      "version": "R55",
+      "verifiedAtExactDKEHead": "REFER_TO_R55_FINAL_COMMIT"
+    }
+  },
+  "problemHypothesis": "A valid published reference/edition or proof of source authenticity can automatically establish full actual PREMIS_RIGHTS_METADATA_VS_AUTHENTIC_LICENSE_AND_TRANSFER domain correctness, expert quality and use rights.",
+  "alternatives": [
+    {
+      "id": "A",
+      "approach": "Treat any publisher/standard name or system status as sufficient business authority",
+      "decision": "REJECT",
+      "reason": "Wrong source edition/scope/rights/real-world issuer may be silently promoted"
+    },
+    {
+      "id": "B",
+      "approach": "Withhold all DKE author modeling until field B5",
+      "decision": "REJECT",
+      "reason": "Scoped positive/negative/UNKNOWN candidate knowledge can be structured without granting formal authority"
+    },
+    {
+      "id": "C",
+      "approach": "Separate edition, publisher scope, business effect, actual field issuer/rights and independent Oracle with per-element stop conditions",
+      "decision": "AUTHOR_SELECTED",
+      "reason": "Preserves published facts and explicit falsifiers without self-granting legitimacy"
+    }
+  ],
+  "originalDomainRoles": {
+    "topic": "PREMIS_RIGHTS_METADATA_VS_AUTHENTIC_LICENSE_AND_TRANSFER",
+    "objectCandidates": [
+      "DigitalObject",
+      "PreservationEvent",
+      "FixityDigest",
+      "RightsStatement",
+      "CopyrightGrant"
+    ],
+    "ownerRequired": "WORK_RIGHTSHOLDER_AND_REAL_HTTP_ORACLE",
+    "sourceOnlyPositive": "PREMIS 3.0 provides preservation metadata vocabulary with Rights entity"
+  },
+  "observation": {
+    "sourcePositive": "PREMIS 3.0 provides preservation metadata vocabulary with Rights entity",
+    "sourceBoundNegative": "A complete PREMIS rights metadata string can coexist with missing permission to redistribute a copyrighted work",
+    "sourceBoundaryLimit": "Archive metadata and a typed HTTP resume test do not prove copyright license nor actual bytes integrity",
+    "proofClass": "OFFICIAL_PUBLISHER_MINIMAL_REFERENCE_THROUGH_ISSUE8_NOT_ORIGINAL_NATIVE",
+    "qualifiedFieldEvidence": "UNKNOWN"
+  },
+  "elementSplitCounterexample": "A single Element covering 'preservation metadata record' and 'work-level rights holder/grant' conflates separate proof owners and passes a publisher fact as field-world reality.",
+  "recursiveSplitScopes": [
+    "preservation metadata record",
+    "bit-level fixity and real HTTP transfer",
+    "work-level rights holder/grant",
+    "long-term legal reuse and archive policy"
+  ],
+  "knowledgeEvolution": {
+    "onPublisherRevision": "STALE only affected PREMIS_RIGHTS_METADATA_VS_AUTHENTIC_LICENSE_AND_TRANSFER edition/rights/proof rules",
+    "onOriginalProductRevision": "Re-evaluate scoped original Claims XD01,XD02,XD03, not unrelated project models",
+    "onActualExpertCounterexample": "Preserve original publisher fact; invalidate only disproven business applicability and dependent SAP"
+  },
+  "positiveCase": {
+    "source": "PREMIS 3.0 provides preservation metadata vocabulary with Rights entity",
+    "expected": "CREDIT_SCOPE_ONLY"
+  },
+  "negativeCase": {
+    "input": "A complete PREMIS rights metadata string can coexist with missing permission to redistribute a copyrighted work",
+    "expected": "REJECT_UNSUPPORTED_PROMOTION"
+  },
+  "unknownCase": {
+    "input": "Archive metadata and a typed HTTP resume test do not prove copyright license nor actual bytes integrity",
+    "expected": "UNKNOWN_HOLD_REQUIRE_WORK_RIGHTSHOLDER_AND_REAL_HTTP_ORACLE"
+  },
+  "staleCase": {
+    "input": "change publisher edition/actual rightsholder/current Product issue scope",
+    "expected": "SCOPED_STALE_AND_REQUALIFY_NO_GLOBAL_B5"
+  },
+  "limitations": [
+    "R76 minimal reference only; not signed #8 Source B5/P5",
+    "No original business Native or real qualified professional reviewer",
+    "No original Product/Code/Test/Build modified",
+    "No acquired copyright/corpus/sample/registry reuse rights",
+    "Not original domain SAP or real Domain App readiness"
+  ],
+  "improvementPlan": "Obtain version-pinned original Product/Code/Test and actual domain issuer evidence, use independently falsifiable positive/negative/UNKNOWN/STALE on one genuine PREMIS_RIGHTS_METADATA_VS_AUTHENTIC_LICENSE_AND_TRANSFER case, ask authorized #8 Source Owner to sign only its relevant B5/rights and #9 independent Oracle to decide SAP.",
+  "reusableMethod": {
+    "ownerIssue": 24,
+    "existing": "TRUST-BOUNDARY-PROOF-LADDER",
+    "newBoundary": "PUBLISHER_EDITION_AND_SCOPE_NE_FIELD_ACCEPTANCE_OR_COMMERCIAL_REUSE",
+    "review": "CROSS_PROJECT_TEST_ONLY_NOT_FORMAL_UPGRADE"
+  },
+  "qualification": {
+    "originalSAPQualified": 0,
+    "formalModelValidated": false,
+    "sourceB5": false,
+    "domainAppRefactorReady": false,
+    "experienceNotApprovalGate": true
+  }
+}
