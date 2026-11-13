@@ -14,7 +14,13 @@ import {
   unwrapOrThrow,
   whatConfirmationProves,
 } from '@xdownload/domain-contracts';
-import { DirectHttpAdapter, validateMedia, validateTarget } from '../src/index.ts';
+import {
+  DirectHttpAdapter,
+  lookupSupportedMediaProfile,
+  mediaPolicyOfProfile,
+  validateMedia,
+  validateTarget,
+} from '../src/index.ts';
 import { ControlledHttpFixture, mp4WithoutTrackBox } from './helpers/fixture-server.ts';
 import { InMemoryAuthoritativeLedger } from './helpers/ledger.ts';
 import {
@@ -524,6 +530,53 @@ describe('wrong-target-and-integrity: S3 media validation gates acceptance (C27)
     for (const record of outcome.evidence) {
       expect(decodeEvidenceRecord({ ...record }).ok).toBe(true);
     }
+  });
+
+  it('reports a later same-layer Target byte-constraint failure after an earlier Target PASS', async () => {
+    const media = mp4WithTrack();
+    const differentMedia = mp4WithTrack();
+    differentMedia[63] = (differentMedia[63] ?? 0) ^ 1;
+    fixture.serveFile('/byte-constraint-mismatch.mp4', {
+      body: media,
+      etag: '"byte-constraint"',
+      contentType: 'video/mp4',
+    });
+    const ledger = new InMemoryAuthoritativeLedger(transferProfile({ maxBytes: 100_000 }));
+    const adapter = new DirectHttpAdapter(ledger);
+    const profile = lookupSupportedMediaProfile('s3-media-mp4-v1');
+    expect(profile).toBeDefined();
+
+    const outcome = unwrapOrThrow(
+      await adapter.acquire({
+        ...directRequest(baseUri, '/byte-constraint-mismatch.mp4', media, {
+          effectId: 'effect-s3-byte-constraint',
+          slice: 'S3',
+          omitExpectedSha256: true,
+          mediaPolicy: mediaPolicyOfProfile(profile!),
+        }),
+        byteConstraintSha256: sha256(differentMedia),
+      }),
+    );
+
+    const targetOutcomes = outcome.validations.filter((check) => check.layer === 'target');
+    expect(targetOutcomes).toHaveLength(2);
+    expect(targetOutcomes.map((check) => check.passed)).toEqual([true, false]);
+    expect(targetOutcomes[1]).toMatchObject({
+      layer: 'target',
+      passed: false,
+      code: 'BYTE_CONSTRAINT_MISMATCH',
+    });
+    expect(outcome.reason).toBe('WRONG_TARGET');
+    expect(outcome.allApplicableValidationPassed).toBe(false);
+    expect(outcome.terminalResult.requestFulfillment).toBe('UNSATISFIED');
+    expect(outcome.terminalResult.selectionAcquisition).toBe('FAILED');
+    expect(outcome.terminalResult.stopReason).toBe('VALIDATION_FAILED');
+    expect(outcome.terminalResult.validationSummary).toEqual({
+      status: 'FAILED',
+      passedCount: 3,
+      failedCount: 1,
+    });
+    expect(decodeTerminalResult({ ...outcome.terminalResult }).ok).toBe(true);
   });
 
   it('confirmed candidate with a missing required track is never COMPLETE (C27)', async () => {

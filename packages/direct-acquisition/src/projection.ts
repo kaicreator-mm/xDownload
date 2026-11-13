@@ -61,9 +61,10 @@ export function projectOutcome(
   const layerEvidence = typedLayerEvidence(input);
   const allPassed =
     input.reason === 'COMPLETED' &&
-    applicable.every(
-      (layer) => input.validations.find((check) => check.layer === layer)?.passed === true,
-    );
+    applicable.every((layer) => {
+      const outcomes = input.validations.filter((check) => check.layer === layer);
+      return outcomes.length > 0 && outcomes.every((check) => check.passed);
+    });
 
   const diagnostics: ValidationDiagnostic[] = [];
   const summary = validationSummary(input.validations, applicable);
@@ -179,14 +180,17 @@ function validationSummary(
   let passed = 0;
   let failedCount = 0;
   for (const layer of applicable) {
-    const outcome = validations.find((check) => check.layer === layer);
-    if (outcome === undefined) {
+    const outcomes = validations.filter((check) => check.layer === layer);
+    if (outcomes.length === 0) {
       continue;
     }
-    if (outcome.passed) {
-      passed += 1;
-    } else {
+    // Summary counts applicable layers, not raw records. A layer with any
+    // failed outcome is FAILED even if an earlier check for that same layer
+    // passed (S3 provenance Target + user byte-constraint Target).
+    if (outcomes.some((check) => !check.passed)) {
       failedCount += 1;
+    } else {
+      passed += 1;
     }
   }
   if (failedCount > 0) {
