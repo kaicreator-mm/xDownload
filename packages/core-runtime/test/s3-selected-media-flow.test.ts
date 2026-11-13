@@ -330,7 +330,14 @@ describe('#150 S3 selected-media Core flow (restart reconcile)', () => {
     });
     try {
       const terminal = await awaitTerminal(runtime, 'contract-s3-constraint-001');
-      expect(terminal.requestFulfillment).not.toBe('COMPLETE');
+      expect(terminal.requestFulfillment).toBe('UNSATISFIED');
+      expect(terminal.selectionAcquisition).toBe('FAILED');
+      expect(terminal.stopReason).toBe('VALIDATION_FAILED');
+      expect(terminal.validationSummary).toEqual({
+        status: 'FAILED',
+        passedCount: 3,
+        failedCount: 1,
+      });
       const artifactId = `s3artifact:contract-s3-constraint-001:s3snap-flow-001:s3member-flow-001`;
       expect(runtime.store.observe(artifactId).phase).not.toBe('ACCEPTED');
     } finally {
