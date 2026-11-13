@@ -61,9 +61,10 @@ export function projectOutcome(
   const layerEvidence = typedLayerEvidence(input);
   const allPassed =
     input.reason === 'COMPLETED' &&
-    applicable.every(
-      (layer) => input.validations.find((check) => check.layer === layer)?.passed === true,
-    );
+    applicable.every((layer) => {
+      const outcomes = input.validations.filter((check) => check.layer === layer);
+      return outcomes.length > 0 && outcomes.every((check) => check.passed);
+    });
 
   const diagnostics: ValidationDiagnostic[] = [];
   const summary = validationSummary(input.validations, applicable);
@@ -176,29 +177,26 @@ function validationSummary(
   validations: readonly ValidationLayerOutcome[],
   applicable: readonly ('transfer' | 'format' | 'target' | 'media')[],
 ): TerminalResult['validationSummary'] {
-  const applicableSet = new Set(applicable);
-  const relevant = validations.filter((check) => applicableSet.has(check.layer));
   let passed = 0;
   let failedCount = 0;
-
-  // Count every applicable validation record, not just the first record for
-  // each layer. S3 byte constraints can append a second Target result after
-  // provenance validation; a later FAIL must remain visible after an earlier
-  // PASS for the same layer.
-  for (const outcome of relevant) {
-    if (outcome.passed) {
-      passed += 1;
-    } else {
+  for (const layer of applicable) {
+    const outcomes = validations.filter((check) => check.layer === layer);
+    if (outcomes.length === 0) {
+      continue;
+    }
+    // Summary counts applicable layers, not raw records. A layer with any
+    // failed outcome is FAILED even if an earlier check for that same layer
+    // passed (S3 provenance Target + user byte-constraint Target).
+    if (outcomes.some((check) => !check.passed)) {
       failedCount += 1;
+    } else {
+      passed += 1;
     }
   }
   if (failedCount > 0) {
     return { status: 'FAILED', passedCount: passed, failedCount };
   }
-  const everyLayerObserved = applicable.every((layer) =>
-    relevant.some((check) => check.layer === layer),
-  );
-  if (everyLayerObserved && applicable.length > 0) {
+  if (passed === applicable.length && applicable.length > 0) {
     return { status: 'ALL_PASSED', passedCount: passed, failedCount: 0 };
   }
   return { status: 'INSUFFICIENT_EVIDENCE', passedCount: passed, failedCount: 0 };
