@@ -176,13 +176,16 @@ function validationSummary(
   validations: readonly ValidationLayerOutcome[],
   applicable: readonly ('transfer' | 'format' | 'target' | 'media')[],
 ): TerminalResult['validationSummary'] {
+  const applicableSet = new Set(applicable);
+  const relevant = validations.filter((check) => applicableSet.has(check.layer));
   let passed = 0;
   let failedCount = 0;
-  for (const layer of applicable) {
-    const outcome = validations.find((check) => check.layer === layer);
-    if (outcome === undefined) {
-      continue;
-    }
+
+  // Count every applicable validation record, not just the first record for
+  // each layer. S3 byte constraints can append a second Target result after
+  // provenance validation; a later FAIL must remain visible after an earlier
+  // PASS for the same layer.
+  for (const outcome of relevant) {
     if (outcome.passed) {
       passed += 1;
     } else {
@@ -192,7 +195,10 @@ function validationSummary(
   if (failedCount > 0) {
     return { status: 'FAILED', passedCount: passed, failedCount };
   }
-  if (passed === applicable.length && applicable.length > 0) {
+  const everyLayerObserved = applicable.every((layer) =>
+    relevant.some((check) => check.layer === layer),
+  );
+  if (everyLayerObserved && applicable.length > 0) {
     return { status: 'ALL_PASSED', passedCount: passed, failedCount: 0 };
   }
   return { status: 'INSUFFICIENT_EVIDENCE', passedCount: passed, failedCount: 0 };
